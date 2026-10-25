@@ -6,7 +6,7 @@
 import { runNativeWindow, nativeWindowOptions } from "../../src/platform/macos/ion";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
-import { ElementHandle, MeasureRect, MeasureError } from "../../src/render/measure";
+import { ElementHandle, MeasureRect } from "../../src/render/measure";
 import { View, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
 import { Show } from "../../src/macros/ui/flow";
 import { createSignal } from "../../src/core/signal";
@@ -104,7 +104,6 @@ let failures: int32 = 0;
 let checks: int32 = 0;
 let requested: int32 = 0;
 let completed: int32 = 0;
-let lateCallbacks: int32 = 0;
 let directChecks: int32 = 0;
 
 function directBounds(label: string, want: string): void {
@@ -137,37 +136,29 @@ function bounds(
 	ancestor: ElementHandle | null = null,
 ): void {
 	requested += 1;
-	const success = (got: MeasureRect): void => {
+	const success = (x: number, y: number, width: number, height: number): void => {
 		completed += 1;
-		expect(name, near(got.x, want.x) && near(got.y, want.y) &&
-			near(got.width, want.width) && near(got.height, want.height),
-			`${rectText(got)}, want ${rectText(want)}`);
+		expect(name, near(x, want.x) && near(y, want.y) && near(width, want.width) && near(height, want.height),
+			`${x},${y},${width},${height}, want ${rectText(want)}`);
 	};
-	const failure = (error: MeasureError): void => {
-		completed += 1;
-		expect(name, false, error.toString());
-	};
-	if (ancestor === null) { handle.measureInWindow(success, failure); }
-	else { handle.measureLayout(ancestor as ElementHandle, success, failure); }
+	if (ancestor === null) { handle.measureInWindow(success); }
+	else {
+		handle.measureLayout(ancestor as ElementHandle, success, (): void => {
+			completed += 1;
+			expect(name, false, "onFail");
+		});
+	}
 }
 
-function errorBounds(
-	name: string,
-	handle: ElementHandle,
-	want: MeasureError,
-	ancestor: ElementHandle | null = null,
-): void {
+function layoutFails(name: string, handle: ElementHandle, ancestor: ElementHandle): void {
 	requested += 1;
-	const success = (got: MeasureRect): void => {
+	handle.measureLayout(ancestor, (left: number, top: number, width: number, height: number): void => {
 		completed += 1;
-		expect(name, false, "unexpected bounds " + rectText(got));
-	};
-	const failure = (error: MeasureError): void => {
+		expect(name, false, `unexpected bounds ${left},${top},${width},${height}`);
+	}, (): void => {
 		completed += 1;
-		expect(name, error === want, `${error.toString()}, want ${want.toString()}`);
-	};
-	if (ancestor === null) { handle.measureInWindow(success, failure); }
-	else { handle.measureLayout(ancestor as ElementHandle, success, failure); }
+		expect(name, true, "onFail");
+	});
 }
 
 function delivered(name: string): void {
@@ -208,15 +199,12 @@ function atStart(): void {
 		{ x: 0, y: 0, width: 0, height: 0 }, base);
 	bounds("self layout", requireHandle("scaled", scaled),
 		{ x: 0, y: 0, width: 100, height: 100 }, requireHandle("scaled", scaled));
-	errorBounds("unrelated ancestor", requireHandle("plain", plain),
-		MeasureError.NotAncestor, requireHandle("scaled", scaled));
-	errorBounds("descendant is not ancestor", requireHandle("scaled", scaled),
-		MeasureError.NotAncestor, requireHandle("child", child));
-	errorBounds("display none window", requireHandle("hidden", hidden),
-		MeasureError.NotLaidOut);
-	errorBounds("display none layout", requireHandle("hidden", hidden),
-		MeasureError.NotLaidOut, base);
-	expect("queries are frame deferred", completed === 0, `${completed} synchronous callbacks`);
+	layoutFails("unrelated ancestor", requireHandle("plain", plain), requireHandle("scaled", scaled));
+	layoutFails("descendant is not ancestor", requireHandle("scaled", scaled), requireHandle("child", child));
+	bounds("display none window answers zeros", requireHandle("hidden", hidden),
+		{ x: 0, y: 0, width: 0, height: 0 });
+	layoutFails("display none layout", requireHandle("hidden", hidden), base);
+	expect("queries answer before the call returns", completed === requested, `${completed}/${requested} callbacks`);
 	setTimeout(afterInitial, 400);
 }
 
@@ -239,37 +227,18 @@ function beforeDisposal(): void {
 	const target = requireHandle("disposable", disposable);
 	const base = requireHandle("root", root);
 	const survivor = requireHandle("plain", plain);
-	const lateSuccess = (got: MeasureRect): void => { lateCallbacks += 1; };
-	const lateFailure = (error: MeasureError): void => { lateCallbacks += 1; };
-	target.measureInWindow(lateSuccess, lateFailure);
-	target.measureLayout(base, lateSuccess, lateFailure);
-	survivor.measureLayout(target, lateSuccess, lateFailure);
 	setVisible(false);
-	expect("disposal precedes frame delivery", disposed, `${disposed}`);
+	expect("disposal ran", disposed, `${disposed}`);
 	bounds("surviving query after disposal", survivor,
 		{ x: 20, y: 30, width: 100, height: 50 });
-	let windowError = "";
-	try { target.measureInWindow(lateSuccess, lateFailure); }
-	catch (error) { windowError = error.message; }
-	expect("window query after unmount throws",
-		windowError === "Element.measureInWindow was called after unmount", windowError);
-	let layoutError = "";
-	try { target.measureLayout(base, lateSuccess, lateFailure); }
-	catch (error) { layoutError = error.message; }
-	expect("layout query after unmount throws",
-		layoutError === "Element.measureLayout was called after unmount", layoutError);
-	let ancestorError = "";
-	try { survivor.measureLayout(target, lateSuccess, lateFailure); }
-	catch (error) { ancestorError = error.message; }
-	expect("layout query after ancestor unmount throws",
-		ancestorError === "Element.measureLayout was called after unmount", ancestorError);
+	bounds("window query after unmount answers zeros", target, { x: 0, y: 0, width: 0, height: 0 });
+	layoutFails("layout query after unmount calls onFail", target, base);
+	layoutFails("layout query after ancestor unmount calls onFail", survivor, target);
 	setTimeout(afterDisposal, 400);
 }
 
 function afterDisposal(): void {
 	delivered("surviving query delivered after disposal");
-	expect("unmounted target and ancestor drop queued success and failure",
-		lateCallbacks === 0, `${lateCallbacks} late callbacks`);
 	harnessHide(TITLE, "plain");
 	directBounds("plain", "0");
 	const detached = harnessMeasureDetached();

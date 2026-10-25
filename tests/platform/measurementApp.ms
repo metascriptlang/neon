@@ -1,5 +1,5 @@
 import { View, Text, Pressable, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
-import { ElementHandle, MeasureRect, MeasureError } from "../../src/render/measure";
+import { ElementHandle } from "../../src/render/measure";
 import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
@@ -11,31 +11,33 @@ export function MeasurementApp(): NeonNode {
 	const handles: ElementHandle[] = [];
 	const anchors: ElementHandle[] = [];
 	const scrolls: ScrollViewHandle[] = [];
-	const fail = (error: MeasureError): void => { setStatus("measurement FAIL: " + error.toString()); };
 	const measure = (event: NeonEvent): void => {
 		setStatus("measurement running");
-		handles[1].measureInWindow((parent: MeasureRect): void => {
-			handles[0].measureInWindow((window: MeasureRect): void => {
-				handles[0].measureLayout(handles[1], (layout: MeasureRect): void => {
-					if (!near(window.x - parent.x, 24) || !near(window.y - parent.y, 160) || !near(window.width, 80) || !near(window.height, 40) || !near(layout.x, 12) || !near(layout.y, 80) || !near(layout.width, 40) || !near(layout.height, 20)) {
-						setStatus(`measurement FAIL geometry ${window.x - parent.x},${window.y - parent.y},${window.width},${window.height} local ${layout.x},${layout.y},${layout.width},${layout.height}`);
-						return;
-					}
-					anchors[0].measureInWindow((before: MeasureRect): void => {
-						scrolls[0].scrollTo({ y: 50, animated: false });
-						anchors[0].measureInWindow((after: MeasureRect): void => {
-							anchors[0].measureLayout(scrolls[0], (local: MeasureRect): void => {
-								if (!near(before.y - after.y, 50) || !near(local.x, 12) || !near(local.y, 80)) {
-									setStatus(`measurement FAIL scroll ${before.y - after.y} local ${local.x},${local.y}`);
-									return;
-								}
-								setStatus(`measurement PASS ${window.x},${window.y},${window.width},${window.height}`);
-							}, fail);
-						}, fail);
-					}, fail);
-				}, fail);
-			}, fail);
-		}, fail);
+		let parent: number[] = [];
+		let frame: number[] = [];
+		let layout: number[] = [];
+		let before = 0.0;
+		let after = 0.0;
+		let local: number[] = [];
+		const ancestorFailed = (): void => { setStatus("measurement FAIL an ancestor measureLayout called onFail"); };
+		handles[1].measureInWindow((x: number, y: number, width: number, height: number): void => { parent = [x, y]; });
+		handles[0].measureInWindow((x: number, y: number, width: number, height: number): void => { frame = [x, y, width, height]; });
+		handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => { layout = [left, top, width, height]; }, ancestorFailed);
+		if (layout.length === 0) { return; }
+		if (!near(frame[0] - parent[0], 24) || !near(frame[1] - parent[1], 160) || !near(frame[2], 80) || !near(frame[3], 40) || !near(layout[0], 12) || !near(layout[1], 80) || !near(layout[2], 40) || !near(layout[3], 20)) {
+			setStatus(`measurement FAIL geometry ${frame[0] - parent[0]},${frame[1] - parent[1]},${frame[2]},${frame[3]} local ${layout[0]},${layout[1]},${layout[2]},${layout[3]}`);
+			return;
+		}
+		anchors[0].measureInWindow((x: number, y: number, width: number, height: number): void => { before = y; });
+		scrolls[0].scrollTo({ y: 50, animated: false });
+		anchors[0].measureInWindow((x: number, y: number, width: number, height: number): void => { after = y; });
+		anchors[0].measureLayout(scrolls[0], (left: number, top: number, width: number, height: number): void => { local = [left, top]; }, ancestorFailed);
+		if (local.length === 0) { return; }
+		if (!near(before - after, 50) || !near(local[0], 12) || !near(local[1], 80)) {
+			setStatus(`measurement FAIL scroll ${before - after} local ${local[0]},${local[1]}`);
+			return;
+		}
+		setStatus(`measurement PASS ${frame[0]},${frame[1]},${frame[2]},${frame[3]}`);
 	};
 	return <View style={{ flex: 1 }}>
 		<Pressable accessibilityLabel="Run measurement" style={{ position: "absolute", left: 20, top: 20, width: 180, height: 44 }} onPress={measure}><Text>Run measurement</Text></Pressable>

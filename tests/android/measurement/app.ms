@@ -1,15 +1,14 @@
 import { View, Text, Pressable, ScrollView, ScrollViewHandle } from "../../../src/components/primitives";
-import { ElementHandle, MeasureRect, MeasureError } from "../../../src/render/measure";
+import { ElementHandle } from "../../../src/render/measure";
 import { NeonNode } from "../../../src/render/hostTypes";
 import { createSignal } from "../../../src/core/signal";
 import { Show } from "../../../src/macros/ui/flow";
-import { requestFrame } from "../../../src/animation/frame";
 import { runApp } from "../../../src/platform/native/host";
 
 function near(a: float64, b: float64): boolean { return Math.abs(a - b) < 0.05; }
 
-function describe(rect: MeasureRect): string {
-	return `${rect.x},${rect.y},${rect.width},${rect.height}`;
+function describe(x: number, y: number, width: number, height: number): string {
+	return `${x},${y},${width},${height}`;
 }
 
 function MeasurementApp(): NeonNode {
@@ -32,12 +31,10 @@ function MeasurementApp(): NeonNode {
 	let failed = false;
 	let geometryReady = false;
 	let scrolled = false;
-	let queuedCallbacks: int32 = 0;
 	const fail = (message: string): void => {
 		failed = true;
 		setStatus("geometry FAIL " + message);
 	};
-	const measurementFailed = (error: MeasureError): void => { fail(error.toString()); };
 	const done = (): void => {
 		completed += 1;
 		if (completed === 7 && !failed) {
@@ -45,92 +42,74 @@ function MeasurementApp(): NeonNode {
 			setStatus("geometry PASS");
 		}
 	};
+	const ancestorFailed = (): void => { fail("an ancestor measureLayout called onFail"); };
 	const measure = (): void => {
 		if (geometryReady || completed !== 0) { fail("run measurement only once"); return; }
 		setStatus("geometry running");
-		scaled[0].measureInWindow((rect: MeasureRect): void => {
-			setScaledResult("scaled " + describe(rect));
+		scaled[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+			setScaledResult("scaled " + describe(x, y, width, height));
 			done();
-		}, measurementFailed);
-		scaled[0].measureLayout(parents[0], (rect: MeasureRect): void => {
-			if (!near(rect.x, 40) || !near(rect.y, 35) || !near(rect.width, 40) || !near(rect.height, 20)) {
-				fail("scaled logical ancestor " + describe(rect)); return;
+		});
+		scaled[0].measureLayout(parents[0], (left: number, top: number, width: number, height: number): void => {
+			if (!near(left, 40) || !near(top, 35) || !near(width, 40) || !near(height, 20)) {
+				fail("scaled logical ancestor " + describe(left, top, width, height)); return;
 			}
-			setLocalResult("local " + describe(rect));
+			setLocalResult("local " + describe(left, top, width, height));
 			done();
-		}, measurementFailed);
-		anchors[0].measureInWindow((rect: MeasureRect): void => {
-			setScrollResult("scroll " + describe(rect));
+		}, ancestorFailed);
+		anchors[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+			setScrollResult("scroll " + describe(x, y, width, height));
 			done();
-		}, measurementFailed);
-		anchors[0].measureLayout(scrolls[0], (rect: MeasureRect): void => {
-			if (!near(rect.x, 12) || !near(rect.y, 60) || !near(rect.width, 40) || !near(rect.height, 20)) {
-				fail("initial scroll logical ancestor " + describe(rect)); return;
+		});
+		anchors[0].measureLayout(scrolls[0], (left: number, top: number, width: number, height: number): void => {
+			if (!near(left, 12) || !near(top, 60) || !near(width, 40) || !near(height, 20)) {
+				fail("initial scroll logical ancestor " + describe(left, top, width, height)); return;
 			}
 			done();
-		}, measurementFailed);
-		zeros[0].measureInWindow((rect: MeasureRect): void => {
-			if (!near(rect.width, 0) || !near(rect.height, 0)) { fail("zero " + describe(rect)); return; }
+		}, ancestorFailed);
+		zeros[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+			if (!near(width, 0) || !near(height, 0)) { fail("zero " + describe(x, y, width, height)); return; }
 			setZeroResult("zero PASS");
 			done();
-		}, measurementFailed);
-		hidden[0].measureInWindow((rect: MeasureRect): void => { fail("hidden succeeded"); }, (error: MeasureError): void => {
-			if (error !== MeasureError.NotLaidOut) { fail("hidden " + error.toString()); return; }
+		});
+		hidden[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+			if (x !== 0 || y !== 0 || width !== 0 || height !== 0) { fail("hidden " + describe(x, y, width, height)); return; }
 			done();
 		});
-		scaled[0].measureLayout(zeros[0], (rect: MeasureRect): void => { fail("nonancestor succeeded"); }, (error: MeasureError): void => {
-			if (error !== MeasureError.NotAncestor) { fail("nonancestor " + error.toString()); return; }
-			done();
-		});
+		scaled[0].measureLayout(zeros[0], (left: number, top: number, width: number, height: number): void => { fail("nonancestor succeeded"); }, done);
 	};
 	const scroll = (): void => {
 		if (!geometryReady || scrolled) { fail("scroll requires fresh geometry PASS"); return; }
 		scrolled = true;
 		setStatus("geometry scrolling");
 		scrolls[0].scrollTo({ y: 40, animated: false });
-		anchors[0].measureInWindow((rect: MeasureRect): void => {
-			setScrollResult("scroll " + describe(rect));
-			anchors[0].measureLayout(scrolls[0], (local: MeasureRect): void => {
-				if (!near(local.x, 12) || !near(local.y, 60) || !near(local.width, 40) || !near(local.height, 20)) {
-					fail("scrolled logical ancestor " + describe(local)); return;
-				}
-				setLocalResult("local " + describe(local));
-				setStatus("geometry SCROLLED");
-			}, measurementFailed);
-		}, measurementFailed);
+		anchors[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+			setScrollResult("scroll " + describe(x, y, width, height));
+		});
+		anchors[0].measureLayout(scrolls[0], (left: number, top: number, width: number, height: number): void => {
+			if (!near(left, 12) || !near(top, 60) || !near(width, 40) || !near(height, 20)) {
+				fail("scrolled logical ancestor " + describe(left, top, width, height)); return;
+			}
+			setLocalResult("local " + describe(left, top, width, height));
+			setStatus("geometry SCROLLED");
+		}, ancestorFailed);
 	};
 	const dispose = (): void => {
 		if (!live()) { setLifetime("lifetime FAIL duplicate disposal"); return; }
-		const called = (rect: MeasureRect): void => {
-			queuedCallbacks += 1;
-			setLifetime("lifetime FAIL queued success delivered");
-		};
-		const rejected = (error: MeasureError): void => {
-			queuedCallbacks += 1;
-			setLifetime("lifetime FAIL queued failure delivered");
-		};
-		temporary[0].measureInWindow(called, rejected);
-		temporary[0].measureLayout(roots[0], called, rejected);
+		let answers: int32 = 0;
+		temporary[0].measureInWindow((x: number, y: number, width: number, height: number): void => { if (near(width, 40)) { answers += 1; } });
+		temporary[0].measureLayout(roots[0], (left: number, top: number, width: number, height: number): void => { answers += 1; });
 		setLive(false);
-		requestFrame((time: number): void => {
-			if (queuedCallbacks === 0) { setLifetime("lifetime queued 0"); }
-		});
+		setLifetime(answers === 2 ? "lifetime disposed after 2 answers" : "lifetime FAIL a mounted View did not answer before the call returned");
 	};
 	const checkDisposed = (): void => {
-		if (live() || queuedCallbacks !== 0) { setLifetime("lifetime FAIL disposal precondition"); return; }
-		let windowRejected = false;
-		let layoutRejected = false;
-		try {
-			temporary[0].measureInWindow((rect: MeasureRect): void => { queuedCallbacks += 1; });
-		} catch (error) { windowRejected = error.toString().indexOf("was called after unmount") >= 0; }
-		try {
-			temporary[0].measureLayout(roots[0], (rect: MeasureRect): void => { queuedCallbacks += 1; });
-		} catch (error) { layoutRejected = error.toString().indexOf("was called after unmount") >= 0; }
-		if (!windowRejected || !layoutRejected) { setLifetime("lifetime FAIL stale call accepted or wrong error"); return; }
-		requestFrame((time: number): void => {
-			if (queuedCallbacks === 0) { setLifetime("lifetime PASS 0 window-rejected layout-rejected"); }
-			else { setLifetime("lifetime FAIL stale callback delivered"); }
-		});
+		if (live()) { setLifetime("lifetime FAIL disposal precondition"); return; }
+		let inWindow = "";
+		let layout = "";
+		temporary[0].measureInWindow((x: number, y: number, width: number, height: number): void => { inWindow = describe(x, y, width, height); });
+		temporary[0].measureLayout(roots[0], (left: number, top: number, width: number, height: number): void => { layout = "measured"; }, (): void => { layout = "onFail"; });
+		if (inWindow !== "0,0,0,0" || layout !== "onFail") { setLifetime(`lifetime FAIL after unmount window ${inWindow} layout ${layout}`); return; }
+		setLifetime("lifetime PASS window-zeros layout-onFail");
 	};
 	return <View accessible={true} accessibilityLabel="measurement-root" ref={(handle: ElementHandle): void => { roots.push(handle); }} style={{ flex: 1 }}>
 		<Pressable accessibilityLabel="Run measurement" onPress={measure} style={{ position: "absolute", left: 12, top: 12, width: 190, height: 44 }}><Text>Run measurement</Text></Pressable>

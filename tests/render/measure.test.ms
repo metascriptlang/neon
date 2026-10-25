@@ -1,107 +1,92 @@
-import { HostNode, mockHost, mockNode } from "../../src/render/host";
+import { Host, HostNode, mockHost } from "../../src/render/host";
 import { MeasureRect, MeasureError } from "../../src/render/hostTypes";
-import { ElementHandle } from "../../src/render/measure";
-import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
+import { ElementHandle, DOMRect } from "../../src/render/measure";
 
-test "measurement uses the host after the current mount and layout work" {
-	const frames = useManualFrames();
+function rectText(r: DOMRect): string {
+	return `${r.x},${r.y},${r.width},${r.height} t${r.top} r${r.right} b${r.bottom} l${r.left}`;
+}
+
+function nested(host: Host): HostNode[] {
+	const outer = host.createElement("view");
+	const inner = host.createElement("view");
+	const beside = host.createElement("view");
+	host.append(outer, inner);
+	host.append(outer, beside);
+	return [outer, inner, beside];
+}
+
+test "measure answers the layout origin in the parent beside the window frame, before the call returns" {
 	const host = mockHost();
-	const node = mockNode("view") as unknown as HostNode;
-	let width = 10.0;
-	host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 12, y: 30, width, height: 20 });
-	const handle = new ElementHandle(host, node, (): boolean => true);
-	let calls: int32 = 0;
-	handle.measureInWindow((rect: MeasureRect): void => {
-		calls += 1;
-		assert rect.x === 12 && rect.y === 30 && rect.width === 40 && rect.height === 20;
+	const [outer, inner] = nested(host);
+	host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 30, y: 60, width: 100, height: 80 });
+	host.measureLayout = (n: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => {
+		assert n === inner && ancestor === outer;
+		return Result.ok({ x: 10, y: 20, width: 50, height: 40 });
+	};
+	const handle = new ElementHandle(host, inner, (): boolean => true);
+	let log = "";
+	handle.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number): void => {
+		log += `measure ${x},${y},${width},${height},${pageX},${pageY};`;
 	});
-	width = 40;
-	assert calls === 0;
-	frames.step(1);
-	assert calls === 1;
-	setFrameDriver(null);
-}
-
-test "measurement rejects invalid ancestry and cross-host handles without fabricated bounds" {
-	const frames = useManualFrames();
-	const host = mockHost();
-	const node = mockNode("view") as unknown as HostNode;
-	host.measureLayout = (n: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => Result.err(MeasureError.NotAncestor);
-	const handle = new ElementHandle(host, node, (): boolean => true);
-	const ancestor = new ElementHandle(host, mockNode("other") as unknown as HostNode, (): boolean => true);
-	let failed = false;
-	handle.measureLayout(ancestor, (rect: MeasureRect): void => { assert false; }, (error: MeasureError): void => {
-		failed = error === MeasureError.NotAncestor;
+	log += "after;";
+	handle.measureInWindow((x: number, y: number, width: number, height: number): void => {
+		log += `window ${x},${y},${width},${height};`;
 	});
-	frames.step(1);
-	assert failed;
-	let crossHost = false;
-	try {
-		handle.measureLayout(new ElementHandle(mockHost(), node, (): boolean => true), (rect: MeasureRect): void => {});
-	} catch { crossHost = true; }
-	assert crossHost;
-	setFrameDriver(null);
+	log += "after;";
+	assert log === "measure 10,20,100,80,30,60;after;window 30,60,100,80;after;", log;
+	assert rectText(handle.getBoundingClientRect()) === "30,60,100,80 t60 r130 b140 l30", rectText(handle.getBoundingClientRect());
 }
 
-test "queued measurement does not call an unmounted owner" {
-	const frames = useManualFrames();
+test "a node with no parent measures its window origin as its layout origin" {
 	const host = mockHost();
-	let mounted = true;
-	let queried = false;
-	host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => {
-		queried = true;
-		return Result.ok({ x: 0, y: 0, width: 10, height: 10 });
-	};
-	const handle = new ElementHandle(host, mockNode("view") as unknown as HostNode, (): boolean => mounted);
-	handle.measureInWindow((rect: MeasureRect): void => { assert false; });
-	mounted = false;
-	frames.step(1);
-	assert !queried;
-	let rejected = false;
-	try { handle.measureInWindow((rect: MeasureRect): void => {}); } catch { rejected = true; }
-	assert rejected;
-	setFrameDriver(null);
+	host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 3, y: 4, width: 5, height: 6 });
+	const handle = new ElementHandle(host, host.createElement("view"), (): boolean => true);
+	let got = "";
+	handle.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number): void => {
+		got = `${x},${y},${width},${height},${pageX},${pageY}`;
+	});
+	assert got === "3,4,5,6,3,4", got;
 }
 
-test "measurement drops success when the host query unmounts the target" {
-	const frames = useManualFrames();
+test "measureLayout answers the host's layout frame, and calls onFail for a node that is not its ancestor or another host's" {
 	const host = mockHost();
-	let mounted = true;
-	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => {
-		mounted = false;
-		return Result.ok({ x: 0, y: 0, width: 10, height: 10 });
-	};
-	const handle = new ElementHandle(host, mockNode("view") as unknown as HostNode, (): boolean => mounted);
-	let delivered = false;
-	handle.measureInWindow((rect: MeasureRect): void => { delivered = true; });
-	frames.step(1);
-	setFrameDriver(null);
-	assert !delivered;
+	const [outer, inner, beside] = nested(host);
+	host.measureLayout = (n: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> =>
+		ancestor === outer ? Result.ok({ x: 5, y: 10, width: 50, height: 40 }) : Result.err(MeasureError.NotAncestor);
+	const handle = new ElementHandle(host, inner, (): boolean => true);
+	let log = "";
+	const success = (left: number, top: number, width: number, height: number): void => { log += `layout ${left},${top},${width},${height};`; };
+	const fail = (): void => { log += "onFail;"; };
+	handle.measureLayout(new ElementHandle(host, outer, (): boolean => true), success, fail);
+	handle.measureLayout(new ElementHandle(host, beside, (): boolean => true), success, fail);
+	handle.measureLayout(new ElementHandle(host, beside, (): boolean => true), success);
+	handle.measureLayout(new ElementHandle(mockHost(), outer, (): boolean => true), success, fail);
+	assert log === "layout 5,10,50,40;onFail;onFail;", log;
 }
 
-test "measurement drops failure when the host query unmounts the ancestor" {
-	const frames = useManualFrames();
-	const host = mockHost();
-	let mounted = true;
-	host.measureLayout = (node: HostNode, parent: HostNode): Result<MeasureRect, MeasureError> => {
-		mounted = false;
-		return Result.err(MeasureError.NotMounted);
-	};
-	const handle = new ElementHandle(host, mockNode("view") as unknown as HostNode, (): boolean => true);
-	const parent = new ElementHandle(host, mockNode("parent") as unknown as HostNode, (): boolean => mounted);
-	let delivered = false;
-	handle.measureLayout(parent, (rect: MeasureRect): void => { delivered = true; }, (error: MeasureError): void => { delivered = true; });
-	frames.step(1);
-	setFrameDriver(null);
-	assert !delivered;
-}
-
-test "unsupported measurement reports an explicit failure" {
-	const frames = useManualFrames();
-	const handle = new ElementHandle(mockHost(), mockNode("view") as unknown as HostNode, (): boolean => true);
-	let failed = false;
-	handle.measureInWindow((rect: MeasureRect): void => { assert false; }, (error: MeasureError): void => { failed = error === MeasureError.Unsupported; });
-	frames.step(1);
-	assert failed;
-	setFrameDriver(null);
+test "an unmounted node, a node not laid out and a host that cannot measure answer zeros and never throw" {
+	const cases: string[] = ["unmounted", "not laid out", "unsupported"];
+	for (const name of cases) {
+		const host = mockHost();
+		const [outer, inner] = nested(host);
+		if (name !== "unsupported") {
+			host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> =>
+				name === "not laid out" ? Result.err(MeasureError.NotLaidOut) : Result.ok({ x: 1, y: 2, width: 3, height: 4 });
+			host.measureLayout = (n: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> =>
+				name === "not laid out" ? Result.err(MeasureError.NotLaidOut) : Result.ok({ x: 1, y: 2, width: 3, height: 4 });
+		}
+		const mounted = name !== "unmounted";
+		const handle = new ElementHandle(host, inner, (): boolean => mounted);
+		let log = "";
+		handle.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number): void => {
+			log += `${x}${y}${width}${height}${pageX}${pageY};`;
+		});
+		handle.measureInWindow((x: number, y: number, width: number, height: number): void => { log += `${x}${y}${width}${height};`; });
+		handle.measureLayout(new ElementHandle(host, outer, (): boolean => true),
+			(left: number, top: number, width: number, height: number): void => { log += "measured;"; }, (): void => { log += "onFail;"; });
+		handle.measureLayout(new ElementHandle(host, outer, (): boolean => true),
+			(left: number, top: number, width: number, height: number): void => { log += "measured;"; });
+		log += rectText(handle.getBoundingClientRect());
+		assert log === "000000;0000;onFail;0,0,0,0 t0 r0 b0 l0", name + ": " + log;
+	}
 }

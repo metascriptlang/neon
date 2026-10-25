@@ -24,7 +24,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent
 import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 import { flush } from "../../src/core/runtime";
-import { ElementHandle } from "../../src/render/measure";
+import { ElementHandle, MeasureRect, MeasureError } from "../../src/render/measure";
 import { Image } from "../../src/components/image";
 
 test "ref hands the completed host node to the callback" {
@@ -317,6 +317,7 @@ test "direct Text and Image handle refs apply untracked under the mounting owner
 		const [read, write] = createSignal(0);
 		const root = mockNode("root");
 		const host = mockHost();
+		host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
 		const handles: ElementHandle[] = [];
 		let mounts = 0;
 		let seen = -1;
@@ -344,10 +345,14 @@ test "direct Text and Image handle refs apply untracked under the mounting owner
 		assert mounts === 1 && handles.length === 1 && root.children.length === 1,
 			"a signal read in the public ref must not remount its builder";
 		assert seen === 0 && cleanups === 0;
+		const frame = (): string => {
+			let got = "";
+			handles[0].measureInWindow((x: number, y: number, width: number, height: number): void => { got = `${x},${y},${width},${height}`; });
+			return got;
+		};
+		assert frame() === "1,2,3,4", "the mounted handle measures: " + frame();
 		dispose();
 		assert cleanups === 1, "ref cleanup stays under the mounting owner";
-		let refused = false;
-		try { handles[0].measureInWindow((): void => {}); } catch { refused = true; }
-		assert refused, "the one public handle is disposed with that owner";
+		assert frame() === "0,0,0,0", "the one public handle is disposed with that owner: " + frame();
 	}
 }

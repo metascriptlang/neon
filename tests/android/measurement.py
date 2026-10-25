@@ -199,10 +199,10 @@ def lane(results):
     close(rect(label(items, "local"), "local"), (12, 60, 40, 20), 0.05, "logical scroll ancestor excludes scroll offset")
     snapshot(results, "scrolled")
     tap(items, "Dispose measurement")
-    items = wait(results, "lifetime", "lifetime queued 0", "disposed")
+    items = wait(results, "lifetime", "lifetime disposed after 2 answers", "disposed")
     require(not any(n.get("content-desc") == "measurement-temporary" for n in items), "temporary node survived disposal")
     tap(items, "Check disposed")
-    items = wait(results, "lifetime", "lifetime PASS 0 window-rejected layout-rejected", "lifetime")
+    items = wait(results, "lifetime", "lifetime PASS window-zeros layout-onFail", "lifetime")
     snapshot(results, "lifetime")
     require(counter.pid() == process, "measurement pid changed")
     require(density(adb("shell", "wm", "density")) == scale, "density drift during measurement")
@@ -211,8 +211,8 @@ def lane(results):
     evidence = {"serial": serial, "pid": process, "density": scale, "window_frame_screen_px": origin,
                 "root_screen_px": root, "scaled_window_dp": scaled, "scroll_before_dp": before,
                 "scroll_after_dp": after, "logical_scaled_dp": local,
-                "status_controls": ["zero success", "hidden NotLaidOut", "nonancestor NotAncestor",
-                                    "two queued callbacks suppressed", "two post-unmount calls rejected"]}
+                "status_controls": ["zero success", "hidden zeros", "nonancestor onFail",
+                                    "two answers before disposal", "post-unmount zeros and onFail"]}
     with open(os.path.join(results, "geometry.json"), "w") as out:
         json.dump(evidence, out, indent=2)
     print("NEON_ANDROID measurement PASS " + json.dumps(evidence, sort_keys=True))

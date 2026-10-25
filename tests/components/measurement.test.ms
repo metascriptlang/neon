@@ -2,12 +2,10 @@ import { ElementHandle, ElementRef, MeasureRect, MeasureError } from "../../src/
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { View, ViewHandle, Text, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
-import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Image } from "../../src/components/image";
 import { Switch } from "../../src/components/switch";
 
 test "primitive refs expose portable handles without changing node identity" {
-	const frames = useManualFrames();
 	const host = mockHost();
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
 	const handles: ElementHandle[] = [];
@@ -20,22 +18,14 @@ test "primitive refs expose portable handles without changing node identity" {
 	assert handles.length === 3;
 	assert handles[0].node === root.children[0].children[0] as unknown as HostNode;
 	assert handles[2].node === root.children[0] as unknown as HostNode;
-	let calls: int32 = 0;
-	handles[2].measureInWindow((rect: MeasureRect): void => { assert rect.width === 3; calls += 1; });
-	frames.step(1);
-	assert calls === 1;
-	handles[2].measureInWindow((rect: MeasureRect): void => { calls += 1; });
+	let got = "";
+	handles[2].measureInWindow((x: number, y: number, width: number, height: number): void => { got += `${x},${y},${width},${height};`; });
 	dispose();
-	frames.step(1);
-	assert calls === 1;
-	let rejected = false;
-	try { handles[2].measureInWindow((rect: MeasureRect): void => {}); } catch { rejected = true; }
-	assert rejected;
-	setFrameDriver(null);
+	handles[2].measureInWindow((x: number, y: number, width: number, height: number): void => { got += `${x},${y},${width},${height};`; });
+	assert got === "1,2,3,4;0,0,0,0;", "measured before the call returns, zeros after unmount: " + got;
 }
 
 test "Image and Switch refs share the portable measurement handle" {
-	const frames = useManualFrames();
 	const host = mockHost();
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 0, y: 0, width: 20, height: 30 });
 	const handles: ElementHandle[] = [];
@@ -47,16 +37,13 @@ test "Image and Switch refs share the portable measurement handle" {
 	assert handles.length === 2;
 	let calls: int32 = 0;
 	for (const handle of handles) {
-		handle.measureInWindow((rect: MeasureRect): void => { assert rect.width === 20; calls += 1; });
+		handle.measureInWindow((x: number, y: number, width: number, height: number): void => { assert width === 20; calls += 1; });
 	}
-	frames.step(1);
 	assert calls === 2;
 	dispose();
-	setFrameDriver(null);
 }
 
 test "specialized input and scroll handles also support measurement" {
-	const frames = useManualFrames();
 	const host = mockHost();
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 0, y: 0, width: 20, height: 30 });
 	const inputs: TextInputHandle[] = [];
@@ -70,16 +57,13 @@ test "specialized input and scroll handles also support measurement" {
 	inputs[0].focus();
 	assert inputs[0].isFocused();
 	scrolls[0].scrollTo({ y: 12, animated: false });
-	inputs[0].measureInWindow((rect: MeasureRect): void => { calls += 1; });
-	scrolls[0].measureInWindow((rect: MeasureRect): void => { calls += 1; });
-	frames.step(1);
+	inputs[0].measureInWindow((x: number, y: number, width: number, height: number): void => { calls += 1; });
+	scrolls[0].measureInWindow((x: number, y: number, width: number, height: number): void => { calls += 1; });
 	assert calls === 2;
 	dispose();
-	setFrameDriver(null);
 }
 
 test "one ViewHandle keeps focus and both measurements under the same lifetime" {
-	const frames = useManualFrames();
 	const host = mockHost();
 	const handles: ViewHandle[] = [];
 	let log = "";
@@ -104,28 +88,20 @@ test "one ViewHandle keeps focus and both measurements under the same lifetime" 
 	handles[0].focus();
 	handles[0].blur();
 	assert log === "focus;blur;";
-	handles[0].measureInWindow((rect: MeasureRect): void => {
-		assert rect.x === 10 && rect.y === 20 && rect.width === 30 && rect.height === 40;
+	handles[0].measureInWindow((x: number, y: number, width: number, height: number): void => {
+		assert x === 10 && y === 20 && width === 30 && height === 40;
 		measured += 1;
 	});
-	handles[0].measureLayout(handles[1], (rect: MeasureRect): void => {
-		assert rect.x === 4 && rect.y === 5 && rect.width === 30 && rect.height === 40;
+	handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => {
+		assert left === 4 && top === 5 && width === 30 && height === 40;
 		measured += 1;
 	});
-	frames.step(1);
 	assert measured === 2;
-	handles[0].measureInWindow((rect: MeasureRect): void => { measured += 1; });
-	handles[0].measureLayout(handles[1], (rect: MeasureRect): void => { measured += 1; });
 	dispose();
-	frames.step(1);
-	assert measured === 2;
+	let failed = false;
+	handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => { measured += 1; }, (): void => { failed = true; });
+	assert measured === 2 && failed, "measureLayout after unmount calls onFail";
 	let focusError = "";
-	let measureError = "";
 	try { handles[0].focus(); } catch (e) { focusError = e.toString(); }
-	try {
-		handles[0].measureInWindow((rect: MeasureRect): void => { measured += 1; });
-	} catch (e) { measureError = e.toString(); }
 	assert focusError.indexOf("after the View unmounted") >= 0;
-	assert measureError.indexOf("after unmount") >= 0;
-	setFrameDriver(null);
 }

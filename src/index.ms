@@ -14,7 +14,7 @@ export { Dispose, Cleanup, NotReadyError } from "./core/types";
 export { createStore, createProjection, snapshot, reconcile, Store, Draft, SetStoreFunction } from "./core/store";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
-export { ElementHandle, ElementRef, MeasureRect, MeasureError } from "./render/measure";
+export { ElementHandle, ElementRef, DOMRect, MeasureRect, MeasureError } from "./render/measure";
 export { render } from "./render/host";
 export { hydrate } from "./render/hydrate";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
