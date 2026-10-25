@@ -346,7 +346,7 @@ build (`tests/render/errorBoundaryServer.test.ms`).
 
 ## Hydration — a served page's nodes become the live tree
 
-`hydrate` (`src/render/host.ms`) runs the same mount as `render`, on a host that hands out the
+`hydrate` (`src/render/hydrate.ms`) runs the same mount as `render`, on a host that hands out the
 nodes a parsed page already holds instead of creating them (`src/render/claim.ms`, the `claim`
 capability of `Host`). Nothing else in the mount path knows: the element macro, templates and
 the hand-written builders are unchanged.
@@ -1412,6 +1412,8 @@ count * 2` at the top of a component body reads once; read it in JSX or
 - `src/render/hostTypes.ms` — the `NeonNode` type and the Host contract
 - `src/render/host.ms` — `render`, `mockHost` (the reference implementation of the
   contract)
+- `src/render/hydrate.ms` — `hydrate`: claims a served page, after the lazy modules it lists
+- `src/render/lazy.ms` — `lazyModule` and the module registry `hydrate` preloads
 - `src/render/node.ms` — the hand-written builders, `mountChild`, `regionNode`
 - `src/render/bind.ms` — one effect per dynamic spot
 - `src/render/template.ms` — template instantiation and the walk steps
