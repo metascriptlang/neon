@@ -8,7 +8,9 @@ import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Show } from "../macros/ui/flow";
 import { getOwner } from "../core/runtime";
 import { serverContext } from "../core/serverContext";
-import { moduleKeys } from "./hydrationRecords";
+import { lazyEntries } from "./lazyRegistry";
+
+export { preloadLazy, preloadServedLazy } from "./lazyRegistry";
 
 export function createComponent<P>(Comp: (props: P) => NeonNode, props: P): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -27,13 +29,6 @@ class LazyModule<P> {
 	}
 }
 
-interface LazyEntry {
-	state: unknown;
-	start: () => Promise<boolean>;
-}
-
-const entries = new Map<string, LazyEntry>();
-
 function startLoad<P>(m: LazyModule<P>): Promise<boolean> {
 	if (m.loading.length === 0) {
 		const current = m.load().then((comp): boolean => { m.loaded.push(comp); return true; });
@@ -44,7 +39,7 @@ function startLoad<P>(m: LazyModule<P>): Promise<boolean> {
 }
 
 function entryFor<P>(key: string, load: () => Promise<(props: P) => NeonNode>): LazyModule<P> {
-	const known = entries.get(key);
+	const known = lazyEntries.get(key);
 	if (known !== null) {
 		const state = known.state as LazyModule<P>;
 		if (state.load !== load) {
@@ -53,28 +48,8 @@ function entryFor<P>(key: string, load: () => Promise<(props: P) => NeonNode>): 
 		return state;
 	}
 	const fresh = new LazyModule<P>(load);
-	entries.set(key, { state: fresh as unknown, start: (): Promise<boolean> => startLoad<P>(fresh) });
+	lazyEntries.set(key, { state: fresh as unknown, start: (): Promise<boolean> => startLoad<P>(fresh), loaded: (): boolean => fresh.loaded.length > 0 });
 	return fresh;
-}
-
-export function preloadLazy(keys: string[]): Promise<void> {
-	const waits: Promise<boolean>[] = [];
-	for (const key of keys) {
-		const entry = entries.get(key);
-		if (entry === null) {
-			throw new Error("[LAZY_UNREGISTERED] the page lists the lazy module \"" + key + "\" but this client never created a lazy under that key");
-		}
-		waits.push(entry.start());
-	}
-	return settled(waits);
-}
-
-async function settled(waits: Promise<boolean>[]): Promise<void> {
-	for (const wait of waits) { await wait; }
-}
-
-export function preloadServedLazy(): Promise<void> {
-	return preloadLazy(moduleKeys());
 }
 
 // Parked on ~/metascript/.inbox/compiler/2026-09-24-default-import-does-not-parse.md, 2026-10-16-promise-or-null-is-never-null-on-c-and-js.md and 2026-10-24-design-a-property-assigned-onto-a-function-value.md: Solid's `lazy(() => import("./Page"))` reading the default export, one `Promise | null` slot for the load, and `.preload()` on the component.
