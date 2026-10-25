@@ -264,3 +264,13 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Don't:** keep a module-global current request: two requests in one workerd isolate would read each other's.
 - **Pin:** `tests/render/serveServer.test.ms`
 - **Checked:** 2026-10-24, measured on C and JS; decided under the person's delegation ("tự trả lời").
+
+### RD-14 · Disposing a hydrate that still waits for a lazy module cancels it
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `hydrate` defers the root's render behind `loadModuleAssets` and returns `() => disposer && disposer()`. `disposer` is assigned only when the preload settles, so a dispose before then does nothing and the tree mounts later anyway, fresh when the preload failed (`~/projects/solid-next` at `84dada77`, `packages/web/src/client.ts:2428-2484`). A Loading boundary waiting for its own assets does check: a disposed owner drops its resume (`packages/solid/src/client/hydration.ts:2147`). Vue hydrates an async component after its load only `!instance.isUnmounted` (`~/projects/vue-core` at `bf5f0dd`, `packages/runtime-core/src/apiAsyncComponent.ts:156`).
+- **MS:** the `Dispose` that `hydrate` (`src/render/hydrate.ms`) returns while the page's modules load marks the wait cancelled: when they load nothing is claimed, and when one fails the failure is logged and nothing is rendered. A dispose after the claim disposes the mounted tree. The module still loads and stays registered, so a later mount does not fetch it again.
+- **Why:** a caller that disposes has given the container up, usually to another mount (hot reload, a test, a host that unmounts and mounts again). Measured with Solid's timeline in Neon, C and JS: the late claim meets the new mount's nodes; a debug build throws "hydrate: the page has no <p>" from a promise and halts reactivity for the whole app, and a release build removes the new mount's nodes and mounts a second live tree that no handle disposes. Cancelling is the rule Solid already applies to its boundaries, taken to the root.
+- **Don't:** dispose a pending hydrate and expect the page to come alive later; call `hydrate` again for that.
+- **Pin:** `tests/render/lazyHydrate.test.ms` ("a hydrate disposed before its lazy module loads never claims the page", "… leaves a later mount into the same container alone", "… fails to load renders nothing"), C and JS, debug and `--release`; on C each goes red when the dispose does nothing before the load.
+- **Checked:** 2026-10-25, read and measured on C and JS; approved by the person ("nếu vẫn muốn làm thì ghi vào REFERENCE").
