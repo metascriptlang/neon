@@ -145,9 +145,9 @@ expect_bundle bundlePlainApp "platform/browser/dom" "void2d/types gpu/door rende
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 expect_native_modules bundleTerminalApp "platform/terminal/host" "render/spanHost components/svg/scene platform/native/host platform/browser/dom"
 expect_size bundlePlainApp js 739224
-expect_size bundleTerminalApp native 586896
+expect_size bundleTerminalApp native 553232
 if [ "$(uname)" = Darwin ]; then
 	expect_macos_app bundleMacosApp "NeonSwitch NeonSwitchControl NeonIndicator NeonModal NeonWebView NeonWebKitView NeonScriptProxy NeonVideo NeonCamera NeonPhotoCapture NeonSvgView NeonSvgCanvas" "niSwitchCreate niIndicatorCreate niModalCreate niWebViewCreate niVideoCreate niCameraCreate niSvgCreate" "AVKit CoreMedia"
-	expect_size bundleMacosApp native 2052708
+	expect_size bundleMacosApp native 2000476
 fi
 exit $fail
