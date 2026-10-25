@@ -43,6 +43,7 @@ import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { publishPageScroll } from "../../api/pageScroll";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
+import { CanvasRenderingContext2D, HTMLCanvasElement } from "../../render/htmlElements";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
@@ -183,21 +184,6 @@ extern class ComputedFont {
 	fontSize: string;
 }
 
-extern class CanvasTextMetrics {
-	width: number;
-	fontBoundingBoxAscent: number;
-	fontBoundingBoxDescent: number;
-}
-
-extern class Canvas2D {
-	font: string;
-	extern measureText(text: cstring): CanvasTextMetrics;
-}
-
-extern class HTMLCanvasElement {
-	extern getContext(kind: cstring): Canvas2D;
-}
-
 extern class window {
 	static innerWidth: number;
 	static innerHeight: number;
@@ -209,13 +195,13 @@ extern class window {
 	static extern getComputedStyle(node: Node): ComputedFont;
 }
 
-let measureCanvas: Canvas2D | null = null;
+let measureCanvas: CanvasRenderingContext2D | null = null;
 
 function measureDomText(text: string, style: Style): TextMeasure {
 	if (measureCanvas === null) {
 		measureCanvas = (document.createElement("canvas") as unknown as HTMLCanvasElement).getContext("2d");
 	}
-	const ctx = measureCanvas as Canvas2D;
+	const ctx = measureCanvas as CanvasRenderingContext2D;
 	const page = window.getComputedStyle(document.body);
 	const family = style.fontFamily !== null ? style.fontFamily as string : page.fontFamily;
 	const size = style.fontSize !== null ? `${style.fontSize as number}px` : page.fontSize;

@@ -1,25 +1,5 @@
 import { LayoutAnimationPlan, LayoutPhase } from "../../animation/layoutAnimation";
-
-extern class CSSStyleDeclaration {
-	width: string;
-	height: string;
-	opacity: string;
-	overflow: string;
-	transition: string;
-}
-
-extern class HTMLElement {
-	offsetWidth: number;
-	offsetHeight: number;
-	parentNode: HTMLElement | null;
-	style: CSSStyleDeclaration;
-	extern querySelectorAll(selector: cstring): NodeList;
-}
-
-extern class NodeList {
-	length: number;
-	extern item(index: number): HTMLElement;
-}
+import { HTMLElement } from "../../render/htmlElements";
 
 extern class document {
 	static body: HTMLElement;
@@ -38,7 +18,7 @@ let reflowSink = 0.0;
 function elements(): HTMLElement[] {
 	const list = document.body.querySelectorAll("*");
 	const out: HTMLElement[] = [];
-	for (let i = 0; i < list.length; i += 1) { out.push(list.item(i)); }
+	for (let i = 0; i < list.length; i += 1) { out.push(list.item(i) as HTMLElement); }
 	return out;
 }
 
@@ -100,7 +80,7 @@ export function animateDomLayout(plan: LayoutAnimationPlan): void {
 				if (plan.update !== null) { resize(el, before.get(el) as Measured, plan.update as LayoutPhase); }
 				continue;
 			}
-			const parent = el.parentNode;
+			const parent = el.parentElement;
 			if (plan.create !== null && parent !== null && before.has(parent as HTMLElement)) { created.push(el); }
 		}
 		for (const el of created) { fadeIn(el, plan.create as LayoutPhase); }

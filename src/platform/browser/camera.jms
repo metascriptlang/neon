@@ -3,16 +3,7 @@ import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
 import { CAMERA_CLASS, CAMERA_CSS, CAMERA_MIRROR_CLASS, CAMERA_RULES_ID } from "../../render/web";
 import { registerMediaElement } from "./domCapabilities";
-
-extern class CameraClassList {
-	extern add(name: cstring): void;
-	extern remove(name: cstring): void;
-}
-
-extern class HTMLVideoElement {
-	classList: CameraClassList;
-	extern setAttribute(name: cstring, value: cstring): void;
-}
+import { HTMLVideoElement } from "../../render/htmlElements";
 
 
 extern function createVideoElement(unused: int32): HTMLVideoElement from "(#, document.createElement('video'))";

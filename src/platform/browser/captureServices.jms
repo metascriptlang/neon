@@ -2,36 +2,12 @@ import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, installCaptureServices, unloadedSound,
 } from "../../api/captureServices";
-
-extern class Event {}
+import { Event, HTMLAudioElement, HTMLInputElement } from "../../render/htmlElements";
 
 extern class File {
 	name: string;
 	size: number;
 	type: string;
-}
-
-extern class HTMLInputElement {
-	accept: cstring;
-	multiple: boolean;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
-	extern click(): void;
-	extern remove(): void;
-}
-
-extern class HTMLAudioElement {
-	src: cstring;
-	volume: number;
-	muted: boolean;
-	loop: boolean;
-	playbackRate: number;
-	currentTime: number;
-	paused: boolean;
-	extern pause(): void;
-	extern load(): void;
-	extern removeAttribute(name: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
 }
 
 extern class MediaRecorder {

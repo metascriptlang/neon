@@ -106,6 +106,8 @@ def members(body):
     clean = re.sub(r"/\*\*.*?\*/", keep_doc, body, flags=re.S)
     clean = re.sub(r"/\*.*?\*/", "", clean, flags=re.S)
     clean = re.sub(r"//[^\n]*", "", clean)
+    setters = dict(re.findall(r"^\s*set\s+(\w+)\(\w+\s*:\s*([^)]+)\);", clean, flags=re.M))
+    getters = re.findall(r"^\s*get\s+(\w+)\(\)\s*:\s*([^;]+);", clean, flags=re.M)
     clean = re.sub(r"^\s*(?:get|set)\s+\w+\([^)]*\)[^;]*;", "", clean, flags=re.M)
     pattern = r'(@@DOC(\d+)@@\s*)?(readonly\s+)?(?:"([^"]+)"|([\w$]+))(\?)?\s*(\([^;]*?\))?\s*:\s*([^;]+);'
     found = []
@@ -118,6 +120,9 @@ def members(body):
             "params": m.group(7),
             "type": " ".join(re.sub(r"@@DOC\d+@@", "", m.group(8)).split()),
         })
+    for name, ts in getters:
+        found.append({"doc": "", "readonly": setters.get(name) != ts, "name": name, "optional": False,
+                      "params": None, "type": " ".join(ts.split())})
     return found
 
 
@@ -312,12 +317,18 @@ def write_tags(path):
     print("wrote " + path + ": " + str(len(tag_map)) + " tags")
 
 
-BASE = ["Node", "Element", "HTMLElement", "HTMLOrSVGElement", "ElementContentEditable"]
-EXTRA_CLASSES = ["DOMRect", "TextMetrics", "CanvasRenderingContext2D"]
+BASE = ["Node", "Element", "ChildNode", "HTMLElement", "HTMLOrSVGElement", "ElementContentEditable",
+        "ElementCSSInlineStyle"]
+EXTRA_CLASSES = ["DOMRect", "TextMetrics", "CanvasRenderingContext2D", "CSSStyleDeclaration", "DOMTokenList",
+                 "NodeList", "Event"]
 METHODS = {
     "Node": ["hasChildNodes"],
+    "ChildNode": ["remove"],
+    "CSSStyleDeclarationBase": ["getPropertyValue", "removeProperty"],
+    "DOMTokenList": ["contains", "toggle", "replace"],
+    "Event": ["preventDefault", "stopPropagation", "stopImmediatePropagation"],
     "Element": ["getAttribute", "setAttribute", "removeAttribute", "hasAttribute", "toggleAttribute",
-                "getBoundingClientRect", "scrollIntoView", "scrollTo", "scrollBy", "matches", "remove",
+                "getBoundingClientRect", "scrollIntoView", "scrollTo", "scrollBy", "matches",
                 "requestFullscreen", "checkVisibility"],
     "HTMLElement": ["click", "showPopover", "hidePopover", "togglePopover"],
     "HTMLOrSVGElement": ["focus", "blur"],
@@ -344,6 +355,14 @@ METHODS = {
     "CanvasState": ["save", "restore", "reset"],
     "CanvasTransform": ["translate", "rotate", "scale", "setTransform", "resetTransform", "transform"],
     "CanvasPathDrawingStyles": ["setLineDash"],
+}
+# lib.dom writes these with a rest parameter, a generic or a listener object, which the member mapper
+# above does not translate; the shapes below are the subset the platform hosts call.
+HAND_MAPPED_MEMBERS = {
+    "HTMLElement": ["extern addEventListener(type: cstring, listener: (event: Event) => void): void;",
+                    "extern querySelectorAll(selectors: cstring): NodeList;"],
+    "DOMTokenList": ["extern add(token: cstring): void;", "extern remove(token: cstring): void;"],
+    "NodeList": ["extern item(index: number): HTMLElement | null;"],
 }
 CLASS_MEMBER_NAMES_THAT_DO_NOT_PARSE = {"async", "static", "readonly", "abstract"}
 
@@ -461,6 +480,7 @@ def write_elements(path):
     for cls in EXTRA_CLASSES:
         out.append("\texport extern class " + cls + " {")
         out += class_body(mixins(cls, blocks), blocks, alias, declared, set())
+        out += ["\t\t" + line for line in HAND_MAPPED_MEMBERS.get(cls, [])]
         out.append("\t}")
         out.append("")
     inherited = {}
@@ -476,6 +496,7 @@ def write_elements(path):
         inherited[cls] = seen
         out.append("\texport extern class " + cls + (" extends " + parent if parent else "") + " {")
         out += body
+        out += ["\t\t" + line for line in HAND_MAPPED_MEMBERS.get(cls, [])]
         out.append("\t}")
         out.append("")
     out += doc_lines("\t", "The DOM element class each HTML tag creates, as TypeScript's `HTMLElementTagNameMap`.")
