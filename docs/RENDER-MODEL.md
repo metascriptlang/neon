@@ -534,6 +534,15 @@ owner with `setContext` and read through the caller's owner, Solid's `getRequest
 one isolate each read their own. Neon has no `AsyncLocalStorage` on C, so a read with no current
 owner is `null`; read the event in a component body or a reactive spot.
 
+The window size of a served page follows the same path. In a `-d:server` build,
+`publishWindow(width, height)` called under an owner sets the size on that render's owner with
+`setContext`, and `useWindowDimensions()` under it reads that size; with no size published in its
+render it reads the module's size, which a `publishWindow` outside any owner writes. A root
+component that picks the size from its request (`getRequestEvent()`, say the user agent) calls
+`publishWindow` first, and two requests in flight render with their own size. On the client, and
+outside an owner on the server, `publishWindow` writes the module's size as before; a write under
+an owner there is the owned-write error of any signal.
+
 ## Emission — mechanics
 
 **Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
