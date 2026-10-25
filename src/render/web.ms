@@ -225,7 +225,7 @@ export function scrollLookCss(look: ScrollLook): string {
 
 export function webBaseClass(tag: string): string {
 	return match (tag) {
-		"view" | "pressable" | "scrollview" | "svg" => VIEW_CLASS,
+		"view" | "holder" | "pressable" | "scrollview" | "svg" => VIEW_CLASS,
 		"text" => TEXT_CLASS,
 		_ => "",
 	};

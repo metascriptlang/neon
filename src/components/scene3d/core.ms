@@ -305,7 +305,7 @@ export function sceneHost(state: SceneState): Host {
 	};
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			if (tag !== "view") { throw no3D("<" + tag + ">"); }
+			if (tag !== "view" && tag !== "holder") { throw no3D("<" + tag + ">"); }
 			const holder = addGroup(scene, null, Transform3D.identity());
 			setVisible(scene, holder, false);
 			return new SceneNode3D(holder);

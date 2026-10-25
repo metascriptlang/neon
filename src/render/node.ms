@@ -130,7 +130,7 @@ export function dynText(thunk: () => string): NeonNode {
 
 export function newHolder(host: Host): HostNode {
 	let holder: HostNode | null = null;
-	unclaimed(host, (): void => { holder = host.createElement("view"); });
+	unclaimed(host, (): void => { holder = host.createElement("holder"); });
 	return holder as HostNode;
 }
 
@@ -277,7 +277,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 // the component vocabulary in src/components/primitives.ms; hosts receive the lowercase wire
 // tag and translate (browser: this table; terminal: its boxes; void ignores).
 export function htmlTagFor(tag: string): string {
-	if (tag === "view") { return "div"; }
+	if (tag === "view" || tag === "holder") { return "div"; }
 	if (tag === "text") { return "span"; }
 	if (tag === "textinput") { return "input"; }
 	if (tag === "pressable") { return "button"; }

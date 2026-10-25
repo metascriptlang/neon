@@ -923,7 +923,7 @@ export function createVoidHostWith(
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			if (scene2dScope && tag !== "view" && tag !== "text" && tag !== "textinput" &&
+			if (scene2dScope && tag !== "view" && tag !== "holder" && tag !== "text" && tag !== "textinput" &&
 				tag !== "pressable" && tag !== "scrollview") {
 				throw new Error("Scene2D: host element <" + tag + "> needs its UI host");
 			}

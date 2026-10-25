@@ -115,7 +115,7 @@ function applyAttr(node: TerminalNode, name: string, value: string): void {
 // terminal's box — a container in every case, text arrives as text-node
 // children. Native terminal tags (box/row/hr) pass unchanged.
 function termTag(tag: string): string {
-	if (tag === "view" || tag === "text" || tag === "textinput" || tag === "pressable") { return "box"; }
+	if (tag === "view" || tag === "holder" || tag === "text" || tag === "textinput" || tag === "pressable") { return "box"; }
 	return tag;
 }
 

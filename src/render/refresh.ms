@@ -204,7 +204,7 @@ function stashed(key: string): SavedState[] {
 
 function failure(message: string): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const box = host.createElement("view");
+		const box = host.createElement("holder");
 		host.setStyle(box, { backgroundColor: "#900000", padding: 8 });
 		const label = host.createElement("text");
 		host.setStyle(label, { color: "#ffff00" });
