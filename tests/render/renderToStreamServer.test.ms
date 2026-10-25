@@ -500,3 +500,16 @@ test "a Loading without a fallback is replaced by its settled content" {
 	const out = await renderToStream(app);
 	assert out.html === "<i>first</i><p>bare=5</p><!----><i>last</i>", out.html;
 }
+
+function pendingIn(name: string, value: int32): NeonNode {
+	return <Loading fallback={<Text>wait</Text>}>{reading(name, 3, value)}</Loading>;
+}
+
+test "a pending Loading inside a Show or Match branch writes its settled content" {
+	const show = await renderToStream(<Show when={true}>{pendingIn("inShow", 1)}</Show>);
+	assert show.html === "<!----><p>inShow=1</p><!----><!---->", show.html;
+	const nested = await renderToStream(<View><Show when={true}><Show when={true}>{pendingIn("inNested", 2)}</Show></Show></View>);
+	assert nested.html.includes("<p>inNested=2</p>"), nested.html;
+	const match = await renderToStream(<Match><Case when={true}>{pendingIn("inMatch", 3)}</Case></Match>);
+	assert match.html.includes("<p>inMatch=3</p>"), match.html;
+}
