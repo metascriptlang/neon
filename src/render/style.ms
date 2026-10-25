@@ -23,6 +23,11 @@ export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
 
+export interface StyleMedia {
+	minWidth: number;
+	style: Style;
+}
+
 styleInterfaceBody(0);
 
 // Every style field's value fits this one union: string-literal unions are
@@ -59,3 +64,30 @@ export function layerStyles(layers: Style[]): Style {
 // falls through to `base`. Written field by field because unset is `null` rather
 // than absence, so a copy cannot distinguish the two without naming each field.
 mergeStyleBody(0);
+
+export function mergeMedia(base: Style, over: Style): StyleMedia[] | null {
+	const below = base.media;
+	if (below === null) { return over.media; }
+	const out: StyleMedia[] = [];
+	for (const m of below as StyleMedia[]) {
+		const masked = mergeStyle(m.style, over);
+		masked.media = null;
+		out.push({ minWidth: m.minWidth, style: masked });
+	}
+	const above = over.media;
+	if (above !== null) {
+		for (const m of above as StyleMedia[]) { out.push(m); }
+	}
+	return out;
+}
+
+export function resolveMedia(s: Style, width: number): Style {
+	const blocks = s.media;
+	if (blocks === null) { return s; }
+	let acc = mergeStyle(emptyStyle(), s);
+	acc.media = null;
+	for (const m of blocks as StyleMedia[]) {
+		if (width >= m.minWidth) { acc = mergeStyle(acc, m.style); }
+	}
+	return acc;
+}

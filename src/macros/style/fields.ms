@@ -71,6 +71,7 @@ import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 	return [
 		["cssId", "string"],
 		["css",   "string"],
+		["media", "StyleMedia[]"],
 	];
 }
 
@@ -441,6 +442,15 @@ export macro mergeStyleBody(node: Node): Node {
 			ternaryAlternate: { kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "base" }, property: fieldName, isOptional: false },
 		});
 	}
+	keys.push("media");
+	props.push({
+		kind: NodeKind.CallExpr, line: L, column: C,
+		callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mergeMedia" },
+		arguments: [
+			{ kind: NodeKind.Identifier, line: L, column: C, name: "base" },
+			{ kind: NodeKind.Identifier, line: L, column: C, name: "over" },
+		],
+	});
 	return {
 		kind: NodeKind.SpliceMany, line: L, column: C,
 		spliceNodes: [{
