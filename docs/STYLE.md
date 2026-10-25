@@ -219,19 +219,20 @@ binary cannot certify changes to these adapters.
 **Layout and window measurements.** Public primitive refs use `ElementHandle`
 (`src/render/measure.ms`); intrinsic lowercase JSX refs stay platform-native.
 The coordinate policy follows RN `ReactCommon/react/renderer/dom/DOM.cpp`
-`measureInWindow` / `measureLayout` at `693e9628e8c18cbb37e587a568e948a55f3180e3`:
-window bounds include scroll and transforms; ancestor layout excludes both.
+`measure` / `measureInWindow` / `measureLayout` at `693e9628e8c18cbb37e587a568e948a55f3180e3`:
+window bounds include scroll and transforms; ancestor layout excludes both; `measure`
+answers the layout origin in the parent beside the window frame.
 `onLayout` remains parent-local layout, not a movement notification. Geometry is
 an unclipped axis-aligned bounding box, not visibility or a pixel readback.
 
-Receiving a ref does not establish layout readiness. Queries are deferred through
-the frame scheduler; unsupported targets and unavailable layout report errors,
-not fabricated zero bounds. An Android frame callback can precede View layout;
-`NotLaidOut` requires a later query, not an inferred offset. Disposal drops queued
-callbacks; it does not retarget stale handles to replacement elements. Native
-window queries read current view geometry, not an animation presentation layer.
-See `tests/render/measure.test.ms`, `tests/components/measurement.test.ms` and
-`tests/platform/nativeMeasurement.test.ms` for lifecycle/error checks.
+Queries answer before the call returns, as Fabric's do. Receiving a ref does not
+establish layout readiness: a node not laid out, unsupported by its host or unmounted
+answers zeros (`measureLayout` calls `onFail`), with a debug-build warning naming the
+call. The host capabilities underneath (`Host.measureInWindow` / `measureLayout`) keep
+the distinct `MeasureError`, which pressability relies on. Disposal does not retarget
+stale handles to replacement elements. Native window queries read current view
+geometry, not an animation presentation layer. See `tests/render/measure.test.ms`,
+`tests/components/measurement.test.ms` and `tests/platform/nativeMeasurement.test.ms`.
 
 Browser ancestor layout currently has CSSOM integer precision (`offsetLeft` /
 `offsetWidth`); window bounds retain DOM rectangle fractions. Native layout uses

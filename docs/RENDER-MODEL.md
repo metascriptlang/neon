@@ -122,6 +122,16 @@ Neon keeps the owner because `StatusBar` and `WebView` register their `createEff
 names the case, because its `onCleanup` would never run. `<Void>` runs its ref last, after its
 children mount, with the `VoidAreaHandle` rather than the host node.
 
+**Host component refs.** `View`, `Text`, `Pressable`, `Image`, `Switch`, `Svg` and the neon-ui
+controls hand their ref one `ViewHandle`, as React Native types all of them as its host instance
+(`HostInstance.js:111`, `Pressable.js:167`); `TextInput` and `ScrollView` keep their own handles,
+which extend the same `ElementHandle`. The handle measures the way RN's element does
+(`ReactNativeElement.js:84-200`, `ReadOnlyElement.js:192-249`): `getBoundingClientRect`,
+`measure`, `measureInWindow` and `measureLayout` answer synchronously, so a callback runs before
+the call returns. An unmounted View, or a host that lays nothing out (terminal, SSR, the mock),
+answers zeros, `measureLayout` calls `onFail` when given, and `focus`/`blur` do nothing; a debug
+build prints one warning per such call naming the case, and none of them throws.
+
 Building the node (evaluating the JSX expression) allocates a closure and performs no
 host op and no signal read; there is no separate BUILD phase producing data.
 
