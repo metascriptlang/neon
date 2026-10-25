@@ -33,7 +33,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   worktree than in the main checkout. `msc build --target=js tests/apps/bundlePlainApp.ms` at Neon
   `c7230e4a`, msc `807d96ef7`: 806041 bytes in `/Users/le/metascript/neon`, 891932 bytes in an export
   under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
-  passes in another for no change in the code.
+  passes in another for no change in the code. Native sizes move too: main `ccfd0c15`, msc `38009de37`,
+  measures `bundleMacosApp` 2000484 bytes in `neon-wt-rn-navigation-prod` (8 over its budget 2000476) and
+  2000452 in `neon-wt-rn-navigation-prod-lane-c`.
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
