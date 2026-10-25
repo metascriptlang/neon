@@ -6,6 +6,7 @@ import { GuardDecision, RouteMatch, redirect } from "../../src/navigation/route"
 import { Routes, createRoutes } from "../../src/navigation/router";
 import { App, RequestEvent, getRequestEvent, htmlDocument, serve } from "../../src/render/serve";
 import { renderToString } from "../../src/render/ssr";
+import { publishWindow, useWindowDimensions } from "../../src/render/environment";
 import { createRoot } from "../../src/core/owner";
 import { Dispose } from "../../src/core/types";
 import { createAsyncMemo } from "../../src/core/memo";
@@ -51,6 +52,16 @@ function Later(): NeonNode {
 	return <Text>{ready() + " " + widthFor(getRequestEvent())}</Text>;
 }
 
+let sizedGate = new Gate();
+
+function Sized(): NeonNode {
+	const agentName = getRequestEvent()?.request.headers.get("user-agent") ?? "";
+	publishWindow(agentName.includes("Mobi") ? 390 : 1440, 800);
+	const size = useWindowDimensions();
+	const ready = createAsyncMemo((p: string | null): Promise<string> => gated(sizedGate, "sized"));
+	return <Text>{ready() + " " + size().width.toString() + "x" + size().height.toString()}</Text>;
+}
+
 function agent(value: string): Map<string, string> {
 	const headers = new Map<string, string>();
 	headers.set("User-Agent", value);
@@ -68,6 +79,7 @@ const routes: Routes = createRoutes([
 	{ path: "/width", component: Width },
 	{ path: "/later", component: Later },
 	{ path: "/tag", component: Tag },
+	{ path: "/sized", component: Sized },
 ]);
 
 const app: App = { routes: routes, notFound: <Text>app not found</Text>, document: htmlDocument("site", "/client.js") };
@@ -133,6 +145,17 @@ test "two requests in flight at once each render with their own request" {
 	const deskBody = (await desk).body;
 	assert phoneBody.indexOf("ready width 390 for /later<") > 0, phoneBody;
 	assert deskBody.indexOf("ready width 1440 for /later<") > 0, deskBody;
+}
+
+test "two requests in flight at once each render with the window size their own render published" {
+	sizedGate = new Gate();
+	const phone = serve(app, "/sized", agent("Mobile"));
+	const desk = serve(app, "/sized", agent("Desktop"));
+	await release(sizedGate);
+	const phoneBody = (await phone).body;
+	const deskBody = (await desk).body;
+	assert phoneBody.indexOf("sized 390x800<") > 0, phoneBody;
+	assert deskBody.indexOf("sized 1440x800<") > 0, deskBody;
 }
 
 test "outside a request there is no request event" {
