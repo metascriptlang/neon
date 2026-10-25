@@ -288,9 +288,9 @@ test "a View's ref focuses it on mount, as a terminal focuses its grid when the 
 	(grid as ViewHandle).blur();
 	assert log === "focus;blur;", "blur: " + log;
 	dispose();
-	let refused = "";
-	try { (grid as ViewHandle).focus(); } catch (e) { refused = e.toString(); }
-	assert refused.indexOf("after the View unmounted") >= 0, "focus after unmount: " + refused;
+	(grid as ViewHandle).focus();
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "focus and blur after unmount do nothing: " + log;
 }
 
 test "a View's ref measures text through its host, and refuses a host that cannot and a View that is gone" {

@@ -101,7 +101,6 @@ test "one ViewHandle keeps focus and both measurements under the same lifetime" 
 	let failed = false;
 	handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => { measured += 1; }, (): void => { failed = true; });
 	assert measured === 2 && failed, "measureLayout after unmount calls onFail";
-	let focusError = "";
-	try { handles[0].focus(); } catch (e) { focusError = e.toString(); }
-	assert focusError.indexOf("after the View unmounted") >= 0;
+	handles[0].focus();
+	assert log === "focus;blur;", "focus after unmount does nothing: " + log;
 }

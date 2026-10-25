@@ -311,7 +311,10 @@ export class ViewHandle extends ElementHandle {
 	}
 
 	private setFocused(focused: boolean): void {
-		if (!this.mounted()) { throw "View focus was changed after the View unmounted"; }
+		if (!this.mounted()) {
+			when (debug) { console.warn(`View.${focused ? "focus" : "blur"} was called after the View unmounted, so it does nothing`); }
+			return;
+		}
 		const hostFocus = this.host.focus;
 		if (hostFocus === null) { throw "View.focus needs a host with the focus capability, and this host has none"; }
 		(hostFocus as (n: HostNode, f: boolean) => void)(this.node, focused);
