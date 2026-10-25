@@ -1,6 +1,7 @@
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
-import { render, hydrate } from "../../src/render/host";
+import { render } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { createSignal } from "../../src/core/signal";
