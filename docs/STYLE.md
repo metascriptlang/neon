@@ -108,15 +108,19 @@ sidebar: { width: "100%", when: { [screen.wide]: { width: 280 }, [screen.xl]: { 
 - **one IR, two resolutions.** The entry carries its blocks as `media`. On a host with a stylesheet
   the class rule holds them as `@media (min-width:900px)`, so server markup lays out at every width
   before any script runs. Everywhere else (native, Void, terminal, an inline web style) the apply
-  site binds the style to `useWindowDimensions()` and applies every block the width reaches
+  site binds the style to the window width and applies every block the width reaches
   (`resolveMedia`); on the server that is the window the render published, else width 0, the base.
 - **layering keeps the blocks.** In `[sheet.sidebar, over]` every field `over` sets masks the
   sidebar's blocks, and `over`'s own blocks follow, so the later layer wins at every width. A merged
   layer has no class, so on the web it resolves inline against the window: server markup carries
   the published width's result, not a media query, and hydrate corrects it at the real width. A
   page that must not shift uses the sheet entry directly, whose class rule holds the `@media`.
-- **cost where unused.** `mergeStyle` carries `media` through `mergeMedia`, and the apply site
-  checks it; a sheet without `when` breakpoints builds no table and no rule.
+- **cost where unused.** A block is a `StyleBlock` (the table's fields plus `fromWidth`, a field
+  `Style` lacks, so `Style` stays acyclic). Resolving, layering and the window binding live in
+  `src/render/breakpoints.ms`, which installs them into `style.ms` and `bind.ms` when imported, the
+  way `svg.jms` installs its writer; an app that never calls `createBreakpoints` links none of it
+  and no window signal. Until it is installed, a style carrying `media` throws naming the missing
+  table.
 
 **Naming rule — the grouping follows who decides.** `when` holds every override the ENVIRONMENT
 selects (build target and breakpoints today; `hover`, `focus`, `pressed`, dark mode as they land) and
