@@ -35,14 +35,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
   passes in another for no change in the code.
 
-- **OPEN 2026-10-24 — two native bundle budgets of `tests/apps/run.sh` are red on main.** Main
-  `5b2c634a` measured `bundleTerminalApp` at +16748 bytes over 586896 and `bundleMacosApp` at +29160 over
-  2052708. The void-endgame land `316624bf` (gate on `bdc62258`, msc `6589ce248`, Void `a29845a`) measured
-  +17132 and +26856, so terminal grew another 384 bytes from that arc. Nobody has raised either budget, so the
-  growth from main stays visible until someone traces it. On 2026-10-25, msc `6b8655024`, an export of main
-  `e5d9cc17` measured terminal +30396, macOS +60452 and `bundlePlainApp` js +25301 over 739224, so the JS
-  budget is red on main too; the rn-navigation-prod gate on `5e9e136b` measured 30, 32 and 16 bytes more.
-
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
