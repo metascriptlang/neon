@@ -1,7 +1,7 @@
 import { LinkingServices, installLinkingServices } from "../../api/linkingServices";
 
 extern class window {
-	static extern open(url: cstring, target: cstring, features: cstring): void;
+	static extern open(url: string, target: string, features: string): void;
 }
 
 extern class location {

@@ -18,7 +18,7 @@ export { ElementHandle, ElementRef, MeasureRect, MeasureError } from "./render/m
 export { render } from "./render/host";
 export { hydrate } from "./render/hydrate";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
-export { App, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
+export { App, DocumentProps, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";

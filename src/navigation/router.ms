@@ -1269,5 +1269,5 @@ export function A(props: { href: Accessor<string>; preload?: boolean | null; chi
 		return comparable(href()) === comparable(location().pathname) ? "page" : null;
 	});
 	const preload = props.preload;
-	return <a href={href()} aria-current={current()} preload={preload === null || preload === undefined ? null : preload.toString()}>{props.children}</a>;
+	return <a href={href()} aria-current={current()} preload={preload}>{props.children}</a>;
 }

@@ -3,20 +3,11 @@ import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
 import { CAMERA_CLASS, CAMERA_CSS, CAMERA_MIRROR_CLASS, CAMERA_RULES_ID } from "../../render/web";
 import { registerMediaElement } from "./domCapabilities";
-
-extern class CameraClassList {
-	extern add(name: cstring): void;
-	extern remove(name: cstring): void;
-}
-
-extern class HTMLVideoElement {
-	classList: CameraClassList;
-	extern setAttribute(name: cstring, value: cstring): void;
-}
+import { HTMLVideoElement } from "../../render/htmlElements";
 
 
 extern function createVideoElement(unused: int32): HTMLVideoElement from "(#, document.createElement('video'))";
-extern function startCamera(video: HTMLVideoElement, facing: cstring, ready: () => void, failed: (message: string) => void): void from "((v, facing, ready, failed) => { if (v.__neonStream) { v.__neonStream.getTracks().forEach((t) => t.stop()); v.__neonStream = null; } if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { failed('No camera is available on this device'); return; } const token = (v.__neonToken = (v.__neonToken || 0) + 1); navigator.mediaDevices.getUserMedia({ video: { facingMode: facing === 'front' ? 'user' : 'environment' }, audio: false }).then((s) => { if (v.__neonToken !== token) { s.getTracks().forEach((t) => t.stop()); return; } v.__neonStream = s; v.srcObject = s; const go = () => { const p = v.play(); if (p) p.then(() => ready(), (e) => failed(String((e && e.message) || e))); else ready(); }; if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true }); }, (e) => { if (v.__neonToken !== token) return; const n = e && e.name; failed(n === 'NotAllowedError' || n === 'SecurityError' ? 'Camera permission not granted' : n === 'NotFoundError' || n === 'OverconstrainedError' || n === 'NotReadableError' ? 'No camera is available on this device' : String((e && e.message) || e)); }); })(#, #, #, #)";
+extern function startCamera(video: HTMLVideoElement, facing: string, ready: () => void, failed: (message: string) => void): void from "((v, facing, ready, failed) => { if (v.__neonStream) { v.__neonStream.getTracks().forEach((t) => t.stop()); v.__neonStream = null; } if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { failed('No camera is available on this device'); return; } const token = (v.__neonToken = (v.__neonToken || 0) + 1); navigator.mediaDevices.getUserMedia({ video: { facingMode: facing === 'front' ? 'user' : 'environment' }, audio: false }).then((s) => { if (v.__neonToken !== token) { s.getTracks().forEach((t) => t.stop()); return; } v.__neonStream = s; v.srcObject = s; const go = () => { const p = v.play(); if (p) p.then(() => ready(), (e) => failed(String((e && e.message) || e))); else ready(); }; if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true }); }, (e) => { if (v.__neonToken !== token) return; const n = e && e.name; failed(n === 'NotAllowedError' || n === 'SecurityError' ? 'Camera permission not granted' : n === 'NotFoundError' || n === 'OverconstrainedError' || n === 'NotReadableError' ? 'No camera is available on this device' : String((e && e.message) || e)); }); })(#, #, #, #)";
 extern function stopCamera(video: HTMLVideoElement): void from "((v) => { v.__neonToken = (v.__neonToken || 0) + 1; if (v.__neonStream) { v.__neonStream.getTracks().forEach((t) => t.stop()); v.__neonStream = null; } v.srcObject = null; })(#)";
 extern function pauseCamera(video: HTMLVideoElement, paused: boolean): void from "((v, p) => { if (p) v.pause(); else if (v.srcObject) v.play(); })(#, #)";
 extern function snapshotCamera(video: HTMLVideoElement, quality: number, mirror: boolean): string from "((v, q, m) => { const F = String.fromCharCode(31); if (!v.__neonStream || !v.videoWidth) return 'error' + F + 'the camera is not running'; const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; const g = c.getContext('2d'); if (m) { g.translate(c.width, 0); g.scale(-1, 1); } g.drawImage(v, 0, 0); return ['ok', c.toDataURL('image/jpeg', q), c.width, c.height].join(F); })(#, #, #)";

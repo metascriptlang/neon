@@ -4,7 +4,7 @@ import {
 
 extern function notificationPermission(unused: int32): string from "(#, typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)";
 extern function pageVisible(unused: int32): boolean from "(#, document.visibilityState === 'visible')";
-extern function showNotification(title: cstring, body: cstring, tag: cstring, onClick: () => void): boolean from "((title, body, tag, onClick) => { const n = new Notification(title, { body, tag }); n.onclick = () => onClick(); (window.__neonNotifications = window.__neonNotifications || []).push(n); return true; })(#, #, #, #)";
+extern function showNotification(title: string, body: string, tag: string, onClick: () => void): boolean from "((title, body, tag, onClick) => { const n = new Notification(title, { body, tag }); n.onclick = () => onClick(); (window.__neonNotifications = window.__neonNotifications || []).push(n); return true; })(#, #, #, #)";
 extern function closeNotifications(unused: int32): void from "(#, (window.__neonNotifications || []).splice(0).forEach((n) => n.close()))";
 
 const NOTIFICATION_FIELD = "\u001f";

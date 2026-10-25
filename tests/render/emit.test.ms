@@ -1156,26 +1156,26 @@ test "once and online are attributes, not events — template tier" {
 	const [v, setV] = createSignal("y");
 	const host = mockHost();
 	const directRoot = mockNode("root");
-	const mount = element(<p once="x" online={v()}>hi</p>);
+	const mount = element(<x-p once="x" online={v()}>hi</x-p>);
 	mount(host, directRoot as unknown as HostNode, null);
-	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"y\">hi</p></root>", "golden: " + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><x-p once=\"x\" online=\"y\">hi</x-p></root>", "golden: " + mockToString(directRoot);
 	assert (directRoot as MockNode).children[0].events.length === 0, "no listener";
 	setV("z");
 	flush();
-	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"z\">hi</p></root>", "golden after set: " + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><x-p once=\"x\" online=\"z\">hi</x-p></root>", "golden after set: " + mockToString(directRoot);
 }
 
 test "once and online are attributes, not events — flat tier" {
 	const [v, setV] = createSignal("y");
 	const host = mockHost();
 	const directRoot = mockNode("root");
-	const mount = element(<div><Net online={v()} /><p once="x" online={v()}>hi</p></div>);
+	const mount = element(<div><Net online={v()} /><x-p once="x" online={v()}>hi</x-p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
-	assert mockToString(directRoot) === "<root><div><i>y</i><p once=\"x\" online=\"y\">hi</p></div></root>", "golden: " + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><i>y</i><x-p once=\"x\" online=\"y\">hi</x-p></div></root>", "golden: " + mockToString(directRoot);
 	assert (directRoot as MockNode).children[0].children[1].events.length === 0, "no listener";
 	setV("z");
 	flush();
-	assert mockToString(directRoot) === "<root><div><i>z</i><p once=\"x\" online=\"z\">hi</p></div></root>", "golden after set: " + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><i>z</i><x-p once=\"x\" online=\"z\">hi</x-p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 
 // ---- a nullable Accessor attribute and a nullable NeonNode child attach only when present ----

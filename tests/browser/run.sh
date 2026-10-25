@@ -45,10 +45,11 @@ for f in $files; do
 	echo "== browser $f"
 	root_out=out/debug
 	beside_out="$(dirname "$f")/out/debug"
-	rm -f "$root_out/_test/main.js" "$beside_out/_test/main.js"
+	stem=$(basename "$f" .ms)
+	rm -f "$root_out/_test/main.js" "$beside_out/_test/main.js" "$root_out"/_test_"$stem"_*_js/_test/main.js "$beside_out"/_test_"$stem"_*_js/_test/main.js
 	"$MSC" test --target=js "$f" >/dev/null 2>&1 || true
 	out=""
-	for candidate in "$root_out" "$beside_out"; do
+	for candidate in "$root_out"/_test_"$stem"_*_js "$beside_out"/_test_"$stem"_*_js "$root_out" "$beside_out"; do
 		if [ -f "$candidate/_test/main.js" ]; then out="$candidate"; break; fi
 	done
 	if [ -z "$out" ]; then

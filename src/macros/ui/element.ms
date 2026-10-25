@@ -10,7 +10,8 @@
 // Component tags, Show and For do NOT flatten: their structure changes at
 // runtime, so they stay runtime calls through createComponent.
 
-import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define, expansionFile } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define, expansionFile, resolveType, stringValue, intValue, isFloatLiteral, typeKind, TypeKind } from "std/meta";
+import { foreignTagNames, hyphenatedAttributeNames, refusedAttributeNames } from "../../render/htmlTags";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -73,6 +74,10 @@ export function cleanJsxText(raw: string): string {
 export macro element(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
+	const neonHostTags = ["view", "text", "textinput", "multilinetextinput", "pressable", "scrollview", "activityindicator", "switch", "image", "webview", "camera", "statusbar"];
+	let htmlTable: Node | null = null;
+	let htmlGlobals: Node | null = null;
+	let domClasses: Node | null = null;
 	function kidsOf(n: Node): Node[] {
 		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
 	}
@@ -171,6 +176,193 @@ export macro element(node: Node): Node {
 		}
 		return out;
 	}
+	function loadHtmlTable(at: Node): boolean {
+		if (htmlTable === null) {
+			htmlTable = objectType(resolveType("HtmlElements"));
+			htmlGlobals = objectType(resolveType("HtmlGlobalAttributes"));
+		}
+		if (htmlTable === null || htmlGlobals === null) {
+			error("<" + at.jsxTag + "> is checked against the HTML tag table, which is not in scope: name neon's src/converters in build.ms globalImports", at);
+			return false;
+		}
+		return true;
+	}
+	function fieldType(obj: Node, name: string): Node | null {
+		for (let i = 0; i < obj.typExprFieldNames.length; i = i + 1) {
+			if (obj.typExprFieldNames[i] === name) { return obj.typExprFieldTypes[i]; }
+		}
+		return null;
+	}
+	function editDistance(a: string, b: string): number {
+		let before: number[] = [];
+		let prev: number[] = [];
+		for (let j = 0; j <= b.length; j = j + 1) { prev.push(j); }
+		for (let i = 1; i <= a.length; i = i + 1) {
+			let cur: number[] = [i];
+			for (let j = 1; j <= b.length; j = j + 1) {
+				let best = prev[j] + 1;
+				if (cur[j - 1] + 1 < best) { best = cur[j - 1] + 1; }
+				const change = prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1);
+				if (change < best) { best = change; }
+				if (i > 1 && j > 1 && a.charAt(i - 1) === b.charAt(j - 2) && a.charAt(i - 2) === b.charAt(j - 1) && before[j - 2] + 1 < best) {
+					best = before[j - 2] + 1;
+				}
+				cur.push(best);
+			}
+			before = prev;
+			prev = cur;
+		}
+		return prev[b.length];
+	}
+	function nearestName(name: string, names: string[]): string {
+		let best = "";
+		let bestDistance: number = name.length < 5 ? 2 : 3;
+		for (const c of names) {
+			const d = editDistance(name.toLowerCase(), c.toLowerCase());
+			if (d < bestDistance) { best = c; bestDistance = d; }
+		}
+		return best;
+	}
+	function typeText(t: Node): string {
+		const p = peelTypeRef(t);
+		if (p.kind === NodeKind.Identifier) { return p.name; }
+		if (p.kind === NodeKind.StringLiteral) { return "\"" + stringValue(p) + "\""; }
+		if (p.kind === NodeKind.TypeUnion) {
+			let parts: string[] = [];
+			for (const m of p.typExprMembers) { parts.push(typeText(m)); }
+			return parts.join(" | ");
+		}
+		if (isAccessorType(p)) { return "Accessor<" + typeText(p.typExprArgs[0]) + ">"; }
+		return "a non-attribute type";
+	}
+	function attributeKinds(t: Node, into: string[], depth: number): void {
+		const p = peelTypeRef(t);
+		if (p.kind === NodeKind.TypeUnion) {
+			for (const m of p.typExprMembers) { attributeKinds(m, into, depth); }
+			return;
+		}
+		if (isAccessorType(p)) { attributeKinds(p.typExprArgs[0], into, depth); return; }
+		if (p.kind === NodeKind.StringLiteral) { into.push("lit:" + stringValue(p)); return; }
+		if (p.kind === NodeKind.BooleanLiteral) { into.push("boolean"); return; }
+		if (p.kind === NodeKind.NumberLiteral) { into.push("number"); return; }
+		if (p.kind === NodeKind.Identifier) {
+			const n = p.name;
+			if (n === "string" || n === "null" || n === "boolean" || n === "number") { into.push(n); return; }
+			if (n === "true" || n === "false") { into.push("boolean"); return; }
+			if (n === "float32" || n === "float64" || n === "int8" || n === "int16" || n === "int32" || n === "int64"
+				|| n === "uint8" || n === "uint16" || n === "uint32" || n === "uint64") { into.push("number"); return; }
+			const impl = getTypeImpl(p);
+			if (depth < 8 && impl !== null && !((impl as Node).kind === NodeKind.Identifier && (impl as Node).name === n)) {
+				attributeKinds(impl as Node, into, depth + 1);
+				return;
+			}
+		}
+		into.push("other");
+	}
+	function takesKind(expected: string[], kind: string): boolean {
+		if (kind.startsWith("lit:")) { return expected.includes("string") || expected.includes(kind); }
+		return expected.includes(kind);
+	}
+	function choose(cond: Node, yes: Node, no: Node): Node {
+		return { kind: NodeKind.ConditionalExpr, line: cond.line, column: cond.column, ternaryCondition: cond, ternaryConsequent: yes, ternaryAlternate: no };
+	}
+	function htmlAttribute(tag: string, own: Node | null, a: Node): Node | null {
+		const name = a.jsxAttrName;
+		if (isEventName(name) || name === "ref" || name === "style") { return a; }
+		if (name.startsWith("data-") || name.startsWith("aria-")) { return a; }
+		let expectedType: Node | null = own === null ? null : fieldType(own as Node, name);
+		if (expectedType === null && refusedAttributeNames().includes(tag + "." + name)) {
+			error("<" + tag + "> does not take the attribute '" + name + "'", a);
+			return null;
+		}
+		if (expectedType === null) { expectedType = fieldType(htmlGlobals as Node, name); }
+		if (expectedType === null && name.includes("-") && hyphenatedAttributeNames().includes(name)) { return a; }
+		if (expectedType === null) {
+			let names: string[] = [];
+			if (own !== null) { for (const f of (own as Node).typExprFieldNames) { names.push(f); } }
+			for (const f of (htmlGlobals as Node).typExprFieldNames) { names.push(f); }
+			const near = nearestName(name, names);
+			error("<" + tag + "> has no attribute '" + name + "'" + (near === "" ? "." : ": did you mean '" + near + "'?") + " Custom data goes in a data-* attribute", a);
+			return null;
+		}
+		let expected: string[] = [];
+		attributeKinds(expectedType as Node, expected, 0);
+		const value = a.jsxAttrValue;
+		const enumerated = expected.includes("lit:true");
+		const at = (v: Node): Node => ({ kind: NodeKind.JSXAttribute, line: a.line, column: a.column, jsxAttrName: name, jsxAttrValue: v });
+		if (value.kind === NodeKind.BooleanLiteral) {
+			if (!expected.includes("boolean")) {
+				error("<" + tag + "> attribute '" + name + "' takes " + typeText(expectedType as Node) + ", so it needs a value", a);
+				return null;
+			}
+			if (enumerated) { return at(strLit(value.boolValue ? "true" : "false", a.line, a.column)); }
+			return value.boolValue ? at(strLit("", a.line, a.column)) : null;
+		}
+		if (value.kind === NodeKind.StringLiteral) {
+			if (takesKind(expected, "lit:" + stringValue(value))) { return a; }
+			error("<" + tag + "> attribute '" + name + "' takes " + typeText(expectedType as Node) + ", not \"" + stringValue(value) + "\"", a);
+			return null;
+		}
+		const valueType = peelHidden(value).nodeType;
+		if (valueType === null) { return a; }
+		let given: string[] = [];
+		attributeKinds(valueType as Node, given, 0);
+		let lowered = "";
+		let nullable = false;
+		for (const k of given) {
+			if (k === "null") { nullable = true; continue; }
+			if (!takesKind(expected, k)) {
+				error("<" + tag + "> attribute '" + name + "' takes " + typeText(expectedType as Node) + ", not " + typeText(valueType as Node), a);
+				return null;
+			}
+			const lowering = k === "number" || k === "boolean" ? k : "string";
+			if (lowered !== "" && lowered !== lowering) {
+				error("<" + tag + "> attribute '" + name + "' needs a value of one type, not " + typeText(valueType as Node) + ": convert it to a string first", a);
+				return null;
+			}
+			lowered = lowering;
+		}
+		if (lowered === "string" || lowered === "") { return a; }
+		if (lowered === "number" && value.kind === NodeKind.NumberLiteral && !isFloatLiteral(value)) {
+			return at(strLit(intValue(value).toString(), a.line, a.column));
+		}
+		const accessorRead = isAccessorTyped(value);
+		const readOf = (v: Node): Node => accessorRead ? { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: v, arguments: [] } : v;
+		const noValue: Node = { kind: NodeKind.NullLiteral, line: a.line, column: a.column };
+		const lower = (v: Node): Node => {
+			if (lowered === "number") { return { kind: NodeKind.BinaryExpr, line: a.line, column: a.column, operator: "+", left: strLit("", a.line, a.column), right: v }; }
+			if (enumerated) { return choose(v, strLit("true", a.line, a.column), strLit("false", a.line, a.column)); }
+			return choose(v, strLit("", a.line, a.column), noValue);
+		};
+		if (!nullable) { return at(lower(readOf(value))); }
+		const payload = accessorRead ? peelTypeRef(valueType as Node).typExprArgs[0] : (valueType as Node);
+		const held = ident("__msAttr", a.line, a.column);
+		const absent: Node = { kind: NodeKind.BinaryExpr, line: a.line, column: a.column, operator: "===", left: held, right: { kind: NodeKind.NullLiteral, line: a.line, column: a.column } };
+		const pick: Node = {
+			kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+			arrowParams: ["__msAttr"], arrowParamTypes: [typeText(payload)], arrowFlags: "", arrowReturnType: "string | null",
+			arrowBody: choose(absent, noValue, lower(ident("__msAttr", a.line, a.column))),
+		};
+		return at({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: pick, arguments: [readOf(value)] });
+	}
+	function checkHtmlElement(el: Node, attrs: Node[]): Node[] {
+		const tag = el.jsxTag;
+		if (tag.includes("-") || neonHostTags.includes(tag) || !loadHtmlTable(el)) { return attrs; }
+		const ownType = fieldType(htmlTable as Node, tag);
+		if (ownType === null) {
+			if (foreignTagNames().includes(tag)) { return attrs; }
+			const near = nearestName(tag, (htmlTable as Node).typExprFieldNames);
+			error("<" + tag + "> is not an HTML element" + (near === "" ? "." : ": did you mean <" + near + ">?") + " A custom element needs a '-' in its name", el);
+			return attrs;
+		}
+		const own = objectType(ownType);
+		let out: Node[] = [];
+		for (const a of attrs) {
+			const kept = a.kind === NodeKind.JSXAttribute ? htmlAttribute(tag, own === htmlGlobals ? null : own, a) : a;
+			if (kept !== null) { out.push(kept as Node); }
+		}
+		return out;
+	}
 	function flattenFragments(n: Node): Node {
 		let out: Node[] = [];
 		for (const c of kidsOf(n)) {
@@ -185,7 +377,9 @@ export macro element(node: Node): Node {
 		if (n.kind === NodeKind.JSXFragment) {
 			return { kind: NodeKind.JSXFragment, line: n.line, column: n.column, jsxFragChildren: out };
 		}
-		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: expandAttrs(n.jsxAttrs), jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+		const first = n.jsxTag.charAt(0);
+		const attrs = expandAttrs(n.jsxAttrs);
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: first >= "a" && first <= "z" ? checkHtmlElement(n, attrs) : attrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
 	}
 	function isAccessorTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
@@ -405,17 +599,38 @@ export macro element(node: Node): Node {
 		if (v.kind === NodeKind.CallExpr) { return setupRefCall(v); }
 		return v;
 	}
-	function pushRef(into: Node[], elVar: string, v: Node, ln: int32, col: int32): void {
+	function refElementClass(tag: string, v: Node): string {
+		if (define("js") !== "true" || v.kind === NodeKind.ArrayLiteral || v.kind === NodeKind.CallExpr) { return ""; }
+		if (domClasses === null) { domClasses = objectType(resolveType("HTMLElementTagNameMap")); }
+		if (domClasses === null) { return ""; }
+		const cls = fieldType(domClasses as Node, tag);
+		const fnType = peelHidden(v).nodeType;
+		if (cls === null || fnType === null) { return ""; }
+		let fn: Node = fnType as Node;
+		if (fn.kind === NodeKind.TypeUnion) {
+			for (const m of fn.typExprMembers) {
+				if (m.kind === NodeKind.TypeFunction) { fn = m; }
+			}
+		}
+		if (fn.kind !== NodeKind.TypeFunction || fn.typExprParams.length === 0) { return ""; }
+		const param = peelTypeRef(fn.typExprParams[0]);
+		if (typeKind(param) === TypeKind.Unknown) { return ""; }
+		return typeText(cls as Node);
+	}
+	function pushRef(into: Node[], tag: string, elVar: string, v: Node, ln: int32, col: int32): void {
+		const cls = refElementClass(tag, v);
+		if (cls !== "" && define("server") !== "") { return; }
+		const target: Node = cls === "" ? ident(elVar, ln, col) : { kind: NodeKind.TypeAssertion, line: ln, column: col, asExpr: ident(elVar, ln, col), asType: cls };
 		const source = refSource(v);
 		if (v.kind !== NodeKind.ArrayLiteral && presentKind(v) !== "") {
-			pushWhenPresent(into, ident("applyRef", ln, col), [ident(elVar, ln, col)], source, [], ln, col);
+			pushWhenPresent(into, ident("applyRef", ln, col), [target], source, [], ln, col);
 		} else {
 			into.push({
 				kind: NodeKind.ExprStmt, line: ln, column: col,
 				expr: {
 					kind: NodeKind.CallExpr, line: ln, column: col,
 					callee: ident("applyRef", ln, col),
-					arguments: [ident(elVar, ln, col), source],
+					arguments: [target, source],
 				},
 			});
 		}
@@ -1436,7 +1651,7 @@ export macro element(node: Node): Node {
 				slot = slot + 1;
 			}
 
-			if (wRef !== null) { pushRef(wStmts, elVar, wRef as Node, el.line, el.column); }
+			if (wRef !== null) { pushRef(wStmts, el.jsxTag, elVar, wRef as Node, el.line, el.column); }
 		}
 
 		const tplRoot = emitBuild(node);
@@ -1716,7 +1931,7 @@ export macro element(node: Node): Node {
 				emitKids(el.jsxChildren, rName, false);
 
 				if (!atRoot) { pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column); }
-				if (refFor !== null) { pushRef(stmts, rName, refFor as Node, el.line, el.column); }
+				if (refFor !== null) { pushRef(stmts, el.jsxTag, rName, refFor as Node, el.line, el.column); }
 				if (atRoot) { pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column); }
 			}
 		}

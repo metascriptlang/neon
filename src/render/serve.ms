@@ -1,5 +1,4 @@
 import { NeonNode } from "./hostTypes";
-import { SsrMarkup } from "./ssr";
 import { Routes } from "../navigation/router";
 import { getOwner } from "../core/runtime";
 import { createContext, useContext } from "./context";
@@ -10,10 +9,24 @@ export struct Served {
 	body: string;
 }
 
+export struct DocumentProps {
+	assets: NeonNode;
+	scripts: NeonNode;
+	children: NeonNode;
+}
+
 export struct App {
 	routes: Routes;
 	notFound: NeonNode;
-	document: (markup: SsrMarkup) => string;
+	client: string;
+	document: ((props: DocumentProps) => NeonNode) | null;
+}
+
+export function htmlDocument(props: DocumentProps): NeonNode {
+	const assets = props.assets;
+	const scripts = props.scripts;
+	const children = props.children;
+	return <html><head><meta charset="utf-8" />{assets}</head><body><div id="app">{children}</div>{scripts}</body></html>;
 }
 
 export struct RequestHeaders {
@@ -42,15 +55,15 @@ export function getRequestEvent(): RequestEvent | null {
 when (server) {
 	import { Host, HostNode } from "./hostTypes";
 	import { setContext } from "./context";
-	import { renderToStream } from "./ssr";
+	import { rawHtml, renderToStream, renderToString } from "./ssr";
 	import { RoutingError } from "../navigation/routing";
 	import { createRequestRoutingHistory } from "../navigation/routingHistory";
 	import { RouterProvider, createRouter } from "../navigation/router";
 
-	export function htmlDocument(root: string, client: string): (markup: SsrMarkup) => string {
-		return (markup: SsrMarkup): string => "<!doctype html><html><head><meta charset=\"utf-8\">" + markup.head +
-			"<style>" + markup.css + "</style></head><body><div id=\"" + root + "\">" + markup.html +
-			"</div>" + markup.records + "<script type=\"module\" src=\"" + client + "\"></script></body></html>";
+	function injectAssets(assets: string, html: string): string {
+		const at = html.indexOf("</head>");
+		if (at < 0) { throw new Error("the App document wrote no <head>, so the page's Head content and styles have nowhere to go"); }
+		return html.slice(0, at) + assets + html.slice(at);
 	}
 
 	function requestHeaders(given: Map<string, string>): RequestHeaders {
@@ -64,10 +77,21 @@ when (server) {
 	}
 
 	async function page(app: App, event: RequestEvent, node: NeonNode): Promise<string> {
-		return app.document(await renderToStream((host: Host, parent: HostNode, before: HostNode | null): void => {
+		const markup = await renderToStream((host: Host, parent: HostNode, before: HostNode | null): void => {
 			setContext<RequestEvent | null>(requestEvents, event);
 			node(host, parent, before);
-		}));
+		});
+		const document = app.document ?? htmlDocument;
+		const props: DocumentProps = {
+			assets: rawHtml(""),
+			scripts: app.client === "" ? rawHtml(markup.records) : <>{rawHtml(markup.records)}<script type="module" src={app.client} /></>,
+			children: rawHtml(markup.html),
+		};
+		const html = renderToString((host: Host, parent: HostNode, before: HostNode | null): void => {
+			setContext<RequestEvent | null>(requestEvents, event);
+			document(props)(host, parent, before);
+		});
+		return "<!doctype html>" + injectAssets(markup.head + "<style>" + markup.css + "</style>", html);
 	}
 
 	export async function serve(
@@ -123,10 +147,6 @@ when (server) {
 	}
 } else {
 	import { Node } from "std/meta";
-
-	export macro htmlDocument(root: Node, client: Node): Node {
-		error("htmlDocument needs a -d:server build", root);
-	}
 
 	export macro serve(app: Node, url: Node): Node {
 		error("serve needs a -d:server build", app);

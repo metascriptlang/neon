@@ -513,16 +513,19 @@ its matcher and its outlet cost about 14 KB gzipped in each bundle.
 `serve(app, url)` opens the router on the request address, renders `RouterProvider` through
 `renderToStream`, and answers `{ status, location, body }`: the router's redirect is a status
 and a location with no body, a route's own status serves its page, and an address no route takes
-is 404 (400 for any other routing error) through `app.notFound`. `app.document` places the
-markup's head, css, html and records; `htmlDocument(root, client)` is the default, with the
-client module script last. On `--target=js`, `fetchPage(app, request)` maps a Fetch `Request` to
+is 404 (400 for any other routing error) through `app.notFound`. `app.document` is a component
+`({ assets, scripts, children }) => NeonNode`, as SolidStart's `StartServer.tsx` hands its
+`document`; `htmlDocument` is the default when it is null. The page renders first, so its
+hydration ids are the client's; the document then renders around it with `children` holding the
+page markup and `scripts` the records followed by `app.client`'s module script, and the page's
+`Head` content and css land before the document's `</head>` as dom-expressions `injectAssets`
+puts them (`server.js`). A document with no `</head>` is an error, where `injectAssets` would
+drop them. `assets` renders nothing: SolidStart fills it with `HydrationScript`, the event
+replay Neon does not have. On `--target=js`, `fetchPage(app, request)` maps a Fetch `Request` to
 a `Response` (GET and HEAD; any other method is 405 with `allow`), the one call a Worker's
 `fetch` makes for a page. Shape from SolidStart `server/handler.ts` (`createBaseHandler`: render,
 then redirect by the response's `Location`) and Astro's Worker entry that maps `Request` to
-`Response`. Not ported: SolidStart's `StartServer.tsx` document is a component that receives
-`assets`, `scripts` and `children`; Neon's writer sends `Head` content to `SsrMarkup.head`
-beside the body, so a document component cannot place it, and the document is a function over
-the finished markup. A component form needs a head slot in the writer.
+`Response`.
 
 `serve(app, url, headers)` takes the request headers as a `Map` (optional); `fetchPage` passes the
 Fetch request's. A component of the served tree reads them with `getRequestEvent()`:

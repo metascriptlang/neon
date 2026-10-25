@@ -13,7 +13,7 @@ extern function hydrated(count: int32): void from "(globalThis.neonSiteHydrated 
 const opened = createRouter(routes, createBrowserRoutingHistory());
 if (opened.ok) {
 	const router = opened.value;
-	hydrate(<RouterProvider router={router} />, domHost(), siteContainer("site") as unknown as HostNode);
+	hydrate(<RouterProvider router={router} />, domHost(), siteContainer("app") as unknown as HostNode);
 	followLinks((url: string): boolean => router.navigate(url));
 	followPreloads((url: string): void => router.preload(url));
 	followSubmits((url: string, data: FormData): boolean => submitForm(router, url, data));

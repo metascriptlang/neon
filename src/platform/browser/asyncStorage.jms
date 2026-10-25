@@ -2,13 +2,13 @@ import { StorageServices, installStorageServices } from "../../api/storageServic
 
 extern class localStorage {
 	static length: number;
-	static extern setItem(key: cstring, value: cstring): void;
-	static extern removeItem(key: cstring): void;
+	static extern setItem(key: string, value: string): void;
+	static extern removeItem(key: string): void;
 	static extern clear(): void;
 }
 
-extern function storageHas(key: cstring): boolean from "(localStorage.getItem(#) !== null)";
-extern function storageRead(key: cstring): string from "(localStorage.getItem(#) ?? '')";
+extern function storageHas(key: string): boolean from "(localStorage.getItem(#) !== null)";
+extern function storageRead(key: string): string from "(localStorage.getItem(#) ?? '')";
 extern function storageKeyAt(index: number): string from "(localStorage.key(#) ?? '')";
 
 function storageGet(key: string): string | null {
