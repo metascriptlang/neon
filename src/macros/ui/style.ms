@@ -18,17 +18,17 @@
 //
 // Platform blocks (§4 job 5, S4c) live under a `when` key, which holds every
 // override the ENVIRONMENT selects and the caller passes nothing for — build
-// target today, interaction states and breakpoints as they land. What the CALLER
+// target and breakpoints today, interaction states as they land. What the CALLER
 // selects (`variants`) stays a bare data key. Grouping rather than the `_web`
 // sigil of Panda/Chakra/Unistyles keeps the unconditional base style readable in
 // one piece; that some conditions are cut at build time and others are not is an
 // implementation fact and deliberately not visible in the spelling.
 //
-// The target's block merges over the base fields; every other block is dropped
-// at expansion. What makes that possible is that `when` in a MACRO BODY is cut
-// at parse time against the CONSUMER's defines, so the same macro source picks
-// a different branch per target. Unistyles has no such lever and hands ios and
-// android to RN's runtime Platform.select instead.
+// The target's platform block merges over the base fields; every other platform
+// block is dropped at expansion. What makes that possible is that `when` in a
+// MACRO BODY is cut at parse time against the CONSUMER's defines, so the same
+// macro source picks a different branch per target. Unistyles has no such lever
+// and hands ios and android to RN's runtime Platform.select instead.
 //
 // The platform set is closed (`web`/`ios`/`android`/`macos`) because a macro
 // cannot enumerate defines today. Opening it to arbitrary `-d:` flags needs the
@@ -40,6 +40,10 @@ import { styleTable } from "../style/fields";
 
 export function styleOf(s: Style): Style {
 	return s;
+}
+
+export function createBreakpoints<T>(table: T): T {
+	return table;
 }
 
 function isPlatformName(k: string): boolean {
@@ -204,6 +208,41 @@ export macro createStyles(node: Node): Node {
 		if (init === null) { unfoldable = true; return ""; }
 		return textOf(init as Node, depth + 1);
 	}
+	function breakpointWidth(k: Node): float64 {
+		const shape = "a bracketed `when` key names a breakpoint: when: { [screen.wide]: { ... } } with export const screen = createBreakpoints({ wide: 900 })";
+		if (k.kind !== NodeKind.MemberExpr) { error(shape, k); }
+		const d = getImpl(k.object);
+		if (d === null || d.kind !== NodeKind.VariableDecl || d.declKind !== DeclKind.Const) { error(shape, k); }
+		const init = (d as Node).initializer;
+		if (init.kind !== NodeKind.CallExpr || init.callee.kind !== NodeKind.Identifier || init.callee.name !== "createBreakpoints" || init.arguments.length !== 1 || init.arguments[0].kind !== NodeKind.ObjectLiteral) {
+			error(shape, k);
+		}
+		const table = init.arguments[0];
+		for (let t = 0; t < table.keys.length; t += 1) {
+			if (table.keys[t] !== k.property) { continue; }
+			unfoldable = false;
+			const w = numberOf(table.properties[t], 0);
+			if (unfoldable) { error("breakpoint '" + k.property + "' must be a number the compiler can read, like createBreakpoints({ " + k.property + ": 900 })", k); }
+			return w;
+		}
+		error("no breakpoint named '" + k.property + "' in its createBreakpoints table", k);
+		return 0;
+	}
+	function spell(names: string[], fields: Node[], tokens: string[]): string {
+		let decls = "";
+		for (const row of styleTable()) {
+			for (let b = 0; b < names.length; b += 1) {
+				if (names[b] !== row[0]) { continue; }
+				const isText = foldsToText(fields[b], 0);
+				let folded = "";
+				if (tokens[b] === "") {
+					folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
+				}
+				decls = decls + cssDecl(names[b], row[2], folded, !isText, tokens[b]);
+			}
+		}
+		return decls;
+	}
 
 	let entries: Node[] = [];
 	for (let e = 0; e < sheet.properties.length; e += 1) {
@@ -220,15 +259,47 @@ export macro createStyles(node: Node): Node {
 		let vGroupOf: string[] = [];
 		let vNames: string[] = [];
 		let vBlocks: Node[] = [];
+		let bpWidths: float64[] = [];
+		let bpBlocks: Node[] = [];
+		let bpTokens: string[][] = [];
 		for (let i = 0; i < v.properties.length; i += 1) {
 			const fv = v.properties[i];
 			const name = v.keys[i];
 			if (name === "when") {
 				if (fv.kind !== NodeKind.ObjectLiteral) {
-					error("`when` takes a map of platform to style: when: { ios: { ... } }", fv);
+					error("`when` takes a map of platform or breakpoint to style: when: { ios: { ... }, [screen.wide]: { ... } }", fv);
 				}
 				for (let p = 0; p < fv.properties.length; p += 1) {
 					const block = fv.properties[p];
+					if (block.kind === NodeKind.ComputedProperty) {
+						const width = breakpointWidth(block.computedKey);
+						const bb = block.computedValue;
+						if (bb.kind !== NodeKind.ObjectLiteral) {
+							error("a breakpoint block must be a style object literal", bb);
+						}
+						let tokens: string[] = [];
+						for (let f = 0; f < bb.properties.length; f += 1) {
+							const bv = bb.properties[f];
+							if (bv.kind === NodeKind.CallExpr) {
+								error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", bv);
+							}
+							const tok = foldsToText(bv, 0) ? "" : themeToken(bv);
+							if (tok === "") {
+								unfoldable = false;
+								if (foldsToText(bv, 0)) { textOf(bv, 0); } else { numberOf(bv, 0); }
+								if (unfoldable) {
+									error("field '" + bb.keys[f] + "' of a breakpoint block must be a value the compiler can read: a literal, a const, or a theme token", bv);
+								}
+							}
+							tokens.push(tok);
+						}
+						let at = bpWidths.length;
+						while (at > 0 && bpWidths[at - 1] > width) { at -= 1; }
+						bpWidths.splice(at, 0, width);
+						bpBlocks.splice(at, 0, bb);
+						bpTokens.splice(at, 0, tokens);
+						continue;
+					}
 					const platform = fv.keys[p];
 					if (!isPlatformName(platform)) {
 						error("unknown platform '" + platform + "' in a `when` block — available: web, ios, android, macos", block);
@@ -314,38 +385,58 @@ export macro createStyles(node: Node): Node {
 		// content-hashed, so an unchanged entry keeps its name across builds and
 		// an edited one lands under a new name (which is what lets a hot reload
 		// swap rules without a frame of wrong styling).
-		if (emitCss && fields.length > 0 && vGroups.length === 0) {
-			let decls = "";
-			let spelled = true;
-			for (const row of styleTable()) {
-				for (let b = 0; b < names.length; b += 1) {
-					if (names[b] !== row[0]) { continue; }
-					unfoldable = false;
-					const isText = foldsToText(fields[b], 0);
-					let folded = "";
-					if (numberTokens[b] === "") {
-						folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
-					}
-					if (unfoldable) { spelled = false; }
-					decls = decls + cssDecl(names[b], row[2], folded, !isText, numberTokens[b]);
-				}
+		const loc0 = locs.length > 0 ? locs[0] : v.keyLocations[0];
+		if (emitCss && (fields.length > 0 || bpBlocks.length > 0) && vGroups.length === 0) {
+			unfoldable = false;
+			const decls = spell(names, fields, numberTokens);
+			const spelled = !unfoldable;
+			let mediaDecls: string[] = [];
+			let mediaKey = "";
+			for (let m = 0; m < bpBlocks.length; m += 1) {
+				mediaDecls.push(spell(bpBlocks[m].keys, bpBlocks[m].properties, bpTokens[m]));
+				mediaKey = mediaKey + "@" + bpWidths[m].toString() + "{" + mediaDecls[m] + "}";
 			}
-			if (spelled && decls !== "") {
+			if (spelled && (decls !== "" || bpBlocks.length > 0)) {
 				const readable = readableNames ? sheet.keys[e] + "_" : "";
-				const id = "n_" + readable + hashText(decls).toString();
-				const loc = locs[0];
+				const id = "n_" + readable + hashText(decls + mediaKey).toString();
+				let css = "." + id + "{" + decls + "}";
+				for (let m = 0; m < bpBlocks.length; m += 1) {
+					css = css + "@media (min-width:" + bpWidths[m].toString() + "px){." + id + "{" + mediaDecls[m] + "}}";
+				}
 				fields.push({
 					kind: NodeKind.StringLiteral, line: v.line, column: v.column, value: id,
 				});
 				names.push("cssId");
-				locs.push(loc);
+				locs.push(loc0);
 				fields.push({
-					kind: NodeKind.StringLiteral, line: v.line, column: v.column,
-					value: "." + id + "{" + decls + "}",
+					kind: NodeKind.StringLiteral, line: v.line, column: v.column, value: css,
 				});
 				names.push("css");
-				locs.push(loc);
+				locs.push(loc0);
 			}
+		}
+		if (bpBlocks.length > 0) {
+			let media: Node[] = [];
+			for (let m = 0; m < bpBlocks.length; m += 1) {
+				const bb = bpBlocks[m];
+				const w = bpWidths[m];
+				const whole = Math.floor(w) === w;
+				media.push({
+					kind: NodeKind.ObjectLiteral, line: bb.line, column: bb.column,
+					properties: [
+						{ kind: NodeKind.NumberLiteral, line: bb.line, column: bb.column, value: w, isFloat: !whole, intVal: whole ? w as int64 : 0, outOfRangeText: "", isBitPattern: false },
+						{
+							kind: NodeKind.CallExpr, line: bb.line, column: bb.column,
+							callee: { kind: NodeKind.Identifier, line: bb.line, column: bb.column, name: "styleOf" },
+							arguments: [bb],
+						},
+					],
+					keys: ["minWidth", "style"], keyLocations: [loc0, loc0],
+				});
+			}
+			fields.push({ kind: NodeKind.ArrayLiteral, line: v.line, column: v.column, elements: media });
+			names.push("media");
+			locs.push(loc0);
 		}
 		const merged: Node = {
 			kind: NodeKind.ObjectLiteral, line: v.line, column: v.column,
