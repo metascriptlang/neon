@@ -346,7 +346,8 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const align = s.textAlign !== null ? (s.textAlign as string) : "";
 		if (align !== n.textAlign) {
 			n.textAlign = align;
-			niSetProp(n.view, "textAlign", align === "" ? "auto" : align);
+			const shown = align === "" ? "auto" : align;
+			niSetProp(n.view, "textAlign", shown);
 		}
 	}
 }
@@ -669,7 +670,8 @@ function refreshLabel(n: NativeNode): void {
 	if (!rich) {
 		let text = "";
 		for (const span of spans) { text += span.text; }
-		niSetText(n.view, text);
+		const joined = text;
+		niSetText(n.view, joined);
 	} else {
 		let encoded = "";
 		for (let i = 0; i < spans.length; i += 1) {
@@ -677,7 +679,8 @@ function refreshLabel(n: NativeNode): void {
 			const own: Style | null = spans[i].style !== null ? spans[i].style as Style : null;
 			encoded += encodeSpan(spans[i].text, own, base, i < n.spanTags.length ? n.spanTags[i] : 0);
 		}
-		niSetProp(n.view, "textSpans", encoded);
+		const record = encoded;
+		niSetProp(n.view, "textSpans", record);
 	}
 	remeasureText(n);
 }
