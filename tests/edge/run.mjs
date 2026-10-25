@@ -157,7 +157,7 @@ async function browser() {
 			globalThis.neonSiteChanged = [];
 			const changes = new MutationObserver((records) => {
 				for (const record of records) {
-					if (!(record.target instanceof Element) || record.target.closest("#site") === null) { continue; }
+					if (!(record.target instanceof Element) || record.target.closest("#app") === null) { continue; }
 					for (const node of [...record.addedNodes, ...record.removedNodes]) {
 						if (node.nodeType === 1) { globalThis.neonSiteChanged.push(node.localName); }
 					}
@@ -173,7 +173,7 @@ async function browser() {
 		const landed = await page.evaluate("window.scrollY");
 		assert.ok(landed > 1000, "the browser's own scroll to the fragment was lost: " + landed);
 		assert.deepEqual(errors, []);
-		assert.equal(await page.evaluate("document.querySelectorAll('#site *').length"), 14);
+		assert.equal(await page.evaluate("document.querySelectorAll('#app *').length"), 14);
 		assert.deepEqual(await page.evaluate("globalThis.neonSiteChanged"), [], "hydrate added or removed an element of the served page");
 		await page.evaluate(() => { document.querySelector("nav").served = true; });
 		assert.equal(await page.title(), "start · Neon site");
@@ -244,7 +244,7 @@ async function hydratedNotes() {
 			globalThis.neonSiteFallback = 0;
 			const changes = new MutationObserver((records) => {
 				for (const record of records) {
-					if (!(record.target instanceof Element) || record.target.closest("#site") === null) { continue; }
+					if (!(record.target instanceof Element) || record.target.closest("#app") === null) { continue; }
 					for (const node of [...record.addedNodes, ...record.removedNodes]) {
 						if (node.nodeType === 1) { globalThis.neonSiteChanged.push(node.localName); }
 					}

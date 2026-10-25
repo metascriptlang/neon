@@ -806,6 +806,12 @@ when (server) {
 		return n as unknown as HostNode;
 	}
 
+	export function rawHtml(markup: string): NeonNode {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			if (markup !== "") { host.insertBefore(parent, rawNode(markup), before); }
+		};
+	}
+
 	function textOf(h: Hole): string {
 		if (h.value === null) { throw new Error("SSR writer: a hole was filled before its text was known"); }
 		return h.value as string;

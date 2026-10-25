@@ -16,7 +16,7 @@ export { createStore, createProjection, snapshot, reconcile, Store, Draft, SetSt
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
-export { App, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
+export { App, DocumentProps, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";

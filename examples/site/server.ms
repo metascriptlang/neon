@@ -3,7 +3,7 @@ import { Note, NotFound, noteOf, routes } from "./site";
 
 export { staticPaths } from "./site";
 
-const app: App = { routes: routes, notFound: <NotFound />, document: htmlDocument("site", "/client.js") };
+const app: App = { routes: routes, notFound: <NotFound />, client: "/client.js", document: htmlDocument };
 
 export function noteJson(slug: string): string {
 	return JSON.stringify<Note>(noteOf(slug, "from the api"));
