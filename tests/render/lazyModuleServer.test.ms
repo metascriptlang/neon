@@ -32,3 +32,34 @@ test "a keyed lazy rendered on the server records its memo id and key on the ser
 	assert seen.includes("tests/render/lazyPreload/ssr2"), "keys seen: " + seen.join(",");
 	assert out.html.includes("hello ssr"), out.html;
 }
+
+function between(s: string, open: string, close: string): string {
+	const at = s.indexOf(open);
+	if (at < 0) { return "absent: " + open; }
+	return s.slice(at + open.length, s.indexOf(close, at + open.length));
+}
+
+test "the records of a served lazy list its key in the page's module table under the lazy's hydration id" {
+	const gate = new Gate();
+	const Served = lazyModule("tests/render/lazyModuleServer/table", loaderOf(gate));
+	const done = renderToStream(shell(Served));
+	await release(gate);
+	const out = await done;
+	const id = between(out.records, ".r[\"", "\"]=\"true\"");
+	assert out.records.includes("(self._$HY||(self._$HY={r:{},e:{},m:{}})).m[\"" + id + "\"]=\"tests/render/lazyModuleServer/table\"</script>"), out.records;
+}
+
+test "a streamed page writes each lazy's module entry once, in the first piece written after the lazy rendered" {
+	const gate = new Gate();
+	const Served = lazyModule("tests/render/lazyModuleServer/streamed", loaderOf(gate));
+	const chunks: string[] = [];
+	const r = renderToStream(shell(Served));
+	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); }, end: (): void => {} });
+	await release(gate);
+	await r;
+	const entry = ".m[\"";
+	let written = 0;
+	for (const c of chunks) { written += c.split("\"]=\"tests/render/lazyModuleServer/streamed\"").length - 1; }
+	assert written === 1, "one entry: " + chunks.join(" || ");
+	assert chunks[0].includes(entry), "the shell's records carry it: " + chunks.join(" || ");
+}
