@@ -79,12 +79,10 @@ export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispos
 	preloadLazy(keys).then((): void => {
 		if (!pending.cancelled) { pending.mounted = claimServed(node, host, container); }
 	}, (error: Error): void => {
-		when (debug) { throw error; } else {
-			console.error("hydrate: a lazy module the page lists did not load, so the page renders fresh: " + error.message);
-			if (pending.cancelled) { return; }
-			cleared(host, container);
-			pending.mounted = render(node, host, container, "");
-		}
+		console.error("hydrate: a lazy module the page lists did not load, so the page renders fresh: " + error.message);
+		if (pending.cancelled) { return; }
+		cleared(host, container);
+		pending.mounted = render(node, host, container, "");
 	});
 	return (): void => {
 		pending.cancelled = true;
