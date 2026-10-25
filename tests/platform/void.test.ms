@@ -9,11 +9,12 @@ import { render, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
-import { Void, View, Text, ScrollView, Pressable } from "../../src/components/primitives";
+import { Void, View, ViewHandle, Text, ScrollView, Pressable } from "../../src/components/primitives";
+import { MeasureRect, MeasureError } from "../../src/render/hostTypes";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 import { FlexStyle } from "../../../yoga/src/index";
 import {
-	DrawKind, NodeRef, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt, parent,
+	DrawKind, NodeRef, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt, parent, setScale,
 } from "../../../void/src/void2d/node";
 
 function flexOf(n: VoidNode): FlexStyle { return n.flex as FlexStyle; }
@@ -363,4 +364,71 @@ test "scrollTo moves a scroll view and refuses a plain view by name" {
 		scrollTo(plain, 0, 10, false);
 	} catch (e) { caught = e.toString(); }
 	assert caught.includes("scrollTo"), "the error names the op: " + caught;
+}
+
+function rectOf(r: Result<MeasureRect, MeasureError>): string {
+	return r.ok ? `${r.value.x},${r.value.y},${r.value.width},${r.value.height}` : r.error.toString();
+}
+
+test "the Void host measures a node in the window, laying out a changed tree first" {
+	const vh = createVoidHost();
+	render(element(
+		<View style={{ width: 200, height: 100, paddingLeft: 10, paddingTop: 20 }}>
+			<ScrollView style={{ width: 100, height: 50 }}>
+				<View style={{ width: 30, height: 400 }} />
+			</ScrollView>
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	const outer = vh.host.firstChild(vh.root) as HostNode;
+	const area = vh.host.firstChild(outer) as HostNode;
+	const inner = (area as VoidNode).children[0].children[0] as HostNode;
+	const measure = vh.host.measureInWindow as (node: HostNode) => Result<MeasureRect, MeasureError>;
+	assert rectOf(measure(inner)) === "10,20,30,400", "laid out: " + rectOf(measure(inner));
+	vh.host.setStyle(inner, { width: 50, height: 400, marginLeft: 5 } as Style);
+	assert rectOf(measure(inner)) === "15,20,50,400", "a style change is laid out before the answer: " + rectOf(measure(inner));
+	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
+	scrollTo(area, 0, 40, false);
+	assert rectOf(measure(inner)) === "15,-20,50,400", "the scroll offset moves the content: " + rectOf(measure(inner));
+}
+
+test "a View's handle measures its laid-out frame on the Void host" {
+	const vh = createVoidHost();
+	const handles: ViewHandle[] = [];
+	render(element(
+		<View ref={(h: ViewHandle): void => { handles.push(h); }} style={{ width: 200, height: 100, paddingLeft: 10, paddingTop: 20 }}>
+			<View ref={(h: ViewHandle): void => { handles.push(h); }} style={{ width: 30, height: 40 }} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	let got = "";
+	handles[0].measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number): void => {
+		got += `${x},${y},${width},${height},${pageX},${pageY};`;
+	});
+	handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => {
+		got += `${left},${top},${width},${height};`;
+	});
+	const r = handles[1].getBoundingClientRect();
+	got += `${r.right},${r.bottom}`;
+	assert got === "10,20,30,40,10,20;10,20,30,40;200,100", got;
+}
+
+test "under a scaled parent, the Void host's window frame scales and its layout frame does not" {
+	const vh = createVoidHost();
+	const handles: ViewHandle[] = [];
+	render(element(
+		<View ref={(h: ViewHandle): void => { handles.push(h); }} style={{ width: 200, height: 100, paddingLeft: 10, paddingTop: 20 }}>
+			<View ref={(h: ViewHandle): void => { handles.push(h); }} style={{ width: 30, height: 40 }} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	(handles[1].node as unknown as VoidNode).ref.setScale(2.0);
+	let got = "";
+	handles[0].measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number): void => {
+		got = `${x},${y},${width},${height},${pageX},${pageY};`;
+	});
+	handles[0].measureLayout(handles[1], (left: number, top: number, width: number, height: number): void => {
+		got += `${left},${top},${width},${height}`;
+	});
+	assert got === "10,20,60,80,20,40;10,20,30,40", got;
 }

@@ -1179,14 +1179,6 @@ export function createVoidHostWith(
 				descender: laid.value.descent as number,
 			};
 		},
-		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => {
-			const n = node as VoidNode;
-			if (n.disposed || !attached(n)) { return Result.err(MeasureError.NotMounted); }
-			const box = n.ref.content();
-			const from = n.ref.localToGlobal(vec2(0.0, 0.0));
-			const to = n.ref.localToGlobal(vec2(box.w, box.h));
-			return Result.ok({ x: from.x as number, y: from.y as number, width: (to.x - from.x) as number, height: (to.y - from.y) as number });
-		},
 	};
 
 	// The span of a Text under a point: the grapheme the point falls in, none past a line's end.
@@ -1626,7 +1618,7 @@ export function createVoidHostWith(
 		return fired;
 	};
 
-	const layout = (w: float32, h: float32): void => {
+	const layoutPasses = (w: float32, h: float32): void => {
 		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			if (scene.isClosed()) { return; }
@@ -1639,6 +1631,58 @@ export function createVoidHostWith(
 			if (settled) { return; }
 		}
 		throw new Error(`void host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
+	};
+
+	let laidWidth: float32 = -1.0;
+	let laidHeight: float32 = -1.0;
+	let laying = false;
+	const layout = (w: float32, h: float32): void => {
+		laidWidth = w;
+		laidHeight = h;
+		laying = true;
+		try { layoutPasses(w, h); } finally { laying = false; }
+	};
+
+	const settled = (node: HostNode): VoidNode | null => {
+		const n = node as VoidNode;
+		if (n.disposed || !attached(n)) { return null; }
+		if (!laying && laidWidth >= 0.0 && wasDirty()) { layout(laidWidth, laidHeight); }
+		return n.disposed || !attached(n) ? null : n;
+	};
+
+	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => {
+		const at = settled(node);
+		if (at === null) { return Result.err(MeasureError.NotMounted); }
+		const n = at as VoidNode;
+		const f = frameOf(n);
+		const a = n.ref.localToGlobal(vec2(0.0, 0.0));
+		const b = n.ref.localToGlobal(vec2(f.w, 0.0));
+		const c = n.ref.localToGlobal(vec2(0.0, f.h));
+		const d = n.ref.localToGlobal(vec2(f.w, f.h));
+		const left = Math.min(Math.min(a.x, b.x), Math.min(c.x, d.x));
+		const top = Math.min(Math.min(a.y, b.y), Math.min(c.y, d.y));
+		const right = Math.max(Math.max(a.x, b.x), Math.max(c.x, d.x));
+		const bottom = Math.max(Math.max(a.y, b.y), Math.max(c.y, d.y));
+		return Result.ok({ x: left as number, y: top as number, width: (right - left) as number, height: (bottom - top) as number });
+	};
+
+	host.measureLayout = (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => {
+		const at = settled(node);
+		if (at === null || settled(ancestor) === null) { return Result.err(MeasureError.NotMounted); }
+		const n = at as VoidNode;
+		let x: float32 = 0.0;
+		let y: float32 = 0.0;
+		const top = ancestor as VoidNode;
+		let up: VoidNode | null = n;
+		while (up !== top) {
+			if (up === null) { return Result.err(MeasureError.NotAncestor); }
+			const f = frameOf(up as VoidNode);
+			x += f.x;
+			y += f.y;
+			up = (up as VoidNode).parent;
+		}
+		const own = frameOf(n);
+		return Result.ok({ x: x as number, y: y as number, width: own.w as number, height: own.h as number });
 	};
 
 	const imeRect = (): CaretRect | null => {
