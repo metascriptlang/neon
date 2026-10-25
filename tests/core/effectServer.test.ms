@@ -1,6 +1,7 @@
 import { onSettled, createEffect, createRenderEffect } from "../../src/core/effect";
 import { createSignal } from "../../src/core/signal";
 import { Cleanup } from "../../src/core/types";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { HostNode } from "../../src/render/host";
 import { renderToString } from "../../src/render/ssr";
 import { NeonNode } from "../../src/render/node";
@@ -52,4 +53,28 @@ test "a render effect's apply in a component body reads a signal on the server" 
 	const html = renderToString(<RenderEffectApplyReads log={log} />);
 	assert log.join(",") === "seen", "got " + log.join(",");
 	assert html !== "", "the page still renders";
+}
+
+function readThrough(read: () => string): string {
+	return read();
+}
+
+function ReadsAfterEffect(props: FocusProps): NeonNode {
+	const [value, setValue] = createSignal("direct");
+	createEffect<string>((prev: string | null): string => value(), (text: string, prev: string | null): Cleanup | null => null);
+	props.log.push(readThrough((): string => value()));
+	return <View />;
+}
+
+test "a read through a helper in a server component body after an effect still throws in debug only" {
+	const log: string[] = [];
+	let message = "";
+	try { renderToString(<ReadsAfterEffect log={log} />); } catch (e) { message = e.message; }
+	resetErrorHalt();
+	when (debug) {
+		assert message.indexOf("[STRICT_READ_UNTRACKED]") === 0, "got [" + message + "]";
+	} else {
+		assert message === "", "got [" + message + "]";
+		assert log.join(",") === "direct", "got " + log.join(",");
+	}
 }
