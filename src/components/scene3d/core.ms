@@ -305,7 +305,8 @@ export function sceneHost(state: SceneState): Host {
 	};
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			if (tag !== "view" && tag !== "holder") { throw no3D("<" + tag + ">"); }
+			if (tag === "view") { throw new Error("<View> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>"); }
+			if (tag !== "holder") { throw no3D("<" + tag + ">"); }
 			const holder = addGroup(scene, null, Transform3D.identity());
 			setVisible(scene, holder, false);
 			return new SceneNode3D(holder);

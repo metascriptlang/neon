@@ -43,7 +43,7 @@ function init(): void {
 		mounted((): NeonNode => element(<Void><Scene3D><RenderTexture width={8} height={8}><Scene2D><Rect width={4.0} height={4.0} color={rgba(1.0, 0.0, 0.0, 1.0)} /></Scene2D></RenderTexture></Scene3D></Void>)),
 		"<voidroot></voidroot></void></root>");
 	expect("a styled View is refused", mounted((): NeonNode => element(<Void><Scene3D><RenderTexture width={8} height={8}><View style={{ width: 4 }} /></RenderTexture></Scene3D></Void>)),
-		"Scene3D: style has no 3D node");
+		"belongs in <Void>, <Texture> or a 2D parent");
 	expect("a Text is refused", mounted((): NeonNode => element(<Void><Scene3D><RenderTexture width={8} height={8}><Text>hi</Text></RenderTexture></Scene3D></Void>)),
 		"has no 3D node");
 	console.log("PASS RenderTexture children: Scene2D into the texture, View and Text refused");

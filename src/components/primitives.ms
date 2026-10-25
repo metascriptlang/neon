@@ -27,7 +27,7 @@ import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostT
 import { paragraphChildren } from "../render/paragraph";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
-import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
+import { VoidSpace, getVoidScopeContext, getVoidAreaContext } from "../render/voidScope";
 import { ElementHandle, ElementRef } from "../render/measure";
 export { ElementHandle, MeasureRect, MeasureError } from "../render/measure";
 import { visibleContentAttr } from "../render/visibleContent";
@@ -128,16 +128,6 @@ export interface ImeRect {
 	y: number;
 	width: number;
 	height: number;
-}
-
-function uiParent(tag: string, node: NeonNode): NeonNode {
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const scope = useVoidSpace();
-		if (scope === VoidSpace.Scene3D) {
-			throw new Error("<" + tag + "> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>");
-		}
-		node(host, parent, before);
-	};
 }
 
 export interface InteractiveProps extends HostProps {
@@ -354,7 +344,7 @@ export function View(props: ViewProps): NeonNode {
 		if (entry !== null) { (entry as ResponderEntry).node = node; }
 		if (userRef !== null) { (userRef as (h: ViewHandle) => void)(new ViewHandle(mountedOn as Host, node, (): boolean => mounted)); }
 	};
-	const view = uiParent("View", primitive("view", props, attrs, evts, provided, grab));
+	const view = primitive("view", props, attrs, evts, provided, grab);
 	if (grab === null) { return view; }
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		mountedOn = host;
@@ -430,13 +420,13 @@ export function Text(props: TextProps): NeonNode {
 		attrs.push(dynAttr("cellWidths", (): string | null => cellDigits(read())));
 	}
 	const kids = spans === null ? paragraphChildren(props.children, null) : dataSpans(spans as Accessor<TextSpan[]>);
-	if (press === null) { return uiParent("Text", primitive("text", props, attrs, [], kids, null, props.ref)); }
+	if (press === null) { return primitive("text", props, attrs, [], kids, null, props.ref); }
 	const pressability = new Pressability({
 		cancelable: null, hitSlop: null, delayLongPress: null,
 		onPress: press, onPressIn: null, onPressOut: null, onLongPress: null, onHoverIn: null, onHoverOut: null,
 	});
-	return uiParent("Text", withPressability(pressability, [], kids, (evts: VEvent[], children: NeonNode | null, grab: RefFn): NeonNode =>
-		primitive("text", props, attrs, evts, children, grab, props.ref)));
+	return withPressability(pressability, [], kids, (evts: VEvent[], children: NeonNode | null, grab: RefFn): NeonNode =>
+		primitive("text", props, attrs, evts, children, grab, props.ref));
 }
 
 // RN usePressability: the press machine joins the responder system through the element's own touches.
@@ -539,12 +529,12 @@ export function Pressable(props: PressableProps): NeonNode {
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	if (props.onHoverIn !== null) { evts.push(evt("onPointerEnter", (e: NeonEvent): void => { pressability.pointerEnter(e); })); }
 	if (props.onHoverOut !== null) { evts.push(evt("onPointerLeave", (e: NeonEvent): void => { pressability.pointerLeave(e); })); }
-	return uiParent("Pressable", withPressability(pressability, evts, props.children, (all: VEvent[], kids: NeonNode | null, grab: RefFn): NeonNode =>
+	return withPressability(pressability, evts, props.children, (all: VEvent[], kids: NeonNode | null, grab: RefFn): NeonNode =>
 		primitive("pressable", {
 			style: props.style, class: props.class,
 			accessible: accessor((): boolean => accessible() === "true"),
 			accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole, accessibilityState: props.accessibilityState,
-		}, attrs, all, kids, grab, props.ref)));
+		}, attrs, all, kids, grab, props.ref));
 }
 
 export interface ScrollToOptions {
@@ -890,14 +880,14 @@ export function TextInput(props: TextInputProps): NeonNode {
 		}));
 	}
 	if (userRef === null) {
-		return uiParent("TextInput", primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, null));
+		return primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, null);
 	}
 	let mountedHost: Host | null = null;
 	let mounted = false;
 	const grab: RefFn = (node: HostNode): void => {
 		(userRef as (h: TextInputHandle) => void)(new TextInputHandle(mountedHost as Host, node, (): boolean => focused, (): boolean => mounted));
 	};
-	const field = uiParent("TextInput", primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, grab));
+	const field = primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, grab);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		mountedHost = host;
 		mounted = true;

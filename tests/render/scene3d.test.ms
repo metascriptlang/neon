@@ -351,10 +351,10 @@ test "View Text Pressable and TextInput reject the open Scene3D context" {
 	const text = mountError(element(<Void><Scene3D><Text>not HUD</Text></Scene3D></Void>));
 	const pressable = mountError(element(<Void><Scene3D><Pressable /></Scene3D></Void>));
 	const input = mountError(element(<Void><Scene3D><TextInput /></Scene3D></Void>));
-	assert view.includes("View") && view.includes("Scene3D"), "View names incompatible scene: " + view;
-	assert text.includes("Text") && text.includes("Scene3D"), "Text names incompatible scene: " + text;
-	assert pressable.includes("Pressable") && pressable.includes("Scene3D"), "Pressable names incompatible scene: " + pressable;
-	assert input.includes("TextInput") && input.includes("Scene3D"), "TextInput names incompatible scene: " + input;
+	assert view.includes("<View> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>"), "View names where it belongs: " + view;
+	assert text.includes("Scene3D: <text> has no 3D node to act on"), "Text names incompatible scene: " + text;
+	assert pressable.includes("Scene3D: <pressable> has no 3D node to act on"), "Pressable names incompatible scene: " + pressable;
+	assert input.includes("Scene3D: <textinput> has no 3D node to act on"), "TextInput names incompatible scene: " + input;
 }
 
 test "Mesh requires exactly one resource source before calling GPU upload" {
