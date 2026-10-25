@@ -1,4 +1,4 @@
-// Particles emit only while mounted and active, ask for frames only while particles live or
+// Particles emit only while mounted and playing, ask for frames only while particles live or
 // emit, sleep when idle, and give their stream buffer back on unmount.
 //   msc run tests/device/scene3dParticles.ms
 import { createSignal, accessor } from "../../src/core/signal";
@@ -8,8 +8,12 @@ import { Show } from "../../src/macros/ui/flow";
 import { useManualFrames } from "../../src/animation/frame";
 import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Particles, Camera3D } from "../../src/components/scene3d";
-import { EmitterState, defaults, constant } from "../../../void/src/void3d/particles";
+import { Scene3DHandle } from "../../src/components/scene3d/core";
+import { Scene3D } from "../../src/components/scene3d/scene";
+import { Camera3D } from "../../src/components/scene3d/camera";
+import { Particles } from "../../src/components/scene3d/particles";
+import { ParticleSystemAsset, ParticleEffect, defaults } from "../../../void/src/particles/asset";
+import { constantCurve } from "../../../void/src/particles/curve";
 import { NodeId3D } from "../../../void/src/void3d/scene";
 import { MaterialId, addMaterial, releaseMaterial } from "../../../void/src/void3d/draw";
 import { Material, MaterialKind } from "../../../void/src/void3d/material";
@@ -45,8 +49,13 @@ function fail(message: string): void {
 	process.exit(1);
 }
 
-function oneShot(): EmitterState {
-	return { ...EmitterState.defaults(), loop: false, emitRate: constant(40.0), life: constant(0.25), maxParts: 64 };
+function oneShot(): ParticleEffect {
+	const base = ParticleSystemAsset.defaults();
+	return { systems: [{
+		...base,
+		main: { ...base.main, duration: 0.5, loop: false, startLifetime: constantCurve(0.25), maxParticles: 64 },
+		emission: { ...base.emission, rateOverTime: constantCurve(40.0) },
+	}] };
 }
 
 function requests(): int32 {
@@ -58,7 +67,7 @@ function requests(): int32 {
 }
 
 function liveCount(): int32 {
-	const row = handle.scene.nodes[nodes[0].index].payload;
+	const row = handle.scene.nodes[handle.scene.nodes[nodes[0].index].children[0]].payload;
 	return handle.context.meshes[handle.scene.meshes[row].mesh.index].instanceCount;
 }
 
@@ -74,7 +83,7 @@ function init(): void {
 		}}>
 			<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} />
 			{Show({ when: accessor(() => shown()), children: element(
-				<Particles settings={oneShot()} material={material} active={active()}
+				<Particles effect={oneShot()} material={material} playing={active()}
 					ref={(value: NodeId3D): void => { nodes.push(value); }} />
 			) })}
 		</Scene3D>
