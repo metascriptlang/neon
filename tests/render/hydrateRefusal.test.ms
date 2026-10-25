@@ -1,11 +1,13 @@
-import { NeonNode, el, dynText } from "../../src/render/node";
+import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
 import { render, hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
 import { createAsyncMemo } from "../../src/render/hydrateMemo";
-import { putRecord, clearRecords } from "../../src/render/hydrationRecords";
+import { putRecord, putModule, clearRecords } from "../../src/render/hydrationRecords";
+import { lazyModule, createComponent } from "../../src/render/component";
+import { hydrating } from "../../src/render/claim";
 import { Gate, release, opened } from "../core/asyncClock";
 import { View, Text } from "../../src/components/primitives";
-import { Show } from "../../src/macros/ui/flow";
+import { Show, Loading } from "../../src/macros/ui/flow";
 import { flush } from "../../src/core/runtime";
 
 function served(tree: NeonNode): MockNode {
@@ -144,5 +146,81 @@ test "a page with a record that differs throws in debug, and in release is rebui
 		assert got === "hydrate: the page has no <h1> at child 1 of the container", got;
 	} else {
 		assert got === "<root><h1>srv</h1></root>", got;
+	}
+}
+
+type Greeting = (props: { label: string }) => NeonNode;
+
+function Hello(props: { label: string }): NeonNode {
+	return el("p", [], [], text("hello " + props.label));
+}
+
+function Other(props: { label: string }): NeonNode {
+	return el("h1", [], [], text("other " + props.label));
+}
+
+function lazyShell(Page: Greeting): NeonNode {
+	return el("div", [], [], Loading({ children: createComponent(Page, { label: "ssr" }), fallback: el("b", [], [], text("loading")) }));
+}
+
+async function loadAfter(gate: Gate, comp: Greeting): Promise<Greeting> {
+	await opened(gate);
+	return comp;
+}
+
+class Calls {
+	n: int32 = 0;
+}
+
+async function failFirst(gate: Gate, calls: Calls): Promise<Greeting> {
+	calls.n += 1;
+	await opened(gate);
+	if (calls.n === 1) { throw new Error("chunk 404"); }
+	return Hello;
+}
+
+test "a page with a lazy the client has not loaded claims once the module loads: kept when it matches in debug, rebuilt when it differs in release" {
+	const root = served(lazyShell((props: { label: string }): NeonNode => Hello(props)));
+	const sent = mockToString(root);
+	const top = root.children[0];
+	const from = top.children[0];
+	const gate = new Gate();
+	when (debug) {
+		const Page = lazyModule("tests/render/hydrateRefusal/kept", (): Promise<Greeting> => loadAfter(gate, Hello));
+		putModule("0", "tests/render/hydrateRefusal/kept");
+		const dispose = hydrate(lazyShell(Page), mockHost(), root as unknown as HostNode);
+		assert !hydrating() && root.children[0].children[0] === from, "nothing is claimed before the module loads";
+		await release(gate);
+		assert mockToString(root) === sent && root.children[0].children[0] === from, mockToString(root);
+		dispose();
+	} else {
+		const Page = lazyModule("tests/render/hydrateRefusal/rebuilt", (): Promise<Greeting> => loadAfter(gate, Other));
+		putModule("0", "tests/render/hydrateRefusal/rebuilt");
+		const dispose = hydrate(lazyShell(Page), mockHost(), root as unknown as HostNode);
+		assert !hydrating() && mockToString(root) === sent && root.children[0].children[0] === from, "nothing is claimed before the module loads";
+		await release(gate);
+		assert mockToString(root) === "<root><div><h1>other ssr</h1></div></root>", mockToString(root);
+		assert top.parent === null, "the served node left the page";
+		dispose();
+	}
+	clearRecords();
+}
+
+test "a lazy module that fails to load renders the page fresh in a release build" {
+	when (debug) {} else {
+		const root = served(lazyShell((props: { label: string }): NeonNode => Hello(props)));
+		const top = root.children[0];
+		const gate = new Gate();
+		const calls = new Calls();
+		const Page = lazyModule("tests/render/hydrateRefusal/failed", (): Promise<Greeting> => failFirst(gate, calls));
+		putModule("0", "tests/render/hydrateRefusal/failed");
+		const dispose = hydrate(lazyShell(Page), mockHost(), root as unknown as HostNode);
+		await release(gate);
+		await release(gate);
+		assert calls.n === 2, "the fresh render loads the module again: " + calls.n.toString();
+		assert mockToString(root) === "<root><div><p>hello ssr</p></div></root>", mockToString(root);
+		assert top.parent === null, "the page was rendered fresh";
+		dispose();
+		clearRecords();
 	}
 }

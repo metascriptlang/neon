@@ -1,6 +1,10 @@
-import { el, text, NeonNode } from "../../src/render/node";
+import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { MockNode, HostNode, mockHost, mockNode, render, hydrate, mockToString } from "../../src/render/host";
 import { lazyModule, createComponent } from "../../src/render/component";
+import { putModule, clearRecords } from "../../src/render/hydrationRecords";
+import { hydrating } from "../../src/render/claim";
+import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { Loading } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
 
@@ -33,4 +37,60 @@ test "a lazy component whose module loaded before hydrate keeps the served node 
 	assert mockToString(root) === sent, mockToString(root);
 	assert root.children[0].children[0] === served, "the page's own <p>";
 	dispose();
+}
+
+const [greeting, setGreeting] = createSignal("hello");
+
+function LiveGreeting(props: { label: string }): NeonNode {
+	return el("p", [], [], dynText((): string => greeting() + " " + props.label));
+}
+
+function coldLoader(gate: Gate): () => Promise<(props: { label: string }) => NeonNode> {
+	return (): Promise<(props: { label: string }) => NeonNode> => gated(gate, LiveGreeting);
+}
+
+function servedPage(): MockNode {
+	const root = mockNode("root");
+	render(shell((props: { label: string }): NeonNode => LiveGreeting(props)), mockHost(), root as unknown as HostNode, "")();
+	return root;
+}
+
+test "a served lazy the client has not loaded hydrates after its module loads and keeps the served node" {
+	setGreeting("hello");
+	const root = servedPage();
+	const sent = mockToString(root);
+	const served = root.children[0].children[0];
+	assert sent === "<root><div><p>hello ssr</p></div></root>", sent;
+	const gate = new Gate();
+	const Page = lazyModule("tests/render/lazyHydrate/cold", coldLoader(gate));
+	putModule("0", "tests/render/lazyHydrate/cold");
+	const dispose = hydrate(shell(Page), mockHost(), root as unknown as HostNode);
+	assert !hydrating(), "the claim waits for the module";
+	assert mockToString(root) === sent && root.children[0].children[0] === served, mockToString(root);
+	await release(gate);
+	assert !hydrating(), "the claim ended";
+	assert mockToString(root) === sent, mockToString(root);
+	assert root.children[0].children[0] === served, "the page's own <p>";
+	setGreeting("hi");
+	flush();
+	assert served.children[0].text === "hi ssr", "the served node is the live one: " + mockToString(root);
+	dispose();
+	clearRecords();
+}
+
+test "a hydrate disposed before its lazy module loads never claims the page" {
+	setGreeting("hello");
+	const root = servedPage();
+	const sent = mockToString(root);
+	const gate = new Gate();
+	const Page = lazyModule("tests/render/lazyHydrate/disposed", coldLoader(gate));
+	putModule("0", "tests/render/lazyHydrate/disposed");
+	const dispose = hydrate(shell(Page), mockHost(), root as unknown as HostNode);
+	dispose();
+	await release(gate);
+	assert !hydrating(), "no claim is left open";
+	setGreeting("hi");
+	flush();
+	assert mockToString(root) === sent, "nothing mounted: " + mockToString(root);
+	clearRecords();
 }
