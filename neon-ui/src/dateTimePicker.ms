@@ -10,9 +10,9 @@ import { Accessor, accessor, createSignal, untrack } from "../../src/core/signal
 import { element } from "../../src/macros/ui/element";
 import { For, Show } from "../../src/macros/ui/flow";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { NeonNode, RefFn, VAttr, VEvent, dynAttr, evt, hostElement } from "../../src/render/node";
+import { NeonNode, VAttr, VEvent, dynAttr, evt, hostElement } from "../../src/render/node";
 import { defaultRole, layered } from "../../src/components/drawn";
-import { AccessibilityProps, Pressable, Text, View, accessibilityAttrs } from "../../src/components/primitives";
+import { AccessibilityProps, Pressable, Text, View, ViewHandle, accessibilityAttrs, viewGrab, viewMount, viewRef } from "../../src/components/primitives";
 import { Modal } from "../../src/components/modal";
 import { Dialog, DialogAction } from "../../src/components/dialog";
 import { ListWheelScrollView, WheelRenderItemInfo } from "../../src/components/listWheel";
@@ -32,7 +32,7 @@ interface DateTimePickerProps extends AccessibilityProps {
 	textColor?: Accessor<string> | null;
 	onChange?: ((value: string) => void) | null;
 	style?: Accessor<Style> | null;
-	ref?: RefFn | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
@@ -238,7 +238,8 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 	})];
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const text = accessor((): Style => ({ color: ink(), fontSize: 16 }));
-	const opener = hostElement("pressable", attrs, evts, element(<Text style={text}>{value()}</Text>), layered(() => FIELD, props.style), props.ref);
+	const handle = viewRef(props.ref);
+	const opener = viewMount(handle, hostElement("pressable", attrs, evts, element(<Text style={text}>{value()}</Text>), layered(() => FIELD, props.style), viewGrab(handle)));
 	const inPlace: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => { panel()(host, parent, before); };
 	return element(<Show when={inline()} fallback={<>{opener}{sheet}</>}>{inPlace}</Show>);
 }

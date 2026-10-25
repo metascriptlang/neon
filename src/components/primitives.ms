@@ -28,8 +28,8 @@ import { paragraphChildren } from "../render/paragraph";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext } from "../render/voidScope";
-import { ElementHandle, ElementRef } from "../render/measure";
-export { ElementHandle, MeasureRect, MeasureError } from "../render/measure";
+import { ElementHandle } from "../render/measure";
+export { ElementHandle, DOMRect, MeasureRect, MeasureError } from "../render/measure";
 import { visibleContentAttr } from "../render/visibleContent";
 import {
 	ResponderEntry,
@@ -111,7 +111,7 @@ export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): V
 	return attrs;
 }
 
-function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null, rawRef: RefFn | null = null, elementRef: ElementRef | null = null): NeonNode {
+function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null, rawRef: RefFn | null = null, ref: ((handle: ViewHandle) => void) | null = null): NeonNode {
 	if (props.class !== null) {
 		const cls = props.class as () => string;
 		attrs.push(dynAttr("class", () => cls()));
@@ -119,7 +119,13 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 	accessibilityAttrs(props, attrs);
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
-	return hostElement(tag, attrs, evts, kids, style, rawRef, elementRef);
+	const handle = viewRef(ref);
+	const grab = viewGrab(handle);
+	const take: RefFn | null = rawRef === null ? grab : grab === null ? rawRef : (n: HostNode): void => {
+		(rawRef as RefFn)(n);
+		(grab as RefFn)(n);
+	};
+	return viewMount(handle, hostElement(tag, attrs, evts, kids, style, take));
 }
 
 // Where the IME candidate window goes, in the component's own layout points.
@@ -321,6 +327,36 @@ export class ViewHandle extends ElementHandle {
 	}
 }
 
+export interface ViewRef {
+	grab: RefFn;
+	mount: (node: NeonNode) => NeonNode;
+}
+
+export function viewRef(ref: ((handle: ViewHandle) => void) | null): ViewRef | null {
+	if (ref === null) { return null; }
+	const user = ref as (handle: ViewHandle) => void;
+	let on: Host | null = null;
+	return {
+		grab: (n: HostNode): void => {
+			let mounted = true;
+			onCleanup((): void => { mounted = false; });
+			user(new ViewHandle(on as Host, n, (): boolean => mounted));
+		},
+		mount: (node: NeonNode): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
+			on = host;
+			node(host, parent, before);
+		},
+	};
+}
+
+export function viewGrab(handle: ViewRef | null): RefFn | null {
+	return handle === null ? null : (handle as ViewRef).grab;
+}
+
+export function viewMount(handle: ViewRef | null, node: NeonNode): NeonNode {
+	return handle === null ? node : (handle as ViewRef).mount(node);
+}
+
 export function View(props: ViewProps): NeonNode {
 	const handlers = responderHandlers(props);
 	const evts = interactiveEvents(props, []);
@@ -335,29 +371,18 @@ export function View(props: ViewProps): NeonNode {
 	if (end !== null) { evts.push(end as VEvent); }
 	if (cancel !== null) { evts.push(cancel as VEvent); }
 	const attrs = interactiveAttrs(props, []);
-	const userRef = props.ref;
-	let mountedOn: Host | null = null;
-	let mounted = false;
 	const kids = props.children;
 	const provided: NeonNode | null = entry === null || kids === null ? kids : ResponderParent.provider({
 		value: accessor((): ResponderEntry | null => entry),
 		children: kids as NeonNode,
 	});
-	const grab: RefFn | null = entry === null && userRef === null ? null : (node: HostNode): void => {
-		if (entry !== null) { (entry as ResponderEntry).node = node; }
-		if (userRef !== null) { (userRef as (h: ViewHandle) => void)(new ViewHandle(mountedOn as Host, node, (): boolean => mounted)); }
-	};
-	const view = primitive("view", props, attrs, evts, provided, grab);
-	if (grab === null) { return view; }
+	const take: RefFn | null = entry === null ? null : (node: HostNode): void => { (entry as ResponderEntry).node = node; };
+	const view = primitive("view", props, attrs, evts, provided, take, props.ref);
+	if (entry === null) { return view; }
+	const owner = entry as ResponderEntry;
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		mountedOn = host;
-		mounted = true;
-		onCleanup((): void => { mounted = false; });
-		if (entry !== null) {
-			const owner = entry as ResponderEntry;
-			owner.host = host;
-			onCleanup((): void => { responderUnmounted(owner); });
-		}
+		owner.host = host;
+		onCleanup((): void => { responderUnmounted(owner); });
 		view(host, parent, before);
 	};
 }
@@ -365,7 +390,7 @@ export function View(props: ViewProps): NeonNode {
 export type EllipsizeMode = "head" | "middle" | "tail" | "clip";
 
 export interface TextProps extends HostProps {
-	ref?: ElementRef | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	numberOfLines?: Accessor<number> | null;
 	ellipsizeMode?: Accessor<EllipsizeMode> | null;
 	selectable?: Accessor<boolean> | null;
@@ -494,7 +519,7 @@ function rippleAttr(ripple: AndroidRipple): string {
 }
 
 interface PressableProps extends HostProps {
-	ref?: ElementRef | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	hitSlop?: Accessor<number | Insets> | null;
 	android_ripple?: Accessor<AndroidRipple> | null;
 	onPress?: ((e: NeonEvent) => void) | null;

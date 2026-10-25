@@ -1,7 +1,6 @@
 import { Host, HostNode, MeasureRect, MeasureError } from "./hostTypes";
 
 export { MeasureRect, MeasureError } from "./hostTypes";
-export type ElementRef = (handle: ElementHandle) => void;
 
 export interface DOMRect {
 	x: number;

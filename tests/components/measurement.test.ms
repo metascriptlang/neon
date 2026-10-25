@@ -1,5 +1,5 @@
-import { ElementHandle, ElementRef, MeasureRect, MeasureError } from "../../src/index";
-import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
+import { ElementHandle, MeasureRect, MeasureError } from "../../src/index";
+import { HostNode, MockNode, mockHost, mockNode, render } from "../../src/render/host";
 import { View, ViewHandle, Text, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
 import { Image } from "../../src/components/image";
@@ -9,7 +9,7 @@ test "primitive refs expose portable handles without changing node identity" {
 	const host = mockHost();
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
 	const handles: ElementHandle[] = [];
-	const grab: ElementRef = (h: ElementHandle): void => { handles.push(h); };
+	const grab = (h: ElementHandle): void => { handles.push(h); };
 	const root = mockNode("root");
 	const dispose = render(element(<View ref={grab}>
 		<Text ref={(h: ElementHandle): void => { handles.push(h); }}>hello</Text>
@@ -103,4 +103,28 @@ test "one ViewHandle keeps focus and both measurements under the same lifetime" 
 	assert measured === 2 && failed, "measureLayout after unmount calls onFail";
 	handles[0].focus();
 	assert log === "focus;blur;", "focus after unmount does nothing: " + log;
+}
+
+test "Text, Pressable, Image and Switch hand their ref a View's handle that knows when it unmounts" {
+	const host = mockHost();
+	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
+	const handles: ViewHandle[] = [];
+	const keep = (h: ViewHandle): void => { handles.push(h); };
+	const root = mockNode("root");
+	const dispose = render(element(<View>
+		<Text ref={keep}>a</Text>
+		<Text ref={keep} numberOfLines={1}>b</Text>
+		<Text ref={keep} onPress={(): void => {}}>c</Text>
+		<Pressable ref={keep} />
+		<Image ref={keep} source={{ uri: "a.png" }} />
+		<Switch ref={keep} />
+	</View>), host, root as unknown as HostNode);
+	const frames = (): string => {
+		let out = "";
+		for (const h of handles) { out += `${(h.node as unknown as MockNode).tag}:${h.getBoundingClientRect().bottom} `; }
+		return out;
+	};
+	assert frames() === "text:6 text:6 text:6 pressable:6 image:6 switch:6 ", frames();
+	dispose();
+	assert frames() === "text:0 text:0 text:0 pressable:0 image:0 switch:0 ", "unmounted: " + frames();
 }

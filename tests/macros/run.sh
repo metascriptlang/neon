@@ -34,6 +34,7 @@ expect_reject tests/macros/refLiteralRejected.ms "arg 1: got string, expected fu
 expect_reject tests/macros/refLiteralRootRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refEmptyArrayRejected.ms "a ref array needs at least one ref"
 expect_reject tests/macros/refArrayEntryRejected.ms "Type .string. is not assignable to type .function . null."
+expect_reject tests/macros/textRefHandleRejected.ms "the expected function passes it ViewHandle"
 expect_reject tests/macros/optChangeTextTemplateRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/optChangeTextFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/componentUnknownPropRejected.ms "<Badge> has no prop 'lable'"

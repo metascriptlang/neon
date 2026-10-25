@@ -2,8 +2,7 @@ import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { Accessor } from "../core/signal";
 import { NeonNode, VAttr, VEvent, hostElement, evt } from "../render/node";
-import { ElementRef } from "../render/measure";
-import { AccessibilityProps, accessibilityAttrs, flagAttr, stringAttr } from "./primitives";
+import { AccessibilityProps, ViewHandle, accessibilityAttrs, flagAttr, stringAttr, viewGrab, viewMount, viewRef } from "./primitives";
 
 when (c && !server && (ios || android || (macos && !testBuild))) {
 	import "../platform/native/switch";
@@ -17,7 +16,7 @@ interface SwitchProps extends AccessibilityProps {
 	trackColorOn?: Accessor<string> | null;
 	trackColorOff?: Accessor<string> | null;
 	style?: Accessor<Style> | null;
-	ref?: ElementRef | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
@@ -37,5 +36,6 @@ export function Switch(props: SwitchProps): NeonNode {
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
-	return hostElement("switch", attrs, evts, null, style, null, props.ref);
+	const handle = viewRef(props.ref);
+	return viewMount(handle, hostElement("switch", attrs, evts, null, style, viewGrab(handle)));
 }

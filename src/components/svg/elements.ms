@@ -8,7 +8,7 @@ import { Host, HostNode } from "../../render/hostTypes";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../../render/node";
 import { bindAttr, bindStyleAll } from "../../render/bind";
 import { place } from "../../render/reconcile";
-import { AccessibilityProps, accessibilityAttrs, stringAttr } from "../primitives";
+import { AccessibilityProps, ViewHandle, accessibilityAttrs, stringAttr, viewGrab, viewMount, viewRef } from "../primitives";
 import { SvgScene, encodeScene, sceneChanged, sceneHost } from "./scene";
 
 when (js && !server) {
@@ -367,7 +367,7 @@ export interface SvgProps extends SvgPresentationProps, AccessibilityProps {
 	preserveAspectRatio?: Accessor<string> | null;
 	style?: Accessor<Style> | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
-	ref?: RefFn | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	children?: NeonNode | null;
 }
 
@@ -414,8 +414,9 @@ export function Svg(props: SvgProps): NeonNode {
 	const height = props.height;
 	const style = props.style;
 	const children = props.children;
-	const ref = props.ref;
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+	const handle = viewRef(props.ref);
+	const ref = viewGrab(handle);
+	return viewMount(handle, (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const node = host.createElement("svg");
 		for (const a of hostAttrs) { bindAttr(host, node, a.name, a.dyn); }
 		bindStyleAll(host, node, (): Style => svgStyle(width, height, style));
@@ -440,5 +441,5 @@ export function Svg(props: SvgProps): NeonNode {
 		sceneChanged(scene);
 		if (ref !== null) { (ref as RefFn)(node); }
 		place(host, parent, node, before);
-	};
+	});
 }

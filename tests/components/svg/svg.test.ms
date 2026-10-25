@@ -4,6 +4,8 @@ import { element } from "../../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../../src/render/host";
 import { Style } from "../../../src/render/style";
 import { NeonNode } from "../../../src/render/node";
+import { MeasureRect, MeasureError } from "../../../src/render/hostTypes";
+import { ViewHandle } from "../../../src/components/primitives";
 import { Show, For } from "../../../src/macros/ui/flow";
 import {
 	Svg,
@@ -188,4 +190,16 @@ test "Show and For inside an Svg add and remove shapes" {
 	flush();
 	assert listOf(root).endsWith("M 0 0 L 2 0 L 2 30 L 0 30 Z F c 0 0 255 1 S n E 0 O"), listOf(root);
 	assert listOf(root).indexOf("L 2 20") < 0, listOf(root);
+}
+
+test "Svg hands its ref a View's handle that knows when it unmounts" {
+	const host = mockHost();
+	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
+	const handles: ViewHandle[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Svg ref={(h: ViewHandle): void => { handles.push(h); }} width={10} height={10} />), host, root as unknown as HostNode);
+	assert handles.length === 1 && (handles[0].node as unknown as MockNode).tag === "svg";
+	assert handles[0].getBoundingClientRect().bottom === 6, "mounted";
+	dispose();
+	assert handles[0].getBoundingClientRect().bottom === 0, "unmounted";
 }

@@ -2,8 +2,7 @@ import { NeonEvent, neonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
 import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/node";
-import { ElementRef } from "../render/measure";
-import { AccessibilityProps, accessibilityAttrs } from "./primitives";
+import { AccessibilityProps, ViewHandle, accessibilityAttrs, viewGrab, viewMount, viewRef } from "./primitives";
 import { appServices } from "../api/services";
 
 export interface ImageSource {
@@ -18,7 +17,7 @@ export interface ImageProps extends AccessibilityProps {
 	resizeMode?: Accessor<ImageResizeMode> | null;
 	blurRadius?: Accessor<number> | null;
 	style?: Accessor<Style> | null;
-	ref?: ElementRef | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	onLoadStart?: (() => void) | null;
 	onLoad?: ((e: NeonEvent) => void) | null;
 	onError?: ((e: NeonEvent) => void) | null;
@@ -127,5 +126,6 @@ export function Image(props: ImageProps): NeonNode {
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
-	return hostElement("image", attrs, evts, null, style, null, props.ref);
+	const handle = viewRef(props.ref);
+	return viewMount(handle, hostElement("image", attrs, evts, null, style, viewGrab(handle)));
 }
