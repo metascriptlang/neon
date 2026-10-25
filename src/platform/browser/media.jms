@@ -15,13 +15,13 @@ import {
 import { MediaElement, registerMediaElement } from "./domCapabilities";
 
 extern class MediaClassList {
-	extern add(name: cstring): void;
-	extern remove(name: cstring): void;
+	extern add(name: string): void;
+	extern remove(name: string): void;
 }
 
 extern class Node {
-	src: cstring;
-	srcdoc: cstring;
+	src: string;
+	srcdoc: string;
 	muted: boolean;
 	volume: number;
 	playbackRate: number;
@@ -36,10 +36,10 @@ extern class Node {
 	videoHeight: number;
 	currentSrc: string;
 	classList: MediaClassList;
-	extern getAttribute(name: cstring): string | null;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern removeAttribute(name: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
+	extern getAttribute(name: string): string | null;
+	extern setAttribute(name: string, value: string): void;
+	extern removeAttribute(name: string): void;
+	extern addEventListener(name: string, handler: (e: Event) => void): void;
 	extern pause(): void;
 	extern focus(): void;
 }
@@ -47,11 +47,11 @@ extern class Node {
 extern class Event {}
 
 extern class document {
-	static extern createElement(tag: cstring): Node;
+	static extern createElement(tag: string): Node;
 }
 
 extern class window {
-	static extern addEventListener(name: cstring, handler: (e: Event) => void): void;
+	static extern addEventListener(name: string, handler: (e: Event) => void): void;
 }
 
 extern function queueMicrotask(callback: () => void): void;
@@ -59,8 +59,8 @@ extern function frameSameOrigin(frame: Node): boolean from "((f) => { try { retu
 extern function frameLoaded(frame: Node): boolean from "((f) => { try { const d = f.contentDocument; if (!d || d.readyState !== 'complete') return false; const h = f.contentWindow.location.href; if (f.hasAttribute('srcdoc')) return h === 'about:srcdoc'; const s = f.getAttribute('src'); return !s || s === 'about:blank' || h !== 'about:blank'; } catch (e) { return false; } })(#)";
 extern function frameLocation(frame: Node): string from "#.contentWindow.location.href";
 extern function frameTitle(frame: Node): string from "(#.contentDocument.title || '')";
-extern function frameEval(frame: Node, script: cstring): void from "#.contentWindow.eval(#)";
-extern function framePost(frame: Node, data: cstring): void from "#.contentWindow.postMessage(#, '*')";
+extern function frameEval(frame: Node, script: string): void from "#.contentWindow.eval(#)";
+extern function framePost(frame: Node, data: string): void from "#.contentWindow.postMessage(#, '*')";
 extern function frameReload(frame: Node): void from "#.contentWindow.location.reload()";
 extern function frameStop(frame: Node): void from "#.contentWindow.stop()";
 extern function historyBack(unused: int32): void from "(#, history.back())";

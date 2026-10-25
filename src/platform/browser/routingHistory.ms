@@ -34,9 +34,9 @@ when (js) {
 		): void;
 	}
 
-	extern function readHistoryString(key: cstring): string from
+	extern function readHistoryString(key: string): string from
 		"(k => typeof history.state?.[k] === 'string' ? history.state[k] : '')(#)";
-	extern function readHistoryIndex(key: cstring): int32 from
+	extern function readHistoryIndex(key: string): int32 from
 		"(k => Number.isInteger(history.state?.[k]) ? history.state[k] : 0)(#)";
 
 	extern class Event {

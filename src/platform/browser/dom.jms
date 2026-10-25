@@ -49,10 +49,10 @@ import { installBrowserAppServices } from "./appServices";
 import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
-	extern add(name: cstring): void;
-	extern remove(name: cstring): void;
-	extern toggle(name: cstring): void;
-	extern contains(name: cstring): boolean;
+	extern add(name: string): void;
+	extern remove(name: string): void;
+	extern toggle(name: string): void;
+	extern contains(name: string): boolean;
 }
 
 extern class DomRect {
@@ -63,7 +63,7 @@ extern class DomRect {
 }
 
 extern class Reflect {
-	static extern has(target: Node, key: cstring): boolean;
+	static extern has(target: Node, key: string): boolean;
 }
 
 extern class ResizeObserver {
@@ -78,8 +78,8 @@ interface DomScrollOptions {
 }
 
 extern class Node {
-	textContent: cstring;
-	innerHTML: cstring;
+	textContent: string;
+	innerHTML: string;
 	scrollLeft: number;
 	scrollTop: number;
 	scrollWidth: number;
@@ -114,18 +114,18 @@ extern class Node {
 	isConnected: boolean;
 	extern removeChild(child: Node): void;
 	extern replaceChild(node: Node, old: Node): void;
-	value: cstring;
+	value: string;
 	checked: boolean;
 	naturalWidth: number;
 	naturalHeight: number;
 	selectionStart: number;
 	selectionEnd: number;
 	extern setSelectionRange(start: number, end: number): void;
-	extern getAttribute(name: cstring): string | null;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern removeAttribute(name: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
-	extern removeEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern getAttribute(name: string): string | null;
+	extern setAttribute(name: string, value: string): void;
+	extern removeAttribute(name: string): void;
+	extern addEventListener(name: string, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern removeEventListener(name: string, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern setPointerCapture(pointerId: number): void;
 }
 
@@ -176,7 +176,7 @@ extern class DomEvent {
 
 extern class MediaQueryList {
 	matches: boolean;
-	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	extern addEventListener(name: string, handler: (e: DomEvent) => void): void;
 }
 
 extern class ComputedFont {
@@ -189,9 +189,9 @@ extern class window {
 	static innerHeight: number;
 	static scrollX: number;
 	static scrollY: number;
-	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
-	static extern matchMedia(query: cstring): MediaQueryList;
-	static extern removeEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	static extern addEventListener(name: string, handler: (e: DomEvent) => void): void;
+	static extern matchMedia(query: string): MediaQueryList;
+	static extern removeEventListener(name: string, handler: (e: DomEvent) => void): void;
 	static extern getComputedStyle(node: Node): ComputedFont;
 }
 
@@ -726,9 +726,9 @@ extern class document {
 	static documentElement: Node;
 	static head: Node;
 	static activeElement: Node;
-	static extern createElement(tag: cstring): Node;
-	static extern createTextNode(s: cstring): Node;
-	static extern createElementNS(ns: cstring, tag: cstring): Node;
+	static extern createElement(tag: string): Node;
+	static extern createTextNode(s: string): Node;
+	static extern createElementNS(ns: string, tag: string): Node;
 }
 
 // One <style> element owns every rule the program registered. Rewriting its
@@ -821,7 +821,7 @@ extern function enterHead(node: Node): void from
 	"(n => { if (n.nodeType !== 1 || n.neonKey !== undefined) return; const t = n.localName; if (t !== 'title' && t !== 'meta') return; const a = k => n.getAttribute(k); const named = a('name') ?? a('property'); if (t === 'meta' && named === null && a('http-equiv') === null && a('charset') === null) return; const key = t === 'title' ? t : JSON.stringify([named, a('http-equiv'), a('content'), a('charset'), a('media')]); const all = document.head.neonCascade ??= new Map(); const list = all.get(key) ?? []; all.set(key, list); const prev = list[list.length - 1]; list.push(n); n.neonKey = key; if (prev !== undefined) { const held = document.createComment(''); prev.replaceWith(held); prev.neonHeld = held; held.neonFor = prev; } })(#)";
 extern function leaveHead(node: Node): Node from
 	"(n => { const key = n.neonKey; if (key === undefined) return n; const list = document.head.neonCascade.get(key); const i = list.indexOf(n); list.splice(i, 1); n.neonKey = undefined; const held = n.neonHeld; if (held !== undefined) { n.neonHeld = undefined; return held; } const prev = i === list.length ? list[i - 1] : undefined; if (prev !== undefined) { prev.neonHeld.replaceWith(prev); prev.neonHeld = undefined; } return n; })(#)";
-extern function swapSheetClass(node: Node, id: cstring): void from
+extern function swapSheetClass(node: Node, id: string): void from
 	"((n, id) => { const was = n.neonSheet; if (was !== undefined && was !== id) n.classList.remove(was); if (id !== '') n.classList.add(id); n.neonSheet = id === '' ? undefined : id; })(#, #)";
 extern function shownInHead(node: Node | null): Node | null from "(n => n !== null && n.neonHeld !== undefined ? n.neonHeld : n)(#)";
 extern function heldByHead(node: Node | null): Node | null from "(n => n !== null && n.neonFor !== undefined ? n.neonFor : n)(#)";

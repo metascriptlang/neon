@@ -524,9 +524,9 @@ export macro cssStyleExternBody(node: Node): Node {
 	for (let i = 0; i < table.length; i = i + 1) {
 		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
-		body.push({ kind: NodeKind.PropertyDecl, line: L, column: C, propName: row[0], propType: "cstring", propIsStatic: false, propIsReadonly: false, propVisibility: "", propInitializer: null as unknown as Node });
+		body.push({ kind: NodeKind.PropertyDecl, line: L, column: C, propName: row[0], propType: "string", propIsStatic: false, propIsReadonly: false, propVisibility: "", propInitializer: null as unknown as Node });
 	}
-	body.push({ kind: NodeKind.PropertyDecl, line: L, column: C, propName: "cssText", propType: "cstring", propIsStatic: false, propIsReadonly: false, propVisibility: "", propInitializer: null as unknown as Node });
+	body.push({ kind: NodeKind.PropertyDecl, line: L, column: C, propName: "cssText", propType: "string", propIsStatic: false, propIsReadonly: false, propVisibility: "", propInitializer: null as unknown as Node });
 	const cls: Node = { kind: NodeKind.ClassDecl, line: L, column: C, className: "CssStyle", classExtends: "", classBody: body, nameLocation: { line: L, column: C } };
 	cls.flags = cls.flags.incl(NodeFlag.ExternC);
 	return { kind: NodeKind.SpliceMany, line: L, column: C, spliceNodes: [{ kind: NodeKind.ExportDecl, line: L, column: C, exportedDecl: cls }] };

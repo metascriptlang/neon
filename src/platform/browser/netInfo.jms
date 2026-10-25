@@ -5,7 +5,7 @@ import {
 extern class NetInfoEvent {}
 
 extern class window {
-	static extern addEventListener(name: cstring, handler: (e: NetInfoEvent) => void): void;
+	static extern addEventListener(name: string, handler: (e: NetInfoEvent) => void): void;
 }
 
 extern class navigator {

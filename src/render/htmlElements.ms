@@ -112,9 +112,9 @@ when (js) {
 		extern save(): void;
 		extern restore(): void;
 		extern reset(): void;
-		extern fillText(text: cstring, x: number, y: number): void;
-		extern strokeText(text: cstring, x: number, y: number): void;
-		extern measureText(text: cstring): TextMetrics;
+		extern fillText(text: string, x: number, y: number): void;
+		extern strokeText(text: string, x: number, y: number): void;
+		extern measureText(text: string): TextMetrics;
 		direction: "inherit" | "ltr" | "rtl";
 		font: string;
 		fontKerning: "auto" | "none" | "normal";
@@ -685,18 +685,18 @@ when (js) {
 		zoom: string;
 		cssText: string;
 		readonly length: number;
-		extern getPropertyValue(property: cstring): string;
-		extern removeProperty(property: cstring): string;
+		extern getPropertyValue(property: string): string;
+		extern removeProperty(property: string): string;
 	}
 
 	export extern class DOMTokenList {
 		readonly length: number;
 		value: string;
-		extern contains(token: cstring): boolean;
-		extern toggle(token: cstring): boolean;
-		extern replace(token: cstring, newToken: cstring): boolean;
-		extern add(token: cstring): void;
-		extern remove(token: cstring): void;
+		extern contains(token: string): boolean;
+		extern toggle(token: string): boolean;
+		extern replace(token: string, newToken: string): boolean;
+		extern add(token: string): void;
+		extern remove(token: string): void;
 	}
 
 	export extern class NodeList {
@@ -749,16 +749,16 @@ when (js) {
 		readonly tagName: string;
 		readonly classList: DOMTokenList;
 		readonly part: DOMTokenList;
-		extern getAttribute(qualifiedName: cstring): string | null;
-		extern setAttribute(qualifiedName: cstring, value: cstring): void;
-		extern removeAttribute(qualifiedName: cstring): void;
-		extern hasAttribute(qualifiedName: cstring): boolean;
-		extern toggleAttribute(qualifiedName: cstring): boolean;
+		extern getAttribute(qualifiedName: string): string | null;
+		extern setAttribute(qualifiedName: string, value: string): void;
+		extern removeAttribute(qualifiedName: string): void;
+		extern hasAttribute(qualifiedName: string): boolean;
+		extern toggleAttribute(qualifiedName: string): boolean;
 		extern getBoundingClientRect(): DOMRect;
 		extern scrollIntoView(): void;
 		extern scrollTo(x: number, y: number): void;
 		extern scrollBy(x: number, y: number): void;
-		extern matches(selectors: cstring): boolean;
+		extern matches(selectors: string): boolean;
 		extern requestFullscreen(): Promise<void>;
 		extern checkVisibility(): boolean;
 		extern remove(): void;
@@ -796,8 +796,8 @@ when (js) {
 		inputMode: string;
 		readonly isContentEditable: boolean;
 		readonly style: CSSStyleDeclaration;
-		extern addEventListener(type: cstring, listener: (event: Event) => void): void;
-		extern querySelectorAll(selectors: cstring): NodeList;
+		extern addEventListener(type: string, listener: (event: Event) => void): void;
+		extern querySelectorAll(selectors: string): NodeList;
 	}
 
 	export extern class HTMLAnchorElement extends HTMLElement {
@@ -878,7 +878,7 @@ when (js) {
 		extern play(): Promise<void>;
 		extern pause(): void;
 		extern load(): void;
-		extern canPlayType(type: cstring): "" | "maybe" | "probably";
+		extern canPlayType(type: string): "" | "maybe" | "probably";
 		extern fastSeek(time: number): void;
 	}
 
@@ -923,14 +923,14 @@ when (js) {
 		readonly willValidate: boolean;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 		popoverTargetAction: string;
 	}
 
 	export extern class HTMLCanvasElement extends HTMLElement {
 		height: number;
 		width: number;
-		extern getContext(contextId: cstring): CanvasRenderingContext2D | null;
+		extern getContext(contextId: string): CanvasRenderingContext2D | null;
 		extern toDataURL(): string;
 	}
 
@@ -1000,7 +1000,7 @@ when (js) {
 		readonly willValidate: boolean;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 	}
 
 	export extern class HTMLFormElement extends HTMLElement {
@@ -1146,11 +1146,11 @@ when (js) {
 		extern select(): void;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 		extern showPicker(): void;
 		extern stepUp(): void;
 		extern stepDown(): void;
-		extern setRangeText(replacement: cstring, start: number, end: number): void;
+		extern setRangeText(replacement: string, start: number, end: number): void;
 		popoverTargetAction: string;
 	}
 
@@ -1239,7 +1239,7 @@ when (js) {
 		readonly willValidate: boolean;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 	}
 
 	export extern class HTMLOListElement extends HTMLElement {
@@ -1276,7 +1276,7 @@ when (js) {
 		readonly htmlFor: DOMTokenList;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 	}
 
 	export extern class HTMLParagraphElement extends HTMLElement {
@@ -1327,7 +1327,7 @@ when (js) {
 		readonly willValidate: boolean;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
+		extern setCustomValidity(error: string): void;
 		extern showPicker(): void;
 	}
 
@@ -1432,8 +1432,8 @@ when (js) {
 		extern select(): void;
 		extern checkValidity(): boolean;
 		extern reportValidity(): boolean;
-		extern setCustomValidity(error: cstring): void;
-		extern setRangeText(replacement: cstring, start: number, end: number): void;
+		extern setCustomValidity(error: string): void;
+		extern setRangeText(replacement: string, start: number, end: number): void;
 	}
 
 	export extern class HTMLTimeElement extends HTMLElement {

@@ -3,10 +3,10 @@ import { svgMarkup } from "../../components/svg/markup";
 import { installSvgWriter } from "./domCapabilities";
 
 extern class Node {
-	innerHTML: cstring;
-	extern getAttribute(name: cstring): string | null;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern removeAttribute(name: cstring): void;
+	innerHTML: string;
+	extern getAttribute(name: string): string | null;
+	extern setAttribute(name: string, value: string): void;
+	extern removeAttribute(name: string): void;
 }
 
 function writeSvgList(node: HostNode, list: string): void {

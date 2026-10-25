@@ -6,11 +6,11 @@ extern class MotionEvent {}
 
 extern class BrowserMediaQuery {
 	matches: boolean;
-	extern addEventListener(name: cstring, handler: (e: MotionEvent) => void): void;
+	extern addEventListener(name: string, handler: (e: MotionEvent) => void): void;
 }
 
 extern class window {
-	static extern matchMedia(query: cstring): BrowserMediaQuery;
+	static extern matchMedia(query: string): BrowserMediaQuery;
 }
 
 extern function hasWindow(unused: int32): boolean from "(#, typeof window !== 'undefined' && typeof window.matchMedia === 'function')";

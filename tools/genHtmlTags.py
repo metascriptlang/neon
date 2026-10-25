@@ -359,9 +359,9 @@ METHODS = {
 # lib.dom writes these with a rest parameter, a generic or a listener object, which the member mapper
 # above does not translate; the shapes below are the subset the platform hosts call.
 HAND_MAPPED_MEMBERS = {
-    "HTMLElement": ["extern addEventListener(type: cstring, listener: (event: Event) => void): void;",
-                    "extern querySelectorAll(selectors: cstring): NodeList;"],
-    "DOMTokenList": ["extern add(token: cstring): void;", "extern remove(token: cstring): void;"],
+    "HTMLElement": ["extern addEventListener(type: string, listener: (event: Event) => void): void;",
+                    "extern querySelectorAll(selectors: string): NodeList;"],
+    "DOMTokenList": ["extern add(token: string): void;", "extern remove(token: string): void;"],
     "NodeList": ["extern item(index: number): HTMLElement | null;"],
 }
 CLASS_MEMBER_NAMES_THAT_DO_NOT_PARSE = {"async", "static", "readonly", "abstract"}
@@ -377,9 +377,9 @@ def member_type(ts, alias, declared, param):
     keep = []
     for p in parts:
         if p in ("string", "number", "boolean", "void"):
-            keep.append("cstring" if param and p == "string" else p)
+            keep.append(p)
         elif p in literals:
-            keep.append("cstring" if param else p)
+            keep.append("string" if param else p)
         elif p == "null" and not param:
             keep.append(p)
         elif p in declared and not param:

@@ -1,6 +1,6 @@
 import { HapticsServices, installHapticsServices } from "../../api/hapticsServices";
 
-extern function vibrateFor(pattern: cstring): boolean from "(typeof navigator.vibrate === 'function' ? navigator.vibrate(JSON.parse(#)) : false)";
+extern function vibrateFor(pattern: string): boolean from "(typeof navigator.vibrate === 'function' ? navigator.vibrate(JSON.parse(#)) : false)";
 
 function haptic(kind: string, style: string): void {
 	const pattern = match (kind + "." + style) {
