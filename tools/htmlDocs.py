@@ -334,6 +334,11 @@ PER_TAG = {
     "iframe.name": "The name of the embedded browsing context, usable as a link target.",
     "slot.name": "The name content uses to fill this slot.",
     "track.label": "The title of the track shown to the user.",
+    "a.state": "Solid Router: JSON the router parses and stores as the history state of the navigation.",
+    "a.noscroll": "Solid Router: keeps the scroll position when the link navigates; the router tests presence, so `false` also counts.",
+    "a.replace": "Solid Router: replaces the current history entry; the router tests presence, so `false` also counts.",
+    "a.preload": "Solid Router: whether hovering or focusing the link preloads its route; `false` turns it off.",
+    "a.link": "Solid Router: in explicit-links mode, marks an anchor the router handles.",
     "a.type": "The media type of the linked resource.",
     "link.type": "The media type of the linked resource.",
 }

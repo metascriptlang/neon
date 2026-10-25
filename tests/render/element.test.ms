@@ -365,3 +365,14 @@ test "number and boolean attribute values lower to the strings HTML reads" {
 	flush();
 	assert mockToString(root) === "<root><div tabindex=\"3\" draggable=\"false\" spellcheck=\"true\"><input readonly=\"\"></input><td colspan=\"4\" rowspan=\"1.5\"></td></div></root>", "followed: " + mockToString(root);
 }
+
+test "a nullable number or boolean attribute is removed by null and lowered otherwise" {
+	const [span, setSpan] = createSignal<number | null>(3);
+	const [open, setOpen] = createSignal<boolean | null>(null);
+	const root = mounted(element(<details open={open()}><td colspan={span()} /></details>));
+	assert mockToString(root) === "<root><details><td colspan=\"3\"></td></details></root>", "first: " + mockToString(root);
+	setSpan(null);
+	setOpen(true);
+	flush();
+	assert mockToString(root) === "<root><details open=\"\"><td></td></details></root>", "after: " + mockToString(root);
+}

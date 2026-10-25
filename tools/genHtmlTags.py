@@ -16,6 +16,16 @@ RDFA = "https://www.w3.org/TR/rdfa-core/#s_syntax"
 NOT_ATTRIBUTES = {"innerText", "innerHTML", "textContent", "key", "style", "children", "ref", "classList", "$ServerOnly", "inlist"}
 GLOBAL_SOURCES = ("DOMAttributes", "HTMLAttributes")
 RDFA_NAMES = {"about", "datatype", "prefix", "property", "resource", "typeof", "vocab"}
+ROUTER_ANCHOR_URL = "https://docs.solidjs.com/solid-router/reference/components/a"
+# solid-router src/components.tsx:15-25 augments AnchorHTMLAttributes with these, and its
+# handlers read them back as strings (src/data/events.ts:88 `getAttribute("preload") !== "false"`).
+ROUTER_ANCHOR_AUGMENTATION = [
+    {"name": "state", "type": "string"},
+    {"name": "noScroll", "type": '"true" | "false" | boolean'},
+    {"name": "replace", "type": '"true" | "false" | boolean'},
+    {"name": "preload", "type": '"true" | "false" | boolean'},
+    {"name": "link", "type": '"true" | "false" | boolean'},
+]
 GLOBAL_PAGES = {
     "class": "Global_attributes/class",
     "role": "../Accessibility/ARIA/Roles",
@@ -28,13 +38,14 @@ def width(line):
 
 
 def doc_lines(indent, text, url=None):
-    tail = " [MDN](" + url + ")" if url else ""
+    label = "MDN" if url and "developer.mozilla.org" in url else "Docs"
+    tail = " [" + label + "](" + url + ")" if url else ""
     one = indent + "/** " + text + tail + " */"
     if width(one) <= 100:
         return [one]
     body = textwrap.wrap(text, 100 - width(indent) - 3)
     if url:
-        body.append("[MDN](" + url + ")")
+        body.append("[" + label + "](" + url + ")")
     return [indent + "/**"] + [indent + " * " + b for b in body] + [indent + " */"]
 
 
@@ -177,6 +188,8 @@ def jsx_tables():
     for m in members(blocks["HTMLElementTags"][1]):
         iface = m["type"].split("<")[0]
         attrs = [] if iface == "HTMLAttributes" else [a for a in own(iface, GLOBAL_SOURCES) if usable(a)]
+        if m["name"] == "a":
+            attrs += [dict(a, doc="", readonly=False, optional=True, params=None) for a in ROUTER_ANCHOR_AUGMENTATION]
         tags.append((m["name"], iface, attrs))
     return globals_, tags, alias
 
@@ -201,6 +214,8 @@ def describe(tag, name):
 
 def attribute_url(tag, name):
     lower = name.lower()
+    if tag == "a" and name in {a["name"] for a in ROUTER_ANCHOR_AUGMENTATION}:
+        return ROUTER_ANCHOR_URL
     if tag:
         return MDN + "Element/" + tag + "#" + lower
     if lower in RDFA_NAMES:

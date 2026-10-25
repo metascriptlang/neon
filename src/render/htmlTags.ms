@@ -212,20 +212,26 @@ export interface HtmlGlobalAttributes {
 	itemType: string;
 	/**
 	 * The subject of the RDFa statements on this element.
-	 * [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax)
+	 * [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax)
 	 */
 	about: string;
-	/** The datatype of the RDFa literal. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/** The datatype of the RDFa literal. [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax) */
 	datatype: string;
-	/** RDFa prefix mappings. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/** RDFa prefix mappings. [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax) */
 	prefix: string;
-	/** The RDFa property the element expresses. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/**
+	 * The RDFa property the element expresses.
+	 * [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax)
+	 */
 	property: string;
-	/** The RDFa resource the element describes. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/**
+	 * The RDFa resource the element describes.
+	 * [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax)
+	 */
 	resource: string;
-	/** The RDFa type of the resource. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/** The RDFa type of the resource. [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax) */
 	typeof: string;
-	/** The RDFa vocabulary. [MDN](https://www.w3.org/TR/rdfa-core/#s_syntax) */
+	/** The RDFa vocabulary. [Docs](https://www.w3.org/TR/rdfa-core/#s_syntax) */
 	vocab: string;
 	/**
 	 * Deprecated. The id of a menu used as the context menu.
@@ -408,6 +414,33 @@ export interface HtmlAnchorAttributes {
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#shape)
 	 */
 	shape: "rect" | "circle" | "poly" | "default";
+	/**
+	 * Solid Router: JSON the router parses and stores as the history state of the navigation.
+	 * [Docs](https://docs.solidjs.com/solid-router/reference/components/a)
+	 */
+	state: string;
+	/**
+	 * Solid Router: keeps the scroll position when the link navigates; the router tests presence,
+	 * so `false` also counts.
+	 * [Docs](https://docs.solidjs.com/solid-router/reference/components/a)
+	 */
+	noScroll: "true" | "false" | boolean;
+	/**
+	 * Solid Router: replaces the current history entry; the router tests presence, so `false` also
+	 * counts.
+	 * [Docs](https://docs.solidjs.com/solid-router/reference/components/a)
+	 */
+	replace: "true" | "false" | boolean;
+	/**
+	 * Solid Router: whether hovering or focusing the link preloads its route; `false` turns it off.
+	 * [Docs](https://docs.solidjs.com/solid-router/reference/components/a)
+	 */
+	preload: "true" | "false" | boolean;
+	/**
+	 * Solid Router: in explicit-links mode, marks an anchor the router handles.
+	 * [Docs](https://docs.solidjs.com/solid-router/reference/components/a)
+	 */
+	link: "true" | "false" | boolean;
 }
 
 /** Attributes of `<area>` beyond the global ones. */

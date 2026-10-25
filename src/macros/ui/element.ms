@@ -271,12 +271,12 @@ export macro element(node: Node): Node {
 		if (isEventName(name) || name === "ref" || name === "style") { return a; }
 		if (name.startsWith("data-") || name.startsWith("aria-")) { return a; }
 		let expectedType: Node | null = own === null ? null : fieldType(own as Node, name);
-		if (expectedType === null) { expectedType = fieldType(htmlGlobals as Node, name); }
-		if (expectedType === null && name.includes("-") && hyphenatedAttributeNames().includes(name)) { return a; }
 		if (expectedType === null && refusedAttributeNames().includes(tag + "." + name)) {
 			error("<" + tag + "> does not take the attribute '" + name + "'", a);
 			return null;
 		}
+		if (expectedType === null) { expectedType = fieldType(htmlGlobals as Node, name); }
+		if (expectedType === null && name.includes("-") && hyphenatedAttributeNames().includes(name)) { return a; }
 		if (expectedType === null) {
 			let names: string[] = [];
 			if (own !== null) { for (const f of (own as Node).typExprFieldNames) { names.push(f); } }
@@ -323,19 +323,27 @@ export macro element(node: Node): Node {
 			lowered = lowering;
 		}
 		if (lowered === "string" || lowered === "") { return a; }
-		if (nullable) {
-			error("<" + tag + "> attribute '" + name + "' cannot take a nullable " + lowered + " yet: write a string | null value, such as {v === null ? null : v.toString()}", a);
-			return null;
-		}
 		if (lowered === "number" && value.kind === NodeKind.NumberLiteral && !isFloatLiteral(value)) {
 			return at(strLit(intValue(value).toString(), a.line, a.column));
 		}
-		const read: Node = isAccessorTyped(value) ? { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: value, arguments: [] } : value;
-		if (lowered === "number") {
-			return at({ kind: NodeKind.BinaryExpr, line: a.line, column: a.column, operator: "+", left: strLit("", a.line, a.column), right: read });
-		}
-		if (enumerated) { return at(choose(read, strLit("true", a.line, a.column), strLit("false", a.line, a.column))); }
-		return at(choose(read, strLit("", a.line, a.column), { kind: NodeKind.NullLiteral, line: a.line, column: a.column }));
+		const accessorRead = isAccessorTyped(value);
+		const readOf = (v: Node): Node => accessorRead ? { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: v, arguments: [] } : v;
+		const noValue: Node = { kind: NodeKind.NullLiteral, line: a.line, column: a.column };
+		const lower = (v: Node): Node => {
+			if (lowered === "number") { return { kind: NodeKind.BinaryExpr, line: a.line, column: a.column, operator: "+", left: strLit("", a.line, a.column), right: v }; }
+			if (enumerated) { return choose(v, strLit("true", a.line, a.column), strLit("false", a.line, a.column)); }
+			return choose(v, strLit("", a.line, a.column), noValue);
+		};
+		if (!nullable) { return at(lower(readOf(value))); }
+		const payload = accessorRead ? peelTypeRef(valueType as Node).typExprArgs[0] : (valueType as Node);
+		const held = ident("__msAttr", a.line, a.column);
+		const absent: Node = { kind: NodeKind.BinaryExpr, line: a.line, column: a.column, operator: "===", left: held, right: { kind: NodeKind.NullLiteral, line: a.line, column: a.column } };
+		const pick: Node = {
+			kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+			arrowParams: ["__msAttr"], arrowParamTypes: [typeText(payload)], arrowFlags: "", arrowReturnType: "string | null",
+			arrowBody: choose(absent, noValue, lower(ident("__msAttr", a.line, a.column))),
+		};
+		return at({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: pick, arguments: [readOf(value)] });
 	}
 	function checkHtmlElement(el: Node, attrs: Node[]): Node[] {
 		const tag = el.jsxTag;
