@@ -2,13 +2,14 @@
 //   msc build examples/windowsNative/ionAutomation.ms --output=out/windowsIonAutomation.exe
 //   out/windowsIonAutomation.exe            opens the window with a Pressable, a Switch, a disabled Pressable and a range
 //   out/windowsIonAutomation.exe --check    asks the window through the UIA client API and exits 0 when Name, ControlType,
-//                                           Invoke, Toggle, IsEnabled and RangeValue all answer as the props say
+//                                           Invoke, Toggle, Expand, Collapse, SetValue, IsEnabled and RangeValue all answer as the props
+//                                           say, and the declared accessibility actions reach onAccessibilityAction
 // Ion's window proc does not forward WM_GETOBJECT to Neon yet, so --check routes it with harnessAutomationForward.
 
 import { runNativeWindow, nativeWindowOptions } from "../../src/platform/windows/ion";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal } from "../../src/core/signal";
-import { NeonNode, VAttr, attr, hostElement } from "../../src/render/node";
+import { NeonNode, VAttr, VEvent, attr, evt, hostElement } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
 import { View, Text, Pressable } from "../../src/components/primitives";
@@ -34,6 +35,7 @@ const styles = createStyles({
 	toggle: { position: "absolute", left: 200, top: 20, width: 40, height: 20 },
 	locked: { position: "absolute", left: 20, top: 90, width: 140, height: 40, backgroundColor: "#bdbdbd" },
 	range: { position: "absolute", left: 200, top: 90, width: 140, height: 20, backgroundColor: "#2ecc71" },
+	menu: { position: "absolute", left: 20, top: 160, width: 140, height: 40, backgroundColor: "#8e44ad" },
 	label: { color: "#ffffff", fontSize: 16 },
 });
 
@@ -41,6 +43,9 @@ const [on, setOn] = createSignal(false);
 let presses = 0;
 let flips = 0;
 let lastFlip = "";
+const acted: string[] = [];
+
+function record(e: NeonEvent): void { acted.push(e.value); }
 
 const rangeStyle: () => Style = (): Style => styles.range;
 
@@ -50,13 +55,16 @@ function rangeBar(): NeonNode {
 		attr("accessibilityRole", "adjustable"),
 		attr("accessibilityValue", "0,100,40,"),
 		attr("accessible", "true"),
+		attr("accessibilityActions", "setValue"),
 	];
-	return hostElement("view", attrs, [], null, rangeStyle, null);
+	const events: VEvent[] = [evt("onAccessibilityAction", record)];
+	return hostElement("view", attrs, events, null, rangeStyle, null);
 }
 
 function App(): NeonNode {
 	return <View style={styles.base}>
 		<Pressable style={styles.press} accessibilityLabel="Press me" accessibilityRole="button" accessibilityHint="Counts a press"
+			accessibilityActions={[{ name: "activate" }]} onAccessibilityAction={record}
 			onPress={(e: NeonEvent): void => { presses += 1; console.log(`press ${presses}`); }}>
 			<Text style={styles.label}>{"Presses " + presses}</Text>
 		</Pressable>
@@ -68,6 +76,8 @@ function App(): NeonNode {
 		}} />
 		<Pressable style={styles.locked} accessibilityLabel="Locked" accessibilityRole="button" accessibilityState={{ disabled: true }}
 			onPress={(e: NeonEvent): void => { console.log("locked pressed"); }} />
+		<Pressable style={styles.menu} accessibilityLabel="Menu" accessibilityRole="button" accessibilityState={{ expanded: false }}
+			accessibilityActions={[{ name: "expand" }, { name: "collapse" }]} onAccessibilityAction={record} />
 		{rangeBar()}
 	</View>;
 }
@@ -126,6 +136,7 @@ function pressInvoked(): void {
 	expectNumber("invoke result", number("actionResult"), 0);
 	setTimeout((): void => {
 		expectNumber("presses after Invoke", presses, 1);
+		expectText("actions after Invoke", acted.join(","), "activate");
 		ask("Wi-Fi", 0, switchRead);
 	}, 300);
 }
@@ -163,7 +174,34 @@ function rangeRead(): void {
 	expectNumber("range max", number("rangeMax"), 100);
 	expectNumber("range now", number("rangeNow"), 40);
 	expectNumber("range control type", number("controlType"), SLIDER);
-	exit(failures);
+	ask("Volume", 5, rangeSet);
+}
+
+function rangeSet(): void {
+	expectNumber("SetValue result", number("actionResult"), 0);
+	setTimeout((): void => {
+		expectText("actions after SetValue", acted.join(","), "activate,setValue");
+		ask("Menu", 0, menuRead);
+	}, 300);
+}
+
+function menuRead(): void {
+	expectNumber("menu expand pattern", number("hasExpand"), 1);
+	expectNumber("menu collapsed", number("expandState"), 0);
+	ask("Menu", 3, menuExpanded);
+}
+
+function menuExpanded(): void {
+	expectNumber("Expand result", number("actionResult"), 0);
+	ask("Menu", 4, menuCollapsed);
+}
+
+function menuCollapsed(): void {
+	expectNumber("Collapse result", number("actionResult"), 0);
+	setTimeout((): void => {
+		expectText("actions after Expand and Collapse", acted.join(","), "activate,setValue,expand,collapse");
+		exit(failures);
+	}, 300);
 }
 
 const options = nativeWindowOptions(TITLE, 400, 240);

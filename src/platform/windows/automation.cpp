@@ -457,13 +457,13 @@ public:
 		return uia::Toggle(id) ? S_OK : UIA_E_INVALIDOPERATION;
 	}
 
-	// :759-824: read from accessibilityValue. Neon has no setValue action on this host, so the range is read-only.
+	// :759-824: read from accessibilityValue; SetValue only dispatches "setValue" (:814-824), the app writes the value back.
 	HRESULT STDMETHODCALLTYPE get_Value(double *out) override { return range(out, &Range::now); }
 	HRESULT STDMETHODCALLTYPE get_Maximum(double *out) override { return range(out, &Range::max); }
 	HRESULT STDMETHODCALLTYPE get_Minimum(double *out) override { return range(out, &Range::min); }
 	HRESULT STDMETHODCALLTYPE get_LargeChange(double *out) override { return unchanged(out); }
 	HRESULT STDMETHODCALLTYPE get_SmallChange(double *out) override { return unchanged(out); }
-	HRESULT STDMETHODCALLTYPE SetValue(double) override { return UIA_E_NOTSUPPORTED; }
+	HRESULT STDMETHODCALLTYPE SetValue(double) override { return act("setValue"); }
 
 	// :720-732 get_Value(BSTR) and :706-719 SetValue(LPCWSTR).
 	HRESULT STDMETHODCALLTYPE get_Value(BSTR *out) override {
@@ -474,15 +474,14 @@ public:
 		*out = SysAllocStringLen(text.data(), (UINT)text.size());
 		return *out || text.empty() ? S_OK : E_OUTOFMEMORY;
 	}
-	HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR) override { return UIA_E_NOTSUPPORTED; }
+	HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR) override { return act("setValue"); }
 	HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL *out) override {
 		if (!out) return E_POINTER;
 		*out = TRUE;
 		return S_OK;
 	}
 
-	// :855-892: the state reads from accessibilityState; Expand and Collapse dispatch onAccessibilityAction in RNW
-	// (DispatchAccessibilityAction "expand"/"collapse"), which no native host here carries yet.
+	// :855-892: the state reads from accessibilityState; Expand and Collapse dispatch the declared "expand"/"collapse".
 	HRESULT STDMETHODCALLTYPE get_ExpandCollapseState(ExpandCollapseState *out) override {
 		if (!out) return E_POINTER;
 		Element e;
@@ -490,10 +489,17 @@ public:
 		*out = expandState(e);
 		return S_OK;
 	}
-	HRESULT STDMETHODCALLTYPE Expand() override { return UIA_E_NOTSUPPORTED; }
-	HRESULT STDMETHODCALLTYPE Collapse() override { return UIA_E_NOTSUPPORTED; }
+	HRESULT STDMETHODCALLTYPE Expand() override { return act("expand"); }
+	HRESULT STDMETHODCALLTYPE Collapse() override { return act("collapse"); }
 
 private:
+	// DispatchAccessibilityAction answers S_OK whether or not the view declared the action.
+	HRESULT act(const char *name) {
+		Element e;
+		if (!Describe(id, &e)) return UIA_E_ELEMENTNOTAVAILABLE;
+		uia::Action(id, name);
+		return S_OK;
+	}
 	HRESULT range(double *out, double Range::*member) {
 		if (!out) return E_POINTER;
 		Element e;
