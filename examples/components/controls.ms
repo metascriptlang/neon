@@ -179,10 +179,10 @@ export function BookingForm(): NeonNode {
 			<Field title="Rating">
 				<View role="slider" accessibilityLabel="Rating" accessibilityHint="Swipe up or down to rate"
 					accessibilityValue={{ min: 0, max: 5, now: rating(), text: `${rating()} of 5` }}
-					accessibilityLiveRegion="polite"
+					accessibilityLiveRegion="polite" accessibilityLabelledBy="ratingCaption"
 					accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
 					onAccessibilityAction={(e: NeonEvent): void => { setRating(Math.max(0, Math.min(5, rating() + (e.value === "increment" ? 1 : -1))) as int32); }}>
-					<Text style={value}>{`rating ${rating()}`}</Text>
+					<Text style={value} nativeID="ratingCaption">{`rating ${rating()}`}</Text>
 				</View>
 			</Field>
 			<Field title="Preferences">
