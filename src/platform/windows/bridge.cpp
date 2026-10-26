@@ -1204,7 +1204,7 @@ void *niSwitchCreate(void) {
 }
 
 void niControlSetTag(void *control, int32_t tag) {
-	if (!as(control)->input && !as(control)->picture && !as(control)->toggle) unimplemented("niControlSetTag on a control that is not a TextInput, an Image or a Switch");
+	if (!as(control)->input && !as(control)->picture && !as(control)->toggle && !as(control)->modal) unimplemented("niControlSetTag on a control that is not a TextInput, an Image, a Switch or a Modal");
 	as(control)->tag = tag;
 }
 
