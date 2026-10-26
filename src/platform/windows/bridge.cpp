@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "activityIndicator.h"
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
@@ -42,6 +43,7 @@ struct View {
 	bool inputQueued = false;
 	std::unique_ptr<ImagePicture> picture;
 	bool pictureQueued = false;
+	std::unique_ptr<ActivityIndicator> indicator;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -96,6 +98,7 @@ double g_touchTime = 0;
 View *g_responder = nullptr;
 View *g_barCapture = nullptr;
 std::vector<View *> g_scrolls;
+std::vector<View *> g_indicators;
 int32_t g_scrollTag = 0;
 int32_t g_scrollPhase = 0;
 float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
@@ -136,6 +139,8 @@ void release(View *view) {
 	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
 	if (view->pictureQueued) g_dirtyPictures.erase(std::remove(g_dirtyPictures.begin(), g_dirtyPictures.end(), view), g_dirtyPictures.end());
 	view->input.reset();
+	if (view->indicator) g_indicators.erase(std::remove(g_indicators.begin(), g_indicators.end(), view), g_indicators.end());
+	view->indicator.reset();
 	for (View *child : view->children) {
 		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
@@ -467,6 +472,22 @@ bool scrollsPending() {
 	return false;
 }
 
+void stepIndicators() {
+	double now = nowMs();
+	for (View *view : g_indicators) {
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		view->indicator->Step(pixelWidth, pixelHeight, now);
+	}
+}
+
+bool indicatorsPending() {
+	for (View *view : g_indicators) {
+		if (view->indicator->Running() && isMounted(view)) return true;
+	}
+	return false;
+}
+
 Scroller *scrollerOf(void *scroll, const char *what) {
 	View *v = static_cast<View *>(scroll);
 	if (!v->scroller) {
@@ -597,6 +618,7 @@ void niwFrame(void) {
 	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	stepIndicators();
 	if (g_frameWanted) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
@@ -606,7 +628,7 @@ void niwFrame(void) {
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
-	if (scrollsPending()) requestHostFrame();
+	if (scrollsPending() || indicatorsPending()) requestHostFrame();
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -699,6 +721,7 @@ int niwPump(void) {
 	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	stepIndicators();
 	drawInputs();
 	drawPictures();
 	drawLabels();
@@ -727,6 +750,15 @@ void *niScrollCreate(void) {
 	view->visual->InsertAt(view->scroller->content, 0);
 	view->scroller->AttachBars(g_context, view->visual);
 	g_scrolls.push_back(view);
+	return view;
+}
+
+void *niIndicatorCreate(void) {
+	requireAttached("niIndicatorCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->indicator.reset(new ActivityIndicator(g_context, view->visual));
+	g_indicators.push_back(view);
 	return view;
 }
 
@@ -1068,6 +1100,10 @@ float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
 	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
+	if (as(view)->indicator && as(view)->indicator->SetProp(name, value)) {
+		changed();
+		return;
+	}
 	if (as(view)->label && !strcmp(name, "textSpans")) {
 		as(view)->label->SetRuns(value);
 		queueLabel(as(view));

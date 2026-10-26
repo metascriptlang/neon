@@ -1,4 +1,5 @@
 when (windows) {
+	@compile("./activityIndicator.cpp");
 	@compile("./bridge.cpp");
 	@compile("./dcompComposition.cpp");
 	@compile("./dwriteText.cpp");
