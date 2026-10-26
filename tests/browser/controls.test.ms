@@ -26,5 +26,7 @@ test "accessibilityState maps onto aria-checked, aria-selected and aria-disabled
 	h.setAttr(el, "accessibilityState", "mixed");
 	const second = `${probe(el).getAttribute("aria-checked")} ${probe(el).getAttribute("aria-selected")} ${probe(el).getAttribute("aria-disabled")}`;
 	assert second === "mixed null null", "second: " + second;
+	h.removeAttr(el, "accessibilityState");
+	assert probe(el).getAttribute("aria-checked") === null, "removed: " + (probe(el).getAttribute("aria-checked") as string);
 	probe(el).remove();
 }

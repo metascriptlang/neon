@@ -39,6 +39,8 @@ import {
 	svgPrefix,
 	tileRule,
 	domAttrValue,
+	ARIA_STATE_NAMES,
+	ariaStateValues,
 } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
@@ -709,22 +711,13 @@ function writeNewControlAttr(el: Node, kind: string, name: string, value: string
 	return false;
 }
 
-function hasStateToken(tokens: string[], token: string): boolean {
-	return tokens.indexOf(token) >= 0;
-}
-
 function writeAccessibilityState(el: Node, value: string): void {
-	const tokens = value === "" ? [] as string[] : value.split(",");
-	if (hasStateToken(tokens, "checked")) { el.setAttribute("aria-checked", "true"); }
-	else if (hasStateToken(tokens, "unchecked")) { el.setAttribute("aria-checked", "false"); }
-	else if (hasStateToken(tokens, "mixed")) { el.setAttribute("aria-checked", "mixed"); }
-	else { el.removeAttribute("aria-checked"); }
-	if (hasStateToken(tokens, "selected")) { el.setAttribute("aria-selected", "true"); } else { el.removeAttribute("aria-selected"); }
-	if (hasStateToken(tokens, "disabled")) { el.setAttribute("aria-disabled", "true"); } else { el.removeAttribute("aria-disabled"); }
-	if (hasStateToken(tokens, "busy")) { el.setAttribute("aria-busy", "true"); } else { el.removeAttribute("aria-busy"); }
-	if (hasStateToken(tokens, "expanded")) { el.setAttribute("aria-expanded", "true"); }
-	else if (hasStateToken(tokens, "collapsed")) { el.setAttribute("aria-expanded", "false"); }
-	else { el.removeAttribute("aria-expanded"); }
+	const states = ariaStateValues(value);
+	for (let i = 0; i < ARIA_STATE_NAMES.length; i += 1) {
+		const state = states[i];
+		if (state === null) { el.removeAttribute(ARIA_STATE_NAMES[i]); }
+		else { el.setAttribute(ARIA_STATE_NAMES[i], state as string); }
+	}
 }
 
 function writeDomAttr(el: Node, name: string, value: string): void {
@@ -1186,7 +1179,8 @@ export function domHost(): Host {
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			const base = name === "class" ? baseClassOf(el) : "";
-			el.removeAttribute(domAttrName(name));
+			if (name === "accessibilityState") { writeAccessibilityState(el, ""); }
+			else { el.removeAttribute(domAttrName(name)); }
 			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }

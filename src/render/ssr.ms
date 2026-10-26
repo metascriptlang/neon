@@ -63,6 +63,8 @@ when (server) {
 		svgPrefix,
 		tileRule,
 		domAttrValue,
+		ARIA_STATE_NAMES,
+		ariaStateValues,
 	} from "./web";
 	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
@@ -268,6 +270,13 @@ when (server) {
 			const outValues: string[] = [];
 			for (let i = 0; i < names.length; i += 1) {
 				const raw = values[i];
+				if (names[i] === "accessibilityState") {
+					const states = ariaStateValues(raw);
+					for (let k = 0; k < ARIA_STATE_NAMES.length; k += 1) {
+						putAttribute(outNames, outValues, ARIA_STATE_NAMES[k], states[k]);
+					}
+					continue;
+				}
 				const control = controlAttr(wire, names[i], raw);
 				if (control !== null) {
 					const written = control as ControlAttr;
