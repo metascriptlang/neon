@@ -1309,7 +1309,7 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 		return;
 	}
 	if (n.isScroll && name === "horizontal") { n.horizontal = value === "true"; }
-	if (n.isScroll && !name.startsWith("accessib")) {
+	if (n.isScroll && !name.startsWith("accessib") && name !== "role" && name !== "importantForAccessibility" && name !== "focusable") {
 		niScrollSetOption(n.view, name, value);
 		return;
 	}

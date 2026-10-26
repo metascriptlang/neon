@@ -36,6 +36,12 @@ void harnessHide(const char *title, const char *label);
 const char *harnessMeasureRoot(const char *title);
 // Each NSSwitch in the window in view-tree order, 1 for on and 0 for off.
 const char *harnessSwitchStates(const char *title);
+// The element NSAccessibility reaches from the content view whose label (a Text: its value) is label, as "role|value|min|max|help|enabled|selected|expanded"
+// with "-" for nothing, or "none" when the walk over accessibilityChildren never meets it.
+const char *harnessAccessibility(const char *title, const char *label);
+// accessibilityPerformPress on that element, and the handler of its custom action named actionLabel: 1 when performed, 0 when refused or absent.
+int harnessAccessibilityPress(const char *title, const char *label);
+int harnessAccessibilityAction(const char *title, const char *label, const char *actionLabel);
 // The first WKWebView's page, snapshotted by WebKit (asynchronous); then a pixel in web view points as 0xRRGGBB,
 // or -1 before the snapshot arrives.
 void harnessSnapshotWeb(const char *title);
