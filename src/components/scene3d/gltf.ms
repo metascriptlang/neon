@@ -11,7 +11,8 @@ import {
 	GltfAssets, GltfMaterialSetup, GltfSceneError, addGltfAssets, addGltfBoundNodes, closeGltfAssets,
 } from "../../../../void/src/void3d/gltfScene";
 import { RenderState } from "../../../../void/src/gpu/state";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
+import { PointerProps, bindPointer } from "./pointer";
+import { mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
 
 // The imported subtree of one Gltf; `root` changes on every reload, so a reader inside an effect follows it.
 export interface GltfGraph {
@@ -19,7 +20,7 @@ export interface GltfGraph {
 	find: (name: string) => NodeId3D | null;
 }
 
-export interface GltfProps extends NodeProps {
+export interface GltfProps extends PointerProps {
 	data: Accessor<GltfData>;
 	setup?: Accessor<GltfMaterialSetup> | null;
 	assets?: Accessor<GltfAssets> | null;
@@ -92,6 +93,7 @@ export function Gltf(props: GltfProps): NeonNode {
 			const wrapper = addGroup(scene, scope.parent, local);
 			ownNode(scope.state, wrapper);
 			bindNode(scope.state, wrapper, props, local);
+			bindPointer(scope.state, wrapper, props);
 			const [root, setRoot] = createSignal<NodeId3D>(NO_NODE_ID, { ownedWrite: true });
 			let imported: NodeId3D | null = null;
 			const [mount, setMount] = createSignal<GltfMount | null>(null, { ownedWrite: true });
