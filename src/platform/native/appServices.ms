@@ -14,6 +14,8 @@ when (ios) {
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/capture.m", "-fobjc-arc");
 	@compile("../ios/audio.m", "-fobjc-arc");
+	@compile("../ios/actionSheet.m", "-fobjc-arc");
+	@compile("../ios/settings.m", "-fobjc-arc");
 	@passL("-framework PhotosUI");
 	@passL("-framework UniformTypeIdentifiers");
 	@passL("-framework CoreMedia");

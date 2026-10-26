@@ -41,7 +41,7 @@ static UIWindow *keyWindow(void) {
 	return UIApplication.sharedApplication.windows.firstObject;
 }
 
-static UIViewController *presenter(void) {
+UIViewController *niPresenter(void) {
 	UIViewController *top = keyWindow().rootViewController;
 	while (top.presentedViewController) top = top.presentedViewController;
 	return top;
@@ -122,7 +122,7 @@ static NSString *alert(NSString *arg) {
 			emit(NI_APP_ALERT, [@[alertId, index] componentsJoinedByString:FIELD]);
 		}]];
 	}
-	[presenter() presentViewController:controller animated:YES completion:nil];
+	[niPresenter() presentViewController:controller animated:YES completion:nil];
 	return @"";
 }
 
@@ -138,7 +138,7 @@ static NSString *share(NSString *arg) {
 		NSString *action = completed ? @"sharedAction" : @"dismissedAction";
 		emit(NI_APP_SHARE, [@[action, completed && type ? type : @""] componentsJoinedByString:FIELD]);
 	};
-	UIViewController *top = presenter();
+	UIViewController *top = niPresenter();
 	controller.popoverPresentationController.sourceView = top.view;
 	controller.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(top.view.bounds), CGRectGetMidY(top.view.bounds), 0, 0);
 	[top presentViewController:controller animated:YES completion:nil];
