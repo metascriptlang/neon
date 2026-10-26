@@ -111,6 +111,28 @@ test "a wildcard label in a prefix stands for one or more host characters" {
 	assert pathOf("https://a.example.com?x=1", prefixes) === "/?x=1";
 }
 
+test "a plus in the query is a space and a plus in the path stays a plus" {
+	assert describe(targetFromPath("user/ana?tab=a+b&c+d=e", config)) === "Profile(c d=e,name=ana,tab=a b)";
+	assert describe(targetFromPath("user/a+b?tab=a%2Bb", config)) === "Profile(name=a+b,tab=a+b)";
+}
+
+test "a query value keeps the raw text of every escape that is not valid UTF-8" {
+	assert describe(targetFromPath("user/ana?q=caf%C3%A9%zz", config)) === "Profile(name=ana,q=café%zz)";
+	assert describe(targetFromPath("user/ana?q=%e4%bd%a0", config)) === "Profile(name=ana,q=\u4f60)";
+	assert describe(targetFromPath("user/ana?q=%41%FF", config)) === "Profile(name=ana,q=A%FF)";
+	assert describe(targetFromPath("user/ana?q=%E4%BD", config)) === "Profile(name=ana,q=%E4%BD)";
+	assert describe(targetFromPath("user/ana?q=%C0%80", config)) === "Profile(name=ana,q=%C0%80)";
+	assert describe(targetFromPath("user/ana?q=%ED%A0%80", config)) === "Profile(name=ana,q=%ED%A0%80)";
+	assert describe(targetFromPath("user/ana?q=%F4%90%80%80", config)) === "Profile(name=ana,q=%F4%90%80%80)";
+	assert describe(targetFromPath("user/ana?q=%F0%9F%98%80%", config)) === "Profile(name=ana,q=\u{1F600}%)";
+	assert describe(targetFromPath("user/ana?q=100%", config)) === "Profile(name=ana,q=100%)";
+}
+
+test "one leading query mark is dropped and surrounding blanks are trimmed" {
+	assert describe(targetFromPath("user/ana??q=1", config)) === "Profile(name=ana,q=1)";
+	assert describe(targetFromPath("user/ana?q=1 ", config)) === "Profile(name=ana,q=1)";
+}
+
 test "a fragment after the query is dropped, not read into the last value" {
 	const fragment = targetFromPath("user/ana?tab=likes#top", config);
 	assert describe(fragment) === "Profile(name=ana,tab=likes)", describe(fragment);

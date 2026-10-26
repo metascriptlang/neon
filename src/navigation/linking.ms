@@ -105,30 +105,76 @@ function hexValue(byte: int32): int32 {
 	return -1;
 }
 
+function percentByte(text: string, at: int32): int32 {
+	if (at + 2 >= text.byteLength() || text.byteAt(at) !== 37) { return -1; }
+	const high = hexValue(text.byteAt(at + 1));
+	const low = hexValue(text.byteAt(at + 2));
+	return high < 0 || low < 0 ? -1 : high * 16 + low;
+}
+
+function utf8Length(text: string, at: int32): int32 {
+	const lead = percentByte(text, at);
+	if (lead < 0) { return 0; }
+	if (lead < 128) { return 1; }
+	let length: int32 = 0;
+	if (lead >= 194 && lead <= 223) { length = 2; }
+	if (lead >= 224 && lead <= 239) { length = 3; }
+	if (lead >= 240 && lead <= 244) { length = 4; }
+	if (length === 0) { return 0; }
+	let low: int32 = 128;
+	let high: int32 = 191;
+	if (lead === 224) { low = 160; }
+	if (lead === 237) { high = 159; }
+	if (lead === 240) { low = 144; }
+	if (lead === 244) { high = 143; }
+	for (let i: int32 = 1; i < length; i += 1) {
+		const next = percentByte(text, at + 3 * i);
+		if (next < low || next > high) { return 0; }
+		low = 128;
+		high = 191;
+	}
+	return length;
+}
+
 export function decodeComponent(text: string): string {
 	if (text.indexOf("%") < 0) { return text; }
 	const bytes: uint8[] = [];
 	const length = text.byteLength();
 	let i: int32 = 0;
 	while (i < length) {
-		const byte = text.byteAt(i);
-		if (byte === 37 && i + 2 < length) {
-			const high = hexValue(text.byteAt(i + 1));
-			const low = hexValue(text.byteAt(i + 2));
-			if (high >= 0 && low >= 0) {
-				bytes.push((high * 16 + low) as uint8);
-				i += 3;
-				continue;
+		const sequence = text.byteAt(i) === 37 ? utf8Length(text, i) : 0;
+		if (sequence === 0) {
+			bytes.push(text.byteAt(i) as uint8);
+			i += 1;
+		} else {
+			for (let k: int32 = 0; k < sequence; k += 1) {
+				bytes.push(percentByte(text, i + 3 * k) as uint8);
 			}
+			i += 3 * sequence;
 		}
-		bytes.push(byte as uint8);
-		i += 1;
 	}
 	return bytes.asString();
 }
 
 function decode(text: string): string {
 	return decodeComponent(text);
+}
+
+function parseQuery(query: string, into: Map<string, string>): void {
+	let rest = query.trim();
+	if (rest.startsWith("?") || rest.startsWith("#") || rest.startsWith("&")) {
+		rest = rest.substring(1, rest.length);
+	}
+	for (const pair of rest.split("&")) {
+		if (pair === "") { continue; }
+		const spaced = pair.split("+").join(" ");
+		const eq = spaced.indexOf("=");
+		if (eq < 0) {
+			into.set(decode(spaced), "");
+		} else {
+			into.set(decode(spaced.substring(0, eq)), decode(spaced.substring(eq + 1, spaced.length)));
+		}
+	}
 }
 
 function matchFrom(
@@ -248,18 +294,7 @@ export function targetFromPath(path: string, config: LinkingConfig): NavTarget |
 	if (best === null) { return null; }
 	const chosen = best as Candidate;
 	const leaf = bestValues[bestValues.length - 1];
-	if (query !== "") {
-		for (const pair of query.split("&")) {
-			if (pair === "") { continue; }
-			const eq = pair.indexOf("=");
-			if (eq < 0) {
-				leaf.set(decode(pair), "");
-			} else {
-				const key = decode(pair.substring(0, eq));
-				leaf.set(key, decode(pair.substring(eq + 1, pair.length)));
-			}
-		}
-	}
+	parseQuery(query, leaf);
 	let target: NavTarget | null = null;
 	for (let i = chosen.chain.length - 1; i >= 0; i -= 1) {
 		const values = bestValues[i];
