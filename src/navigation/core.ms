@@ -220,6 +220,7 @@ export interface NavigatorLink {
 	screen: () => unknown;
 	nested: (routeKey: string) => NavigatorLink | null;
 	prevents: (action: NavigationAction) => boolean;
+	focusedOptions: () => ScreenOptions | null;
 	seedNested: (routeKey: string, state: NavigationState | null) => void;
 }
 
@@ -1535,6 +1536,10 @@ export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 		screen: (): unknown => core.parentNavigation,
 		nested: (routeKey: string): NavigatorLink | null => core.nestedLink(routeKey),
 		prevents: (action: NavigationAction): boolean => core.preventsAll(action),
+		focusedOptions: (): ScreenOptions | null => {
+			const current = core.current();
+			return current === null ? null : (current as Navigation<PL>).options();
+		},
 		seedNested: (routeKey: string, state: NavigationState | null): void => {
 			core.seedNested(routeKey, state);
 		},
