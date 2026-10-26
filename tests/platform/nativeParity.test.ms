@@ -16,6 +16,7 @@ import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nm
 import { ImageLoader } from "../../src/components/image";
 import { Dialog } from "../../src/components/dialog";
 import { Button } from "../../src/components/button";
+import { TouchableNativeFeedback, NativeFeedback } from "../../src/components/touchable";
 import { GalleryApp } from "../../examples/components/gallery";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
@@ -231,7 +232,29 @@ test "a native Pressable writes hitSlop per edge and its Android ripple through 
 	const ripple = prop(button, "androidRipple");
 	nmTeardown();
 	assert first === "4,0,8,0" && second === "4,0,12,0", `per edge: ${first} ${second}`;
-	assert ripple === "#33000000,false,", "ripple: " + ripple;
+	assert ripple === "#33000000,false,,false,", "ripple: " + ripple;
+}
+
+test "a native TouchableNativeFeedback sends its background and foreground through the prop channel" {
+	const [foreground, setForeground] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<TouchableNativeFeedback useForeground={foreground()} onPress={(e: NeonEvent): void => {}}><Text>theme</Text></TouchableNativeFeedback>
+	</View>;
+	runApp(app);
+	const button = nmLastPressableTag();
+	const first = prop(button, "androidRipple");
+	setForeground(true);
+	flush();
+	const second = prop(button, "androidRipple");
+	nmTeardown();
+	runApp((): NeonNode => <View>
+		<TouchableNativeFeedback background={NativeFeedback.Ripple("#33112233", true, 20)} onPress={(e: NeonEvent): void => {}}><Text>ripple</Text></TouchableNativeFeedback>
+	</View>);
+	const ripple = prop(nmLastPressableTag(), "androidRipple");
+	nmTeardown();
+	assert first === ",false,,false,selectableItemBackground", "default is the theme selectable background: " + first;
+	assert second === ",false,,true,selectableItemBackground", "useForeground follows its signal: " + second;
+	assert ripple === "#33112233,true,20,false,", "Ripple: " + ripple;
 }
 
 test "the native back press closes a shown Dialog through BackHandler" {

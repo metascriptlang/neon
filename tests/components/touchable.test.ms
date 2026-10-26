@@ -9,8 +9,8 @@ import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, fireTouch, mockToString } from "../../src/render/host";
-import { Text } from "../../src/components/primitives";
-import { TouchableOpacity, TouchableHighlight, TouchableWithoutFeedback } from "../../src/components/touchable";
+import { Text, View } from "../../src/components/primitives";
+import { TouchableOpacity, TouchableHighlight, TouchableWithoutFeedback, TouchableNativeFeedback, NativeFeedback } from "../../src/components/touchable";
 
 let clock = 3000.0;
 
@@ -156,5 +156,38 @@ test "Touchable semantic activation respects enabled disabled enabled without fe
 	fireEvent(button, "onPress");
 	flush();
 	assert hits === 2 && styleOf(button).opacity === 0.9, "re-enabled with no feedback";
+	dispose();
+}
+
+function rippleOf(n: MockNode): string {
+	for (const a of n.attrs) {
+		if (a.name === "androidRipple") { return a.value ?? ""; }
+	}
+	return "<unset>";
+}
+
+test "TouchableNativeFeedback defaults to the selectable background, takes a background and useForeground, and presses" {
+	const root = mockNode("root");
+	const [foreground, setForeground] = createSignal(false);
+	let hits = 0;
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<View>
+			<TouchableNativeFeedback onPress={(): void => { hits += 1; }}><Text>a</Text></TouchableNativeFeedback>
+			<TouchableNativeFeedback background={NativeFeedback.SelectableBackgroundBorderless(30)} useForeground={foreground()}><Text>b</Text></TouchableNativeFeedback>
+			<TouchableNativeFeedback background={NativeFeedback.Ripple("#33ff0000", false)}><Text>c</Text></TouchableNativeFeedback>
+		</View>), mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	const kids = root.children[0].children;
+	assert rippleOf(kids[0]) === ",false,,false,selectableItemBackground", "default: " + rippleOf(kids[0]);
+	assert rippleOf(kids[1]) === ",false,30,false,selectableItemBackgroundBorderless", "borderless: " + rippleOf(kids[1]);
+	assert rippleOf(kids[2]) === "#33ff0000,false,,false,", "Ripple: " + rippleOf(kids[2]);
+	setForeground(true);
+	flush();
+	assert rippleOf(kids[1]) === ",false,30,true,selectableItemBackgroundBorderless", "foreground: " + rippleOf(kids[1]);
+	fireEvent(kids[0], "onPress");
+	flush();
+	assert hits === 1, "press fires";
+	assert NativeFeedback.canUseNativeForeground() === false, "not Android here";
 	dispose();
 }

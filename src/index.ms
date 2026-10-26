@@ -57,6 +57,8 @@ export {
 	TouchableOpacity,
 	TouchableHighlight,
 	TouchableWithoutFeedback,
+	TouchableNativeFeedback,
+	NativeFeedback,
 } from "./components/touchable";
 export { VirtualizedList } from "./components/virtualizedList";
 export {
