@@ -484,6 +484,9 @@ has no object member emits invalid C, and a generic `Json<never>` emits a `void`
 An absolute `Location` is an error naming the case, because a router opens only the
 addresses of its own routes.
 
+`router.navigate("https://…")` throws `routing: "…" is not a routable path`, as Solid does (`routing.ts:606-607`); an
+external address reached through a redirect still goes to `leaveWith`.
+
 A route's `component` is `(props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode`, so
 `lazy<{}>(load)` and a component with no parameter fill it directly (Solid's
 `RouteSectionComponent`, whose `Component<{}>` member is the same case), under a layout that
