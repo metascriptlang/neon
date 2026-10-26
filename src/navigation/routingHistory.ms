@@ -102,6 +102,7 @@ export class RoutingSession {
 	private position: Signal<int32>;
 	private landing: (() => void) | null = null;
 	private deferred: (() => void)[] = [];
+	private written: ((url: string, replace: boolean) => void) | null = null;
 
 	constructor(
 		registry: RoutingRegistry,
@@ -168,11 +169,17 @@ export class RoutingSession {
 		return Result.ok(null);
 	}
 
+	observeWrites(written: (url: string, replace: boolean) => void): void {
+		this.written = written;
+	}
+
 	private write(entry: RoutingHistoryEntry, replace: boolean): void {
 		if (replace) { this.history.replace(entry); }
 		else { this.history.push(entry); }
 		this.previous = entry;
 		this.position.set(this.history.index());
+		const written = this.written;
+		if (written !== null) { (written as (url: string, replace: boolean) => void)(entry.url, replace); }
 	}
 
 	private drain(): void {

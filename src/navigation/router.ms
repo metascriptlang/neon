@@ -16,6 +16,7 @@ import {
 	encodeRouteComponent,
 } from "./routing";
 import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingHistory";
+import { Scroller } from "./scroll";
 import {
 	GuardAction,
 	GuardDecision,
@@ -252,6 +253,7 @@ export interface RouterResponse {
 
 export interface NavigateOptions {
 	replace?: boolean | null;
+	scroll?: boolean | null;
 }
 
 export interface ToOptions<P, D> {
@@ -804,6 +806,8 @@ export class Router {
 	private history: RoutingHistory;
 	private session: RoutingSession | null = null;
 	private stop: Dispose | null = null;
+	private scroller: Scroller | null = null;
+	private scrolling: boolean = true;
 	private group: (change: () => void, visit: boolean) => void = (change: () => void, visit: boolean): void => { flush(change); };
 
 	constructor(routes: Routes, root: Level, current: Signal<Resolved>, history: RoutingHistory) {
@@ -844,6 +848,14 @@ export class Router {
 		this.session = session;
 		this.stop = stop;
 		this.group = group;
+		session.observeWrites((address: string, replace: boolean): void => { this.written(address, replace); });
+	}
+
+	private written(address: string, replace: boolean): void {
+		const scroll = this.scrolling;
+		this.scrolling = true;
+		const scroller = this.scroller;
+		if (scroller !== null) { (scroller as Scroller).arrived(address, replace, scroll); }
 	}
 
 	apply(resolved: Resolved, replace: boolean, visit: boolean = false, intent: PreloadIntent = "native"): Walked {
@@ -875,12 +887,18 @@ export class Router {
 		return this.navigate(built.value, { replace: options.replace ?? false });
 	}
 
+	scrollWith(scroller: Scroller | null): void {
+		this.scroller = scroller;
+	}
+
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
+		this.scrolling = options === null ? true : (options as NavigateOptions).scroll ?? true;
 		const walked = this.apply(resolved.value, replace, !replace, "navigate");
+		if (walked === Walked.Unchanged) { this.scrolling = true; }
 		const session = this.session;
 		if (walked === Walked.HashOnly && session !== null) {
 			return (session as RoutingSession).sync(replace).ok;

@@ -53,8 +53,6 @@ when (js) {
 		"(a => a.getAttribute('preload') === 'false')(#)";
 	extern function listenPassive(name: string, listener: (event: unknown) => void): void from
 		"window.addEventListener(#, #, { passive: true })";
-	extern function scrollToFragmentOrTop(url: string): void from
-		"(u => { const at = u.indexOf('\\x23'); const el = at < 0 ? null : document.getElementById(decodeURIComponent(u.slice(at + 1))); if (el) el.scrollIntoView(); else window.scrollTo(0, 0); })(#)";
 
 	extern function submitUrl(event: Event): string from
 		"(e => { if (e.defaultPrevented) return ''; const s = e.submitter; return (s && s.hasAttribute('formaction') ? s.getAttribute('formaction') : e.target.getAttribute('action')) || ''; })(#)";
@@ -121,7 +119,6 @@ export function followLinks(navigate: (url: string) => boolean): Dispose {
 			const url = sameOriginLink(click);
 			if (url === "" || !navigate(url)) { return; }
 			click.preventDefault();
-			scrollToFragmentOrTop(url);
 		};
 		window.addEventListener("click", handler, false);
 		return (): void => window.removeEventListener("click", handler, false);
