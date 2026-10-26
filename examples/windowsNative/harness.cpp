@@ -366,7 +366,7 @@ int harnessPostKeys(const char *title, const char *keys) {
 	HWND window = findOwnWindow(title);
 	if (!window) return 1;
 	for (const char *c = keys; *c; c++) {
-		UINT vk = *c == '\b' ? VK_BACK : *c == '\r' ? VK_RETURN : *c == ' ' ? VK_SPACE : (UINT)toupper((unsigned char)*c);
+		UINT vk = *c == '\b' ? VK_BACK : *c == '\r' ? VK_RETURN : *c == '\x1b' ? VK_ESCAPE : *c == ' ' ? VK_SPACE : (UINT)toupper((unsigned char)*c);
 		UINT scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
 		LPARAM down = 1 | ((LPARAM)scan << 16);
 		PostMessageW(window, WM_KEYDOWN, vk, down);
