@@ -4,13 +4,16 @@
 #include <dcomp.h>
 #include <dwmapi.h>
 #include <dwrite.h>
+#include <uiautomation.h>
 #include <wrl/client.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include <cctype>
 #include <cstring>
+#include <atomic>
 #include <map>
+#include <thread>
 #include <string>
 #include <vector>
 #include "harness.h"
@@ -220,6 +223,123 @@ int sample() {
 
 }
 
+namespace {
+
+WNDPROC g_forwardedProc = nullptr;
+
+// Stands in for the Ion window proc forwarding WM_GETOBJECT to Neon until Ion does: the same niwGetObject call it will make.
+LRESULT CALLBACK forwardProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+	long long answer = 0;
+	if (message == WM_GETOBJECT && niwGetObject(window, (unsigned long long)wParam, (long long)lParam, &answer)) return (LRESULT)answer;
+	return CallWindowProcW(g_forwardedProc, window, message, wParam, lParam);
+}
+
+struct AutomationRun {
+	std::thread worker;
+	std::atomic<bool> done{false};
+	std::map<std::string, long long> numbers;
+	std::map<std::string, std::string> texts;
+};
+
+AutomationRun g_automation;
+std::string g_automationText;
+
+std::string narrow(const wchar_t *wide) {
+	if (!wide) return std::string();
+	int length = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+	std::string utf8((size_t)(length > 0 ? length - 1 : 0), '\0');
+	if (length > 1) WideCharToMultiByte(CP_UTF8, 0, wide, -1, &utf8[0], length, nullptr, nullptr);
+	return utf8;
+}
+
+// A UIA client on its own thread, because UIA calls back into the provider on the thread that owns the window, which
+// has to keep pumping while the client waits.
+void automationWork(HWND window, std::wstring name, int action) {
+	AutomationRun &run = g_automation;
+	CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	ComPtr<IUIAutomation> client;
+	ComPtr<IUIAutomationElement> root, element;
+	run.numbers["found"] = 0;
+	if (SUCCEEDED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&client))) &&
+		SUCCEEDED(client->ElementFromHandle(window, &root)) && root) {
+		VARIANT value;
+		VariantInit(&value);
+		value.vt = VT_BSTR;
+		value.bstrVal = SysAllocString(name.c_str());
+		ComPtr<IUIAutomationCondition> condition;
+		client->CreatePropertyCondition(UIA_NamePropertyId, value, &condition);
+		VariantClear(&value);
+		if (condition) root->FindFirst(TreeScope_Descendants, condition.Get(), &element);
+	}
+	if (element) {
+		run.numbers["found"] = 1;
+		CONTROLTYPEID type = 0;
+		BOOL flag = FALSE;
+		BSTR text = nullptr;
+		element->get_CurrentControlType(&type);
+		run.numbers["controlType"] = type;
+		element->get_CurrentIsEnabled(&flag);
+		run.numbers["enabled"] = flag;
+		element->get_CurrentIsKeyboardFocusable(&flag);
+		run.numbers["focusable"] = flag;
+		element->get_CurrentIsControlElement(&flag);
+		run.numbers["control"] = flag;
+		if (SUCCEEDED(element->get_CurrentAutomationId(&text))) run.texts["automationId"] = narrow(text);
+		SysFreeString(text);
+		text = nullptr;
+		if (SUCCEEDED(element->get_CurrentHelpText(&text))) run.texts["helpText"] = narrow(text);
+		SysFreeString(text);
+		text = nullptr;
+		if (SUCCEEDED(element->get_CurrentName(&text))) run.texts["name"] = narrow(text);
+		SysFreeString(text);
+		RECT box = {};
+		if (SUCCEEDED(element->get_CurrentBoundingRectangle(&box))) {
+			run.numbers["width"] = box.right - box.left;
+			run.numbers["height"] = box.bottom - box.top;
+		}
+		ComPtr<IUIAutomationInvokePattern> invoke;
+		element->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke));
+		run.numbers["hasInvoke"] = invoke ? 1 : 0;
+		ComPtr<IUIAutomationTogglePattern> toggle;
+		element->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle));
+		run.numbers["hasToggle"] = toggle ? 1 : 0;
+		if (toggle) {
+			ToggleState state = ToggleState_Off;
+			toggle->get_CurrentToggleState(&state);
+			run.numbers["toggleState"] = state;
+		}
+		ComPtr<IUIAutomationRangeValuePattern> range;
+		element->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&range));
+		run.numbers["hasRange"] = range ? 1 : 0;
+		if (range) {
+			double minimum = 0, maximum = 0, now = 0;
+			range->get_CurrentMinimum(&minimum);
+			range->get_CurrentMaximum(&maximum);
+			range->get_CurrentValue(&now);
+			run.numbers["rangeMin"] = (long long)minimum;
+			run.numbers["rangeMax"] = (long long)maximum;
+			run.numbers["rangeNow"] = (long long)now;
+		}
+		ComPtr<IUIAutomationExpandCollapsePattern> expand;
+		element->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, IID_PPV_ARGS(&expand));
+		run.numbers["hasExpand"] = expand ? 1 : 0;
+		if (expand) {
+			ExpandCollapseState state = ExpandCollapseState_Collapsed;
+			expand->get_CurrentExpandCollapseState(&state);
+			run.numbers["expandState"] = state;
+		}
+		if (action == 1 && invoke) run.numbers["actionResult"] = (long long)invoke->Invoke();
+		if (action == 2 && toggle) run.numbers["actionResult"] = (long long)toggle->Toggle();
+	}
+	element.Reset();
+	root.Reset();
+	client.Reset();
+	CoUninitialize();
+	run.done = true;
+}
+
+}
+
 extern "C" {
 
 void harnessStart(int logicalWidth, int logicalHeight) {
@@ -373,6 +493,39 @@ int harnessPostKeys(const char *title, const char *keys) {
 		PostMessageW(window, WM_KEYUP, vk, down | (LPARAM)0xC0000000);
 	}
 	return 0;
+}
+
+void harnessAutomationForward(const char *title) {
+	HWND window = findOwnWindow(title);
+	if (g_forwardedProc) return;
+	g_forwardedProc = (WNDPROC)SetWindowLongPtrW(window, GWLP_WNDPROC, (LONG_PTR)forwardProc);
+}
+
+void harnessAutomationStart(const char *title, const char *name, int action) {
+	HWND window = findOwnWindow(title);
+	if (g_automation.worker.joinable()) g_automation.worker.join();
+	g_automation.done = false;
+	g_automation.numbers.clear();
+	g_automation.texts.clear();
+	std::wstring wide(name, name + strlen(name));
+	g_automation.worker = std::thread(automationWork, window, wide, action);
+}
+
+int harnessAutomationDone(void) {
+	if (!g_automation.done) return 0;
+	if (g_automation.worker.joinable()) g_automation.worker.join();
+	return 1;
+}
+
+int harnessAutomationNumber(const char *field) {
+	auto found = g_automation.numbers.find(field);
+	return found == g_automation.numbers.end() ? -1000 : (int)found->second;
+}
+
+const char *harnessAutomationText(const char *field) {
+	auto found = g_automation.texts.find(field);
+	g_automationText = found == g_automation.texts.end() ? "" : found->second;
+	return g_automationText.c_str();
 }
 
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
