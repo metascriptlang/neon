@@ -1,4 +1,4 @@
-import { RoutingError, encodeRouteComponent, decodeRouteComponent } from "./routing";
+import { RoutingError, encodeRouteComponent, decodeRouteComponent, decodeQueryComponent } from "./routing";
 import {
 	PathMatch,
 	joinPaths,
@@ -534,20 +534,20 @@ function matchBranch(branch: Branch, pathname: string): MatchedRoute[] | null {
 	return chain;
 }
 
-function decodeSearch(text: string): Result<string, RoutingError> {
-	return decodeRouteComponent(text.replaceAll("+", " "));
+function decodeSearch(text: string): string {
+	return decodeQueryComponent(text.replaceAll("+", " "));
 }
 
-function parseSearch(query: string): Result<Map<string, string>, RoutingError> {
+function parseSearch(query: string): Map<string, string> {
 	const search = new Map<string, string>();
 	for (const pair of query.split("&")) {
 		if (pair === "") { continue; }
 		const equalAt = pair.indexOf("=");
-		const name = try decodeSearch(equalAt < 0 ? pair : pair.substring(0, equalAt));
-		const value = try decodeSearch(equalAt < 0 ? "" : pair.substring(equalAt + 1, pair.length));
+		const name = decodeSearch(equalAt < 0 ? pair : pair.substring(0, equalAt));
+		const value = decodeSearch(equalAt < 0 ? "" : pair.substring(equalAt + 1, pair.length));
 		if (!search.has(name)) { search.set(name, value); }
 	}
-	return Result.ok(search);
+	return search;
 }
 
 interface Address {
@@ -563,7 +563,7 @@ function splitAddress(address: string): Result<Address, RoutingError> {
 	const queryAt = rest.indexOf("?");
 	const pathname = queryAt < 0 ? rest : rest.substring(0, queryAt);
 	const _decoded = try decodeRouteComponent(pathname);
-	const search = try parseSearch(queryAt < 0 ? "" : rest.substring(queryAt + 1, rest.length));
+	const search = parseSearch(queryAt < 0 ? "" : rest.substring(queryAt + 1, rest.length));
 	return Result.ok({ pathname, search, hash });
 }
 

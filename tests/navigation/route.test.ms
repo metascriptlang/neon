@@ -356,7 +356,7 @@ test "search parses the way URLSearchParams does and the hash is kept" {
 	assert text(mixed.search) === "q=a b;x=+1;flag=;=empty";
 	assert mixed.hash === "top?x=1";
 	assert chainOf(tree, "/search#a") === "/search";
-	assert chainOf(tree, "/search?x=%ZZ") === "InvalidAddress";
+	assert text(matched(tree, "/search?x=%ZZ").search) === "x=%ZZ";
 	assert chainOf(tree, "/search/%E0") === "InvalidAddress";
 }
 

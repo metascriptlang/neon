@@ -77,27 +77,36 @@ export function encodeRouteComponent(value: string): string {
 	return encoded;
 }
 
+function utf8Run(bytes: uint8[], i: int32): int32 {
+	const lead = bytes[i] as int32;
+	if (lead < 128) { return 1; }
+	let count: int32 = 0;
+	if (lead >= 194 && lead <= 223) { count = 2; }
+	else if (lead >= 224 && lead <= 239) { count = 3; }
+	else if (lead >= 240 && lead <= 244) { count = 4; }
+	else { return -1; }
+	for (let j = 1; j < count; j += 1) {
+		if (i + j >= bytes.length) { return -j; }
+		const byte = bytes[i + j] as int32;
+		let low = 128;
+		let high = 191;
+		if (j === 1) {
+			if (lead === 224) { low = 160; }
+			else if (lead === 237) { high = 159; }
+			else if (lead === 240) { low = 144; }
+			else if (lead === 244) { high = 143; }
+		}
+		if (byte < low || byte > high) { return -j; }
+	}
+	return count;
+}
+
 function validUtf8(bytes: uint8[]): boolean {
 	let i: int32 = 0;
 	while (i < bytes.length) {
-		const lead = bytes[i] as int32;
-		if (lead < 128) { i += 1; continue; }
-		let count: int32 = 0;
-		if (lead >= 194 && lead <= 223) { count = 2; }
-		else if (lead >= 224 && lead <= 239) { count = 3; }
-		else if (lead >= 240 && lead <= 244) { count = 4; }
-		else { return false; }
-		if (i + count > bytes.length) { return false; }
-		const second = bytes[i + 1] as int32;
-		if ((lead === 224 && second < 160) || (lead === 237 && second >= 160) ||
-			(lead === 240 && second < 144) || (lead === 244 && second >= 144)) {
-			return false;
-		}
-		for (let j = 1; j < count; j += 1) {
-			const byte = bytes[i + j] as int32;
-			if (byte < 128 || byte > 191) { return false; }
-		}
-		i += count;
+		const run = utf8Run(bytes, i);
+		if (run < 0) { return false; }
+		i += run;
 	}
 	return true;
 }
@@ -121,6 +130,38 @@ export function decodeRouteComponent(value: string): Result<string, RoutingError
 	}
 	if (!validUtf8(bytes)) { return Result.err(RoutingError.InvalidAddress); }
 	return Result.ok(bytes.asString());
+}
+
+export function decodeQueryComponent(value: string): string {
+	const bytes: uint8[] = [];
+	let i: int32 = 0;
+	while (i < value.byteLength()) {
+		const byte = value.byteAt(i);
+		const high = byte === 37 && i + 2 < value.byteLength() ? hexValue(value.byteAt(i + 1)) : -1;
+		const low = high < 0 ? -1 : hexValue(value.byteAt(i + 2));
+		if (high >= 0 && low >= 0) {
+			bytes.push((high * 16 + low) as uint8);
+			i += 3;
+		} else {
+			bytes.push(byte as uint8);
+			i += 1;
+		}
+	}
+	const repaired: uint8[] = [];
+	let at: int32 = 0;
+	while (at < bytes.length) {
+		const run = utf8Run(bytes, at);
+		if (run > 0) {
+			for (let j = 0; j < run; j += 1) { repaired.push(bytes[at + j]); }
+			at += run;
+		} else {
+			repaired.push(239 as uint8);
+			repaired.push(191 as uint8);
+			repaired.push(189 as uint8);
+			at += -run;
+		}
+	}
+	return repaired.asString();
 }
 
 export struct RegionAddress {
@@ -161,9 +202,14 @@ function validScope(scope: string): boolean {
 
 function validAddress(address: string): boolean {
 	if (!address.startsWith("/") || address.startsWith("//")) { return false; }
-	const decoded = decodeRouteComponent(address);
-	if (!decoded.ok) { return false; }
-	const value = decoded.value;
+	let end = address.length;
+	const queryAt = address.indexOf("?");
+	const hashAt = address.indexOf("#");
+	if (queryAt >= 0) { end = queryAt; }
+	if (hashAt >= 0 && hashAt < end) { end = hashAt; }
+	const path = decodeRouteComponent(address.substring(0, end));
+	if (!path.ok) { return false; }
+	const value = path.value + decodeQueryComponent(address.substring(end, address.length));
 	for (let i = 0; i < value.byteLength(); i += 1) {
 		const byte = value.byteAt(i);
 		if (byte < 32 || byte === 127 || byte === 92) { return false; }
