@@ -41,6 +41,8 @@ export interface TabBarIconProps {
 
 export type StackAnimation = "default" | "slide_from_right" | "slide_from_bottom" | "fade" | "none";
 
+export type DrawerType = "front" | "slide";
+
 export type HeaderTitleAlign = "left" | "center";
 
 export interface HeaderItemProps {
@@ -81,6 +83,9 @@ export interface ScreenOptions {
 	lazy?: boolean | null;
 	unmountOnBlur?: boolean | null;
 	popToTopOnBlur?: boolean | null;
+	drawerType?: DrawerType | null;
+	overlayColor?: string | null;
+	swipeEdgeWidth?: number | null;
 }
 
 export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOptions {
@@ -129,6 +134,9 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 			: base.drawerActiveTintColor,
 		lazy: over.lazy !== null ? over.lazy : base.lazy,
 		unmountOnBlur: over.unmountOnBlur !== null ? over.unmountOnBlur : base.unmountOnBlur,
+		drawerType: over.drawerType !== null ? over.drawerType : base.drawerType,
+		overlayColor: over.overlayColor !== null ? over.overlayColor : base.overlayColor,
+		swipeEdgeWidth: over.swipeEdgeWidth !== null ? over.swipeEdgeWidth : base.swipeEdgeWidth,
 		popToTopOnBlur: over.popToTopOnBlur !== null ? over.popToTopOnBlur : base.popToTopOnBlur,
 	};
 }

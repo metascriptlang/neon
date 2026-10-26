@@ -2,6 +2,7 @@ export {
 	NavigatorKind,
 	DrawerAction,
 	TabBarIconProps,
+	DrawerType,
 	HeaderItemProps,
 	HeaderTitleProps,
 	ScreenOptions,
@@ -84,6 +85,7 @@ export { TAB_INACTIVE, TabTrigger, TabBar, useTabs } from "./tabBar";
 export {
 	DrawerNavigator,
 	DrawerPosition,
+	DrawerStatus,
 	createDrawerNavigator,
 	DRAWER_WIDTH,
 	DRAWER_DURATION,

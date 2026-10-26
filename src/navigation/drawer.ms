@@ -52,6 +52,8 @@ export const DRAWER_DURATION = 250;
 
 export type DrawerPosition = "left" | "right";
 
+export type DrawerStatus = "open" | "closed";
+
 const BACKDROP: Style = {
 	position: "absolute",
 	top: 0,
@@ -63,7 +65,7 @@ const BACKDROP: Style = {
 };
 
 class DrawerMotion {
-	progress: AnimatedValue = new AnimatedValue(0);
+	progress: AnimatedValue;
 	shown: Accessor<boolean>;
 	writeShown: Setter<boolean>;
 	open: Accessor<boolean>;
@@ -79,7 +81,9 @@ class DrawerMotion {
 		width: () => number,
 		swipe: Accessor<boolean>,
 	) {
-		const [shown, writeShown] = createSignal<boolean>(false);
+		const start = untrack((): boolean => open());
+		this.progress = new AnimatedValue(start ? 1 : 0);
+		const [shown, writeShown] = createSignal<boolean>(start);
 		this.shown = shown;
 		this.writeShown = writeShown;
 		this.open = open;
@@ -98,6 +102,13 @@ class DrawerMotion {
 		}).start((result: EndResult): void => {
 			if (result.finished && !toOpen) { this.writeShown(false); }
 		});
+	}
+
+	contentTransform(): string {
+		const p = this.progress.get();
+		if (p <= 0) { return "none"; }
+		const offset = p * this.width();
+		return "translateX(" + (this.right() ? -offset : offset).toString() + "px)";
 	}
 
 	panelTransform(): string {
@@ -314,6 +325,7 @@ export interface DrawerNavigator<PL> {
 		backBehavior?: Accessor<BackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
 		drawerPosition?: Accessor<DrawerPosition> | null;
+		defaultStatus?: Accessor<DrawerStatus> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
@@ -340,11 +352,14 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 			backBehavior?: Accessor<BackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
 			drawerPosition?: Accessor<DrawerPosition> | null;
+			defaultStatus?: Accessor<DrawerStatus> | null;
 		}): NeonNode => {
 			const collection = collectScreens<PL>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
-			const [open, writeOpen] = createSignal<boolean>(false, { ownedWrite: true });
+			const status = props.defaultStatus;
+			const opening = status !== null && untrack((): DrawerStatus => (status as Accessor<DrawerStatus>)()) === "open";
+			const [open, writeOpen] = createSignal<boolean>(opening, { ownedWrite: true });
 			const core = createCore<PL>({
 				kind: NavigatorKind.Drawer,
 				screens,
@@ -403,18 +418,33 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 			});
 			const close = (e: NeonEvent): void => { core.drawerLocal(DrawerAction.Close); };
 			const mounted = mountedEntries<PL>(core);
-			const backdrop = accessor((): Style => ({
-				...BACKDROP,
-				opacity: 0.4 * motion.progress.get(),
-			}));
+			const focusedOptions = accessor((): ScreenOptions => {
+				core.currentKey();
+				const current = core.current();
+				return current === null ? {} : (current as Navigation<PL>).options();
+			});
+			const backdrop = accessor((): Style => {
+				const color = focusedOptions().overlayColor;
+				if (color === null) { return { ...BACKDROP, opacity: 0.4 * motion.progress.get() }; }
+				return { ...BACKDROP, backgroundColor: color as string, opacity: motion.progress.get() };
+			});
+			const edgeWidth = accessor((): number => {
+				const own = focusedOptions().swipeEdgeWidth;
+				return own === null ? EDGE_WIDTH : own as number;
+			});
 			const edge = accessor((): Style => ({
 				position: "absolute",
 				top: 56,
 				bottom: 0,
 				left: right() ? null : 0,
 				right: right() ? 0 : null,
-				width: EDGE_WIDTH,
+				width: edgeWidth(),
 			}));
+			const content = accessor((): Style => {
+				const base: Style = { flex: 1, flexDirection: "column", position: "relative" };
+				if (focusedOptions().drawerType !== "slide") { return base; }
+				return { ...base, transform: motion.contentTransform() };
+			});
 			const edgeHandlers = motion.edgeHandlers();
 			const transitions = createNavigatorMotion<PL>(core, false);
 			const screen = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
@@ -424,7 +454,7 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 				return drawerItem<PL>(core, entry);
 			};
 			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
-				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
+				<View style={content}>
 					<For each={mounted}>{screen}</For>
 				</View>
 				<Show when={motion.edgeShown()}>
