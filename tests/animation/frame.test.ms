@@ -162,3 +162,19 @@ test "useFrame outside any owner throws an Error naming the reason" {
 	}
 	assert message === "useFrame: call it under an owner (a component or a root); the callback lives as long as that owner", message;
 }
+
+test "useFrame callbacks run in priority order, whatever order they mounted in" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		useFrame((dt: number, time: number): void => { log.push("late"); }, 5.0);
+		useFrame((dt: number, time: number): void => { log.push("mid-a"); });
+		useFrame((dt: number, time: number): void => { log.push("early"); }, -1.0);
+		useFrame((dt: number, time: number): void => { log.push("mid-b"); }, 0.0);
+		return dispose;
+	});
+	clock.advance(16);
+	assert log.join(",") === "early,mid-a,mid-b,late", "lowest first, mount order among equals: " + log.join(",");
+	dispose();
+	setFrameDriver(null);
+}
