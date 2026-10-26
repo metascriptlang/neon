@@ -1,8 +1,6 @@
 #import "modules.h"
 #import <UIKit/UIKit.h>
 
-NSString *niLinkingInitial(void);
-
 static NSString *call(NSString *name, NSString *arg) {
 	if ([name isEqualToString:@"linking.open"] || [name isEqualToString:@"linking.settings"]) {
 		NSURL *url = [name isEqualToString:@"linking.settings"] ? [NSURL URLWithString:UIApplicationOpenSettingsURLString] : [NSURL URLWithString:arg];

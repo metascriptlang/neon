@@ -5,6 +5,7 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #import "component.h"
+#import "modules.h"
 #include "../native/loop.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1085,9 +1086,22 @@ static void setStatusBar(const char *name, const char *value) {
 @implementation NeonAppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+	niLinkingLaunched(launchOptions);
 	self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
 	self.window.rootViewController = [[NeonVC alloc] init];
 	[self.window makeKeyAndVisible];
+	return YES;
+}
+
+- (void)applicationDidBecomeActive:(UIApplication *)application { niLinkingActive(); }
+
+- (BOOL)application:(UIApplication *)application openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options {
+	niLinkingOpened(url);
+	return YES;
+}
+
+- (BOOL)application:(UIApplication *)application continueUserActivity:(NSUserActivity *)userActivity restorationHandler:(void (^)(NSArray<id<UIUserActivityRestoring>> *))restorationHandler {
+	if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb] && userActivity.webpageURL != nil) niLinkingOpened(userActivity.webpageURL);
 	return YES;
 }
 

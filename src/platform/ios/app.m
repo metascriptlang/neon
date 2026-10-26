@@ -1,7 +1,6 @@
 #import <UIKit/UIKit.h>
 #include "../native/app.h"
 #import "modules.h"
-#import <objc/runtime.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -167,20 +166,22 @@ NSString *niLinkingInitial(void) {
 	return g_initialUrl;
 }
 
-static BOOL openURLWithOptions(id self, SEL command, UIApplication *application, NSURL *url, NSDictionary *options) {
-	if (!g_launched && !g_initialUrl.length) g_initialUrl = url.absoluteString;
-	else emit(NI_APP_URL, url.absoluteString);
-	return YES;
+void niLinkingLaunched(NSDictionary *launchOptions) {
+	NSURL *url = launchOptions[UIApplicationLaunchOptionsURLKey];
+	if (url == nil) {
+		NSDictionary *activity = launchOptions[UIApplicationLaunchOptionsUserActivityDictionaryKey];
+		url = ((NSUserActivity *)activity[@"UIApplicationLaunchOptionsUserActivityKey"]).webpageURL;
+	}
+	g_initialUrl = url ? url.absoluteString : @"";
 }
 
-__attribute__((constructor)) static void installUrlHandling(void) {
-	NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-	[center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *n) { g_launched = YES; }];
-	Class delegate = NSClassFromString(@"NeonAppDelegate");
-	if (!delegate || !class_addMethod(delegate, @selector(application:openURL:options:), (IMP)openURLWithOptions, "c@:@@@")) {
-		NSLog(@"Neon: cannot install application:openURL:options: on NeonAppDelegate");
-		abort();
-	}
+void niLinkingOpened(NSURL *url) {
+	if (!g_launched && [url.absoluteString isEqualToString:g_initialUrl]) return;
+	emit(NI_APP_URL, url.absoluteString);
+}
+
+void niLinkingActive(void) {
+	g_launched = YES;
 }
 
 static NSString *call(NSString *name, NSString *arg) {

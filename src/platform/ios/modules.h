@@ -8,6 +8,10 @@ extern NSString *const NIField;
 extern NSString *const NIRecord;
 
 void niAppEmit(int kind, NSString *value);
+NSString *niLinkingInitial(void);
+void niLinkingLaunched(NSDictionary *launchOptions);
+void niLinkingOpened(NSURL *url);
+void niLinkingActive(void);
 const char *niAppReply(NSString *reply);
 NSString *niModuleCall(NSString *name, NSString *arg);
 
