@@ -47,7 +47,7 @@ export function docs(
 	return <View accessibilityLabel="Docs" style={styles.box}>
 		<Text style={styles.label}>Hi {name()}</Text>
 		<Text>{blank()}</Text>
-		<Pressable accessibilityLabel="Copy" onPress={press}><Text>copy</Text></Pressable>
+		<Pressable accessibilityLabel="Copy" accessibilityState={{ selected: open() }} onPress={press}><Text>copy</Text></Pressable>
 		<Show when={open()}><p id="shown">shown</p></Show>
 		<For each={rows()}>{(row: string, i: Accessor<number>): NeonNode => <span class="row">{row}</span>}</For>
 		<canvas id="mech" ref={mech}></canvas>

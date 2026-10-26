@@ -254,6 +254,20 @@ function inputMode(keyboardType: string): string {
 	};
 }
 
+export const ARIA_STATE_NAMES: string[] = ["aria-checked", "aria-selected", "aria-disabled", "aria-busy", "aria-expanded"];
+
+export function ariaStateValues(state: string): (string | null)[] {
+	const tokens: string[] = state === "" ? [] : state.split(",");
+	const has = (token: string): boolean => tokens.indexOf(token) >= 0;
+	return [
+		has("checked") ? "true" : has("unchecked") ? "false" : has("mixed") ? "mixed" : null,
+		has("selected") ? "true" : null,
+		has("disabled") ? "true" : null,
+		has("busy") ? "true" : null,
+		has("expanded") ? "true" : has("collapsed") ? "false" : null,
+	];
+}
+
 export function domAttrValue(name: string, value: string): string | null {
 	return match (name) {
 		"accessibilityRole" => ariaRole(value),

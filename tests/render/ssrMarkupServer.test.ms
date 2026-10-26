@@ -26,6 +26,17 @@ test "SSR writes input attributes with the values the DOM host writes" {
 	assert locked === "<input readonly=\"\" autofocus=\"\" type=\"text\">", locked;
 }
 
+test "SSR writes accessibilityState as the aria attributes the DOM host writes" {
+	const all = renderToString(el("pressable", [attr("accessibilityState", "checked,selected,disabled,busy,expanded")], [], null));
+	assert all === "<button aria-checked=\"true\" aria-selected=\"true\" aria-disabled=\"true\" aria-busy=\"true\" aria-expanded=\"true\" class=\"neon-view\"></button>", all;
+	const off = renderToString(el("view", [attr("accessibilityState", "unchecked,collapsed")], [], null));
+	assert off === "<div aria-checked=\"false\" aria-expanded=\"false\" class=\"neon-view\"></div>", off;
+	const mixed = renderToString(el("view", [attr("accessibilityState", "mixed")], [], null));
+	assert mixed === "<div aria-checked=\"mixed\" class=\"neon-view\"></div>", mixed;
+	const none = renderToString(el("view", [attr("accessibilityState", "")], [], null));
+	assert none === "<div class=\"neon-view\"></div>", none;
+}
+
 test "SSR writes a scrollview as the div, classes and scroll style the DOM host builds" {
 	const page = renderToMarkup(el("scrollview", [attr("horizontal", "true"),
 		attr("showsHorizontalScrollIndicator", "false")], [], null));
