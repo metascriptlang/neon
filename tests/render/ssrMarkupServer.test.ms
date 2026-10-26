@@ -37,6 +37,19 @@ test "SSR writes accessibilityState as the aria attributes the DOM host writes" 
 	assert none === "<div class=\"neon-view\"></div>", none;
 }
 
+test "SSR writes the RN accessibility props as react-native-web writes them" {
+	const value = renderToString(el("view", [attr("accessibilityValue", ",10,3,three, of ten")], [], null));
+	assert value === "<div aria-valuemax=\"10\" aria-valuenow=\"3\" aria-valuetext=\"three, of ten\" class=\"neon-view\"></div>", value;
+	const live = renderToString(el("view", [attr("accessibilityLiveRegion", "none"), attr("accessibilityViewIsModal", "true"),
+		attr("accessibilityLabelledBy", "a,b"), attr("focusable", "false")], [], null));
+	assert live === "<div aria-live=\"off\" aria-modal=\"true\" aria-labelledby=\"a b\" tabindex=\"-1\" class=\"neon-view\"></div>", live;
+	const hidden = renderToString(el("view", [attr("importantForAccessibility", "no-hide-descendants"), attr("focusable", "true")], [], null));
+	assert hidden === "<div aria-hidden=\"true\" tabindex=\"0\" class=\"neon-view\"></div>", hidden;
+	const shown = renderToString(el("view", [attr("accessibilityElementsHidden", "false"), attr("importantForAccessibility", "yes"),
+		attr("accessibilityActions", "magicTap"), attr("role", "none")], [], null));
+	assert shown === "<div role=\"presentation\" class=\"neon-view\"></div>", shown;
+}
+
 test "SSR writes a scrollview as the div, classes and scroll style the DOM host builds" {
 	const page = renderToMarkup(el("scrollview", [attr("horizontal", "true"),
 		attr("showsHorizontalScrollIndicator", "false")], [], null));

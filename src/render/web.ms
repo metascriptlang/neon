@@ -268,9 +268,44 @@ export function ariaStateValues(state: string): (string | null)[] {
 	];
 }
 
+export const ARIA_VALUE_NAMES: string[] = ["aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext"];
+
+// "min,max,now,text": the three numbers may be empty and the text, last, may hold commas.
+export function ariaValueValues(value: string): (string | null)[] {
+	const out: (string | null)[] = [];
+	let rest = value;
+	for (let i = 0; i < 3; i += 1) {
+		const cut = rest.indexOf(",");
+		const field = cut < 0 ? rest : rest.slice(0, cut);
+		rest = cut < 0 ? "" : rest.slice(cut + 1);
+		out.push(field === "" ? null : field);
+	}
+	out.push(rest === "" ? null : rest);
+	return out;
+}
+
+// RN props that write several aria attributes at once; the other names write one.
+export function ariaGroupNames(name: string): string[] {
+	return match (name) {
+		"accessibilityState" => ARIA_STATE_NAMES,
+		"accessibilityValue" => ARIA_VALUE_NAMES,
+		_ => [],
+	};
+}
+
+export function ariaGroupValues(name: string, value: string): (string | null)[] {
+	return name === "accessibilityValue" ? ariaValueValues(value) : ariaStateValues(value);
+}
+
 export function domAttrValue(name: string, value: string): string | null {
 	return match (name) {
-		"accessibilityRole" => ariaRole(value),
+		"accessibilityRole" | "role" => ariaRole(value),
+		"accessibilityLiveRegion" => value === "none" ? "off" : value,
+		"accessibilityLabelledBy" => value.split(",").join(" "),
+		"accessibilityElementsHidden" => value === "true" ? "true" : null,
+		"importantForAccessibility" => value === "no-hide-descendants" ? "true" : null,
+		"focusable" => value === "true" ? "0" : "-1",
+		"accessibilityActions" => null,
 		"editable" => value === "false" ? "" : null,
 		"autoFocus" => value === "true" ? "" : null,
 		"secureTextEntry" => value === "true" ? "password" : "text",
@@ -286,6 +321,11 @@ export function domAttrName(name: string): string {
 		"accessibilityLabel" => "aria-label",
 		"accessibilityHint" => "aria-description",
 		"accessibilityRole" => "role",
+		"accessibilityLiveRegion" => "aria-live",
+		"accessibilityLabelledBy" => "aria-labelledby",
+		"accessibilityElementsHidden" | "importantForAccessibility" => "aria-hidden",
+		"accessibilityViewIsModal" => "aria-modal",
+		"focusable" => "tabindex",
 		"editable" => "readonly",
 		"keyboardType" => "inputmode",
 		"returnKeyType" => "enterkeyhint",

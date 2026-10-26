@@ -39,8 +39,8 @@ import {
 	svgPrefix,
 	tileRule,
 	domAttrValue,
-	ARIA_STATE_NAMES,
-	ariaStateValues,
+	ariaGroupNames,
+	ariaGroupValues,
 } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
@@ -711,17 +711,18 @@ function writeNewControlAttr(el: Node, kind: string, name: string, value: string
 	return false;
 }
 
-function writeAccessibilityState(el: Node, value: string): void {
-	const states = ariaStateValues(value);
-	for (let i = 0; i < ARIA_STATE_NAMES.length; i += 1) {
-		const state = states[i];
-		if (state === null) { el.removeAttribute(ARIA_STATE_NAMES[i]); }
-		else { el.setAttribute(ARIA_STATE_NAMES[i], state as string); }
+function writeAriaGroup(el: Node, name: string, value: string): void {
+	const names = ariaGroupNames(name);
+	const values = ariaGroupValues(name, value);
+	for (let i = 0; i < names.length; i += 1) {
+		const v = values[i];
+		if (v === null) { el.removeAttribute(names[i]); }
+		else { el.setAttribute(names[i], v as string); }
 	}
 }
 
 function writeDomAttr(el: Node, name: string, value: string): void {
-	if (name === "accessibilityState") { writeAccessibilityState(el, value); return; }
+	if (ariaGroupNames(name).length > 0) { writeAriaGroup(el, name, value); return; }
 	if (controlKinds.has(el) && writeNewControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (writeTextAttr(el, name, value)) { return; }
@@ -1179,7 +1180,7 @@ export function domHost(): Host {
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			const base = name === "class" ? baseClassOf(el) : "";
-			if (name === "accessibilityState") { writeAccessibilityState(el, ""); }
+			if (ariaGroupNames(name).length > 0) { writeAriaGroup(el, name, ""); }
 			else { el.removeAttribute(domAttrName(name)); }
 			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
