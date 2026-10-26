@@ -5,6 +5,8 @@ when (js && !server) {
 	import "../platform/browser/linking";
 } else when (ios || android) {
 	import "../platform/native/linking";
+} else when (macos || windows || linux) {
+	import "../platform/ion/linking";
 }
 
 export interface LinkingUrlEvent {
