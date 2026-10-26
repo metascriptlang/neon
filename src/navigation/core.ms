@@ -80,6 +80,7 @@ export interface ScreenOptions {
 	drawerActiveTintColor?: string | null;
 	lazy?: boolean | null;
 	unmountOnBlur?: boolean | null;
+	popToTopOnBlur?: boolean | null;
 }
 
 export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOptions {
@@ -128,6 +129,7 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 			: base.drawerActiveTintColor,
 		lazy: over.lazy !== null ? over.lazy : base.lazy,
 		unmountOnBlur: over.unmountOnBlur !== null ? over.unmountOnBlur : base.unmountOnBlur,
+		popToTopOnBlur: over.popToTopOnBlur !== null ? over.popToTopOnBlur : base.popToTopOnBlur,
 	};
 }
 

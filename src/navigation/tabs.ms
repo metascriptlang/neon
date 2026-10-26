@@ -18,6 +18,7 @@ import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
+	NavigatorLink,
 	NavigatorModel,
 	RouteSeed,
 	RouteWebMap,
@@ -170,9 +171,18 @@ export function pagesModel<PL>(
 		kept.push(key);
 		history = kept;
 	};
+	const leave = (left: Navigation<PL> | null): void => {
+		if (left === null) { return; }
+		const gone = left as Navigation<PL>;
+		if (!shown(gone.options().popToTopOnBlur, false) || gone.isFocused()) { return; }
+		const nested = core.nestedLink(gone.route.key);
+		if (nested !== null) { (nested as NavigatorLink).popToTop(); }
+	};
 	const focus = (at: int32): void => {
+		const left = core.current();
 		visit(core.snapshot()[at].route.key);
 		core.apply((): void => { pages.select(at); });
+		leave(left);
 	};
 	const backTarget = (): int32 => {
 		const list = core.snapshot();
@@ -210,8 +220,10 @@ export function pagesModel<PL>(
 		const goal = backTarget();
 		if (goal < 0) { return false; }
 		if (behavior === "history") {
+			const left = core.current();
 			history.pop();
 			core.apply((): void => { pages.select(goal); });
+			leave(left);
 			return true;
 		}
 		focus(goal);
