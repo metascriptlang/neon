@@ -1,5 +1,6 @@
 when (windows) {
 	@compile("./activityIndicator.cpp");
+	@compile("./automation.cpp");
 	@compile("./bridge.cpp");
 	@compile("./dcompComposition.cpp");
 	@compile("./dwriteText.cpp");
@@ -16,4 +17,5 @@ when (windows) {
 	@passL("-lwindowscodecs");
 	@passL("-lurlmon");
 	@passL("-ldxguid");
+	@passL("-luiautomationcore");
 }

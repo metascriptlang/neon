@@ -24,6 +24,16 @@ void harnessHover(const char *title, int x, int y);
 void harnessDrag(const char *title, int fromX, int fromY, int toX, int toY, int steps);
 const char *harnessFileUri(const char *relativePath);
 int harnessPostKeys(const char *title, const char *keys);
+// UI Automation as a client sees the window. Forward routes the window's WM_GETOBJECT to niwGetObject (Ion's window proc will);
+// Start looks an element up by Name on a worker thread and then acts on it (0 read only, 1 Invoke, 2 Toggle); poll Done from a timer
+// so the window keeps pumping, then read the result: Number fields found, controlType, enabled, focusable, control, width, height,
+// hasInvoke, hasToggle, toggleState, hasRange, rangeMin, rangeMax, rangeNow, hasExpand, expandState, actionResult (-1000 when absent);
+// Text fields name, helpText, automationId.
+void harnessAutomationForward(const char *title);
+void harnessAutomationStart(const char *title, const char *name, int action);
+int harnessAutomationDone(void);
+int harnessAutomationNumber(const char *field);
+const char *harnessAutomationText(const char *field);
 
 #ifdef __cplusplus
 }

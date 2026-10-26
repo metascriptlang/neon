@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "activityIndicator.h"
+#include "automation.h"
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
@@ -49,6 +50,7 @@ struct View {
 	std::unique_ptr<ActivityIndicator> indicator;
 	std::unique_ptr<Modal> modal;
 	std::unique_ptr<SwitchControl> toggle;
+	int automationId = 0;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -66,6 +68,9 @@ View *g_pressedInput = nullptr;
 View *g_focusedSwitch = nullptr;
 View *g_pressedSwitch = nullptr;
 View *g_hoveredSwitch = nullptr;
+std::map<int, View *> g_automationViews;
+int g_nextAutomationId = uia::kRootId + 1;
+int g_announcedFocus = 0;
 bool g_windowFocused = true;
 int g_ionCursor = 0;
 float g_caret[4];
@@ -145,6 +150,7 @@ void release(View *view) {
 	if (g_focusedSwitch == view) g_focusedSwitch = nullptr;
 	if (g_pressedSwitch == view) g_pressedSwitch = nullptr;
 	if (g_hoveredSwitch == view) g_hoveredSwitch = nullptr;
+	if (view->automationId) g_automationViews.erase(view->automationId);
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
 	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
@@ -355,7 +361,9 @@ View *as(void *view) { return static_cast<View *>(view); }
 
 bool isAccessibilityProp(const char *name) {
 	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
-		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState");
+		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState") || !strcmp(name, "role") ||
+		!strcmp(name, "accessibilityValue") || !strcmp(name, "accessibilityLiveRegion") || !strcmp(name, "testID") ||
+		!strcmp(name, "nativeID");
 }
 
 int countStored(const View *view, const char *name, const char *value) {
@@ -699,6 +707,168 @@ void imageSize(const char *arg) {
 	ionWakeLoop();
 }
 
+int automationId(View *view) {
+	if (view == g_container) return uia::kRootId;
+	if (!view->automationId) {
+		view->automationId = g_nextAutomationId++;
+		g_automationViews[view->automationId] = view;
+	}
+	return view->automationId;
+}
+
+View *automationView(int id) {
+	if (id == uia::kRootId) return g_container;
+	auto found = g_automationViews.find(id);
+	return found == g_automationViews.end() || !isMounted(found->second) ? nullptr : found->second;
+}
+
+std::string storedAccessibility(const View *view, const char *name) {
+	auto found = view->accessibility.find(name);
+	return found == view->accessibility.end() ? std::string() : found->second;
+}
+
+View *hitAny(View *view, float px, float py) {
+	float lx, ly;
+	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
+	bool inside = lx >= 0 && lx <= view->w && ly >= 0 && ly <= view->h;
+	bool clipsChildren = view->radius > 0 || view->scroller;
+	float cx = view->scroller ? lx + view->scroller->x : lx, cy = view->scroller ? ly + view->scroller->y : ly;
+	if (inside || !clipsChildren) {
+		for (auto child = view->children.rbegin(); child != view->children.rend(); ++child) {
+			if (View *found = hitAny(*child, cx, cy)) return found;
+		}
+	}
+	return inside ? view : nullptr;
+}
+
+bool pressView(View *view) {
+	if (!s_touch.fn || g_touch.active) return false;
+	float x = view->w / 2, y = view->h / 2;
+	for (View *at = view; at && at != g_container; at = at->parent) {
+		x += at->x;
+		y += at->y;
+		if (at != view && at->scroller) {
+			x -= at->scroller->x;
+			y -= at->scroller->y;
+		}
+		if (at->tag == 0) continue;
+		at->refs += 1;
+		g_touch.chain.push_back(at);
+	}
+	if (g_touch.chain.empty()) return false;
+	g_touch.active = true;
+	double time = nowMs();
+	std::vector<View *> chain = g_touch.chain;
+	for (View *at : chain) report(at, 0, x, y, time);
+	for (View *at : chain) {
+		report(at, 1, x, y, time);
+		report(at, 2, x, y, time);
+	}
+	endTouch();
+	return true;
+}
+
+}
+
+namespace uia {
+
+bool Describe(int id, Element *out) {
+	View *view = automationView(id);
+	if (!view || view == g_container) return false;
+	out->label = storedAccessibility(view, "accessibilityLabel");
+	out->hint = storedAccessibility(view, "accessibilityHint");
+	out->role = storedAccessibility(view, "role");
+	out->ariaRole = storedAccessibility(view, "accessibilityRole");
+	out->state = storedAccessibility(view, "accessibilityState");
+	out->value = storedAccessibility(view, "accessibilityValue");
+	out->live = storedAccessibility(view, "accessibilityLiveRegion");
+	out->testId = storedAccessibility(view, "testID");
+	if (out->testId.empty()) out->testId = storedAccessibility(view, "nativeID");
+	if (view->label) out->text = view->label->Text();
+	if (view->input) out->inputText = view->input->Text();
+	std::string accessible = storedAccessibility(view, "accessible");
+	out->accessible = accessible.empty() ? view->label || view->toggle || view->input : accessible == "true";
+	out->pressable = view->pressable;
+	out->isSwitch = view->toggle != nullptr;
+	out->switchOn = view->toggle && view->toggle->Value();
+	out->switchDisabled = view->toggle && view->toggle->Disabled();
+	out->isInput = view->input != nullptr;
+	out->isImage = view->picture != nullptr;
+	out->focused = view == g_focusedInput || view == g_focusedSwitch;
+	float left = 0, top = 0;
+	for (const View *at = view; at && at != g_container; at = at->parent) {
+		left += roundf(at->x * g_scale);
+		top += roundf(at->y * g_scale);
+		if (at != view && at->scroller) {
+			left -= roundf(at->scroller->x * g_scale);
+			top -= roundf(at->scroller->y * g_scale);
+		}
+	}
+	int32_t pixelWidth, pixelHeight;
+	pixelBox(view, &pixelWidth, &pixelHeight);
+	out->bounds = {(LONG)left, (LONG)top, (LONG)left + pixelWidth, (LONG)top + pixelHeight};
+	return true;
+}
+
+int Navigate(int id, Direction direction) {
+	View *view = automationView(id);
+	if (!view) return 0;
+	if (direction == kFirstChild) return view->children.empty() ? 0 : automationId(view->children.front());
+	if (direction == kLastChild) return view->children.empty() ? 0 : automationId(view->children.back());
+	View *parent = view->parent;
+	if (!parent) return 0;
+	if (direction == kParent) return automationId(parent);
+	auto at = std::find(parent->children.begin(), parent->children.end(), view);
+	if (direction == kNextSibling) return ++at == parent->children.end() ? 0 : automationId(*at);
+	return at == parent->children.begin() ? 0 : automationId(*--at);
+}
+
+int ElementAt(int pixelX, int pixelY) {
+	if (!g_container) return 0;
+	float x = pixelX / g_scale, y = pixelY / g_scale;
+	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
+		if (View *found = hitAny(*child, x, y)) return automationId(found);
+	}
+	return 0;
+}
+
+int FocusedElement() {
+	if (g_focusedInput) return automationId(g_focusedInput);
+	return g_focusedSwitch ? automationId(g_focusedSwitch) : 0;
+}
+
+bool Invoke(int id) {
+	View *view = automationView(id);
+	return view && view->pressable && pressView(view);
+}
+
+bool Toggle(int id) {
+	View *view = automationView(id);
+	if (!view) return false;
+	if (view->toggle) {
+		if (view->toggle->Disabled()) return false;
+		flipSwitch(view);
+		return true;
+	}
+	return view->pressable && pressView(view);
+}
+
+bool Focus(int id) {
+	View *view = automationView(id);
+	if (!view) return false;
+	if (view->input) {
+		focusInput(view);
+		flushReports();
+	} else if (view->toggle && !view->toggle->Disabled()) {
+		g_focusedSwitch = view;
+		if (g_focusedInput) blurInput(g_focusedInput);
+	} else {
+		return false;
+	}
+	changed();
+	return true;
+}
+
 }
 
 extern "C" {
@@ -727,6 +897,11 @@ void niwResize(float dpi, float logicalWidth, float logicalHeight) {
 
 void niwFrame(void) {
 	requireAttached("niwFrame");
+	int focusedNow = uia::FocusedElement();
+	if (focusedNow != g_announcedFocus) {
+		g_announcedFocus = focusedNow;
+		if (uia::Listening()) uia::FocusChanged(focusedNow);
+	}
 	g_frameRequested = false;
 	g_inFrame = true;
 	reportScrolls();
@@ -749,6 +924,16 @@ void niwFrame(void) {
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
 
 int niwLayoutsBuilt(void) { return TextLabel::LayoutsBuilt(); }
+
+int niwGetObject(void *hwnd, unsigned long long wParam, long long lParam, long long *result) {
+	requireAttached("niwGetObject");
+	LRESULT answer = 0;
+	if (!uia::GetObject((HWND)hwnd, (WPARAM)wParam, (LPARAM)lParam, &answer)) return 0;
+	*result = (long long)answer;
+	return 1;
+}
+
+void niwDisconnectAutomation(void *hwnd) { uia::Disconnect((HWND)hwnd); }
 
 int niwStoredAccessibility(const char *name, const char *value) {
 	requireAttached("niwStoredAccessibility");
@@ -1270,7 +1455,7 @@ void niMeasureText(void *label, float maxWidth) {
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
-void niSetProp(void *view, const char *name, const char *value) {
+static void setProp(void *view, const char *name, const char *value) {
 	if (as(view)->modal && as(view)->modal->SetProp(name, value)) return;
 	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
 	if ((as(view)->indicator && as(view)->indicator->SetProp(name, value)) || (as(view)->toggle && as(view)->toggle->SetProp(name, value))) {
@@ -1308,6 +1493,14 @@ void niSetProp(void *view, const char *name, const char *value) {
 	char what[128];
 	snprintf(what, sizeof what, "niSetProp(%s)", name);
 	unimplemented(what);
+}
+
+void niSetProp(void *view, const char *name, const char *value) {
+	int id = uia::Listening() ? automationId(as(view)) : 0;
+	uia::Element before, after;
+	bool described = id && uia::Describe(id, &before);
+	setProp(view, name, value);
+	if (described && uia::Describe(id, &after)) uia::PropertiesChanged(id, before, after);
 }
 
 }
