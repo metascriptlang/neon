@@ -42,6 +42,17 @@ Two hosts render a narrower set:
   any other tag as an empty group, without an error.
 - **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes.
 
+## Device APIs on an Ion desktop host
+
+macOS and Windows install each of these when the app imports it (`src/platform/ion/`); any other device API throws `<API> is not available on this host`.
+
+| API | macOS and Windows | reference |
+|---|---|---|
+| Vibration | accepted, no effect | RN macOS `RCTVibration.mm:25` plays `kSystemSoundID_Vibrate`, which a Mac cannot do; react-native-web `Vibration/index.js` skips the call when `navigator.vibrate` is absent. RN macOS logs an error on `cancel` (`RCTVibration.mm:46`); Neon does not |
+| Haptics | accepted, no feedback | the browser host does the same where `navigator.vibrate` is absent; expo-haptics is not on disk, so its unsupported-platform behaviour is not read |
+| Notifications | an immediate one (`trigger: null`) posts through Ion's `notify`; a click is a response with the title, body and data posted under that id | a `trigger`, `content.badge`, cancel and dismiss throw naming the call; `subtitle` and `sound` are ignored; on macOS the process needs an app bundle (`~/metascript/.inbox/ion/2026-10-25-notify-aborts-a-process-outside-an-app-bundle.md`) |
+| NetInfo | throws | Ion has no network API; react-native-netinfo is not on disk |
+
 ## Accepted and ignored
 
 | host | prop | why |

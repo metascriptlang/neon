@@ -8,6 +8,8 @@ when (js && !server) {
 	import "../platform/browser/notifications";
 } else when (ios || android) {
 	import "../platform/native/notifications";
+} else when (macos || windows || linux) {
+	import "../platform/ion/notifications";
 }
 
 export const DEFAULT_ACTION_IDENTIFIER = "expo.modules.notifications.actions.DEFAULT";
