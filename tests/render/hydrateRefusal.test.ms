@@ -1,3 +1,4 @@
+import { sleepAsync } from "std/core/promise";
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
 import { render, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
@@ -11,6 +12,13 @@ import { Gate, release, opened } from "../core/asyncClock";
 import { View, Text } from "../../src/components/primitives";
 import { Show, Loading } from "../../src/macros/ui/flow";
 import { flush } from "../../src/core/runtime";
+
+function paragraph(root: MockNode): MockNode {
+	for (const n of root.children[0].children) {
+		if (n.tag === "p") { return n; }
+	}
+	throw new Error("the page has no <p>: " + mockToString(root));
+}
 
 function served(tree: NeonNode): MockNode {
 	const root = mockNode("root");
@@ -165,6 +173,21 @@ function lazyShell(Page: Greeting): NeonNode {
 	return el("div", [], [], Loading({ children: createComponent(Page, { label: "ssr" }), fallback: el("b", [], [], text("loading")) }));
 }
 
+async function helloNow(): Promise<Greeting> {
+	return Hello;
+}
+
+const ServedHello = lazyModule("tests/render/hydrateRefusal/served", helloNow);
+
+async function servedLazy(): Promise<MockNode> {
+	const root = mockNode("root");
+	const dispose = render(lazyShell(ServedHello), mockHost(), root as unknown as HostNode, "");
+	let polls: int32 = 0;
+	while (!mockToString(root).includes("<p>") && polls < 500) { await sleepAsync(1); flush(); polls += 1; }
+	dispose();
+	return root;
+}
+
 async function loadAfter(gate: Gate, comp: Greeting): Promise<Greeting> {
 	await opened(gate);
 	return comp;
@@ -182,24 +205,24 @@ async function failFirst(gate: Gate, calls: Calls): Promise<Greeting> {
 }
 
 test "a page with a lazy the client has not loaded claims once the module loads: kept when it matches in debug, rebuilt when it differs in release" {
-	const root = served(lazyShell((props: { label: string }): NeonNode => Hello(props)));
+	const root = await servedLazy();
 	const sent = mockToString(root);
 	const top = root.children[0];
-	const from = top.children[0];
+	const from = paragraph(root);
 	const gate = new Gate();
 	when (debug) {
 		const Page = lazyModule("tests/render/hydrateRefusal/kept", (): Promise<Greeting> => loadAfter(gate, Hello));
 		putModule("0", "tests/render/hydrateRefusal/kept");
 		const dispose = hydrate(lazyShell(Page), mockHost(), root as unknown as HostNode);
-		assert !hydrating() && root.children[0].children[0] === from, "nothing is claimed before the module loads";
+		assert !hydrating() && paragraph(root) === from, "nothing is claimed before the module loads";
 		await release(gate);
-		assert mockToString(root) === sent && root.children[0].children[0] === from, mockToString(root);
+		assert mockToString(root) === sent && paragraph(root) === from, mockToString(root);
 		dispose();
 	} else {
 		const Page = lazyModule("tests/render/hydrateRefusal/rebuilt", (): Promise<Greeting> => loadAfter(gate, Other));
 		putModule("0", "tests/render/hydrateRefusal/rebuilt");
 		const dispose = hydrate(lazyShell(Page), mockHost(), root as unknown as HostNode);
-		assert !hydrating() && mockToString(root) === sent && root.children[0].children[0] === from, "nothing is claimed before the module loads";
+		assert !hydrating() && mockToString(root) === sent && paragraph(root) === from, "nothing is claimed before the module loads";
 		await release(gate);
 		assert mockToString(root) === "<root><div><h1>other ssr</h1></div></root>", mockToString(root);
 		assert top.parent === null, "the served node left the page";
@@ -209,7 +232,7 @@ test "a page with a lazy the client has not loaded claims once the module loads:
 }
 
 test "a lazy module that fails to load renders the page fresh" {
-	const root = served(lazyShell((props: { label: string }): NeonNode => Hello(props)));
+	const root = await servedLazy();
 	const top = root.children[0];
 	const gate = new Gate();
 	const calls = new Calls();

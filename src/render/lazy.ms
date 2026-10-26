@@ -1,4 +1,5 @@
 import { createAsyncMemo } from "../core/memo";
+import { accessor } from "../core/signal";
 import { getOwner } from "../core/runtime";
 import { serverContext } from "../core/serverContext";
 import { Host, HostNode, NeonNode } from "./hostTypes";
@@ -52,14 +53,13 @@ export function lazyModule<P>(key: string, load: () => Promise<(props: P) => Neo
 	const m = entryFor<P>(key, load);
 	return (props: P): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const mount: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => { createComponent(m.loaded[0], props)(h, p, b); };
-		if (m.loaded.length > 0) { mount(host, parent, before); return; }
 		const ready = createAsyncMemo((prev: boolean | null): Promise<boolean> => {
 			const ctx = serverContext();
 			const self = getOwner();
 			if (ctx !== null && self !== null && self.id !== null) { ctx.modules.set(self.id as string, key); }
 			return startLoad<P>(m);
 		});
-		Show({ when: ready, children: mount })(host, parent, before);
+		Show({ when: accessor((): boolean => m.loaded.length > 0 || ready()), children: mount })(host, parent, before);
 	};
 }
 

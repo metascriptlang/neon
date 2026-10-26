@@ -22,7 +22,7 @@ async function loadGreeting(): Promise<(props: { label: string }) => NeonNode> {
 test "renderToStream waits for the lazy module and writes the page, loading it once" {
 	const Lazy = lazyModule("tests/render/lazy/greeting", loadGreeting);
 	const out = await renderToStream(Loading({ children: createComponent(Lazy, { label: "ssr" }), fallback: waiting }));
-	assert out.html === "<p>hello ssr</p><!---->", out.html;
+	assert out.html === "<!----><p>hello ssr</p><!----><!---->", out.html;
 	assert loads[0] === 1, "one load: " + loads[0].toString();
 }
 
