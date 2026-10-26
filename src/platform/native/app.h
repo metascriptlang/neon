@@ -19,6 +19,8 @@ enum {
 	NI_APP_NOTIFICATION = 12,
 	NI_APP_SOUND = 13, // "sound 0x1f status", src/platform/native/captureServices.ms decodeSound
 	NI_APP_RECORDING = 14, // "recording 0x1f status", decodeRecording
+	NI_APP_ACTION_SHEET = 15, // "id 0x1f index", src/platform/native/actionSheet.ms
+	NI_APP_SETTINGS = 16, // "", src/platform/native/settings.ms
 };
 
 const char *niAppCall(const char *name, const char *arg);

@@ -77,6 +77,8 @@ export { BackHandler } from "./api/backHandler";
 export { Alert, AlertButton, AlertButtonStyle, AlertOptions } from "./api/alert";
 export { Linking, LinkingUrlEvent } from "./api/linking";
 export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
+export { ActionSheetIOS, ActionSheetIOSOptions } from "./api/actionSheetIOS";
+export { Settings } from "./api/settings";
 export { Vibration } from "./api/vibration";
 export { Clipboard } from "./api/clipboard";
 export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
