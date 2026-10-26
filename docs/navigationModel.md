@@ -515,6 +515,18 @@ TanStack Router `6777b8b` (`router-core/src/scroll-restoration.ts`), Next.js `64
 - Not built: nested scroll containers (TanStack `data-scroll-restoration-id`, needs an id on
   `ScrollView`); smooth `scrollRestorationBehavior`.
 
+## Announcement
+
+`followAnnouncements(router)` (`src/platform/browser/announce.ms`) ports Next.js
+`app-router-announcer.tsx` (`648110d4`): a visually hidden `role="alert"` `aria-live="assertive"`
+region (`:10-30`) is set to `document.title`, else the first `h1`, after a route change, and
+not on the first load, where screen readers read the page themselves; an unchanged title is
+not repeated (`:55-69`). It follows the router's pathname, so push, replace and back and forward
+all announce. Solid Router `d0379e7`, TanStack Router `6777b8b` and Expo Router have no
+announcement and no focus move. Next's `layout-router.tsx:224-225` states that it leaves focus
+untouched and defers resetting it, so Neon moves no focus. Neon uses a plain element where Next
+uses a shadow root.
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
@@ -649,7 +661,6 @@ TanStack Router `6777b8b` (`router-core/src/scroll-restoration.ts`), Next.js `64
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
 - Not in the first version of the layers: data loading per route (TanStack `loader`;
-  Solid's `preload` is in, without its `data` result), focus and
-  announcement after a navigation, and guards that re-run by themselves when sign-in
+  Solid's `preload` is in, without its `data` result), focus after a navigation, and guards that re-run by themselves when sign-in
   state changes (the first version offers an explicit revalidation, as TanStack
   `router.invalidate`).
