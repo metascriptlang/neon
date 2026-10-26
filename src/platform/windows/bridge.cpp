@@ -17,6 +17,7 @@
 #include "handoff.h"
 #include "scrollView.h"
 #include "modal.h"
+#include "switch.h"
 extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
@@ -46,6 +47,7 @@ struct View {
 	bool pictureQueued = false;
 	std::unique_ptr<ActivityIndicator> indicator;
 	std::unique_ptr<Modal> modal;
+	std::unique_ptr<SwitchControl> toggle;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -60,6 +62,9 @@ std::vector<View *> g_dirtyInputs;
 std::vector<View *> g_dirtyPictures;
 View *g_focusedInput = nullptr;
 View *g_pressedInput = nullptr;
+View *g_focusedSwitch = nullptr;
+View *g_pressedSwitch = nullptr;
+View *g_hoveredSwitch = nullptr;
 bool g_windowFocused = true;
 int g_ionCursor = 0;
 float g_caret[4];
@@ -136,6 +141,9 @@ void release(View *view) {
 	if (g_responder == view) g_responder = nullptr;
 	if (g_focusedInput == view) g_focusedInput = nullptr;
 	if (g_pressedInput == view) g_pressedInput = nullptr;
+	if (g_focusedSwitch == view) g_focusedSwitch = nullptr;
+	if (g_pressedSwitch == view) g_pressedSwitch = nullptr;
+	if (g_hoveredSwitch == view) g_hoveredSwitch = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
 	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
@@ -143,6 +151,7 @@ void release(View *view) {
 	view->input.reset();
 	if (view->indicator) g_indicators.erase(std::remove(g_indicators.begin(), g_indicators.end(), view), g_indicators.end());
 	view->indicator.reset();
+	view->toggle.reset();
 	for (View *child : view->children) {
 		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
@@ -223,6 +232,7 @@ void blurInput(View *view) {
 
 void focusInput(View *view) {
 	if (g_focusedInput == view) return;
+	g_focusedSwitch = nullptr;
 	if (g_focusedInput) blurInput(g_focusedInput);
 	g_focusedInput = view;
 	view->input->WindowFocus(g_windowFocused);
@@ -323,6 +333,7 @@ void applyGeometry(View *view) {
 	}
 	if (view->input) queueInput(view);
 	if (view->picture) queuePicture(view);
+	if (view->toggle) view->toggle->Layout(view->w, view->h, g_scale);
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -550,6 +561,46 @@ bool pointInput(int kind, float x, float y) {
 	return true;
 }
 
+void flipSwitch(View *view) {
+	reportControl(view, kSwitchValueChange, view->toggle->Value() ? "false" : "true");
+	flushReports();
+}
+
+void hoverSwitch(View *over) {
+	if (g_hoveredSwitch == over) return;
+	if (g_hoveredSwitch) g_hoveredSwitch->toggle->SetHovered(false);
+	g_hoveredSwitch = over;
+	if (over) over->toggle->SetHovered(true);
+	changed();
+}
+
+// RNW SwitchComponentView OnPointerPressed/Released/Entered/Exited (:262-316): a press on an enabled switch focuses
+// it and shows the pressed state, the release over it asks for the flip, and the switch itself keeps showing `value`.
+bool pointSwitch(int kind, float x, float y) {
+	View *top = g_touch.active || g_pressedInput ? nullptr : hitTest(x, y);
+	View *over = top && top->toggle ? top : nullptr;
+	if (kind == NIW_POINTER_MOVE || kind == NIW_POINTER_CANCEL) hoverSwitch(kind == NIW_POINTER_MOVE && (!g_pressedSwitch || over == g_pressedSwitch) ? over : nullptr);
+	if (kind == NIW_POINTER_DOWN && over && !g_pressedSwitch) {
+		g_pressedSwitch = over;
+		if (!over->toggle->Disabled()) {
+			g_focusedSwitch = over;
+			if (g_focusedInput) blurInput(g_focusedInput);
+			over->toggle->SetPressed(true);
+			changed();
+		}
+		return true;
+	}
+	if (!g_pressedSwitch) return false;
+	View *pressed = g_pressedSwitch;
+	if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) {
+		g_pressedSwitch = nullptr;
+		pressed->toggle->SetPressed(false);
+		changed();
+		if (kind == NIW_POINTER_UP && !pressed->toggle->Disabled() && hitTest(x, y) == pressed) flipSwitch(pressed);
+	}
+	return true;
+}
+
 bool localPoint(const View *view, float x, float y, float *lx, float *ly) {
 	float px = x, py = y;
 	if (view->parent && view->parent != g_container) {
@@ -671,6 +722,7 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	if (!s_touch.fn) return;
 	double time = nowMs();
 	if (pointInput(kind, x, y)) return;
+	if (pointSwitch(kind, x, y)) return;
 	if (kind == NIW_POINTER_DOWN) {
 		if (g_touch.active) return;
 		float lx = 0, ly = 0;
@@ -859,8 +911,16 @@ void *createInput(bool multiline, const char *what) {
 void *niInputCreate(void) { return createInput(false, "niInputCreate"); }
 void *niTextAreaCreate(void) { return createInput(true, "niTextAreaCreate"); }
 
+void *niSwitchCreate(void) {
+	requireAttached("niSwitchCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->toggle.reset(new SwitchControl(g_context, view->visual));
+	return view;
+}
+
 void niControlSetTag(void *control, int32_t tag) {
-	if (!as(control)->input && !as(control)->picture) unimplemented("niControlSetTag on a control that is not a TextInput or an Image");
+	if (!as(control)->input && !as(control)->picture && !as(control)->toggle) unimplemented("niControlSetTag on a control that is not a TextInput, an Image or a Switch");
 	as(control)->tag = tag;
 }
 
@@ -885,6 +945,10 @@ void niwKey(int action, int ionScancode, int ctrl, const char *text) {
 			flushReports();
 			return;
 		}
+	}
+	if (g_focusedSwitch) {
+		if (action == NIW_KEY_RELEASE && MapVirtualKeyW((UINT)ionScancode, MAPVK_VSC_TO_VK_EX) == VK_SPACE && !g_focusedSwitch->toggle->Disabled()) flipSwitch(g_focusedSwitch);
+		return;
 	}
 	if (!g_focusedInput) return;
 	g_focusedInput->input->Key(action, ionScancode, ctrl != 0, text ? text : "");
@@ -1130,6 +1194,10 @@ void niSetFont(void *label, float size, int bold) {
 
 void niMeasureText(void *label, float maxWidth) {
 	requireAttached("niMeasureText");
+	if (as(label)->toggle) {
+		SwitchControl::Measure(&g_measuredW, &g_measuredH);
+		return;
+	}
 	if (TextInput *input = inputOf(label)) {
 		input->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
 		return;
@@ -1143,7 +1211,7 @@ float niMeasuredH(void) { return g_measuredH; }
 void niSetProp(void *view, const char *name, const char *value) {
 	if (as(view)->modal && as(view)->modal->SetProp(name, value)) return;
 	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
-	if (as(view)->indicator && as(view)->indicator->SetProp(name, value)) {
+	if ((as(view)->indicator && as(view)->indicator->SetProp(name, value)) || (as(view)->toggle && as(view)->toggle->SetProp(name, value))) {
 		changed();
 		return;
 	}

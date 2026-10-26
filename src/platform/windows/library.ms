@@ -6,6 +6,7 @@ when (windows) {
 	@compile("./image.cpp");
 	@compile("./modal.cpp");
 	@compile("./scrollView.cpp");
+	@compile("./switch.cpp");
 	@compile("./textInput.cpp");
 	@passL("-luser32");
 	@passL("-luuid");
