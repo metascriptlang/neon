@@ -64,7 +64,7 @@ static struct {
 	jmethodID loadClass, measurementInWindow;
 	jmethodID inputInit, inputSetTag, inputSetFocused, inputRemoving, propsSet, propsSetTag, environmentInstall, environmentScheme;
 	jmethodID pictureInit;
-	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
+	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable, viewSendAccessibilityEvent;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewSetRotation, viewBringToFront;
@@ -181,6 +181,7 @@ static void cacheJni(JNIEnv *e) {
 	J.scrollAddContent = method(e, J.scroll, "addContent", "(Landroid/view/View;)V");
 	J.scrollDispose = method(e, J.scroll, "dispose", "()V");
 	J.viewSetClickable = method(e, J.view, "setClickable", "(Z)V");
+	J.viewSendAccessibilityEvent = method(e, J.view, "sendAccessibilityEvent", "(I)V");
 	J.input = globalClass(e, "dev/metascript/neon/Input");
 	J.inputInit = method(e, J.input, "<init>", "(Landroid/content/Context;)V");
 	J.inputSetTag = method(e, J.input, "setNeonTag", "(I)V");
@@ -751,6 +752,12 @@ void niSetFocused(void *control, int focused) {
 	JNIEnv *e = env();
 	(*e)->CallVoidMethod(e, (jobject)control, J.inputSetFocused, focused ? JNI_TRUE : JNI_FALSE);
 	check(e, "setFocused");
+}
+
+void niAccessibilityFocus(void *view) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSendAccessibilityEvent, 8); // AccessibilityEvent.TYPE_VIEW_FOCUSED
+	check(e, "sendAccessibilityEvent");
 }
 
 void niViewSetPressable(void *view) {

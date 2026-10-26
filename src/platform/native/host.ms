@@ -55,7 +55,7 @@ import {
 	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
-	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niTextAreaCreate,
+	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niAccessibilityFocus, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
@@ -1288,6 +1288,7 @@ export function createNativeHost(): NativeHost {
 			if (!n.isInput || n.view === null) { throw "native host: focus needs a mounted text input"; }
 			niSetFocused(n.view, focused ? 1 : 0);
 		},
+		accessibilityFocus: nativeAccessibilityFocus(),
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isScroll || n.view === null) { throw "native host: scrollTo needs a mounted scroll view"; }
@@ -1454,6 +1455,18 @@ function nativeMeasurementError(node: NativeNode, ownedRoot: NativeNode): Measur
 		at = current.parent;
 	}
 	return null;
+}
+
+function nativeAccessibilityFocus(): ((node: HostNode) => void) | null {
+	when (windows) {
+		return null;
+	} else {
+		return (node: HostNode): void => {
+			const n = node as unknown as NativeNode;
+			if (n.view === null || n.isString || !isMounted(n)) { return; }
+			niAccessibilityFocus(n.view);
+		};
+	}
 }
 
 function measureNativeWindow(node: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {

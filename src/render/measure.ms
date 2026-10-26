@@ -30,6 +30,19 @@ export class ElementHandle {
 		this.elementMounted = mounted;
 	}
 
+	accessibilityFocus(): void {
+		if (!this.elementMounted()) {
+			warnInDebug("Element.accessibilityFocus was called after unmount, so it does nothing");
+			return;
+		}
+		const focus = this.elementHost.accessibilityFocus;
+		if (focus === null) {
+			warnInDebug("Element.accessibilityFocus needs a host with the accessibilityFocus capability, and this host has none, so it does nothing");
+			return;
+		}
+		(focus as (node: HostNode) => void)(this.node);
+	}
+
 	measure(callback: (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => void): void {
 		const page = this.inWindow("Element.measure");
 		if (page === null) {

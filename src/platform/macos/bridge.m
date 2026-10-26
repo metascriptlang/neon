@@ -2086,6 +2086,14 @@ void niControlSetTag(void *control, int32_t tag) {
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
+void niAccessibilityFocus(void *view) {
+	NeonView *v = as(view);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[v.window makeFirstResponder:v];
+		NSAccessibilityPostNotification(v, NSAccessibilityLayoutChangedNotification);
+	});
+}
+
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }
 const char *niLastAppValue(void) { return g_appValue ? g_appValue : ""; }

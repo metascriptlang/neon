@@ -86,6 +86,7 @@ export interface Host {
 	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
 	measureText: ((text: string, style: Style) => TextMeasure) | null;
 	focus?: ((node: HostNode, focused: boolean) => void) | null;
+	accessibilityFocus?: ((node: HostNode) => void) | null;
 	measureInWindow?: ((node: HostNode) => Result<MeasureRect, MeasureError>) | null;
 	measureLayout?: ((node: HostNode, ancestor: HostNode) => Result<MeasureRect, MeasureError>) | null;
 	// Optional capability: the host's top layer, where a Portal that names no

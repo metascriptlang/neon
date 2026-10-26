@@ -3,6 +3,7 @@ import { flush } from "../core/runtime";
 import { EventSubscription, Listeners, onChange } from "./subscription";
 import { appServices } from "./services";
 import { Platform } from "./platform";
+import { ElementHandle } from "../render/measure";
 import {
 	AccessibilityFlag, accessibilityServices, listenAccessibility, listenAccessibilityFlags,
 } from "./accessibilityServices";
@@ -120,6 +121,10 @@ export class AccessibilityInfo {
 			reduceMotion :
 			screenReader;
 		return onChange(source, handler);
+	}
+
+	static setAccessibilityFocus(element: ElementHandle): void {
+		element.accessibilityFocus();
 	}
 
 	static announceForAccessibility(announcement: string): void {

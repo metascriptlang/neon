@@ -1282,6 +1282,13 @@ void niSetFocused(void *control, int focused) {
 	else [v resignFirstResponder];
 }
 
+void niAccessibilityFocus(void *view) {
+	UIView *v = (__bridge UIView *)view;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, v);
+	});
+}
+
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
