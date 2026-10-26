@@ -48,11 +48,15 @@ and the invariants that outlived them were moved to the head of the test that pi
   is answered, since terminal size is the deliverable.
 - **OPEN 2026-10-26 — `tests/ssrParity/run.sh` C server aborts.** `pages.server` built with `-d:server`
   on C panics `load of value 112, which is not valid for type 'MS_BOOL'` in `msAsyncStepAs`
-  (`runtime/promise/dispatchFull.c:1299`), msc 32b8ce353, on main and on web-train-3 alike. Not reduced
-  yet; the JS server lane of the same pages passes.
+  (`runtime/promise/dispatchFull.c:1299`), msc 32b8ce353, on main and on web-train-3 alike; the JS
+  server lane of the same pages passes. Reduced 2026-10-26: `serve()`'s `finally` resumed after an
+  `await` calls `Router.dispose()` through a temporary assigned only on the early-return path; card
+  `2026-10-19-c-async-finally-after-a-return-reads-a-wild-pointer.md` (second sighting).
 - **OPEN 2026-10-26 — `tests/core/store.test.ms` segfaults on C.** `msc test tests/core/store.test.ms`
   ends `test binary terminated by signal 11` on msc 32b8ce353, on main ea4a6977 and on web-train-3
-  alike; it passed on the msc before. JS not affected. Not reduced yet.
+  alike; it passed on the msc before. JS not affected. Reduced 2026-10-26: the cycle collector frees a live
+  `Computation` because a generic subclass built in a generic method traces its inherited fields twice; card
+  `2026-10-26-a-generic-subclass-built-in-a-generic-method-traces-its-inherited-fields-twice-and-orc-frees-live-objects.md`.
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
