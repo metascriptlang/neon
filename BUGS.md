@@ -58,6 +58,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   `Computation` because a generic subclass built in a generic method traces its inherited fields twice; card
   `2026-10-26-a-generic-subclass-built-in-a-generic-method-traces-its-inherited-fields-twice-and-orc-frees-live-objects.md`.
 
+- **OPEN 2026-10-27 — the iPhone booking form keeps its check-in date.** `ControlsUITests.testBookingForm`
+  (`IOS_DEVICE=<udid> tests/ios/iphone.sh ControlsUITests:controls`, iPhone 13 Pro, iOS 27.0.1) fails
+  after the date step's "OK": "expected check-in … to contain 2026-10-24; it reads check-in 2026-10-09 at
+  15:00". Red on an export of main a3cf1463 and on `wt/rn-components` alike, msc 32b8ce353; the form moved
+  onto neon-ui's controls in 4857e536. Not traced. The steps after it (the accessibility value, hidden and
+  adjustable checks of `wt/rn-components`) do not run until it is green.
+
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
