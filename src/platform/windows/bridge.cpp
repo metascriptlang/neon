@@ -11,6 +11,7 @@
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
+#include "image.h"
 #include "textInput.h"
 #include "handoff.h"
 #include "scrollView.h"
@@ -39,6 +40,8 @@ struct View {
 	bool labelQueued = false;
 	std::unique_ptr<TextInput> input;
 	bool inputQueued = false;
+	std::unique_ptr<ImagePicture> picture;
+	bool pictureQueued = false;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -50,6 +53,7 @@ float g_measuredW = 0;
 float g_measuredH = 0;
 std::vector<View *> g_dirtyLabels;
 std::vector<View *> g_dirtyInputs;
+std::vector<View *> g_dirtyPictures;
 View *g_focusedInput = nullptr;
 View *g_pressedInput = nullptr;
 bool g_windowFocused = true;
@@ -60,12 +64,16 @@ struct ControlReport {
 	int32_t tag;
 	int32_t phase;
 	std::string value;
+	float width;
+	float height;
 };
 
 std::vector<ControlReport> g_reports;
 int32_t g_controlTag = 0;
 int32_t g_controlPhase = 0;
 std::string g_controlValue;
+float g_controlWidth = 0;
+float g_controlHeight = 0;
 msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app, s_requester;
 bool g_frameRequested = false;
 bool g_frameWanted = false;
@@ -126,6 +134,7 @@ void release(View *view) {
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
 	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
+	if (view->pictureQueued) g_dirtyPictures.erase(std::remove(g_dirtyPictures.begin(), g_dirtyPictures.end(), view), g_dirtyPictures.end());
 	view->input.reset();
 	for (View *child : view->children) {
 		childHost(view)->Remove(child->visual);
@@ -181,8 +190,8 @@ void queueInput(View *view) {
 	g_dirtyInputs.push_back(view);
 }
 
-void reportControl(View *view, int32_t phase, const std::string &value) {
-	if (view->tag != 0) g_reports.push_back({view->tag, phase, value});
+void reportControl(View *view, int32_t phase, const std::string &value, float width = 0, float height = 0) {
+	if (view->tag != 0) g_reports.push_back({view->tag, phase, value, width, height});
 }
 
 void flushReports() {
@@ -192,6 +201,8 @@ void flushReports() {
 		g_controlTag = next.tag;
 		g_controlPhase = next.phase;
 		g_controlValue = next.value;
+		g_controlWidth = next.width;
+		g_controlHeight = next.height;
 		if (s_control.fn) invoke(s_control);
 	}
 }
@@ -223,6 +234,13 @@ struct InputSink : TextInputSink {
 
 InputSink g_inputSink;
 
+void queuePicture(View *view) {
+	changed();
+	if (view->pictureQueued) return;
+	view->pictureQueued = true;
+	g_dirtyPictures.push_back(view);
+}
+
 bool isMounted(const View *view) {
 	for (; view; view = view->parent) {
 		if (view == g_container) return true;
@@ -244,6 +262,23 @@ void drawInputs() {
 		int32_t pixelWidth, pixelHeight;
 		pixelBox(view, &pixelWidth, &pixelHeight);
 		if (view->input->NeedsDraw(pixelWidth, pixelHeight)) view->input->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+	}
+	flushReports();
+}
+
+void drawPictures() {
+	std::vector<View *> due;
+	due.swap(g_dirtyPictures);
+	for (View *view : due) {
+		view->pictureQueued = false;
+		std::string error;
+		float width, height;
+		ImageReport report = view->picture->TakeReport(&error, &width, &height);
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		if (view->picture->NeedsDraw(pixelWidth, pixelHeight)) view->picture->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+		if (report == kImageLoad) reportControl(view, 5, "", width, height);
+		if (report == kImageError) reportControl(view, 6, error);
 	}
 	flushReports();
 }
@@ -280,6 +315,7 @@ void applyGeometry(View *view) {
 		applyScroll(view);
 	}
 	if (view->input) queueInput(view);
+	if (view->picture) queuePicture(view);
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -316,6 +352,10 @@ void rescale(View *parent) {
 		child->visual->CornerRadius(child->radius * g_scale);
 		if (child->label) child->label->Invalidate();
 		if (child->input) queueInput(child);
+		if (child->picture) {
+			child->picture->Invalidate();
+			queuePicture(child);
+		}
 		rescale(child);
 	}
 }
@@ -562,6 +602,7 @@ void niwFrame(void) {
 		if (s_frame.fn) invoke(s_frame);
 	}
 	drawInputs();
+	drawPictures();
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
@@ -659,6 +700,7 @@ int niwPump(void) {
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	drawInputs();
+	drawPictures();
 	drawLabels();
 	g_context->Commit();
 	return niLoopNext();
@@ -732,6 +774,14 @@ void *niTextCreate(void) {
 	return view;
 }
 
+void *niImageCreate(void) {
+	requireAttached("niImageCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->picture.reset(new ImagePicture());
+	return view;
+}
+
 void *createInput(bool multiline, const char *what) {
 	requireAttached(what);
 	View *view = new View();
@@ -745,7 +795,7 @@ void *niInputCreate(void) { return createInput(false, "niInputCreate"); }
 void *niTextAreaCreate(void) { return createInput(true, "niTextAreaCreate"); }
 
 void niControlSetTag(void *control, int32_t tag) {
-	if (!as(control)->input) unimplemented("niControlSetTag on a control that is not a TextInput");
+	if (!as(control)->input && !as(control)->picture) unimplemented("niControlSetTag on a control that is not a TextInput or an Image");
 	as(control)->tag = tag;
 }
 
@@ -759,8 +809,8 @@ void niSetFocused(void *control, int focused) {
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
 const char *niLastControlValue(void) { return g_controlValue.c_str(); }
-float niLastControlWidth(void) { return 0; }
-float niLastControlHeight(void) { return 0; }
+float niLastControlWidth(void) { return g_controlWidth; }
+float niLastControlHeight(void) { return g_controlHeight; }
 
 void niwKey(int action, int ionScancode, int ctrl, const char *text) {
 	if (!g_focusedInput) return;
@@ -885,6 +935,11 @@ void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 		as(view)->input->SetBackground(Color{r, g, b, a});
 		return;
 	}
+	if (as(view)->picture) {
+		as(view)->picture->SetBackground(Color{r, g, b, a});
+		queuePicture(as(view));
+		return;
+	}
 	as(view)->visual->Brush(Color{r, g, b, a});
 	changed();
 }
@@ -971,7 +1026,6 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niImageCreate, (void))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))
@@ -1027,6 +1081,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 	if (as(view)->label && !strcmp(name, "textAlign")) {
 		as(view)->label->SetAlignment(value);
 		queueLabel(as(view));
+		return;
+	}
+	if (as(view)->picture && as(view)->picture->SetProp(name, value)) {
+		queuePicture(as(view));
 		return;
 	}
 	if (isAccessibilityProp(name)) {

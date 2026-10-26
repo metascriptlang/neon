@@ -2,10 +2,14 @@ when (windows) {
 	@compile("./bridge.cpp");
 	@compile("./dcompComposition.cpp");
 	@compile("./dwriteText.cpp");
+	@compile("./image.cpp");
 	@compile("./scrollView.cpp");
 	@compile("./textInput.cpp");
 	@passL("-luser32");
 	@passL("-luuid");
 	@passL("-ldwrite");
 	@passL("-loleaut32");
+	@passL("-lole32");
+	@passL("-lwindowscodecs");
+	@passL("-ldxguid");
 }
