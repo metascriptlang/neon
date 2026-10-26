@@ -121,7 +121,7 @@ edit reloaded `[counter]` in 2.1-2.9 s and kept the count: 3, then 4 after one c
 
 Not measured:
 
-- VoiceOver: the accessibility props are stored, not exposed.
+- VoiceOver: the accessibility props are stored, not exposed. `nativeID` is stored beside them (react-native-macos `RCTViewManager.m:417` only tags the view).
 - Scroll gesture phases: begin and end drag, and momentum. RN macOS does not map them either.
 - Dark mode (`niColorScheme` answers 0), font scale, right-to-left, Tab focus order.
 - A multiline input capped by `maxHeight` and scrolling.

@@ -372,6 +372,9 @@ measurements are not claimed.
 - **Cleanup follows discarded host rows**: owner disposal removes reactive wiring;
   `Host.removeChild` then drops native event routes, frees the detached Yoga subtree
   and releases each UIKit view retained across the C boundary.
+- **`nativeID`**: stored on the view as an associated object and read by nothing, as RN's `UIView+React.m`
+  `nativeID` is a lookup key for `RCTUIManager viewForNativeID`; it never becomes `accessibilityIdentifier`
+  (RN maps `testID` to that, `RCTViewManager.m:193`). `accessibilityLabelledBy` has no iOS counterpart in RN.
 - **Nested Text**: RN's paragraph model (flatten to attributed runs on one UILabel via
   NSAttributedString, measure func + prepared-layout cache, per-fragment hit-testing when
   press handlers arrive) — not the reference's merge with its static-content loss.

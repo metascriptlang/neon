@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 // The accessibility props of RN Android: BaseViewManager.java (props), ReactAccessibilityDelegate.kt
-// (the node info and the actions), ReactViewManager.kt (focusable); react-native 693e9628e8c.
+// (the node info and the actions), ReactViewManager.kt (focusable), ReactFindViewUtil.kt (nativeID lookup);
+// react-native 693e9628e8c.
 final class A11y {
 	private A11y() {}
 
@@ -18,17 +19,18 @@ final class A11y {
 	private static final int ACTION_EVENT_DELAY_MS = 200;
 
 	private static final class Spec {
-		String label = "", hint = "", role = "", accessibilityRole = "", state = "", value = "", actions = "";
+		String label = "", hint = "", role = "", accessibilityRole = "", state = "", value = "", actions = "", labelledBy = "";
 		boolean selectedEventPending;
 		View.AccessibilityDelegate delegate;
 
 		boolean empty() {
 			return label.isEmpty() && hint.isEmpty() && role.isEmpty() && accessibilityRole.isEmpty() && state.isEmpty()
-				&& value.isEmpty() && actions.isEmpty();
+				&& value.isEmpty() && actions.isEmpty() && labelledBy.isEmpty();
 		}
 	}
 
 	private static final Map<View, Spec> SPECS = new WeakHashMap<>();
+	private static final Map<View, String> NATIVE_IDS = new WeakHashMap<>();
 	private static final Map<String, Integer> ACTION_IDS = new HashMap<>();
 	private static final Map<Integer, String> ACTION_NAMES = new HashMap<>();
 	private static int customActionCounter = 0x3f000000;
@@ -40,7 +42,10 @@ final class A11y {
 			case "focusable":
 				if ("true".equals(value)) view.setFocusable(true);
 				return;
-			case "accessibilityLabelledBy": case "accessibilityElementsHidden": case "accessibilityViewIsModal": return;
+			case "nativeID":
+				if (value.isEmpty()) NATIVE_IDS.remove(view); else NATIVE_IDS.put(view, value);
+				return;
+			case "accessibilityElementsHidden": case "accessibilityViewIsModal": return;
 			default: break;
 		}
 		Spec spec = SPECS.get(view);
@@ -48,6 +53,7 @@ final class A11y {
 		switch (name) {
 			case "accessibilityLabel": spec.label = value; describe(view, spec); break;
 			case "accessibilityHint": spec.hint = value; break;
+			case "accessibilityLabelledBy": spec.labelledBy = value; break;
 			case "accessibilityRole": className(value); spec.accessibilityRole = value; break;
 			case "role": spec.role = value; break;
 			case "accessibilityValue": spec.value = value; describe(view, spec); break;
@@ -62,6 +68,19 @@ final class A11y {
 			spec.delegate = delegate(spec);
 			view.setAccessibilityDelegate(spec.delegate);
 		}
+	}
+
+	// RN ReactFindViewUtil.findView: the first view under root whose nativeID matches.
+	private static View findView(View root, String nativeId) {
+		if (nativeId.equals(NATIVE_IDS.get(root))) return root;
+		if (root instanceof android.view.ViewGroup) {
+			android.view.ViewGroup group = (android.view.ViewGroup)root;
+			for (int i = 0; i < group.getChildCount(); i++) {
+				View found = findView(group.getChildAt(i), nativeId);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 
 	// RN BaseViewManager.updateViewContentDescription: the label and the value's text, joined by ", ".
@@ -248,6 +267,10 @@ final class A11y {
 				super.onInitializeAccessibilityNodeInfo(host, info);
 				String role = effectiveRole(spec);
 				if (role != null) setRole(info, role);
+				if (!spec.labelledBy.isEmpty()) {
+					View label = findView(host.getRootView(), spec.labelledBy.split(",", 2)[0]);
+					if (label != null) info.setLabeledBy(label);
+				}
 				if (!spec.hint.isEmpty() && android.os.Build.VERSION.SDK_INT >= 28) info.setTooltipText(spec.hint);
 				if (has(spec.state, "checked") || has(spec.state, "unchecked") || has(spec.state, "mixed")) {
 					info.setCheckable(true);

@@ -1602,7 +1602,7 @@ float niLastControlHeight(void) { return g_controlH; }
 
 static BOOL isAccessibilityProp(const char *name) {
 	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
-		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState");
+		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState") || !strcmp(name, "nativeID");
 }
 
 void niSetProp(void *view, const char *name, const char *value) {

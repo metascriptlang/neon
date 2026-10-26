@@ -300,7 +300,7 @@ View *as(void *view) { return static_cast<View *>(view); }
 
 bool isAccessibilityProp(const char *name) {
 	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
-		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState");
+		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState") || !strcmp(name, "nativeID");
 }
 
 int countStored(const View *view, const char *name, const char *value) {
