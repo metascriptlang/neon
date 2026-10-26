@@ -412,6 +412,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			12 => "shouldstartload",
 			13 => "progress",
 			14 => "end",
+			15 => "accessibilityaction",
 			30 => "cameraready",
 			31 => "mounterror",
 			32 => "picture",

@@ -234,6 +234,33 @@ test "a native Pressable writes hitSlop per edge and its Android ripple through 
 	assert ripple === "#33000000,false,", "ripple: " + ripple;
 }
 
+test "a native Pressable writes the RN accessibility props and an accessibility action reaches onAccessibilityAction with its name" {
+	const [now, setNow] = createSignal(3);
+	let log = "";
+	const app = (): NeonNode => <View>
+		<Pressable role="slider" accessibilityValue={{ min: 0, max: 10, now: now(), text: "three, of ten" }}
+			accessibilityLiveRegion="assertive" importantForAccessibility="no-hide-descendants" accessibilityHint="Drag to change"
+			accessibilityActions={[{ name: "increment" }, { name: "magicTap", label: "Open it" }]} tabIndex={0}
+			onAccessibilityAction={(e: NeonEvent): void => { log += e.value + ";"; }}
+			onPress={(e: NeonEvent): void => {}}><Text>slide</Text></Pressable>
+	</View>;
+	runApp(app);
+	const slider = nmLastPressableTag();
+	const first = [prop(slider, "role"), prop(slider, "accessibilityValue"), prop(slider, "accessibilityLiveRegion"),
+		prop(slider, "importantForAccessibility"), prop(slider, "accessibilityHint"), prop(slider, "accessibilityActions"),
+		prop(slider, "focusable")].join("|");
+	setNow(4);
+	flush();
+	const second = prop(slider, "accessibilityValue");
+	nmControl(slider, 15, "increment");
+	nmControl(slider, 15, "magicTap");
+	nmLoop();
+	nmTeardown();
+	assert first === "slider|0,10,3,three, of ten|assertive|no-hide-descendants|Drag to change|increment\nmagicTap\tOpen it|true", first;
+	assert second === "0,10,4,three, of ten", second;
+	assert log === "increment;magicTap;", "the action name is the event value: " + log;
+}
+
 test "the native back press closes a shown Dialog through BackHandler" {
 	const [open, setOpen] = createSignal(true);
 	let log = "";
