@@ -167,6 +167,18 @@ void TextLabel::SetAlignment(const char *value) {
 	layoutStale = true;
 }
 
+// RNW WindowsTextLayoutManager.cpp:146-158 (react-native-windows aedf6c5): rtl and ltr set the DirectWrite reading
+// direction; auto leaves the left-to-right default, because the bridge has no layout direction to follow.
+void TextLabel::SetWritingDirection(const char *value) {
+	DWRITE_READING_DIRECTION next;
+	if (!strcmp(value, "auto") || !strcmp(value, "ltr")) next = DWRITE_READING_DIRECTION_LEFT_TO_RIGHT;
+	else if (!strcmp(value, "rtl")) next = DWRITE_READING_DIRECTION_RIGHT_TO_LEFT;
+	else refuse("writingDirection is not auto, ltr or rtl:", value);
+	if (next == readingDirection) return;
+	readingDirection = next;
+	layoutStale = true;
+}
+
 IDWriteTextLayout *TextLabel::Layout(float width, float height) {
 	if (layoutStale || !layout) {
 		ComPtr<IDWriteTextFormat> format;
@@ -175,6 +187,7 @@ IDWriteTextLayout *TextLabel::Layout(float width, float height) {
 		layout.Reset();
 		must(factory()->CreateTextLayout(text.c_str(), (UINT32)text.size(), format.Get(), width, height, &layout), "CreateTextLayout");
 		must(layout->SetTextAlignment(static_cast<DWRITE_TEXT_ALIGNMENT>(alignment)), "SetTextAlignment");
+		must(layout->SetReadingDirection(readingDirection), "SetReadingDirection");
 		for (const TextRunStyle &run : runs) {
 			DWRITE_TEXT_RANGE range = {run.start, run.length};
 			must(layout->SetFontSize(run.size, range), "SetFontSize");

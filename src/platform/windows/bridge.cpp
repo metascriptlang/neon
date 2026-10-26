@@ -1029,6 +1029,11 @@ void niSetProp(void *view, const char *name, const char *value) {
 		queueLabel(as(view));
 		return;
 	}
+	if (as(view)->label && !strcmp(name, "writingDirection")) {
+		as(view)->label->SetWritingDirection(value);
+		queueLabel(as(view));
+		return;
+	}
 	if (isAccessibilityProp(name)) {
 		as(view)->accessibility[name] = value;
 		return;
