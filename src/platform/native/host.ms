@@ -6,7 +6,8 @@ import { Dispose } from "../../core/types";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { extractResponderTerminal } from "../../render/responder";
-import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { I18nManager } from "../../api/i18nManager";
+import { FlexStyle, YGNode, Direction, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
@@ -126,6 +127,7 @@ class NativeNode {
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	textAlign: string = "";
+	writingDirection: string = "";
 	fontFamily: string = "";
 	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
@@ -157,6 +159,7 @@ export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { 
 let layoutPlan: LayoutAnimationPlan | null = null;
 let nextTween: int32 = 1;
 let layoutPassId: int32 = 0;
+let rootDirection: Direction = "ltr";
 
 function showFrame(n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.shownX = x; n.shownY = y; n.shownW = w; n.shownH = h;
@@ -351,6 +354,12 @@ function applyPaint(n: NativeNode, s: Style): void {
 			n.textAlign = align;
 			const shown = align === "" ? "auto" : align;
 			niSetProp(n.view, "textAlign", shown);
+		}
+		const writing = s.writingDirection !== null ? (s.writingDirection as string) : "";
+		if (writing !== n.writingDirection) {
+			n.writingDirection = writing;
+			const shownWriting = writing === "" ? "auto" : writing;
+			niSetProp(n.view, "writingDirection", shownWriting);
 		}
 	}
 }
@@ -1064,6 +1073,7 @@ export function createNativeHost(): NativeHost {
 	resetPress();
 	const container = niContainerView();
 	root = nativeNode(container, false, false);
+	rootDirection = I18nManager.isRTL() ? "rtl" : "ltr";
 	const ownedRoot = root;
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
@@ -1409,7 +1419,7 @@ function relayoutRoot(): void {
 	layoutDirty = false;
 	root.flex = { width, height };
 	prepareVisibleContent();
-	runLayoutPass(root, width, height);
+	runLayoutPass(root, width, height, rootDirection);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
 		for (const t of textNodes) {
@@ -1422,7 +1432,7 @@ function relayoutRoot(): void {
 			if (growInput(field)) { changed = true; }
 		}
 		if (!changed) { break; }
-		runLayoutPass(root, width, height);
+		runLayoutPass(root, width, height, rootDirection);
 	}
 	layoutPlan = null;
 	writeContentSizes();

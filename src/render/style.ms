@@ -16,6 +16,8 @@ export type PositionType = "static" | "relative" | "absolute" | "fixed";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
 export type Display = "flex" | "none";
 export type Overflow = "visible" | "hidden" | "scroll";
+export type Direction = "inherit" | "ltr" | "rtl";
+export type WritingDirection = "auto" | "ltr" | "rtl";
 export type TextAlign = "auto" | "left" | "center" | "right" | "justify";
 export type FontWeight = "normal" | "bold"
 	| "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";

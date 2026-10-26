@@ -36,7 +36,7 @@
 
 import { Node, NodeKind, DeclKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue, getImpl } from "std/meta";
 import { Style } from "../../render/style";
-import { styleTable } from "../style/fields";
+import { styleTable, cssProperty } from "../style/fields";
 
 export function styleOf(s: Style): Style {
 	return s;
@@ -234,7 +234,7 @@ export macro createStyles(node: Node): Node {
 				if (tokens[b] === "") {
 					folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
 				}
-				decls = decls + cssDecl(names[b], row[2], folded, !isText, tokens[b]);
+				decls = decls + cssDecl(cssProperty(names[b]), row[2], folded, !isText, tokens[b]);
 			}
 		}
 		return decls;

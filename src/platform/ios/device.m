@@ -120,8 +120,45 @@ const char *niDeviceCommand(const char *name, const char *arg) {
 	return "";
 }
 
+static NSUserDefaults *i18nDefaults(void) {
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		[NSUserDefaults.standardUserDefaults setBool:YES forKey:@"RCTI18nUtil_makeRTLFlipLeftAndRightStyles"];
+	});
+	return NSUserDefaults.standardUserDefaults;
+}
+
+static NSString *i18nFlag(BOOL value) { return value ? @"1" : @"0"; }
+
+static NSString *i18nInfo(void) {
+	NSUserDefaults *defaults = i18nDefaults();
+	NSNumber *allowed = [defaults objectForKey:@"RCTI18nUtil_allowRTL"];
+	BOOL deviceRTL = [NSParagraphStyle defaultWritingDirectionForLanguage:nil] == NSWritingDirectionRightToLeft;
+	return joined(@[
+		i18nFlag(allowed == nil || allowed.boolValue), i18nFlag([defaults boolForKey:@"RCTI18nUtil_forceRTL"]),
+		i18nFlag([defaults boolForKey:@"RCTI18nUtil_makeRTLFlipLeftAndRightStyles"]), @"1", i18nFlag(deviceRTL),
+		NSLocale.currentLocale.localeIdentifier,
+	]);
+}
+
+static NSString *i18nSet(NSString *command, NSString *value) {
+	NSDictionary<NSString *, NSString *> *keys = @{
+		@"i18n.allowRTL": @"RCTI18nUtil_allowRTL",
+		@"i18n.forceRTL": @"RCTI18nUtil_forceRTL",
+		@"i18n.swapLeftAndRightInRTL": @"RCTI18nUtil_makeRTLFlipLeftAndRightStyles",
+	};
+	NSString *key = keys[command];
+	if (key == nil) unknown(command);
+	NSUserDefaults *defaults = i18nDefaults();
+	[defaults setBool:[value isEqualToString:@"1"] forKey:key];
+	[defaults synchronize];
+	return @"";
+}
+
 const char *niLocaleCommand(const char *name, const char *arg) {
 	NSString *command = @(name);
+	if ([command isEqualToString:@"i18n.info"]) return niAppReply(i18nInfo());
+	if ([command hasPrefix:@"i18n."]) return niAppReply(i18nSet(command, @(arg ? arg : "")));
 	if (![command isEqualToString:@"locale.info"]) unknown(command);
 	return niAppReply(locales());
 }
