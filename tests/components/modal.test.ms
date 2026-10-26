@@ -9,6 +9,14 @@ import { Host, HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockTo
 import { Text, View } from "../../src/components/primitives";
 import { Modal } from "../../src/components/modal";
 import { Portal } from "../../src/render/portal";
+import { Dialog } from "../../src/components/dialog";
+
+function firstTag(parent: MockNode, tag: string): MockNode {
+	for (const c of parent.children) {
+		if (c.tag === tag) { return c; }
+	}
+	throw "no <" + tag + "> under <" + parent.tag + ">";
+}
 
 function overlayOf(host: Host): MockNode {
 	return (host.overlayRoot as (n: HostNode) => HostNode)(mockNode("any") as unknown as HostNode) as unknown as MockNode;
@@ -101,4 +109,26 @@ test "Modal hides exactly once when its physical overlay root is also the logica
 	assert mockToString(root).indexOf("same root") >= 0;
 	dispose();
 	assert mockToString(root) === "<root></root>";
+}
+
+test "a Dialog inside a Modal mounts in the modal node, so no empty modal node stacks above it" {
+	const host = mockHost();
+	const root: MockNode = mockNode("root");
+	render(element(<Modal visible={true}><Dialog visible={true} title="Pick"><Text>body</Text></Dialog></Modal>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	assert overlay.children.length === 1 && overlay.children[0].tag === "modal", "the overlay holds only the modal: " + mockToString(overlay);
+	assert mockToString(overlay.children[0]).indexOf("body") > 0, "the dialog is inside it: " + mockToString(overlay);
+}
+
+test "a Portal with no mount inside a Modal mounts in the modal node, and one beside it still reaches the overlay root" {
+	const host = mockHost();
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Modal visible={true}><Text>sheet</Text><Portal><Text>inner</Text></Portal></Modal>
+		<Portal><Text>outer</Text></Portal>
+	</View>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	const modal = firstTag(overlay, "modal");
+	assert mockToString(modal).indexOf("inner") > 0, "inner is in the modal: " + mockToString(overlay);
+	assert mockToString(modal).indexOf("outer") < 0 && mockToString(overlay).indexOf("outer") > 0, "outer stays in the overlay: " + mockToString(overlay);
 }
