@@ -318,7 +318,17 @@ forward as on a link (TanStack `followRedirect`, `load-client.ts`, replaces on a
 server, in static output and in the browser. A route in a Stack may name
 `presentation: "transparentModal"` to show over the screen below it (Expo's
 `presentation`); anywhere else the declaration throws. `Router.response()` gives a server the
-first redirect's status and final location, or the route's status. The React Navigation
+first redirect's status and final location, or the route's status. The query of an address is decoded as
+`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`): a malformed escape stays literal and an
+invalid byte becomes U+FFFD, while a malformed escape in the path is `InvalidAddress` and a 400 (Next
+`DecodeError`, `base-server.ts:1545`). A double slash inside a path matches no route (Solid `createMatcher`,
+`utils.ts:71-73`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
+`routing.ts:572-605`): `?q` keeps the current path, and `useNavigate` joins the target onto the calling route's
+path, while `router.navigate`, which has no route, joins it onto the root like Solid's base route; dot segments are
+removed as the URL parser does for Solid. A redirect whose target has a scheme or starts with `//` leaves the app:
+a server answers with that `Location` (Solid `data/response.ts:1-20`) and a client hands it to `router.leaveWith`,
+which `followExternalRedirects(router)` (`src/platform/browser/routingHistory.ms`) points at `window.location.href`
+(Solid `data/action.ts:195-200`); with no handler it throws. The React Navigation
 surface (`createStackNavigator`, `NavigationContainer` with `linking`) is a second
 shorthand over the same models. An author whose URL shape differs from the navigation
 shape skips the tree and composes the models and the binding directly.
