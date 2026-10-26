@@ -47,6 +47,8 @@ public final class Props {
 			case "textAlign":
 				if (view instanceof android.widget.TextView) align((android.widget.TextView)view, value);
 				return;
+			// RN Android reads writingDirection and drops it: TextAttributeProps.kt:418 (react-native 693e9628e8c).
+			case "writingDirection": return;
 			default: break;
 		}
 		if (view instanceof Input) ((Input)view).setProp(name, value);
