@@ -19,6 +19,7 @@ Two rules, the person's (2026-10-18/19):
 | Switch | yes | yes | yes | aborts | yes, colours ignored |
 | ActivityIndicator | yes | yes | yes | aborts | yes |
 | Modal | yes | yes | yes | aborts | yes, Escape closes |
+| InputAccessoryView | yes, above the keyboard | renders nothing | renders nothing | renders nothing | renders nothing |
 | WebView | yes | yes | yes, an iframe | aborts | yes |
 | Video | yes | yes | yes | aborts | yes |
 | CameraView | yes | yes | yes | aborts | yes; `facing` and `flash` not yet measured |
@@ -48,6 +49,7 @@ Two hosts render a narrower set:
 |---|---|---|
 | macOS | Switch `thumbColor`, `trackColorOn`, `trackColorOff` | `NSSwitch` draws in the system accent colour and has no tint API; RN macOS's `RCTUISwitch : NSSwitch` cannot either |
 | macOS | ActivityIndicator `color` in an inactive window | the tint is a `CIColorPolynomial` filter and shows faintly while the window is inactive |
+| Android, Web, macOS, Windows | TextInput `inputAccessoryViewID` | only iOS has a keyboard accessory; RN's `InputAccessoryView.js:95-113` renders null elsewhere (and warns on Android, which Neon does not) |
 | macOS | dark mode, font scale | `niColorScheme` answers light and `fontScale` answers 1 (`docs/MACOS.md`, not measured) |
 
 Per-host differences that change behaviour rather than drop a prop are in `WORKAROUND.md`. M2 and M3 cover the pickers,
