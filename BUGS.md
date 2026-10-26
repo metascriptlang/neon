@@ -53,12 +53,6 @@ and the invariants that outlived them were moved to the head of the test that pi
 - **OPEN 2026-10-26 — `tests/core/store.test.ms` segfaults on C.** `msc test tests/core/store.test.ms`
   ends `test binary terminated by signal 11` on msc 32b8ce353, on main ea4a6977 and on web-train-3
   alike; it passed on the msc before. JS not affected. Not reduced yet.
-- **OPEN 2026-10-26 — Scene3D particles do not resolve.** Void `9721052f` deleted
-  `src/void3d/particles.ms` and `particleVisual.ms`; `src/components/scene3d/particles.ms` still imports
-  them, so every program that imports `src/components/scene3d` fails to build (in the gate:
-  `tests/macros/pointLightShadowRejected.ms`, `scene3dLightPressRejected.ms`,
-  `scene3dHandlerEventRejected.ms` "rejected for another reason", and the scene3d tests). Owned by the
-  void-endgame arc (`neon-wt-void-scene3d`).
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
