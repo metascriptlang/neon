@@ -223,6 +223,25 @@ the ones below, which stay shown down to the first opaque child.
   A reload is told apart as TanStack does (`tempLocationKey`): each router draws a
   random document key and writes it into its entries, so an entry with another key
   was written before the page loaded, while back and forward in the same page restore.
+  A back from a reload that resolved from the address does not know the stack under it: the
+  entries before the reload carry no structure Neon trusts, so a back onto a
+  `resolveOnReload` entry resolves its address as a link does and pushes it over the
+  reloaded page (`[post 2]` then back gives `[post 2, post 1]` at `/feed/1`). TanStack has
+  no stack to rebuild (`router.ts:1519`, a location is rendered whole) and Expo
+  navigates to the entry's path (`browserHistory.ts` `navigateToBrowserPath`), so neither
+  settles whether such a back pops; this stays as is until the person decides.
+- A stack retains every pushed page, so links that ping-pong grow it without bound
+  (40 pushes keep 41 mounted). Expo Router and React Navigation do the same on the web:
+  `NativeStackView.tsx:143` only sets `display: none` on a page that is not focused, and
+  `StackRouter.tsx` `NAVIGATE` pushes a route without a `getId` match; it moves an
+  existing route to the top only when `getId` (Expo `dangerouslySingular`) names the same
+  id, and pops to it only for `pop: true`, which Expo's `navigate` does not send
+  (`dismissTo` is the explicit pop). Neon matches this, with one difference: `NAVIGATE` to
+  the same route name with other params updates the top in place there
+  (`StackRouter.tsx` `route = currentRoute`), where Neon's key holds the params and pushes.
+- A tab root linked while its stack is retained pushes that root as its own entry:
+  the mirror compares the entries each item publishes, since an item that keeps its key
+  but whose nested stack shrank to its root still changes the entries.
 - Each rendered destination provides its own params to `useParams` (Expo local
   params); the whole address is `useLocation`. Multi-region apps keep
   `RoutingRegistry` scopes; a route tree is one participant.
