@@ -752,7 +752,7 @@ uses a shadow root.
   and `getCurrentOptions`. The persisted state carries `history` (visited route keys, and
   a `drawer` item when the status differs from `default`) as TabRouter and DrawerRouter
   state does; a `fullHistory` visit's params snapshot is not persisted. Not carried:
-  options as `({ route, navigation }) => options` (compiler cards pending),
+  options as `({ route, navigation }) => options` (parked on `~/metascript/.inbox/compiler/2026-10-08-jsx-inline-handler-local-owner.md`: a destructured arrow parameter is refused),
   `navigation.dispatch` with `CommonActions`, `StackActions`, `TabActions` and
   `DrawerActions` (their payload is an untyped `object`, and Neon types params by the
   navigator's list), `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
