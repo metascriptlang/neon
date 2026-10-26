@@ -837,6 +837,29 @@ final class ApisUITests: XCTestCase {
         app.alerts["Neon alert"].buttons["Cancel"].tap()
         waitLabel("alert ", containing: "alert cancel")
 
+        tap("show sheet")
+        let sheet = app.sheets["Neon sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "UIAlertController action sheet is shown")
+        XCTAssertTrue(sheet.staticTexts["Pick one"].exists)
+        XCTAssertFalse(sheet.buttons["Locked"].isEnabled, "disabledButtonIndices disables the fourth button")
+        XCTAssertTrue(sheet.buttons["Remove"].exists && sheet.buttons["Dismiss"].exists)
+        report("sheet-shown")
+        sheet.buttons["Remove"].tap()
+        waitLabel("sheet ", containing: "sheet Remove")
+        tap("show sheet")
+        XCTAssertTrue(app.sheets["Neon sheet"].waitForExistence(timeout: 10))
+        app.sheets["Neon sheet"].buttons["Dismiss"].tap()
+        waitLabel("sheet ", containing: "sheet Dismiss")
+
+        tap("read setting")
+        let read = NSPredicate { [self] _, _ in label(startingWith: "setting ") != "setting none" }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: read, evaluatedWith: app)], timeout: 10), .completed, "Settings.get answers")
+        let storedBefore = Int(label(startingWith: "setting ").dropFirst("setting ".count)) ?? 0
+        tap("write setting")
+        tap("read setting")
+        waitLabel("setting ", containing: "setting \(storedBefore + 1)")
+        report("settings-roundtrip")
+
         tap("copy")
         tap("paste")
         waitLabel("pasted ", containing: "pasted neon-1")

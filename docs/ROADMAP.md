@@ -258,6 +258,12 @@ Pro simulator, iOS 26.5 (`ApisUITests`: UIAlertController choice, copy/paste, th
 Copy resolving `sharedAction`, keyboard dismiss, AppState `inactive>background>active` through
 Home and through `Linking.openSettings`). The Android build and install of the demo succeeded on
 the Seeker; the device lane `tests/android/apis.py` is pending because the phone stayed locked.
+`ActionSheetIOS` (`showActionSheetWithOptions`, `dismissActionSheet`) and `Settings` (`get`, `set`,
+`watchKeys`, `clearWatch`) are iOS only, ported from react-native `693e9628e8c`: off iOS `ActionSheetIOS`
+throws "not available on this host" (RN's "ActionSheetManager doesn't exist") and `Settings` warns and
+answers null or -1 (RN's `SettingsFallback`). `anchor` is accepted and the sheet is centered;
+`showShareActionSheetWithOptions` is not ported (`Share.share` lacks excluded activity types).
+Proven by `tests/api/iosApis.test.ms` (6, native and JS); the device cases are in `ApisUITests`, not yet run.
 Not verified: vibration on any device (the simulator has none), a screen reader, `tel:` on a
 real phone (the simulator cannot open it), url events on iOS (P7; Android passes on the emulator lane of 2026-10-22).
 

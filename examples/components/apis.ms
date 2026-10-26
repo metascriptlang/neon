@@ -10,6 +10,8 @@ import { PixelRatio } from "../../src/api/pixelRatio";
 import { AppState, AppStateStatus } from "../../src/api/appState";
 import { BackHandler } from "../../src/api/backHandler";
 import { Alert } from "../../src/api/alert";
+import { ActionSheetIOS } from "../../src/api/actionSheetIOS";
+import { Settings } from "../../src/api/settings";
 import { Linking } from "../../src/api/linking";
 import { Share } from "../../src/api/share";
 import { Vibration } from "../../src/api/vibration";
@@ -38,6 +40,8 @@ export function ApiDemo(): NeonNode {
 	const [backPresses, setBackPresses] = createSignal<int32>(0);
 	const [alertChoice, setAlertChoice] = createSignal("none");
 	const [shareResult, setShareResult] = createSignal("none");
+	const [sheetChoice, setSheetChoice] = createSignal("none");
+	const [stored, setStored] = createSignal("none");
 	const [urlResult, setUrlResult] = createSignal("none");
 	const [canOpen, setCanOpen] = createSignal("unknown");
 	const [vibrations, setVibrations] = createSignal<int32>(0);
@@ -97,6 +101,8 @@ export function ApiDemo(): NeonNode {
 		<Text style={styles.status}>{"back presses " + backPresses().toString()}</Text>
 		<Text style={styles.status}>{"alert " + alertChoice()}</Text>
 		<Text style={styles.status}>{"share " + shareResult()}</Text>
+		<Text style={styles.status}>{"sheet " + sheetChoice()}</Text>
+		<Text style={styles.status}>{"setting " + stored()}</Text>
 		<Text style={styles.status}>{"url " + urlResult() + " can https " + canOpen()}</Text>
 		<Text style={styles.status}>{"vibrated " + vibrations().toString()}</Text>
 		<Text style={styles.status}>{"pasted " + pasted()}</Text>
@@ -109,6 +115,25 @@ export function ApiDemo(): NeonNode {
 				]);
 			}}>show alert</Pressable>
 			<Pressable style={styles.button} onPress={() => { share(); }}>share</Pressable>
+			<Pressable style={styles.button} onPress={() => {
+				const names = ["Keep", "Remove", "Dismiss", "Locked"];
+				ActionSheetIOS.showActionSheetWithOptions({
+					title: "Neon sheet",
+					message: "Pick one",
+					options: names,
+					destructiveButtonIndex: 1,
+					cancelButtonIndex: 2,
+					disabledButtonIndices: [3],
+				}, (index: number): void => { setSheetChoice(names[index as int32]); });
+			}}>show sheet</Pressable>
+			<Pressable style={styles.button} onPress={() => {
+				const value = Settings.get("neonDemoCount");
+				Settings.set({ neonDemoCount: (value === null ? 0 : value.asInt32()) + 1 });
+			}}>write setting</Pressable>
+			<Pressable style={styles.button} onPress={() => {
+				const value = Settings.get("neonDemoCount");
+				setStored(value === null ? "missing" : value.asInt32().toString());
+			}}>read setting</Pressable>
 			<Pressable style={styles.button} onPress={() => { openUrl(); }}>open url</Pressable>
 			<Pressable style={styles.button} onPress={() => { openSettings(); }}>settings</Pressable>
 			<Pressable style={styles.button} onPress={() => {
