@@ -80,6 +80,7 @@ export {
 	TabBarPosition,
 	createBottomTabNavigator,
 	createMaterialTopTabNavigator,
+	TabBackBehavior,
 } from "./tabs";
 export { TAB_INACTIVE, TabTrigger, TabBar, useTabs } from "./tabBar";
 export {

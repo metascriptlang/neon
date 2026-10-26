@@ -43,8 +43,7 @@ import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
 } from "./screenCollection";
-import { BackBehavior } from "./childPages";
-import { labelOf, mountedEntries, pagesModel, readBehavior } from "./tabs";
+import { TabBackBehavior, labelOf, mountedEntries, pagesModel, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
 
@@ -323,7 +322,7 @@ export interface DrawerNavigator<PL> {
 		initialRouteName?: Accessor<string> | null;
 		id?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptions> | null;
-		backBehavior?: Accessor<BackBehavior> | null;
+		backBehavior?: Accessor<TabBackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
 		drawerPosition?: Accessor<DrawerPosition> | null;
 		defaultStatus?: Accessor<DrawerStatus> | null;
@@ -351,7 +350,7 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 			initialRouteName?: Accessor<string> | null;
 			id?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
-			backBehavior?: Accessor<BackBehavior> | null;
+			backBehavior?: Accessor<TabBackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
 			drawerPosition?: Accessor<DrawerPosition> | null;
 			defaultStatus?: Accessor<DrawerStatus> | null;
