@@ -64,3 +64,15 @@ test "a streamed page writes each lazy's module entry once, in the first piece w
 	assert written === 1, "one entry: " + chunks.join(" || ");
 	assert chunks[0].includes(entry), "the shell's records carry it: " + chunks.join(" || ");
 }
+
+test "a lazy whose module the server already loaded serves the same page and lists its key again" {
+	const gate = new Gate();
+	const Served = lazyModule("tests/render/lazyModuleServer/again", loaderOf(gate));
+	const pending = renderToStream(shell(Served));
+	await release(gate);
+	const first = await pending;
+	const second = await renderToStream(shell(Served));
+	assert second.html === first.html, second.html + " / " + first.html;
+	assert second.records === first.records, second.records + " / " + first.records;
+	assert second.records.includes("\"]=\"tests/render/lazyModuleServer/again\""), second.records;
+}
