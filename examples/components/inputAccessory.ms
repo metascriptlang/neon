@@ -10,8 +10,8 @@ export function InputAccessoryDemo(): NeonNode {
 	return <View style={{ flex: 1, padding: 16, paddingTop: 80 }}>
 		<TextInput accessibilityLabel="Message" placeholder="Message" value={text()} onChangeText={(t: string): void => { setText(t); }}
 			inputAccessoryViewID="bar" style={{ height: 44, borderWidth: 1, borderColor: "#888888", padding: 8, color: "#ffffff" }} />
-		<Text accessibilityLabel="Taps">{`accessory taps: ${taps()}`}</Text>
-		<Text accessibilityLabel="Typed">{`typed: ${text()}`}</Text>
+		<Text>{`accessory taps: ${taps()}`}</Text>
+		<Text>{`typed: ${text()}`}</Text>
 		<InputAccessoryView nativeID="bar" backgroundColor="#303030">
 			<Pressable accessibilityLabel="Accessory Send" accessibilityRole="button" style={{ height: 44, justifyContent: "center", alignItems: "center" }}
 				onPress={(e: NeonEvent): void => { setTaps(taps() + 1); }}>
