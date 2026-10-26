@@ -1,6 +1,7 @@
 import { Dispose } from "../../core/types";
 import { RoutingHistory, RoutingHistoryEntry } from "../../navigation/routingHistory";
 import { ACTION_URL, FormData } from "../../navigation/action";
+import { Router } from "../../navigation/router";
 
 when (js) {
 	interface BrowserRoutingState {
@@ -9,6 +10,7 @@ when (js) {
 	}
 
 	extern class BrowserLocation {
+		href: string;
 		pathname: string;
 		search: string;
 		hash: string;
@@ -109,6 +111,15 @@ export function createBrowserRoutingHistory(): RoutingHistory {
 		};
 	} else {
 		throw new Error("routing: browser history requires the JavaScript browser host");
+	}
+}
+
+export function followExternalRedirects(router: Router): Dispose {
+	when (js) {
+		router.leaveWith((url: string): void => { window.location.href = url; });
+		return (): void => router.leaveWith(null);
+	} else {
+		throw new Error("routing: leaving the app requires the JavaScript browser host");
 	}
 }
 

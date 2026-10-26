@@ -36,7 +36,7 @@ import {
 	path,
 	sectionProps,
 } from "./route";
-import { PathMatch, createMatcher, expandOptionals, normalizePath, resolvePath } from "./routeMatcher";
+import { PathMatch, createMatcher, expandOptionals, hasScheme, normalizePath, resolvePath } from "./routeMatcher";
 import { NavigationChild } from "./children";
 import { ChildStack, createChildStack } from "./childStack";
 import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
@@ -303,7 +303,11 @@ function follow(tree: RouteTree, address: string, absent: RouteNode[] | null = n
 			return Result.ok({ address: at, match: resolved.match, status: resolved.status, redirect: first });
 		}
 		if (first === 0) { first = resolved.status; }
-		at = next as string;
+		const target = next as string;
+		if (hasScheme(target)) {
+			return Result.ok({ address: target, match: resolved.match, status: resolved.status, redirect: first });
+		}
+		at = resolvePath("", target, "") as string;
 	}
 	throw new Error(
 		"routing: more than " + MAX_REDIRECTS.toString() + " redirects from \"" + address + "\"",
@@ -807,6 +811,7 @@ export class Router {
 	private session: RoutingSession | null = null;
 	private stop: Dispose | null = null;
 	private scroller: Scroller | null = null;
+	private leaver: ((url: string) => void) | null = null;
 	private scrolling: boolean = true;
 	private group: (change: () => void, visit: boolean) => void = (change: () => void, visit: boolean): void => { flush(change); };
 
@@ -891,6 +896,19 @@ export class Router {
 		this.scroller = scroller;
 	}
 
+	leaveWith(leaver: ((url: string) => void) | null): void {
+		this.leaver = leaver;
+		const resolved = untrack((): Resolved => this.current.get());
+		if (leaver !== null && resolved.redirect !== 0 && hasScheme(resolved.address)) { this.leave(resolved.address); }
+	}
+
+	private leave(url: string): boolean {
+		const leaver = this.leaver;
+		if (leaver === null) { throw new Error("routing: a redirect leaves the app for " + url + ", and no host handles it (leaveWith)"); }
+		(leaver as (url: string) => void)(url);
+		return true;
+	}
+
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		return this.navigateFrom("", href, options);
 	}
@@ -903,6 +921,7 @@ export class Router {
 		const href = resolvePath("", to, current) ?? to;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
+		if (hasScheme(resolved.value.address)) { return this.leave(resolved.value.address); }
 		this.scrolling = options === null ? true : (options as NavigateOptions).scroll ?? true;
 		const walked = this.apply(resolved.value, replace, !replace, "navigate");
 		if (walked === Walked.Unchanged) { this.scrolling = true; }
@@ -939,9 +958,7 @@ export class Router {
 			this.redirected = reply;
 			return false;
 		}
-		if (!reply.address.startsWith("/")) {
-			throw new Error("routing: a response redirects to \"" + reply.address + "\", and a router opens only the addresses of its own routes");
-		}
+		if (hasScheme(reply.address)) { return this.leave(reply.address); }
 		if (!this.navigate(reply.address, { replace })) {
 			throw new Error("routing: a response redirects to " + reply.address + ", which no route matches");
 		}

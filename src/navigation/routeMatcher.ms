@@ -30,7 +30,7 @@ export function joinPaths(from: string, to: string): string {
 	return stripSplat(normalizePath(from)) + normalizePath(to);
 }
 
-function hasScheme(path: string): boolean {
+export function hasScheme(path: string): boolean {
 	let at: int32 = 0;
 	while (at < path.length) {
 		const code = path.charCodeAt(at);
