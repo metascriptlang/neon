@@ -2,6 +2,7 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 
 @comptime export function styleTable(): string[][] {
 	return [
+		["direction",           "Direction",         "word", "enum",   "ignore"],
 		["flexDirection",       "FlexDirection",     "word", "enum",   "ignore"],
 		["justifyContent",      "Justify",           "word", "enum",   "ignore"],
 		["alignItems",          "Align",             "word", "enum",   "ignore"],
@@ -50,6 +51,7 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["letterSpacing",       "number",            "len",  "ignore", "ignore"],
 		["lineHeight",          "number",            "len",  "ignore", "ignore"],
 		["textAlign",           "TextAlign",         "word", "ignore", "ignore"],
+		["writingDirection",    "WritingDirection",  "word", "ignore", "ignore"],
 		["overflow",            "Overflow",          "word", "enum",   "ignore"],
 		["zIndex",              "number",            "num",  "paint",  "ignore"],
 		["fontFamily",          "string",            "word", "paint",  "ignore"],
@@ -65,6 +67,10 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
 		["textDecorationColor", "string",            "word", "paint",  "ignore"],
 	];
+}
+
+@comptime export function cssProperty(field: string): string {
+	return field === "writingDirection" ? "direction" : field;
 }
 
 @comptime export function styleClassFields(): string[][] {
@@ -105,7 +111,7 @@ export macro applyCssPropBody(node: Node): Node {
 						left: {
 							kind: NodeKind.MemberExpr, line: L, column: C,
 							object: { kind: NodeKind.Identifier, line: L, column: C, name: "css" },
-							property: fieldName, isOptional: false,
+							property: cssProperty(fieldName), isOptional: false,
 						},
 						right: {
 							kind: NodeKind.CallExpr, line: L, column: C,
@@ -517,7 +523,7 @@ export macro styleToCssBody(node: Node): Node {
 					right: {
 						kind: NodeKind.CallExpr, line: L, column: C,
 						callee: { kind: NodeKind.Identifier, line: L, column: C, name: emitter },
-						arguments: [{ kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }, arg],
+						arguments: [{ kind: NodeKind.StringLiteral, line: L, column: C, value: cssProperty(fieldName) }, arg],
 						isDirectCall: false, resolvedOverloadIdx: -1,
 					},
 				},

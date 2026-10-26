@@ -127,6 +127,7 @@ class NativeNode {
 	textInsets: string = "";
 	textAlign: string = "";
 	fontFamily: string = "";
+	writingDirection: string = "";
 	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
@@ -354,6 +355,12 @@ function applyPaint(n: NativeNode, s: Style): void {
 		}
 	}
 }
+		const writing = s.writingDirection !== null ? (s.writingDirection as string) : "";
+		if (writing !== n.writingDirection) {
+			n.writingDirection = writing;
+			const shownWriting = writing === "" ? "auto" : writing;
+			niSetProp(n.view, "writingDirection", shownWriting);
+		}
 
 // A centred, right or justified label spans the width its parent gives it (RN Text stretches
 // like any flex item), at least as wide as its text; a left-aligned one keeps its text's width.
