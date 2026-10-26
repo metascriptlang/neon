@@ -32,6 +32,7 @@ public:
 	void SetFont(float size, bool bold);
 	void SetFamily(const char *utf8);
 	void SetAlignment(const char *value);
+	void SetWritingDirection(const char *value);
 	void Invalidate() { paintDirty = true; }
 	void Measure(float maxWidth, float scale, float *width, float *height);
 	bool NeedsDraw(int32_t pixelWidth, int32_t pixelHeight) const;
@@ -50,6 +51,7 @@ private:
 	bool bold = false;
 	std::wstring family = L"Segoe UI";
 	int alignment = 0;
+	DWRITE_READING_DIRECTION readingDirection = DWRITE_READING_DIRECTION_LEFT_TO_RIGHT;
 	bool layoutStale = true;
 	bool paintDirty = true;
 	Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;

@@ -196,8 +196,9 @@ void TextInput::SetFormat() {
 	charFormat.bCharSet = DEFAULT_CHARSET;
 	memset(&paraFormat, 0, sizeof paraFormat);
 	paraFormat.cbSize = sizeof paraFormat;
-	paraFormat.dwMask = PFM_ALIGNMENT;
+	paraFormat.dwMask = PFM_ALIGNMENT | PFM_RTLPARA;
 	paraFormat.wAlignment = alignment;
+	if (rightToLeft) paraFormat.wEffects |= PFE_RTLPARA;
 }
 
 bool TextInput::SetProp(const char *name, const char *value) {
@@ -249,6 +250,8 @@ bool TextInput::SetProp(const char *name, const char *value) {
 		SetFamily(value);
 	} else if (!strcmp(name, "textAlign")) {
 		SetAlignment(value);
+	} else if (!strcmp(name, "writingDirection")) {
+		SetWritingDirection(value);
 	} else {
 		return false;
 	}
@@ -310,6 +313,19 @@ void TextInput::SetAlignment(const char *value) {
 	else refuse("TextInput textAlign is not auto, left, right, center or justify:", value);
 	if (next == alignment) return;
 	alignment = next;
+	SetFormat();
+	ChangeBits(TXTBIT_PARAFORMATCHANGE);
+}
+
+// RNW WindowsTextInputComponentView.cpp:1696-1709 (react-native-windows aedf6c5): rtl sets PFE_RTLPARA on the paragraph,
+// ltr clears it; auto stays left-to-right because the bridge has no layout direction to follow.
+void TextInput::SetWritingDirection(const char *value) {
+	bool next;
+	if (!strcmp(value, "auto") || !strcmp(value, "ltr")) next = false;
+	else if (!strcmp(value, "rtl")) next = true;
+	else refuse("TextInput writingDirection is not auto, ltr or rtl:", value);
+	if (next == rightToLeft) return;
+	rightToLeft = next;
 	SetFormat();
 	ChangeBits(TXTBIT_PARAFORMATCHANGE);
 }
@@ -482,6 +498,7 @@ void TextInput::Draw(ICompositionContext *context, IVisual *visual, int32_t pixe
 		ComPtr<IDWriteTextLayout> layout;
 		float width = (client.right - client.left) / scale;
 		must(writeFactory()->CreateTextLayout(placeholder.c_str(), (UINT32)placeholder.size(), format.Get(), width, kUnboundedHeight, &layout), "CreateTextLayout");
+		must(layout->SetReadingDirection(rightToLeft ? DWRITE_READING_DIRECTION_RIGHT_TO_LEFT : DWRITE_READING_DIRECTION_LEFT_TO_RIGHT), "SetReadingDirection");
 		ComPtr<ID2D1SolidColorBrush> brush;
 		must(dc->CreateSolidColorBrush(D2D1::ColorF(placeholderColor.r, placeholderColor.g, placeholderColor.b, placeholderColor.a), &brush), "CreateSolidColorBrush");
 		dc->DrawTextLayout(D2D1::Point2F(client.left / scale, client.top / scale), layout.Get(), brush.Get(), D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
