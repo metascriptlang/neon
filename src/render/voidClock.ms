@@ -7,6 +7,7 @@ import { AreaHub } from "./voidAreaHandle";
 
 interface ClockSubscriber {
 	active: () => boolean;
+	priority: float64;
 	advance: (seconds: float64) => void;
 }
 
@@ -69,9 +70,12 @@ function clockOf(hub: AreaHub | null): AreaClock {
 	return clock;
 }
 
-function join(clock: AreaClock, active: () => boolean, advance: (seconds: float64) => void): () => void {
-	const subscriber: ClockSubscriber = { active, advance };
-	clock.subscribers.push(subscriber);
+function join(clock: AreaClock, priority: float64, active: () => boolean, advance: (seconds: float64) => void): () => void {
+	if (!Number.isFinite(priority)) { throw new Error("useFrame: priority must be a finite number"); }
+	const subscriber: ClockSubscriber = { active, priority, advance };
+	let at = clock.subscribers.length;
+	while (at > 0 && clock.subscribers[at - 1].priority > priority) { at -= 1; }
+	clock.subscribers.splice(at, 0, subscriber);
 	let live = true;
 	onCleanup((): void => {
 		live = false;
@@ -93,7 +97,7 @@ export function useVoidClock(
 ): () => void {
 	const area = useContext(getVoidAreaContext());
 	if (area === null) { throw new Error("useVoidClock: mount within Void"); }
-	return join(clockOf(area.hub), active, advance);
+	return join(clockOf(area.hub), 0.0, active, advance);
 }
 
 interface FrameUser {
@@ -101,9 +105,11 @@ interface FrameUser {
 	wake: (() => void) | null;
 }
 
-// Within Void it ticks on that area's clock and keeps the area painting; elsewhere on one clock
+// Lower `priority` runs first and equal priorities run in mount order, as in R3F's subscriber sort;
+// R3F's rule that a positive priority takes over rendering has no counterpart, since a Scene3D
+// paints as an area layer. Within Void it ticks on that area's clock and keeps the area painting; elsewhere on one clock
 // with no area to paint.
-export function useFrame(callback: (dt: number, time: number) => void): void {
+export function useFrame(callback: (dt: number, time: number) => void, priority: float64 = 0.0): void {
 	const user: FrameUser = { stopped: false, wake: null };
 	const raise = createErrorRoute((): void => {
 		user.stopped = false;
@@ -112,7 +118,7 @@ export function useFrame(callback: (dt: number, time: number) => void): void {
 	if (raise === null) { throw new Error("useFrame: call it under an owner (a component or a root); the callback lives as long as that owner"); }
 	const area = useContext(getVoidAreaContext());
 	const clock = clockOf(area === null ? null : area.hub);
-	user.wake = join(clock, (): boolean => !user.stopped, (seconds: float64): void => {
+	user.wake = join(clock, priority, (): boolean => !user.stopped, (seconds: float64): void => {
 		try {
 			callback(seconds, clock.last / 1000.0);
 		} catch (e) {
