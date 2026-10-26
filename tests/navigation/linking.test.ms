@@ -133,6 +133,16 @@ test "one leading query mark is dropped and surrounding blanks are trimmed" {
 	assert describe(targetFromPath("user/ana?q=1 ", config)) === "Profile(name=ana,q=1)";
 }
 
+test "a path param that fails to decode rejects its route and the next candidate is tried" {
+	assert describe(targetFromPath("shop/product/%zz", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%E4%BD", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%FF", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/100%", config)) === "Missing";
+	assert describe(targetFromPath("user/a%C0%80", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%e4%bd%a0", config)) === "Shop>Product(id=\u4f60)";
+	assert targetFromPath("shop/product/%zz", { screens: [{ name: "Product", path: "shop/product/:id" }] }) === null;
+}
+
 test "a fragment after the query is dropped, not read into the last value" {
 	const fragment = targetFromPath("user/ana?tab=likes#top", config);
 	assert describe(fragment) === "Profile(name=ana,tab=likes)", describe(fragment);

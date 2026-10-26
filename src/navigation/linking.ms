@@ -156,7 +156,19 @@ export function decodeComponent(text: string): string {
 	return bytes.asString();
 }
 
-function decode(text: string): string {
+function decodeParam(text: string): string | null {
+	if (text.indexOf("%") < 0) { return text; }
+	const length = text.byteLength();
+	let i: int32 = 0;
+	while (i < length) {
+		if (text.byteAt(i) !== 37) {
+			i += 1;
+			continue;
+		}
+		const sequence = utf8Length(text, i);
+		if (sequence === 0) { return null; }
+		i += 3 * sequence;
+	}
 	return decodeComponent(text);
 }
 
@@ -170,9 +182,9 @@ function parseQuery(query: string, into: Map<string, string>): void {
 		const spaced = pair.split("+").join(" ");
 		const eq = spaced.indexOf("=");
 		if (eq < 0) {
-			into.set(decode(spaced), "");
+			into.set(decodeComponent(spaced), "");
 		} else {
-			into.set(decode(spaced.substring(0, eq)), decode(spaced.substring(eq + 1, spaced.length)));
+			into.set(decodeComponent(spaced.substring(0, eq)), decodeComponent(spaced.substring(eq + 1, spaced.length)));
 		}
 	}
 }
@@ -189,7 +201,9 @@ function matchFrom(
 	if (segment.wildcard) { return true; }
 	if (segment.param) {
 		if (at < parts.length) {
-			values[segment.owner].set(segment.text, decode(parts[at]));
+			const decoded = decodeParam(parts[at]);
+			if (decoded === null) { return false; }
+			values[segment.owner].set(segment.text, decoded as string);
 			if (matchFrom(segments, from + 1, parts, at + 1, values)) { return true; }
 			values[segment.owner].delete(segment.text);
 		}
