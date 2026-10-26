@@ -2,6 +2,7 @@ import { ElementHandle, MeasureRect, MeasureError } from "../../src/index";
 import { HostNode, MockNode, mockHost, mockNode, render } from "../../src/render/host";
 import { View, ViewHandle, Text, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
+import { AccessibilityInfo } from "../../src/api/accessibilityInfo";
 import { Image } from "../../src/components/image";
 import { Switch } from "../../src/components/switch";
 
@@ -23,6 +24,23 @@ test "primitive refs expose portable handles without changing node identity" {
 	dispose();
 	handles[2].measureInWindow((x: number, y: number, width: number, height: number): void => { got += `${x},${y},${width},${height};`; });
 	assert got === "1,2,3,4;0,0,0,0;", "measured before the call returns, zeros after unmount: " + got;
+}
+
+test "AccessibilityInfo.setAccessibilityFocus hands the host the node, and ignores an unmounted or unsupported one" {
+	const host = mockHost();
+	const handles: ViewHandle[] = [];
+	const grab = (h: ViewHandle): void => { handles.push(h); };
+	const root = mockNode("root");
+	const dispose = render(element(<View><View ref={grab} /><Text ref={grab}>t</Text></View>), host, root as unknown as HostNode);
+	AccessibilityInfo.setAccessibilityFocus(handles[0]);
+	const got: HostNode[] = [];
+	host.accessibilityFocus = (node: HostNode): void => { got.push(node); };
+	AccessibilityInfo.setAccessibilityFocus(handles[0]);
+	AccessibilityInfo.setAccessibilityFocus(handles[1]);
+	assert got.length === 2 && got[0] === handles[0].node && got[1] === handles[1].node, "each call carries its own node";
+	dispose();
+	AccessibilityInfo.setAccessibilityFocus(handles[0]);
+	assert got.length === 2, "a call after unmount never reaches the host";
 }
 
 test "Image and Switch refs share the portable measurement handle" {

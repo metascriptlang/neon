@@ -184,6 +184,9 @@ void niSetFocused(void *view, int focused) {
 	if (v->tag) nmControl(v->tag, focused ? 1 : 2, v->text);
 }
 
+static int g_accessibilityFocusCalls = 0;
+void niAccessibilityFocus(void *view) { live(view, "niAccessibilityFocus"); g_accessibilityFocusCalls += 1; }
+
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
@@ -525,6 +528,7 @@ int32_t nmLastInputTag(void) {
 }
 
 int32_t nmFocused(int32_t tag) { return tagged(tag)->focused; }
+int32_t nmAccessibilityFocusCalls(void) { return g_accessibilityFocusCalls; }
 
 const char *nmProp(int32_t tag, const char *name) {
 	MockView *v = tagged(tag);

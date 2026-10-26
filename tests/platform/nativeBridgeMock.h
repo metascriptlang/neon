@@ -43,6 +43,7 @@ void nmControlSized(int32_t tag, int32_t phase, const char *value, float width, 
 void nmEnvironment(float keyboardHeight, int32_t dark);
 int32_t nmLastInputTag(void);
 int32_t nmFocused(int32_t tag);
+int32_t nmAccessibilityFocusCalls(void);
 const char *nmProp(int32_t tag, const char *name);
 int32_t nmLastControlTag(int32_t kind);
 float nmTextWidth(const char *text);

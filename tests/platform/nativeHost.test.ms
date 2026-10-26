@@ -25,6 +25,7 @@ import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/rend
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
+import { AccessibilityInfo } from "../../src/api/accessibilityInfo";
 import { Text } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 
@@ -34,7 +35,7 @@ import {
 	nmScrollFrameWrites, nmScreenHeightReads, nmLoop,
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTapAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
-	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
+	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmAccessibilityFocusCalls, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
 	nmBackgroundAlpha, nmLastViewTag, nmAnyProp, nmTagWithProp, nmHasLabel,
 	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity,
@@ -628,6 +629,22 @@ test "a native sticky list paints and routes its retained header above rows, the
 
 function prop(tag: int32, name: string): string {
 	return nmProp(tag, name);
+}
+
+test "AccessibilityInfo.setAccessibilityFocus reaches the native view while it is mounted" {
+	const handles: TextInputHandle[] = [];
+	const [shown, setShown] = createSignal(true);
+	runApp((): NeonNode => <View>
+		{shown() ? <TextInput ref={(h: TextInputHandle): void => { handles.push(h); }} /> : null}
+	</View>);
+	const before = nmAccessibilityFocusCalls();
+	AccessibilityInfo.setAccessibilityFocus(handles[0]);
+	assert nmAccessibilityFocusCalls() === before + 1, "the call reached the bridge with that view";
+	setShown(false);
+	flush();
+	AccessibilityInfo.setAccessibilityFocus(handles[0]);
+	assert nmAccessibilityFocusCalls() === before + 1, "an unmounted handle is ignored";
+	nmTeardown();
 }
 
 test "a native TextInput writes its props, routes typing, focus and submit, and follows a controlled value" {
