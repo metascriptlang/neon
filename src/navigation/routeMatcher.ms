@@ -30,6 +30,53 @@ export function joinPaths(from: string, to: string): string {
 	return stripSplat(normalizePath(from)) + normalizePath(to);
 }
 
+function hasScheme(path: string): boolean {
+	let at: int32 = 0;
+	while (at < path.length) {
+		const code = path.charCodeAt(at);
+		if (!((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122))) { break; }
+		at += 1;
+	}
+	if (at < path.length && path[at] === ":") { at += 1; }
+	else { at = 0; }
+	return path.substring(at, path.length).startsWith("//");
+}
+
+function removeDotSegments(address: string): string {
+	let end = address.length;
+	const query = address.indexOf("?");
+	const hash = address.indexOf("#");
+	if (query >= 0) { end = query; }
+	if (hash >= 0 && hash < end) { end = hash; }
+	const kept: string[] = [];
+	const parts = address.substring(0, end).split("/");
+	for (let i = 1; i < parts.length; i += 1) {
+		const last = i === parts.length - 1;
+		if (parts[i] === "." || parts[i] === "..") {
+			if (parts[i] === ".." && kept.length > 0) { kept.pop(); }
+			if (last) { kept.push(""); }
+		} else {
+			kept.push(parts[i]);
+		}
+	}
+	return "/" + kept.join("/") + address.substring(end, address.length);
+}
+
+export function resolvePath(base: string, path: string, from: string): string | null {
+	if (hasScheme(path)) { return null; }
+	const basePath = normalizePath(base);
+	const fromPath = normalizePath(from);
+	let result = "";
+	if (fromPath === "" || path.startsWith("/")) {
+		result = basePath;
+	} else if (fromPath.toLowerCase().indexOf(basePath.toLowerCase()) !== 0) {
+		result = basePath + fromPath;
+	} else {
+		result = fromPath;
+	}
+	return removeDotSegments((result === "" ? "/" : result) + normalizePath(path, result === ""));
+}
+
 function beforeSplat(path: string): string {
 	const star = path.indexOf("/*");
 	return star < 0 ? path : path.substring(0, star);

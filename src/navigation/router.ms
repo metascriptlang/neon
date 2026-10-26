@@ -36,7 +36,7 @@ import {
 	path,
 	sectionProps,
 } from "./route";
-import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
+import { PathMatch, createMatcher, expandOptionals, normalizePath, resolvePath } from "./routeMatcher";
 import { NavigationChild } from "./children";
 import { ChildStack, createChildStack } from "./childStack";
 import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
@@ -892,8 +892,15 @@ export class Router {
 	}
 
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
+		return this.navigateFrom("", href, options);
+	}
+
+	navigateFrom(from: string, to: string, options: NavigateOptions | null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
+		const queryOnly = to === "" || to.startsWith("?");
+		const current = queryOnly ? untrack((): string => leafStop(this.root).path) : from;
+		const href = resolvePath("", to, current) ?? to;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
 		this.scrolling = options === null ? true : (options as NavigateOptions).scroll ?? true;
@@ -1103,6 +1110,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 }
 
 interface RouteScope {
+	path: string;
 	params: Map<string, string>;
 	node: RouteNode;
 	parent: RouteScope | null;
@@ -1211,7 +1219,7 @@ function tabsFrame(inner: NeonNode): NeonNode {
 function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer, parent: RouteScope | null): NeonNode {
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
-	const scope: RouteScope = { params: stop.params, node: found.node, parent };
+	const scope: RouteScope = { path: stop.path, params: stop.params, node: found.node, parent };
 	const leaf = leafOf(child);
 	const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
 	const preload = found.node.preload;
@@ -1287,8 +1295,10 @@ export function useParams<P, D>(options: { from: RouteDef<P, D> }): P {
 
 export function useNavigate(): (to: string | int32, options?: NavigateOptions | null) => boolean {
 	const router = useRouter("useNavigate");
+	const scope = useContext(RouteContext);
+	const from = scope === null ? "" : (scope as RouteScope).path;
 	return (to: string | int32, options: NavigateOptions | null = null): boolean => {
-		if (typeof to === "string") { return router.navigate(to, options); }
+		if (typeof to === "string") { return router.navigateFrom(from, to, options); }
 		return router.go(to as int32);
 	};
 }
