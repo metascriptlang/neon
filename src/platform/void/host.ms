@@ -19,9 +19,10 @@ import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/voi
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, YGNode, PositionType, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
+import { FlexStyle, YGNode, PositionType, Direction, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
 import { Style, FontWeight, PositionType as StylePositionType } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
+import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
 import {
 	TextEditingValue, editingValue, isEmptyRange,
@@ -571,6 +572,7 @@ export function createVoidHostWith(
 	defaultFamily: string | null = null,
 	scene2dScope: boolean = false,
 ): VoidHost {
+	const rootDirection: Direction = I18nManager.isRTL() ? "rtl" : "ltr";
 	const events: EventEntry[] = [];
 	const clients: ClientEntry[] = [];
 	const fields: Field[] = [];
@@ -1591,7 +1593,7 @@ export function createVoidHostWith(
 		for (const c of n.children) {
 			if (n.raw && !c.raw && c.flex !== null) {
 				const box = n.ref.content();
-				layoutPass(c, box.w, box.h);
+				layoutPass(c, box.w, box.h, rootDirection);
 			}
 			layoutIslands(c);
 		}
@@ -1622,7 +1624,7 @@ export function createVoidHostWith(
 		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			if (scene.isClosed()) { return; }
-			layoutPass(root, w, h);
+			layoutPass(root, w, h, rootDirection);
 			layoutIslands(root);
 			flowText(root);
 			fitScrollers();
