@@ -108,6 +108,7 @@ export function ApiDemo(): NeonNode {
 		<Text style={styles.status}>{"pasted " + pasted()}</Text>
 		<Text style={styles.status}>{"reader " + reader() + " keyboard " + (keyboard().visible ? "shown" : "hidden")}</Text>
 		<View style={styles.buttons}>
+			<Pressable style={styles.button} onPress={() => { Keyboard.dismiss(); }}>dismiss</Pressable>
 			<Pressable style={styles.button} onPress={() => {
 				Alert.alert("Neon alert", "Pick one", [
 					{ text: "Cancel", style: "cancel", onPress: (): void => { setAlertChoice("cancel"); } },
@@ -147,7 +148,6 @@ export function ApiDemo(): NeonNode {
 			}}>copy</Pressable>
 			<Pressable style={styles.button} onPress={() => { paste(); }}>paste</Pressable>
 			<Pressable style={styles.button} onPress={() => { AccessibilityInfo.announceForAccessibility("Neon announcement"); }}>announce</Pressable>
-			<Pressable style={styles.button} onPress={() => { Keyboard.dismiss(); }}>dismiss</Pressable>
 		</View>
 		<TextInput style={styles.input} placeholder="type here" />
 	</View>;
