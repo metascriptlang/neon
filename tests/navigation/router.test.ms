@@ -327,10 +327,10 @@ test "A marks the link to the current page with aria-current" {
 	]);
 	const router = opened(routes, memory("/docs/start/"));
 	const root = mounted(router);
-	assert mockToString(root) === "<root><nav><a href=\"/\">Home</a><a href=\"/docs/start\" aria-current=\"page\">Start</a><a href=\"/docs/routing#notes\">Notes</a><h1>doc start</h1></nav></root>", mockToString(root);
+	assert mockToString(root) === "<root><nav><a href=\"/\" class=\"active\">Home</a><a href=\"/docs/start\" aria-current=\"page\" class=\"active\">Start</a><a href=\"/docs/routing#notes\" class=\"inactive\">Notes</a><h1>doc start</h1></nav></root>", mockToString(root);
 	assert router.navigate("/docs/routing");
 	flush();
-	assert mockToString(root) === "<root><nav><a href=\"/\">Home</a><a href=\"/docs/start\">Start</a><a href=\"/docs/routing#notes\" aria-current=\"page\">Notes</a><h1>doc routing</h1></nav></root>", mockToString(root);
+	assert mockToString(root) === "<root><nav><a href=\"/\" class=\"active\">Home</a><a href=\"/docs/start\" class=\"inactive\">Start</a><a href=\"/docs/routing#notes\" class=\"active\" aria-current=\"page\">Notes</a><h1>doc routing</h1></nav></root>", mockToString(root);
 }
 
 test "a route tree refuses a leaf without a component and a component beside children" {

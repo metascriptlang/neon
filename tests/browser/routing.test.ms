@@ -24,7 +24,7 @@ import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { PreloadArgs } from "../../src/navigation/route";
-import { A, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
+import { A, NavigateOptions, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
 import { createRoutingDemo, RoutingDemo } from "../../examples/components/routing";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
@@ -420,7 +420,7 @@ test "a router in Chrome preloads as initial at open, navigate on a link click a
 	document.body.appendChild(mount);
 	preloads.length = 0;
 	const dispose = render(<RouterProvider router={router} />, domHost(), mount as unknown as HostNode);
-	const stop = followLinks((url: string): boolean => router.navigate(url));
+	const stop = followLinks((url: string, options: NavigateOptions): boolean => router.navigate(url, options));
 	try {
 		assert preloads.join(" | ") === "a initial | render", preloads.join(" | ");
 		preloads.length = 0;

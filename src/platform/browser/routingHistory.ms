@@ -1,7 +1,7 @@
 import { Dispose } from "../../core/types";
 import { RoutingHistory, RoutingHistoryEntry } from "../../navigation/routingHistory";
 import { ACTION_URL, FormData } from "../../navigation/action";
-import { Router } from "../../navigation/router";
+import { NavigateOptions, Router } from "../../navigation/router";
 
 when (js) {
 	interface BrowserRoutingState {
@@ -48,6 +48,8 @@ when (js) {
 
 	extern function sameOriginLink(event: Event): string from
 		"(e => { if (e.defaultPrevented || e.button > 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return ''; const a = e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'); if (!a || a.target || !a.href || a.hasAttribute('download') || (a.getAttribute('rel') || '').split(/\\s+/).includes('external')) return ''; const u = new URL(a.href, document.baseURI); return u.origin === location.origin ? u.pathname + u.search + u.hash : ''; })(#)";
+	extern function linkHas(event: Event, attribute: string): boolean from
+		"((e, name) => e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A').hasAttribute(name))(#, #)";
 	extern class Anchor {}
 	extern function eventAnchor(event: Event): Anchor from
 		"(e => e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'))(#)";
@@ -123,12 +125,14 @@ export function followExternalRedirects(router: Router): Dispose {
 	}
 }
 
-export function followLinks(navigate: (url: string) => boolean): Dispose {
+export function followLinks(navigate: (url: string, options: NavigateOptions) => boolean): Dispose {
 	when (js) {
 		const handler = (event: unknown): void => {
 			const click = event as Event;
 			const url = sameOriginLink(click);
-			if (url === "" || !navigate(url)) { return; }
+			if (url === "") { return; }
+			const options: NavigateOptions = { replace: linkHas(click, "replace"), scroll: !linkHas(click, "noscroll") };
+			if (!navigate(url, options)) { return; }
 			click.preventDefault();
 		};
 		window.addEventListener("click", handler, false);

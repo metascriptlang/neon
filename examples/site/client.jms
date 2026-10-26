@@ -4,7 +4,7 @@ import { domHost } from "../../src/platform/browser/dom";
 import { createBrowserRoutingHistory, followExternalRedirects, followLinks, followPreloads, followSubmits } from "../../src/platform/browser/routingHistory";
 import { followScroll } from "../../src/platform/browser/scroll";
 import { followAnnouncements } from "../../src/platform/browser/announce";
-import { RouterProvider, createRouter } from "../../src/navigation/router";
+import { NavigateOptions, RouterProvider, createRouter } from "../../src/navigation/router";
 import { FormData, submitForm } from "../../src/navigation/index";
 import { routes } from "./site";
 
@@ -19,7 +19,7 @@ if (opened.ok) {
 	followScroll(router);
 	followAnnouncements(router);
 	followExternalRedirects(router);
-	followLinks((url: string): boolean => router.navigate(url));
+	followLinks((url: string, options: NavigateOptions): boolean => router.navigate(url, options));
 	followPreloads((url: string): void => router.preload(url));
 	followSubmits((url: string, data: FormData): boolean => submitForm(router, url, data));
 	hydrated(1);

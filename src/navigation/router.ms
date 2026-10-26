@@ -1345,12 +1345,45 @@ function comparable(address: string): string {
 	return decoded.ok ? decoded.value : trimmed;
 }
 
-export function A(props: { href: Accessor<string>; preload?: boolean | null; children: NeonNode }): NeonNode {
+function underPath(parent: string, child: string): boolean {
+	return child === parent || child.startsWith(parent + "/");
+}
+
+export function A(props: {
+	href: Accessor<string>;
+	class?: Accessor<string> | null;
+	activeClass?: Accessor<string> | null;
+	inactiveClass?: Accessor<string> | null;
+	target?: string | null;
+	rel?: string | null;
+	end?: boolean | null;
+	replace?: boolean | null;
+	noScroll?: boolean | null;
+	preload?: boolean | null;
+	children: NeonNode;
+}): NeonNode {
 	const location = useRouter("A").location;
 	const href = props.href;
-	const current = accessor((): string | null => {
-		return comparable(href()) === comparable(location().pathname) ? "page" : null;
+	const own = props.class;
+	const activeClass = props.activeClass;
+	const inactiveClass = props.inactiveClass;
+	const end = props.end === true;
+	const exact = accessor((): boolean => comparable(href()) === comparable(location().pathname));
+	const active = accessor((): boolean => {
+		return exact() || (!end && underPath(comparable(href()), comparable(location().pathname)));
+	});
+	const current = accessor((): string | null => exact() ? "page" : null);
+	const classes = accessor((): string | null => {
+		const named: string[] = [];
+		if (own !== null) { named.push((own as Accessor<string>)()); }
+		if (active()) { named.push(activeClass === null ? "active" : (activeClass as Accessor<string>)()); }
+		else { named.push(inactiveClass === null ? "inactive" : (inactiveClass as Accessor<string>)()); }
+		const joined = named.filter((name: string): boolean => name !== "").join(" ");
+		return joined === "" ? null : joined;
 	});
 	const preload = props.preload;
-	return <a href={href()} aria-current={current()} preload={preload}>{props.children}</a>;
+	const replace = props.replace === true ? true : null;
+	const noScroll = props.noScroll === true ? true : null;
+	return <a href={href()} aria-current={current()} class={classes()} target={props.target} rel={props.rel}
+		replace={replace} noScroll={noScroll} preload={preload}>{props.children}</a>;
 }
