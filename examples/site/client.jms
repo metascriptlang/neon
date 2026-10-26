@@ -1,7 +1,9 @@
 import { HostNode } from "../../src/render/hostTypes";
 import { hydrate } from "../../src/render/hydrate";
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory, followLinks, followPreloads, followSubmits } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followExternalRedirects, followLinks, followPreloads, followSubmits } from "../../src/platform/browser/routingHistory";
+import { followScroll } from "../../src/platform/browser/scroll";
+import { followAnnouncements } from "../../src/platform/browser/announce";
 import { RouterProvider, createRouter } from "../../src/navigation/router";
 import { FormData, submitForm } from "../../src/navigation/index";
 import { routes } from "./site";
@@ -14,6 +16,9 @@ const opened = createRouter(routes, createBrowserRoutingHistory());
 if (opened.ok) {
 	const router = opened.value;
 	hydrate(<RouterProvider router={router} />, domHost(), siteContainer("app") as unknown as HostNode);
+	followScroll(router);
+	followAnnouncements(router);
+	followExternalRedirects(router);
 	followLinks((url: string): boolean => router.navigate(url));
 	followPreloads((url: string): void => router.preload(url));
 	followSubmits((url: string, data: FormData): boolean => submitForm(router, url, data));
