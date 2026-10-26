@@ -19,6 +19,7 @@ void harnessWheel(const char *title, int x, int y, int delta);
 void harnessClick(const char *title, int x, int y);
 void harnessHover(const char *title, int x, int y);
 void harnessDrag(const char *title, int fromX, int fromY, int toX, int toY, int steps);
+const char *harnessFileUri(const char *relativePath);
 int harnessPostKeys(const char *title, const char *keys);
 
 #ifdef __cplusplus

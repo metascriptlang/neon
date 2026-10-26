@@ -226,6 +226,15 @@ void harnessStart(int logicalWidth, int logicalHeight) {
 	niwAttach(g_dcomp.Get(), g_root.Get(), (float)g_dpi, (float)MulDiv(client.right, 96, g_dpi), (float)MulDiv(client.bottom, 96, g_dpi));
 }
 
+const char *harnessFileUri(const char *relativePath) {
+	static std::string uri;
+	char full[MAX_PATH];
+	if (GetFullPathNameA(relativePath, MAX_PATH, full, nullptr) == 0) must(HRESULT_FROM_WIN32(GetLastError()), "GetFullPathName");
+	uri = "file:///";
+	for (const char *at = full; *at; at++) uri += *at == '\\' ? '/' : *at;
+	return uri.c_str();
+}
+
 int harnessIsCheck(void) { return wcsstr(GetCommandLineW(), L"--check") != nullptr; }
 
 static HWND findOwnWindow(const char *title) {
