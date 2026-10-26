@@ -186,6 +186,8 @@ export interface NavigatorLink {
 	canBackLocal: () => boolean;
 	canPop: () => boolean;
 	popToTop: () => boolean;
+	popBy?: (count: int32) => boolean;
+	replaceTo?: (name: string) => boolean;
 	handleBack: () => boolean;
 	drawerAction: (action: DrawerAction) => boolean;
 	isFocused: Accessor<boolean>;
@@ -638,7 +640,7 @@ export class Navigation<PL> {
 	}
 
 	popToTop(): void {
-		this.core.popTo(0);
+		this.core.popToTopFrom();
 	}
 
 	popTo<K extends keyof PL>(...args: ParamsArgs<PL, K>): void {
@@ -1195,12 +1197,59 @@ export class NavigatorCore<PL> {
 	}
 
 	replaceRoute(key: string, name: string, params: ParamSlot | null): void {
-		this.model.replace(key, name, params);
+		if (this.hasRoute(name)) {
+			this.model.replace(key, name, params);
+			return;
+		}
+		if (params !== null) {
+			throw new Error(
+				"replace: '" + name + "' is not a screen of this navigator; " +
+				"params of this navigator's type" +
+				" cannot reach another navigator, use getParent<Q>().replace",
+			);
+		}
+		let link = this.parent;
+		while (link !== null) {
+			const current = link as NavigatorLink;
+			const replaceTo = current.replaceTo;
+			if (replaceTo !== undefined && replaceTo(name)) { return; }
+			link = current.parent();
+		}
+		throw new Error("The action 'REPLACE' with payload {\"name\":\"" + name + "\"} was not handled by any navigator");
 	}
 
 	popCount(count: int32): void {
+		if (untrack((): boolean => this.model.canPop())) {
+			this.popLocal(count);
+			return;
+		}
+		let link = this.parent;
+		while (link !== null) {
+			const current = link as NavigatorLink;
+			const popBy = current.popBy;
+			if (popBy !== undefined && popBy(count)) { return; }
+			link = current.parent();
+		}
+		reportUnhandled("POP", null);
+	}
+
+	popLocal(count: int32): void {
 		const keep = Math.max(1, this.snapshot().length - count);
 		this.popTo((keep - 1) as int32);
+	}
+
+	popToTopFrom(): void {
+		if (untrack((): boolean => this.model.canPop())) {
+			this.popTo(0);
+			return;
+		}
+		let link = this.parent;
+		while (link !== null) {
+			const current = link as NavigatorLink;
+			if (current.popToTop()) { return; }
+			link = current.parent();
+		}
+		reportUnhandled("POP_TO_TOP", null);
 	}
 
 	popTo(at: int32): void {
@@ -1429,6 +1478,17 @@ export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 		backLocal: (): boolean => core.backLocal(),
 		canBackLocal: (): boolean => core.canBackLocal(),
 		canPop: (): boolean => core.model.canPop(),
+		popBy: (count: int32): boolean => {
+			if (!untrack((): boolean => core.model.canPop())) { return false; }
+			core.popLocal(count);
+			return true;
+		},
+		replaceTo: (name: string): boolean => {
+			const current = core.current();
+			if (current === null || !core.hasRoute(name)) { return false; }
+			core.model.replace((current as Navigation<PL>).route.key, name, null);
+			return true;
+		},
 		popToTop: (): boolean => {
 			if (!untrack((): boolean => core.model.canPop())) { return false; }
 			core.popTo(0);
