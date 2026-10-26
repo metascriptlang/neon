@@ -2,6 +2,7 @@ import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { flush, getOwner } from "../core/runtime";
 import { Computation, Dispose } from "../core/types";
 import { runWithOwner } from "../core/owner";
+import { onCleanup } from "../core/cleanup";
 import { mapArray } from "../core/array";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { createComponent } from "../render/component";
@@ -254,6 +255,49 @@ export interface RouterResponse {
 export interface NavigateOptions {
 	replace?: boolean | null;
 	scroll?: boolean | null;
+}
+
+class LeaveAttempt {
+	prevented: boolean = false;
+}
+
+export class BeforeLeaveEvent {
+	from: RouterLocation;
+	to: string | int32;
+	options: NavigateOptions | null;
+	private attempt: LeaveAttempt;
+	private again: (force: boolean) => void;
+
+	constructor(
+		from: RouterLocation,
+		to: string | int32,
+		options: NavigateOptions | null,
+		attempt: LeaveAttempt,
+		again: (force: boolean) => void,
+	) {
+		this.from = from;
+		this.to = to;
+		this.options = options;
+		this.attempt = attempt;
+		this.again = again;
+	}
+
+	get defaultPrevented(): boolean {
+		return this.attempt.prevented;
+	}
+
+	preventDefault(): void {
+		this.attempt.prevented = true;
+	}
+
+	retry(force: boolean = false): void {
+		this.again(force);
+	}
+}
+
+interface LeaveListener {
+	id: int32;
+	run: (event: BeforeLeaveEvent) => void;
 }
 
 export interface ToOptions<P, D> {
@@ -813,6 +857,9 @@ export class Router {
 	private scroller: Scroller | null = null;
 	private leaver: ((url: string) => void) | null = null;
 	private scrolling: boolean = true;
+	private leavers: LeaveListener[] = [];
+	private nextLeaver: int32 = 0;
+	private forcing: boolean = false;
 	private group: (change: () => void, visit: boolean) => void = (change: () => void, visit: boolean): void => { flush(change); };
 
 	constructor(routes: Routes, root: Level, current: Signal<Resolved>, history: RoutingHistory) {
@@ -825,6 +872,52 @@ export class Router {
 			const stop = leafStop(root);
 			return { pathname: stop.path, search: stop.search, hash: stop.hash };
 		});
+	}
+
+	beforeLeave(run: (event: BeforeLeaveEvent) => void): Dispose {
+		const id = this.nextLeaver;
+		this.nextLeaver += 1;
+		this.leavers.push({ id, run });
+		return (): void => {
+			const kept: LeaveListener[] = [];
+			for (const held of this.leavers) {
+				if (held.id !== id) { kept.push(held); }
+			}
+			this.leavers = kept;
+		};
+	}
+
+	confirmLeave(to: string | int32, options: NavigateOptions | null): boolean {
+		if (this.forcing) {
+			this.forcing = false;
+			return true;
+		}
+		const attempt = new LeaveAttempt();
+		const from = untrack((): RouterLocation => this.location());
+		const again = (force: boolean): void => {
+			if (typeof to === "string") {
+				this.forcing = force;
+				try {
+					this.land(to as string, options);
+				} finally {
+					this.forcing = false;
+				}
+				return;
+			}
+			this.forcing = force;
+			if (!this.go(to as int32)) { this.forcing = false; }
+		};
+		for (const held of this.leavers.slice(0)) {
+			held.run(new BeforeLeaveEvent(from, to, options, attempt, again));
+		}
+		return !attempt.prevented;
+	}
+
+	permitsTraversal(): boolean {
+		const session = this.session;
+		if (session === null) { return true; }
+		const delta = (session as RoutingSession).traversal();
+		return delta === 0 || this.confirmLeave(delta, null);
 	}
 
 	get base(): string {
@@ -929,6 +1022,8 @@ export class Router {
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
 		if (hasScheme(resolved.value.address)) { return this.leave(resolved.value.address); }
+		const here = untrack((): string => addressOf(leafStop(this.root)));
+		if (resolved.value.address !== here && !this.confirmLeave(href, options)) { return true; }
 		this.scrolling = options === null ? true : (options as NavigateOptions).scroll ?? true;
 		const walked = this.apply(resolved.value, replace, !replace, "navigate");
 		if (walked === Walked.Unchanged) { this.scrolling = true; }
@@ -1079,6 +1174,7 @@ function participantOf(router: Router, web: WebHistory, tree: RouteTree, root: L
 			return JSON.stringify(entry);
 		},
 		restore: (state: string, address: string | null): Result<RoutePlan, RoutingError> => {
+			if (!router.permitsTraversal()) { return Result.err(RoutingError.Refused); }
 			const parsed = JSON.parse<RouterEntry>(state);
 			if (!parsed.ok && address === null) { return Result.err(RoutingError.IncompleteSnapshot); }
 			const entry: RouterEntry = parsed.ok ? parsed.value : { web: "", address: address as string, document: "" };
@@ -1325,6 +1421,11 @@ export function useNavigate(): (to: string | int32, options?: NavigateOptions | 
 		if (typeof to === "string") { return router.navigateFrom(from, to, options); }
 		return router.go(to as int32);
 	};
+}
+
+export function useBeforeLeave(listener: (event: BeforeLeaveEvent) => void): void {
+	const router = useRouter("useBeforeLeave");
+	onCleanup(router.beforeLeave(listener));
 }
 
 export function useLocation(): Accessor<RouterLocation> {

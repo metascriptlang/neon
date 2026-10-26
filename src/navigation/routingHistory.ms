@@ -193,6 +193,10 @@ export class RoutingSession {
 		return this.history.index();
 	}
 
+	traversal(): int32 {
+		return this.history.index() - this.position.peek();
+	}
+
 	canGoBack(): boolean {
 		return this.position.get() > 0;
 	}
