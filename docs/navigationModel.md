@@ -384,6 +384,26 @@ overload set in place of a rest tuple, `queryKey(name, …)` in place of `fn.key
 `fn.key`, and the cache is swept on insert in place of an interval. A record adopts only
 for a struct or interface result (`hydrateMemo.ms`).
 
+A query that throws `notFound()` while read is the same path with the next route in place of a
+location. TanStack renders the nearest `notFoundComponent` and answers 404 for a loader's
+`notFound()` (`~/projects/tanstack-router` `6777b8b`, `router-core/src/load-server.ts:90`,
+`:547-585`); Neon's not-found unit is the route, as for a guard (above), so the router resolves
+the same address again with the failed leaf left out (`Router.missing`) and the catch-all route
+renders in its place, and `Router.response()` carries that route's own `status` (Next
+`not-found`, nearest boundary). `serve` renders again once when the answer changed the status,
+because a first pass has already mounted the failed route. Nothing matches once the failed leaf
+is out: the render throws, naming the address. Where the status can still change follows
+SolidStart (`~/projects/solid-start` `9b943dc`, `start/src/server/handler.ts:98-105`,
+`:199-220`): a status is written at `onCompleteShell`, and anything settling after the shell
+has flushed cannot change it (SolidStart's redirect becomes a client-side one,
+`:214`). A read outside `<Loading>` holds the shell, so its answer is the status at the first
+byte; a read under `<Loading>` answers after it. `serve` buffers the whole body, so the
+response it builds always carries the final status; a caller that pipes `renderToStream`
+sees the status of the first byte only for reads that hold the shell
+(`tests/render/routeStatusServer.test.ms`). A site that needs 404 for a deferred read puts
+the read outside `<Loading>`. Solid Router has no status API of its own; SolidStart's
+`<HttpStatusCode>` is not taken, since a thrown `notFound()` also picks the UI.
+
 `action(fn, name)`, `useAction`, `useSubmission` and `useSubmissions` (`src/navigation/action.ms`)
 are the mutation side (`src/data/action.ts`): a call records a `Submission` on the router
 (`router.submissions`, `routing.ts:519`; the hooks read `useRouter()` and fail loud outside a
