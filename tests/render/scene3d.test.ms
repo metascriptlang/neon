@@ -7,7 +7,7 @@ import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Void, View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Mesh, Light, Camera3D } from "../../src/components/scene3d";
-import { Vec3, vec3, eulerQuat } from "../../../void/src/math/math3d";
+import { Vec3, Vec4, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { NodeId3D, NO_NODE_ID, NodeKind, Transform3D, LightKind, syncWorld, nodeCount, isLive, worldOf, cameraOf } from "../../../void/src/void3d/scene";
 import { MeshId, MaterialId, NO_MESH, NO_MATERIAL, DrawContext, addMaterial, releaseMesh, releaseMaterial, hasMesh, hasMaterial } from "../../../void/src/void3d/draw";
 import { Material, Phase } from "../../../void/src/void3d/material";
@@ -477,4 +477,18 @@ test "Camera3D honors transformed Group parents and disposes world-bound nodes" 
 	dispose();
 	assert handle.scene.closed && handle.context.closed, "nested camera disposal closes real owners";
 	assert handle.scene.nodeCount() === 0 && handle.camera === null, "camera leaves no selected camera or live parent nodes";
+}
+
+test "Scene3D clears to its background, transparent when none is given, and refuses a non-finite one" {
+	const refs: Scene3DHandle[] = [];
+	const keep = (value: Scene3DHandle): void => { refs.push(value); };
+	const dispose = mounted(element(<Void><Scene3D ref={keep} /></Void>));
+	assert refs[0].renderer.background.w === 0.0, "no background is transparent";
+	dispose();
+	const sky: Vec4 = { x: 0.1, y: 0.2, z: 0.8, w: 1.0 };
+	const root: MockNode = mockNode("root");
+	const disposeSky = render(element(<Void><Scene3D ref={keep} background={sky} /></Void>), mockHost(), root as unknown as HostNode);
+	assert refs[1].renderer.background === sky, "the background reaches the renderer's clear";
+	disposeSky();
+	assert mountError(element(<Void><Scene3D background={{ x: 0.0, y: Number.NaN as float32, z: 0.0, w: 1.0 }} /></Void>)).includes("background must be finite"), "a non-finite background fails at mount";
 }

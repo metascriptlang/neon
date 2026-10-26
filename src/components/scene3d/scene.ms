@@ -33,6 +33,7 @@ export interface Scene3DProps {
 	outlineBlend?: Accessor<float32> | null;
 	outlineSettings?: Accessor<ForwardOutlineSettings> | null;
 	hdr?: Accessor<boolean> | null;
+	background?: Accessor<Vec4> | null;
 	bloom?: Accessor<BloomSettings | null> | null;
 	toneMapping?: Accessor<ToneMode> | null;
 	exposure?: Accessor<float32> | null;
@@ -62,7 +63,12 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				closeContext(context);
 				throw new Error("Scene3D: bloom needs hdr");
 			}
-			const clear: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
+			const clear: Vec4 = props.background === null ? { x: 0.0, y: 0.0, z: 0.0, w: 0.0 } : untrack(props.background as () => Vec4);
+			if (!Number.isFinite(clear.x) || !Number.isFinite(clear.y) || !Number.isFinite(clear.z) || !Number.isFinite(clear.w)) {
+				closeScene(scene);
+				closeContext(context);
+				throw new Error("Scene3D: background must be finite rgba");
+			}
 			const made: Result<ForwardRenderer, ForwardError> = hdr ?
 				ForwardRenderer.createHdrWhere(context, clear, true) : ForwardRenderer.create(context, clear);
 			if (!made.ok) {
@@ -206,6 +212,15 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					(prev: boolean | null): boolean => (props.hdr as () => boolean)(),
 					(value: boolean, prev: boolean | null): Cleanup | null => {
 						if (value !== hdr) { throw new Error("Scene3D: hdr is fixed at mount; remount the Scene3D to change it"); }
+						return null;
+					},
+				);
+			}
+			if (props.background !== null) {
+				createRenderEffect<Vec4>(
+					(prev: Vec4 | null): Vec4 => (props.background as () => Vec4)(),
+					(value: Vec4, prev: Vec4 | null): Cleanup | null => {
+						if (value !== clear) { throw new Error("Scene3D: background is fixed at mount; remount the Scene3D to change it"); }
 						return null;
 					},
 				);
