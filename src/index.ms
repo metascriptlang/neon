@@ -79,7 +79,7 @@ export { Linking, LinkingUrlEvent } from "./api/linking";
 export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
 export { Vibration } from "./api/vibration";
 export { Clipboard } from "./api/clipboard";
-export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
+export { AccessibilityInfo, AccessibilityAnnouncementFinishedEvent, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
 export { AsyncStorage, AsyncStorageHook, KeyValuePair, StringPair, useAsyncStorage } from "./api/asyncStorage";
 export {
 	NetInfo, NetInfoChangeHandler, NetInfoDetails, NetInfoState, NetInfoStateType, NetInfoUnsubscribe, useNetInfo,

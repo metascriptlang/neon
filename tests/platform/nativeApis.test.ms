@@ -11,7 +11,7 @@ import { Linking, LinkingUrlEvent } from "../../src/api/linking";
 import { Share, ShareAction } from "../../src/api/share";
 import { Vibration } from "../../src/api/vibration";
 import { Clipboard } from "../../src/api/clipboard";
-import { AccessibilityInfo, useScreenReaderEnabled } from "../../src/api/accessibilityInfo";
+import { AccessibilityInfo, AccessibilityAnnouncementFinishedEvent, useScreenReaderEnabled } from "../../src/api/accessibilityInfo";
 import { Keyboard } from "../../src/api/keyboard";
 import { installClipboardServices } from "../../src/api/clipboardServices";
 import { nativeClipboardServices } from "../../src/platform/native/clipboard";
@@ -29,6 +29,8 @@ const ALERT: int32 = 2;
 const SCREEN_READER: int32 = 3;
 const URL: int32 = 4;
 const SHARE: int32 = 5;
+const REDUCE_MOTION: int32 = 7;
+const ACCESSIBILITY: int32 = 15;
 const FIELD = "\u001f";
 
 function mount(app: () => NeonNode): void {
@@ -175,5 +177,78 @@ test "screen reader and url events publish to their listeners" {
 	nmAppEvent(URL, "neon://open");
 	subscription.remove();
 	assert urls.join(",") === "neon://open", urls.join(",");
+	nmTeardown();
+}
+
+test "AccessibilityInfo queries and announcements go to the native commands the platform expects" {
+	mount((): NeonNode => <View />);
+	const os = Platform.OS;
+	nmAppReply("a11y.boldText", "1");
+	nmAppReply("a11y.grayscale", "0");
+	nmAppReply("a11y.invertColors", "1");
+	nmAppReply("a11y.reduceTransparency", "1");
+	nmAppReply("a11y.highTextContrast", "1");
+	nmAppReply("a11y.darkerSystemColors", "1");
+	nmAppReply("a11y.crossFade", "1");
+	nmAppReply("a11y.accessibilityService", "1");
+	nmAppReply("a11y.timeout", "9000");
+	Platform.OS = "ios";
+	nmAppLogClear();
+	assert await AccessibilityInfo.isBoldTextEnabled();
+	assert !(await AccessibilityInfo.isGrayscaleEnabled());
+	assert await AccessibilityInfo.isInvertColorsEnabled();
+	assert await AccessibilityInfo.isReduceTransparencyEnabled();
+	assert await AccessibilityInfo.isDarkerSystemColorsEnabled();
+	assert await AccessibilityInfo.prefersCrossFadeTransitions();
+	assert !(await AccessibilityInfo.isHighTextContrastEnabled());
+	assert await AccessibilityInfo.getRecommendedTimeoutMillis(3000) === 3000;
+	AccessibilityInfo.announceForAccessibilityWithOptions("Queued", { queue: true });
+	AccessibilityInfo.announceForAccessibilityWithOptions("Plain", {});
+	const iosLog: string = nmAppLog();
+	assert iosLog === "a11y.boldText();a11y.grayscale();a11y.invertColors();a11y.reduceTransparency();a11y.darkerSystemColors();a11y.crossFade();" +
+		"a11y.announceQueue(1" + FIELD + "Queued);a11y.announce(Plain)", iosLog;
+	Platform.OS = "android";
+	nmAppLogClear();
+	assert !(await AccessibilityInfo.isBoldTextEnabled());
+	assert await AccessibilityInfo.isHighTextContrastEnabled();
+	assert await AccessibilityInfo.isAccessibilityServiceEnabled();
+	assert await AccessibilityInfo.getRecommendedTimeoutMillis(3000) === 9000;
+	AccessibilityInfo.announceForAccessibilityWithOptions("Queued", { queue: true });
+	const androidLog: string = nmAppLog();
+	assert androidLog === "a11y.highTextContrast();a11y.accessibilityService();a11y.timeout(3000);a11y.announce(Queued)", androidLog;
+	Platform.OS = os;
+	nmTeardown();
+}
+
+test "accessibility events from the native side reach the change and announcement listeners" {
+	mount((): NeonNode => <View />);
+	const os = Platform.OS;
+	Platform.OS = "ios";
+	const seen: string[] = [];
+	const bold = AccessibilityInfo.addEventListener("boldTextChanged", (on: boolean): void => { seen.push("bold " + on.toString()); });
+	const darker = AccessibilityInfo.addEventListener("darkerSystemColorsChanged", (on: boolean): void => { seen.push("darker " + on.toString()); });
+	const finished = AccessibilityInfo.addAnnouncementFinishedListener((e: AccessibilityAnnouncementFinishedEvent): void => {
+		seen.push(e.announcement + " " + e.success.toString());
+	});
+	nmAppEvent(ACCESSIBILITY, "boldTextChanged" + FIELD + "1");
+	nmAppEvent(ACCESSIBILITY, "darkerSystemColorsChanged" + FIELD + "0");
+	nmAppEvent(ACCESSIBILITY, "announcementFinished" + FIELD + "Saved" + FIELD + "0");
+	nmAppEvent(ACCESSIBILITY, "grayscaleChanged" + FIELD + "1");
+	bold.remove();
+	darker.remove();
+	finished.remove();
+	Platform.OS = os;
+	assert seen.join(",") === "bold true,darker false,Saved false", seen.join(",");
+	nmTeardown();
+}
+
+test "the reduce motion event from the native side reaches reduceMotionChanged listeners" {
+	mount((): NeonNode => <View />);
+	const seen: string[] = [];
+	const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (on: boolean): void => { seen.push(on.toString()); });
+	nmAppEvent(REDUCE_MOTION, "1");
+	nmAppEvent(REDUCE_MOTION, "0");
+	subscription.remove();
+	assert seen.join(",") === "true,false", seen.join(",");
 	nmTeardown();
 }

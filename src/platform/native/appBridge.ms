@@ -20,6 +20,7 @@ export enum AppEvent {
 	Notification,
 	Sound,
 	Recording,
+	Accessibility,
 }
 
 export type AppCommand = (name: string, arg: string) => string;
