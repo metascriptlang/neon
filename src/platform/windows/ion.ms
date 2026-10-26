@@ -1,11 +1,11 @@
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, setFramePolicy, requestFrame, FrameOnDemand,
-	setImeRect, setCursor, onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
+	onWake, setImeRect, setCursor, onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window,
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
-import { useAppServices, useCaptureServices } from "../native/appServices";
+import { useAppServices, useCaptureServices, imageSize } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { useIonStorage } from "../ion/storage";
@@ -13,7 +13,7 @@ import { NeonNode } from "../../render/node";
 import { flush } from "../../core/runtime";
 import {
 	niwAttach, niwFrame, niwResize, niwPointer, niwWheel, niwShutdown, niwKey, niwText, niwPreedit, niwFocus, niwIonCursor,
-	niwFocusedCaret, niwCaretPixelX, niwCaretPixelY, niwCaretPixelW, niwCaretPixelH,
+	niwDrainImages, niwFocusedCaret, niwCaretPixelX, niwCaretPixelY, niwCaretPixelW, niwCaretPixelH,
 } from "./handoff.h";
 
 extern function niwSetFrameRequester(requester: () => void): void;
@@ -61,8 +61,9 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	setFramePolicy(win, FrameOnDemand);
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
-	useAppServices(ionAppServices);
+	useAppServices({ ...ionAppServices, imageSize });
 	niwSetFrameRequester((): void => { requestFrame(win); });
+	onWake((): void => { niwDrainImages(); });
 
 	onResize((window: int32, width: int32, height: int32, scale: float64): void => {
 		if (window !== win.id || width <= (0 as int32) || height <= (0 as int32)) { return; }

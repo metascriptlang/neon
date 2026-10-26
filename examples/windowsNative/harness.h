@@ -14,11 +14,15 @@ void harnessExpectSize(const char *layout, const char *text, float fontSize, int
 void harnessExpectSizeIn(const char *layout, const char *text, const char *family, float fontSize, int bold, float maxWidth);
 int harnessRun(void);
 int harnessIsCheck(void);
+int harnessHasFlag(const char *flag);
 int harnessSample(const char *title);
+int harnessShot(const char *title, const char *name, int x, int y, int width, int height);
+int harnessCompareShots(const char *first, const char *second, int wantSame, int minDifferent);
 void harnessWheel(const char *title, int x, int y, int delta);
 void harnessClick(const char *title, int x, int y);
 void harnessHover(const char *title, int x, int y);
 void harnessDrag(const char *title, int fromX, int fromY, int toX, int toY, int steps);
+const char *harnessFileUri(const char *relativePath);
 int harnessPostKeys(const char *title, const char *keys);
 
 #ifdef __cplusplus

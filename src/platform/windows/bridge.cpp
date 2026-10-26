@@ -8,16 +8,21 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "activityIndicator.h"
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
+#include "image.h"
 #include "textInput.h"
 #include "handoff.h"
 #include "scrollView.h"
+#include "modal.h"
+#include "switch.h"
 extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
 #include "../native/loop.h"
+void ionWakeLoop(void);
 }
 
 namespace {
@@ -39,6 +44,11 @@ struct View {
 	bool labelQueued = false;
 	std::unique_ptr<TextInput> input;
 	bool inputQueued = false;
+	std::unique_ptr<ImagePicture> picture;
+	bool pictureQueued = false;
+	std::unique_ptr<ActivityIndicator> indicator;
+	std::unique_ptr<Modal> modal;
+	std::unique_ptr<SwitchControl> toggle;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -50,8 +60,12 @@ float g_measuredW = 0;
 float g_measuredH = 0;
 std::vector<View *> g_dirtyLabels;
 std::vector<View *> g_dirtyInputs;
+std::vector<View *> g_dirtyPictures;
 View *g_focusedInput = nullptr;
 View *g_pressedInput = nullptr;
+View *g_focusedSwitch = nullptr;
+View *g_pressedSwitch = nullptr;
+View *g_hoveredSwitch = nullptr;
 bool g_windowFocused = true;
 int g_ionCursor = 0;
 float g_caret[4];
@@ -60,12 +74,16 @@ struct ControlReport {
 	int32_t tag;
 	int32_t phase;
 	std::string value;
+	float width;
+	float height;
 };
 
 std::vector<ControlReport> g_reports;
 int32_t g_controlTag = 0;
 int32_t g_controlPhase = 0;
 std::string g_controlValue;
+float g_controlWidth = 0;
+float g_controlHeight = 0;
 msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app, s_requester;
 bool g_frameRequested = false;
 bool g_frameWanted = false;
@@ -88,6 +106,7 @@ double g_touchTime = 0;
 View *g_responder = nullptr;
 View *g_barCapture = nullptr;
 std::vector<View *> g_scrolls;
+std::vector<View *> g_indicators;
 int32_t g_scrollTag = 0;
 int32_t g_scrollPhase = 0;
 float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
@@ -123,10 +142,17 @@ void release(View *view) {
 	if (g_responder == view) g_responder = nullptr;
 	if (g_focusedInput == view) g_focusedInput = nullptr;
 	if (g_pressedInput == view) g_pressedInput = nullptr;
+	if (g_focusedSwitch == view) g_focusedSwitch = nullptr;
+	if (g_pressedSwitch == view) g_pressedSwitch = nullptr;
+	if (g_hoveredSwitch == view) g_hoveredSwitch = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
 	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
+	if (view->pictureQueued) g_dirtyPictures.erase(std::remove(g_dirtyPictures.begin(), g_dirtyPictures.end(), view), g_dirtyPictures.end());
 	view->input.reset();
+	if (view->indicator) g_indicators.erase(std::remove(g_indicators.begin(), g_indicators.end(), view), g_indicators.end());
+	view->indicator.reset();
+	view->toggle.reset();
 	for (View *child : view->children) {
 		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
@@ -181,8 +207,8 @@ void queueInput(View *view) {
 	g_dirtyInputs.push_back(view);
 }
 
-void reportControl(View *view, int32_t phase, const std::string &value) {
-	if (view->tag != 0) g_reports.push_back({view->tag, phase, value});
+void reportControl(View *view, int32_t phase, const std::string &value, float width = 0, float height = 0) {
+	if (view->tag != 0) g_reports.push_back({view->tag, phase, value, width, height});
 }
 
 void flushReports() {
@@ -192,6 +218,8 @@ void flushReports() {
 		g_controlTag = next.tag;
 		g_controlPhase = next.phase;
 		g_controlValue = next.value;
+		g_controlWidth = next.width;
+		g_controlHeight = next.height;
 		if (s_control.fn) invoke(s_control);
 	}
 }
@@ -205,6 +233,7 @@ void blurInput(View *view) {
 
 void focusInput(View *view) {
 	if (g_focusedInput == view) return;
+	g_focusedSwitch = nullptr;
 	if (g_focusedInput) blurInput(g_focusedInput);
 	g_focusedInput = view;
 	view->input->WindowFocus(g_windowFocused);
@@ -222,6 +251,13 @@ struct InputSink : TextInputSink {
 };
 
 InputSink g_inputSink;
+
+void queuePicture(View *view) {
+	changed();
+	if (view->pictureQueued) return;
+	view->pictureQueued = true;
+	g_dirtyPictures.push_back(view);
+}
 
 bool isMounted(const View *view) {
 	for (; view; view = view->parent) {
@@ -244,6 +280,23 @@ void drawInputs() {
 		int32_t pixelWidth, pixelHeight;
 		pixelBox(view, &pixelWidth, &pixelHeight);
 		if (view->input->NeedsDraw(pixelWidth, pixelHeight)) view->input->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+	}
+	flushReports();
+}
+
+void drawPictures() {
+	std::vector<View *> due;
+	due.swap(g_dirtyPictures);
+	for (View *view : due) {
+		view->pictureQueued = false;
+		std::string error;
+		float width, height;
+		ImageReport report = view->picture->TakeReport(&error, &width, &height);
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		if (view->picture->NeedsDraw(pixelWidth, pixelHeight)) view->picture->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+		if (report == kImageLoad) reportControl(view, 5, "", width, height);
+		if (report == kImageError) reportControl(view, 6, error);
 	}
 	flushReports();
 }
@@ -272,7 +325,7 @@ void applyGeometry(View *view) {
 	float top = roundf(view->y * g_scale);
 	float right = roundf((view->x + view->w) * g_scale);
 	float bottom = roundf((view->y + view->h) * g_scale);
-	view->visual->Offset(left, top);
+	view->visual->Offset(left, top + (view->modal ? roundf(view->modal->SlideShift()) : 0));
 	view->visual->Size(right - left, bottom - top);
 	if (view->label) queueLabel(view);
 	if (view->scroller) {
@@ -280,6 +333,8 @@ void applyGeometry(View *view) {
 		applyScroll(view);
 	}
 	if (view->input) queueInput(view);
+	if (view->picture) queuePicture(view);
+	if (view->toggle) view->toggle->Layout(view->w, view->h, g_scale);
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -316,6 +371,10 @@ void rescale(View *parent) {
 		child->visual->CornerRadius(child->radius * g_scale);
 		if (child->label) child->label->Invalidate();
 		if (child->input) queueInput(child);
+		if (child->picture) {
+			child->picture->Invalidate();
+			queuePicture(child);
+		}
 		rescale(child);
 	}
 }
@@ -380,6 +439,27 @@ double nowMs() {
 	return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
 }
 
+View *topModal() {
+	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
+		if ((*child)->modal) return *child;
+	}
+	return nullptr;
+}
+
+void stepModals() {
+	double now = nowMs();
+	for (View *child : g_container->children) {
+		if (child->modal && child->modal->Step(now, child->visual)) applyGeometry(child);
+	}
+}
+
+bool modalsPending() {
+	for (const View *child : g_container->children) {
+		if (child->modal && child->modal->Animating()) return true;
+	}
+	return false;
+}
+
 void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
 	g_touchTag = tag;
 	g_touchPhase = phase;
@@ -427,6 +507,22 @@ bool scrollsPending() {
 	return false;
 }
 
+void stepIndicators() {
+	double now = nowMs();
+	for (View *view : g_indicators) {
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		view->indicator->Step(pixelWidth, pixelHeight, now);
+	}
+}
+
+bool indicatorsPending() {
+	for (View *view : g_indicators) {
+		if (view->indicator->Running() && isMounted(view)) return true;
+	}
+	return false;
+}
+
 Scroller *scrollerOf(void *scroll, const char *what) {
 	View *v = static_cast<View *>(scroll);
 	if (!v->scroller) {
@@ -463,6 +559,46 @@ bool pointInput(int kind, float x, float y) {
 	if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) g_pressedInput = nullptr;
 	pressed->input->Pointer(kind, px * g_scale, py * g_scale);
 	flushReports();
+	return true;
+}
+
+void flipSwitch(View *view) {
+	reportControl(view, kSwitchValueChange, view->toggle->Value() ? "false" : "true");
+	flushReports();
+}
+
+void hoverSwitch(View *over) {
+	if (g_hoveredSwitch == over) return;
+	if (g_hoveredSwitch) g_hoveredSwitch->toggle->SetHovered(false);
+	g_hoveredSwitch = over;
+	if (over) over->toggle->SetHovered(true);
+	changed();
+}
+
+// RNW SwitchComponentView OnPointerPressed/Released/Entered/Exited (:262-316): a press on an enabled switch focuses
+// it and shows the pressed state, the release over it asks for the flip, and the switch itself keeps showing `value`.
+bool pointSwitch(int kind, float x, float y) {
+	View *top = g_touch.active || g_pressedInput ? nullptr : hitTest(x, y);
+	View *over = top && top->toggle ? top : nullptr;
+	if (kind == NIW_POINTER_MOVE || kind == NIW_POINTER_CANCEL) hoverSwitch(kind == NIW_POINTER_MOVE && (!g_pressedSwitch || over == g_pressedSwitch) ? over : nullptr);
+	if (kind == NIW_POINTER_DOWN && over && !g_pressedSwitch) {
+		g_pressedSwitch = over;
+		if (!over->toggle->Disabled()) {
+			g_focusedSwitch = over;
+			if (g_focusedInput) blurInput(g_focusedInput);
+			over->toggle->SetPressed(true);
+			changed();
+		}
+		return true;
+	}
+	if (!g_pressedSwitch) return false;
+	View *pressed = g_pressedSwitch;
+	if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) {
+		g_pressedSwitch = nullptr;
+		pressed->toggle->SetPressed(false);
+		changed();
+		if (kind == NIW_POINTER_UP && !pressed->toggle->Disabled() && hitTest(x, y) == pressed) flipSwitch(pressed);
+	}
 	return true;
 }
 
@@ -524,6 +660,45 @@ void endTouch() {
 	for (View *view : chain) release(view);
 }
 
+
+int g_appEvent = 0;
+std::string g_appValue;
+std::map<uint32_t, std::string> g_sizeFetches;
+std::vector<std::string> g_sizeReady;
+
+void emitApp(int kind, const std::string &value) {
+	if (!s_app.fn) return;
+	g_appEvent = kind;
+	g_appValue = value;
+	invoke(s_app);
+	changed();
+}
+
+// The NI_APP_IMAGE_SIZE value, as the macOS host sends it: "id 0x1f width 0x1f height 0x1f error", in pixels.
+std::string sizeValue(const std::string &request, const ImageSize &size) {
+	bool failed = !size.error.empty();
+	return request + "\x1f" + std::to_string(failed ? 0 : size.width) + "\x1f" + std::to_string(failed ? 0 : size.height) + "\x1f" + size.error;
+}
+
+// Image.getSize / Image.prefetch: "id 0x1f uri" in; the answer comes back through the app handler once the host thread
+// is woken, for a local source as for a download.
+void imageSize(const char *arg) {
+	const char *split = strchr(arg, '\x1f');
+	if (!split) {
+		char message[256];
+		snprintf(message, sizeof message, "niAppCall(image.size) wants \"id 0x1f uri\": %s", arg);
+		fail(message);
+	}
+	std::string request(arg, split);
+	const char *uri = split + 1;
+	if (ImageIsNetwork(uri)) {
+		g_sizeFetches[ImageFetch(uri)] = request;
+		return;
+	}
+	g_sizeReady.push_back(sizeValue(request, ImageHeaderSize(uri)));
+	ionWakeLoop();
+}
+
 }
 
 extern "C" {
@@ -557,15 +732,18 @@ void niwFrame(void) {
 	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	stepIndicators();
 	if (g_frameWanted) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
 	}
+	stepModals();
 	drawInputs();
+	drawPictures();
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
-	if (scrollsPending()) requestHostFrame();
+	if (scrollsPending() || indicatorsPending() || modalsPending()) requestHostFrame();
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -584,6 +762,7 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	if (!s_touch.fn) return;
 	double time = nowMs();
 	if (pointInput(kind, x, y)) return;
+	if (pointSwitch(kind, x, y)) return;
 	if (kind == NIW_POINTER_DOWN) {
 		if (g_touch.active) return;
 		float lx = 0, ly = 0;
@@ -658,10 +837,32 @@ int niwPump(void) {
 	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	stepIndicators();
+	stepModals();
 	drawInputs();
+	drawPictures();
 	drawLabels();
 	g_context->Commit();
 	return niLoopNext();
+}
+
+void niwDrainImages(void) {
+	if (!g_context) return;
+	std::vector<std::string> ready;
+	ready.swap(g_sizeReady);
+	for (const std::string &value : ready) emitApp(NI_APP_IMAGE_SIZE, value);
+	for (const ImageDownload &download : ImageTakeDownloads()) {
+		auto request = g_sizeFetches.find(download.id);
+		if (request != g_sizeFetches.end()) {
+			std::string id = request->second;
+			g_sizeFetches.erase(request);
+			ImageSize size = download.error.empty() ? ImageHeaderSizeOfFile(download.path) : ImageSize{0, 0, download.error};
+			emitApp(NI_APP_IMAGE_SIZE, sizeValue(id, size));
+		} else if (ImagePicture *picture = ImagePicture::Waiting(download.id)) {
+			picture->Deliver(download);
+			queuePicture(static_cast<View *>(picture->owner));
+		}
+	}
 }
 
 void niwShutdown(void) {
@@ -685,6 +886,23 @@ void *niScrollCreate(void) {
 	view->visual->InsertAt(view->scroller->content, 0);
 	view->scroller->AttachBars(g_context, view->visual);
 	g_scrolls.push_back(view);
+	return view;
+}
+
+void *niIndicatorCreate(void) {
+	requireAttached("niIndicatorCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->indicator.reset(new ActivityIndicator(g_context, view->visual));
+	g_indicators.push_back(view);
+	return view;
+}
+
+void *niModalCreate(void) {
+	requireAttached("niModalCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->modal.reset(new Modal());
 	return view;
 }
 
@@ -732,6 +950,15 @@ void *niTextCreate(void) {
 	return view;
 }
 
+void *niImageCreate(void) {
+	requireAttached("niImageCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->picture.reset(new ImagePicture());
+	view->picture->owner = view;
+	return view;
+}
+
 void *createInput(bool multiline, const char *what) {
 	requireAttached(what);
 	View *view = new View();
@@ -744,8 +971,16 @@ void *createInput(bool multiline, const char *what) {
 void *niInputCreate(void) { return createInput(false, "niInputCreate"); }
 void *niTextAreaCreate(void) { return createInput(true, "niTextAreaCreate"); }
 
+void *niSwitchCreate(void) {
+	requireAttached("niSwitchCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->toggle.reset(new SwitchControl(g_context, view->visual));
+	return view;
+}
+
 void niControlSetTag(void *control, int32_t tag) {
-	if (!as(control)->input) unimplemented("niControlSetTag on a control that is not a TextInput");
+	if (!as(control)->input && !as(control)->picture && !as(control)->toggle) unimplemented("niControlSetTag on a control that is not a TextInput, an Image or a Switch");
 	as(control)->tag = tag;
 }
 
@@ -759,10 +994,22 @@ void niSetFocused(void *control, int focused) {
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
 const char *niLastControlValue(void) { return g_controlValue.c_str(); }
-float niLastControlWidth(void) { return 0; }
-float niLastControlHeight(void) { return 0; }
+float niLastControlWidth(void) { return g_controlWidth; }
+float niLastControlHeight(void) { return g_controlHeight; }
 
 void niwKey(int action, int ionScancode, int ctrl, const char *text) {
+	if (action != NIW_KEY_RELEASE && MapVirtualKeyW((UINT)ionScancode, MAPVK_VSC_TO_VK_EX) == VK_ESCAPE) {
+		View *modal = topModal();
+		if (modal && modal->tag != 0) {
+			reportControl(modal, 7, "");
+			flushReports();
+			return;
+		}
+	}
+	if (g_focusedSwitch) {
+		if (action == NIW_KEY_RELEASE && MapVirtualKeyW((UINT)ionScancode, MAPVK_VSC_TO_VK_EX) == VK_SPACE && !g_focusedSwitch->toggle->Disabled()) flipSwitch(g_focusedSwitch);
+		return;
+	}
 	if (!g_focusedInput) return;
 	g_focusedInput->input->Key(action, ionScancode, ctrl != 0, text ? text : "");
 	flushReports();
@@ -831,6 +1078,7 @@ void niAddChild(void *parent, void *child) {
 	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	c->parent = p;
+	if (c->modal && isMounted(c)) c->modal->Present(nowMs(), c->visual, g_height * g_scale);
 	changed();
 }
 
@@ -883,6 +1131,11 @@ void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	if (as(view)->label) unimplemented("niSetBackgroundColor on a Text");
 	if (as(view)->input) {
 		as(view)->input->SetBackground(Color{r, g, b, a});
+		return;
+	}
+	if (as(view)->picture) {
+		as(view)->picture->SetBackground(Color{r, g, b, a});
+		queuePicture(as(view));
 		return;
 	}
 	as(view)->visual->Brush(Color{r, g, b, a});
@@ -941,8 +1194,10 @@ void niInvokeClosure(msClosure c) { invoke(c); }
 
 const char *niAppCall(const char *name, const char *arg) {
 	static char reply[64];
-	(void)arg;
-	if (!strcmp(name, "platform")) {
+	if (!strcmp(name, "image.size")) {
+		imageSize(arg ? arg : "");
+		reply[0] = '\0';
+	} else if (!strcmp(name, "platform")) {
 		typedef LONG(WINAPI * RtlGetVersionFn)(PRTL_OSVERSIONINFOW);
 		RtlGetVersionFn getVersion = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
 		RTL_OSVERSIONINFOW version = {};
@@ -971,10 +1226,9 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niImageCreate, (void))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
-UNIMPLEMENTED(int, niLastAppEvent, (void))
-UNIMPLEMENTED(const char *, niLastAppValue, (void))
+int niLastAppEvent(void) { return g_appEvent; }
+const char *niLastAppValue(void) { return g_appValue.c_str(); }
 UNIMPLEMENTED(void, niSetAppEventResult, (int result))
 
 void niSetText(void *label, const char *s) {
@@ -1002,6 +1256,10 @@ void niSetFont(void *label, float size, int bold) {
 
 void niMeasureText(void *label, float maxWidth) {
 	requireAttached("niMeasureText");
+	if (as(label)->toggle) {
+		SwitchControl::Measure(&g_measuredW, &g_measuredH);
+		return;
+	}
 	if (TextInput *input = inputOf(label)) {
 		input->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
 		return;
@@ -1013,7 +1271,12 @@ float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	if (as(view)->modal && as(view)->modal->SetProp(name, value)) return;
 	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
+	if ((as(view)->indicator && as(view)->indicator->SetProp(name, value)) || (as(view)->toggle && as(view)->toggle->SetProp(name, value))) {
+		changed();
+		return;
+	}
 	if (as(view)->label && !strcmp(name, "textSpans")) {
 		as(view)->label->SetRuns(value);
 		queueLabel(as(view));
@@ -1032,6 +1295,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 	if (as(view)->label && !strcmp(name, "writingDirection")) {
 		as(view)->label->SetWritingDirection(value);
 		queueLabel(as(view));
+		return;
+	}
+	if (as(view)->picture && as(view)->picture->SetProp(name, value)) {
+		queuePicture(as(view));
 		return;
 	}
 	if (isAccessibilityProp(name)) {
