@@ -47,6 +47,17 @@ static UIViewController *presenter(void) {
 	return top;
 }
 
+static NSString *flagText(BOOL on) {
+	return on ? @"1" : @"0";
+}
+
+// RCTAccessibilityManager.mm: one observer per status notification, the event carries the new state.
+static void observeFlag(NSString *name, NSNotificationName notification, BOOL (^state)(void)) {
+	[NSNotificationCenter.defaultCenter addObserverForName:notification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+		emit(NI_APP_ACCESSIBILITY, [@[name, flagText(state())] componentsJoinedByString:FIELD]);
+	}];
+}
+
 static void start(void) {
 	if (g_started) return;
 	g_started = 1;
@@ -63,6 +74,16 @@ static void start(void) {
 	}];
 	[center addObserverForName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil queue:main usingBlock:^(NSNotification *n) {
 		emit(NI_APP_REDUCE_MOTION, UIAccessibilityIsReduceMotionEnabled() ? @"1" : @"0");
+	}];
+	observeFlag(@"boldTextChanged", UIAccessibilityBoldTextStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsBoldTextEnabled(); });
+	observeFlag(@"grayscaleChanged", UIAccessibilityGrayscaleStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsGrayscaleEnabled(); });
+	observeFlag(@"invertColorsChanged", UIAccessibilityInvertColorsStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsInvertColorsEnabled(); });
+	observeFlag(@"reduceTransparencyChanged", UIAccessibilityReduceTransparencyStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsReduceTransparencyEnabled(); });
+	observeFlag(@"darkerSystemColorsChanged", UIAccessibilityDarkerSystemColorsStatusDidChangeNotification, ^BOOL { return UIAccessibilityDarkerSystemColorsEnabled(); });
+	[center addObserverForName:UIAccessibilityAnnouncementDidFinishNotification object:nil queue:main usingBlock:^(NSNotification *n) {
+		NSString *text = n.userInfo[UIAccessibilityAnnouncementKeyStringValue] ?: @"";
+		BOOL success = [n.userInfo[UIAccessibilityAnnouncementKeyWasSuccessful] boolValue];
+		emit(NI_APP_ACCESSIBILITY, [@[@"announcementFinished", text, flagText(success)] componentsJoinedByString:FIELD]);
 	}];
 }
 
