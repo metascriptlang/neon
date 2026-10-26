@@ -16,6 +16,7 @@ export {
 	useScene3D, useSceneNode, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren,
 } from "./scene3d/core";
 export { Lod } from "./scene3d/lod";
+export { Center } from "./scene3d/center";
 export { Particles, ParticlesProps } from "./scene3d/particles";
 export { Text3D } from "./scene3d/text3d";
 export { RenderTexture, RenderTextureHandle } from "./scene3d/renderTexture";
