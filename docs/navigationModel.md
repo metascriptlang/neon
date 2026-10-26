@@ -508,6 +508,24 @@ space and a malformed escape keeps its raw text; in a path param, a malformed es
 that route and the next candidate is tried. Two things are left for the person: a repeated query
 key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
 `Map<string, string>` and keeps the last value and `""`.
+## Base path
+
+`createRoutes(configs, base)` mounts the whole tree under `base` (Solid `createBranches(routeDefs,
+base)`, `components.tsx:48`; `routing.ts:297-310` joins it into every pattern, and `:474` rejects an
+absolute base). Matching therefore sees only addresses under it: `createRouter` on `/docs/a`
+with base `/app` is `RoutingError.NoMatch`, which `serve` answers as 404. Addresses inside the
+router (`location().pathname`, history entries, `response().location`, typed `href`) carry the
+base, as Solid's `location` does. `router.navigate`, `useNavigate` and a guard's `redirect` take
+the address without it and add it once (`resolvePath(base, to, from)`, `routing.ts:547` and
+`utils.ts:22-35`); the typed `navigate({ to })` and a tab press already hold the full address and
+skip that step. `<A href="/x">` renders `href="/app/x"`; a relative or external href is left as
+written. `followLinks(navigate, router.base)` leaves a link outside the base to the browser and
+strips the base before `navigate` (`data/events.ts:56-62`). `followPreloads` passes the browser
+address through, which the base-carrying tree matches as it is; `followSubmits` keys on action
+URLs, which are registry keys and not addresses. References: Solid
+Router `d0379e7`. `tests/navigation/routerBase.test.ms`, `tests/render/routerBaseServer.test.ms`
+and `tests/browser/routerBase.test.ms` pin it.
+
 ## Scroll
 
 `followScroll(router)` (`src/platform/browser/scroll.ms`) gives a web router its scroll
