@@ -40,6 +40,25 @@ and the invariants that outlived them were moved to the head of the test that pi
   passes in another for no change in the code. Native sizes move too: main `ccfd0c15`, msc `38009de37`,
   measures `bundleMacosApp` 2000484 bytes in `neon-wt-rn-navigation-prod` (8 over its budget 2000476) and
   2000452 in `neon-wt-rn-navigation-prod-lane-c`.
+- **OPEN 2026-10-26 — the size budgets are red on msc 32b8ce353.** The compiler grew every bundle:
+  `bundleTerminalApp` 558428 → 831184, `bundleMacosApp` 2012336 → 2336432, `bundlePlainApp` 734277 →
+  768568 on web-train-3 between the msc before and 32b8ce353; main ea4a6977 measures terminal 831176,
+  8 bytes under web-train-3. 131072 bytes of it are the actor pid table in an app with no actor. The
+  budgets stay until the compiler card `2026-10-26-terminal-app-links-actor-pid-table-and-grew-200kb.md`
+  is answered, since terminal size is the deliverable.
+- **OPEN 2026-10-26 — `tests/ssrParity/run.sh` C server aborts.** `pages.server` built with `-d:server`
+  on C panics `load of value 112, which is not valid for type 'MS_BOOL'` in `msAsyncStepAs`
+  (`runtime/promise/dispatchFull.c:1299`), msc 32b8ce353, on main and on web-train-3 alike. Not reduced
+  yet; the JS server lane of the same pages passes.
+- **OPEN 2026-10-26 — `tests/core/store.test.ms` segfaults on C.** `msc test tests/core/store.test.ms`
+  ends `test binary terminated by signal 11` on msc 32b8ce353, on main ea4a6977 and on web-train-3
+  alike; it passed on the msc before. JS not affected. Not reduced yet.
+- **OPEN 2026-10-26 — Scene3D particles do not resolve.** Void `9721052f` deleted
+  `src/void3d/particles.ms` and `particleVisual.ms`; `src/components/scene3d/particles.ms` still imports
+  them, so every program that imports `src/components/scene3d` fails to build (in the gate:
+  `tests/macros/pointLightShadowRejected.ms`, `scene3dLightPressRejected.ms`,
+  `scene3dHandlerEventRejected.ms` "rejected for another reason", and the scene3d tests). Owned by the
+  void-endgame arc (`neon-wt-void-scene3d`).
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
