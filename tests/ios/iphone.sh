@@ -13,7 +13,7 @@ plist=("INFOPLIST_KEY_NSLocationWhenInUseUsageDescription=Neon reads your positi
 	"INFOPLIST_KEY_NSCameraUsageDescription=Neon uses the camera in the demo."
 	"INFOPLIST_KEY_NSMicrophoneUsageDescription=Neon uses the microphone in the demo."
 	"INFOPLIST_KEY_NSPhotoLibraryUsageDescription=Neon picks a photo in the demo.")
-lanes=${*:-"CounterUITests:ios ListUITests:list FlatListUITests:flatlist ScrollMatrixUITests:scrollmatrix CatalogUITests:catalog SettingsUITests:settings ApisUITests:apis GalleryUITests:gallery MotionUITests:motion FlutterListsUITests:flutterlists ControlsUITests:controls NavigationUITests:navigation WidgetsUITests:widgets DeviceUITests:device MediaUITests:media SvgUITests:svg CaptureUITests:capture RootTouchUITests:rootTouch"}
+lanes=${*:-"CounterUITests:ios ListUITests:list FlatListUITests:flatlist ScrollMatrixUITests:scrollmatrix CatalogUITests:catalog SettingsUITests:settings ApisUITests:apis GalleryUITests:gallery MotionUITests:motion FlutterListsUITests:flutterlists ControlsUITests:controls NavigationUITests:navigation WidgetsUITests:widgets DeviceUITests:device MediaUITests:media SvgUITests:svg CaptureUITests:capture RootTouchUITests:rootTouch InputAccessoryUITests:inputAccessory"}
 status=0
 for lane in $lanes; do
 	cls=${lane%%:*}; ex=${lane#*:}; d=$r/$ex
