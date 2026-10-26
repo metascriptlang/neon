@@ -363,7 +363,7 @@ bool isAccessibilityProp(const char *name) {
 	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
 		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState") || !strcmp(name, "role") ||
 		!strcmp(name, "accessibilityValue") || !strcmp(name, "accessibilityLiveRegion") || !strcmp(name, "testID") ||
-		!strcmp(name, "nativeID");
+		!strcmp(name, "nativeID") || !strcmp(name, "accessibilityActions");
 }
 
 int countStored(const View *view, const char *name, const char *value) {
@@ -850,9 +850,35 @@ int FocusedElement() {
 	return g_focusedSwitch ? automationId(g_focusedSwitch) : 0;
 }
 
+// UiaHelpers.cpp:508-528 DispatchAccessibilityAction: the action reaches onAccessibilityAction (control phase 15) only
+// when the view declared it, in the lines "name" or "name\tlabel" of accessibilityActions.
+bool Action(int id, const char *name) {
+	View *view = automationView(id);
+	if (!view || view->tag == 0) return false;
+	std::string lines = storedAccessibility(view, "accessibilityActions");
+	size_t at = 0;
+	while (at <= lines.size() && !lines.empty()) {
+		size_t end = lines.find('\n', at);
+		if (end == std::string::npos) end = lines.size();
+		std::string line = lines.substr(at, end - at);
+		if (line.substr(0, line.find('\t')) == name) {
+			reportControl(view, 15, name);
+			flushReports();
+			return true;
+		}
+		at = end + 1;
+	}
+	return false;
+}
+
+// CompositionDynamicAutomationProvider.cpp:503-524: the press, then "invoke" and "activate" when declared.
 bool Invoke(int id) {
 	View *view = automationView(id);
-	return view && view->pressable && pressView(view);
+	if (!view) return false;
+	bool pressed = view->pressable && pressView(view);
+	bool invoked = Action(id, "invoke");
+	bool activated = Action(id, "activate");
+	return pressed || invoked || activated;
 }
 
 bool Toggle(int id) {

@@ -35,6 +35,7 @@ int Navigate(int id, Direction direction);
 int ElementAt(int pixelX, int pixelY);
 int FocusedElement();
 bool Invoke(int id);
+bool Action(int id, const char *name);
 bool Toggle(int id);
 bool Focus(int id);
 

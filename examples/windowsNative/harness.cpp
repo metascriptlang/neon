@@ -330,6 +330,9 @@ void automationWork(HWND window, std::wstring name, int action) {
 		}
 		if (action == 1 && invoke) run.numbers["actionResult"] = (long long)invoke->Invoke();
 		if (action == 2 && toggle) run.numbers["actionResult"] = (long long)toggle->Toggle();
+		if (action == 3 && expand) run.numbers["actionResult"] = (long long)expand->Expand();
+		if (action == 4 && expand) run.numbers["actionResult"] = (long long)expand->Collapse();
+		if (action == 5 && range) run.numbers["actionResult"] = (long long)range->SetValue(55);
 	}
 	element.Reset();
 	root.Reset();
