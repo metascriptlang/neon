@@ -107,6 +107,7 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 @interface NeonLabel : UILabel
 @property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
 @property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
+@property (nonatomic) NSWritingDirection neonWritingDirection;
 @end
 
 @implementation NeonLabel
@@ -433,6 +434,30 @@ UIColor *neonCssColor(const char *css, UIColor *fallback) {
 	return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0 blue:(rgb & 0xff) / 255.0 alpha:1];
 }
 
+// RN RCTNSWritingDirectionFromWritingDirection (RCTTextPrimitivesConversions.h:30, react-native 693e9628e8c):
+// auto is Natural, and a value it does not know is Natural too (conversions.h:630).
+static NSWritingDirection neonWritingDirection(const char *value) {
+	if (strcmp(value, "ltr") == 0) return NSWritingDirectionLeftToRight;
+	if (strcmp(value, "rtl") == 0) return NSWritingDirectionRightToLeft;
+	return NSWritingDirectionNatural;
+}
+
+// RN RCTAttributedTextUtils.mm:207 sets paragraphStyle.baseWritingDirection on the text's paragraph style.
+static void setParagraphDirection(NSMutableDictionary<NSAttributedStringKey, id> *attributes, NSWritingDirection direction) {
+	NSMutableParagraphStyle *paragraph = [attributes[NSParagraphStyleAttributeName] mutableCopy] ?: [[NSMutableParagraphStyle alloc] init];
+	paragraph.baseWritingDirection = direction;
+	attributes[NSParagraphStyleAttributeName] = paragraph;
+}
+
+static void setTextDirection(NSMutableAttributedString *text, NSWritingDirection direction) {
+	[text enumerateAttribute:NSParagraphStyleAttributeName inRange:NSMakeRange(0, text.length) options:0 usingBlock:^(id style, NSRange range, BOOL *stop) {
+		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+		if (style) attributes[NSParagraphStyleAttributeName] = style;
+		setParagraphDirection(attributes, direction);
+		[text addAttribute:NSParagraphStyleAttributeName value:attributes[NSParagraphStyleAttributeName] range:range];
+	}];
+}
+
 // textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic,
 // underline, line-through, press tag.
 static void setLabelSpans(NeonLabel *label, const char *text) {
@@ -441,6 +466,7 @@ static void setLabelSpans(NeonLabel *label, const char *text) {
 	NSMutableArray<NSNumber *> *tags = [NSMutableArray array];
 	NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
 	paragraph.alignment = label.textAlignment;
+	paragraph.baseWritingDirection = label.neonWritingDirection;
 	for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
 		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
 		if (f.count < 8) continue;
@@ -1079,6 +1105,26 @@ void niSetProp(void *view, const char *name, const char *value) {
 		}
 	}
 	else if (strcmp(name, "androidRipple") == 0) {}
+	else if (strcmp(name, "writingDirection") == 0) {
+		NSWritingDirection direction = neonWritingDirection(text);
+		if ([v isKindOfClass:NeonLabel.class]) {
+			NeonLabel *label = (NeonLabel *)v;
+			label.neonWritingDirection = direction;
+			NSMutableAttributedString *spans = [label.attributedText mutableCopy];
+			if (spans.length) { setTextDirection(spans, direction); label.attributedText = spans; }
+		}
+		else if ([v isKindOfClass:UITextField.class]) {
+			NSMutableDictionary<NSAttributedStringKey, id> *attributes = [((UITextField *)v).defaultTextAttributes mutableCopy];
+			setParagraphDirection(attributes, direction);
+			((UITextField *)v).defaultTextAttributes = attributes;
+		} else if ([v isKindOfClass:UITextView.class]) {
+			UITextView *area = (UITextView *)v;
+			NSMutableDictionary<NSAttributedStringKey, id> *attributes = [area.typingAttributes mutableCopy];
+			setParagraphDirection(attributes, direction);
+			area.typingAttributes = attributes;
+			if (area.textStorage.length) setTextDirection(area.textStorage, direction);
+		}
+	}
 	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
 		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
 			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
