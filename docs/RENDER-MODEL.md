@@ -385,6 +385,18 @@ it in the document must do the same, or hydrate reads the wrong node; "regions t
 empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
 A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
 
+**A write during the pass waits for the pass to end.** `render` flushes while the claim is
+open, so a write from a `createEffect` or `onSettled` of the hydrating tree would otherwise
+switch a branch in claim mode against nodes the server never wrote. `hydrate` marks the
+mount's root as a snapshot scope and turns capture on for the pass, as Solid 2.0 does since
+#3504 (`~/projects/solid-next` at `3b6f839ec`, `packages/signals/src/core/core.ts:241-306`,
+`packages/solid/src/client/hydration.ts:423-429`): a computation created under that root reads the value a
+written signal held before its first write, and the pass's end releases the scope and clears
+the snapshots on every exit, so the write lands as an ordinary client update
+(`src/core/snapshotScope.ms`, `tests/core/snapshotScope.test.ms`,
+`tests/render/hydrateWrites.test.ms`). Neon has no streamed resume window: a `Loading` still
+pending when `hydrate` returns mounts its content fresh, outside capture.
+
 **What the server writes so a parse keeps the node list** (`src/render/ssr.ms`): `<!---->`
 where the tree holds an empty text, which an HTML parser would drop, and `<!--!-->` between two
 adjacent texts, which it would merge. The DOM host's `claim` turns the first back into a text
