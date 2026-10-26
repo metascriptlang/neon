@@ -468,6 +468,18 @@ hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so
 component still pending at `hydrate` fails to claim. `<A preload={false}>` renders
 `preload="false"` on the anchor, where `followPreloads` reads it (`data/events.ts`).
 
+## Linking
+
+`src/navigation/linking.ms` follows React Navigation 7 (`@react-navigation/native@7.5.1`
+`extractPathFromURL.tsx`; `@react-navigation/core@7.24.0` `getStateFromPath.tsx` and
+`queryString.ts`). The first prefix that matches wins, not the longest. A prefix ends at a host
+boundary (`$`, `/`, `?`, `#`), so `https://x.com` never matches `https://x.com.evil.com`, and a
+`*` label matches one or more host characters (`https://*.example.com`). In the query, `+` is a
+space and a malformed escape keeps its raw text; in a path param, a malformed escape rejects
+that route and the next candidate is tried. Two things are left for the person: a repeated query
+key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
+`Map<string, string>` and keeps the last value and `""`.
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
