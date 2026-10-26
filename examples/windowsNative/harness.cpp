@@ -160,6 +160,41 @@ int checkSize(const SizeCheck &c) {
 	return ok ? 0 : 1;
 }
 
+std::map<std::string, std::vector<unsigned char>> g_shots;
+
+bool captureBox(const char *name, int x, int y, int width, int height, std::vector<unsigned char> *pixels) {
+	POINT origin = {0, 0};
+	ClientToScreen(g_window, &origin);
+	int left = origin.x + MulDiv(x, g_dpi, 96), top = origin.y + MulDiv(y, g_dpi, 96);
+	int pixelWidth = MulDiv(width, g_dpi, 96), pixelHeight = MulDiv(height, g_dpi, 96);
+	POINT corners[] = {{left, top}, {left + pixelWidth - 1, top}, {left, top + pixelHeight - 1}, {left + pixelWidth - 1, top + pixelHeight - 1}};
+	for (POINT corner : corners) {
+		if (!ownsPoint(corner)) {
+			printf("%-26s box (%d,%d %dx%d) is not over the harness window\n", name, x, y, width, height);
+			return false;
+		}
+	}
+	BITMAPINFO info = {};
+	info.bmiHeader.biSize = sizeof info.bmiHeader;
+	info.bmiHeader.biWidth = pixelWidth;
+	info.bmiHeader.biHeight = -pixelHeight;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	unsigned char *bits = nullptr;
+	HDC screen = GetDC(nullptr);
+	HDC memory = CreateCompatibleDC(screen);
+	HBITMAP bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS, (void **)&bits, nullptr, 0);
+	HGDIOBJ previous = SelectObject(memory, bitmap);
+	BitBlt(memory, 0, 0, pixelWidth, pixelHeight, screen, left, top, SRCCOPY);
+	pixels->assign(bits, bits + (size_t)pixelWidth * pixelHeight * 4);
+	SelectObject(memory, previous);
+	DeleteObject(bitmap);
+	DeleteDC(memory);
+	ReleaseDC(nullptr, screen);
+	return true;
+}
+
 int sample() {
 	POINT origin = {0, 0};
 	ClientToScreen(g_window, &origin);
@@ -270,6 +305,34 @@ int harnessSample(const char *title) {
 	g_sizes.clear();
 	g_layouts.clear();
 	return failures == 0 ? 0 : 1;
+}
+
+int harnessShot(const char *title, const char *name, int x, int y, int width, int height) {
+	g_window = findOwnWindow(title);
+	g_dpi = GetDpiForWindow(g_window);
+	SetForegroundWindow(g_window);
+	DwmFlush();
+	DwmFlush();
+	std::vector<unsigned char> pixels;
+	if (!captureBox(name, x, y, width, height, &pixels)) return 1;
+	g_shots[name] = pixels;
+	return 0;
+}
+
+int harnessCompareShots(const char *first, const char *second, int wantSame, int minDifferent) {
+	auto a = g_shots.find(first), b = g_shots.find(second);
+	if (a == g_shots.end() || b == g_shots.end() || a->second.size() != b->second.size()) {
+		printf("%-26s %s and %s are not two shots of one size\n", "shots", first, second);
+		return 1;
+	}
+	int different = 0;
+	for (size_t i = 0; i + 3 < a->second.size(); i += 4) {
+		if (memcmp(&a->second[i], &b->second[i], 3) != 0) different += 1;
+	}
+	bool ok = wantSame ? different == 0 : different >= minDifferent;
+	printf("%-26s %s vs %s: %d pixels differ, expected %s%d  %s\n", "shots", first, second, different, wantSame ? "" : "at least ", wantSame ? 0 : minDifferent, ok ? "ok" : "FAIL");
+	fflush(stdout);
+	return ok ? 0 : 1;
 }
 
 void harnessWheel(const char *title, int x, int y, int delta) {

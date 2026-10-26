@@ -15,6 +15,8 @@ void harnessExpectSizeIn(const char *layout, const char *text, const char *famil
 int harnessRun(void);
 int harnessIsCheck(void);
 int harnessSample(const char *title);
+int harnessShot(const char *title, const char *name, int x, int y, int width, int height);
+int harnessCompareShots(const char *first, const char *second, int wantSame, int minDifferent);
 void harnessWheel(const char *title, int x, int y, int delta);
 void harnessClick(const char *title, int x, int y);
 void harnessHover(const char *title, int x, int y);
