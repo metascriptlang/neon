@@ -34,9 +34,13 @@ interface HomeParams {
 	Search: null;
 }
 
+interface SearchParams {
+	query: string;
+}
+
 interface TabParams {
 	Home: null;
-	Search: string | null;
+	Search: SearchParams | null;
 	Profile: null;
 }
 
@@ -103,8 +107,8 @@ function Search(props: ScreenProps<TabParams>): NeonNode {
 	return <View>
 		{counterScreen("search")}
 		<Pressable accessibilityLabel="badge" onPress={(e: NeonEvent): void => { navigation.setOptions({ tabBarBadge: "5" }); }}><Text>b</Text></Pressable>
-		<Pressable accessibilityLabel="query" onPress={(e: NeonEvent): void => { route.setParams("neon"); }}><Text>q</Text></Pressable>
-		<Text>{"query " + (route.params() ?? "none")}</Text>
+		<Pressable accessibilityLabel="query" onPress={(e: NeonEvent): void => { route.replaceParams({ query: "neon" }); }}><Text>q</Text></Pressable>
+		<Text>{"query " + (route.params() === null ? "none" : (route.params() as SearchParams).query)}</Text>
 	</View>;
 }
 

@@ -50,5 +50,7 @@ only routing "../core/* $ROUTING" routing routingHistory route routeMatcher
 only navigation "../core/* $MODELS" children childStack childPages childSlot childPanels webNavigation
 never rendering "$ROUTING ./linking" navigatorMotion header layout childView tabBar
 
+sh tests/navigation/rejects.sh || fail=1
+
 if [ $fail -eq 0 ]; then echo "layers: ok"; fi
 exit $fail

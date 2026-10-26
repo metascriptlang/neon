@@ -372,8 +372,8 @@ export interface RouteProp<PL, K extends keyof PL> {
 	key: string;
 	name: string;
 	params: Accessor<PL[K] | null>;
-	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<PL[K]>` here and adds `replaceParams`; this replaces until `Partial` is a type. It sits on the route, not on `navigation`, until a screen's type parameter is inferred from its `name` (~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md).
-	setParams: (params: PL[K]) => void;
+	setParams: (params: Partial<Exclude<PL[K], null>>) => void;
+	replaceParams: (params: PL[K]) => void;
 }
 
 export function routeProp<PL, K extends keyof PL>(route: Route): RouteProp<PL, K> {
@@ -384,7 +384,16 @@ export function routeProp<PL, K extends keyof PL>(route: Route): RouteProp<PL, K
 			const slot = route.slot();
 			return slot === null ? null : ((slot as ParamSlot).box as ParamBox<PL[K]>).value;
 		}),
-		setParams: (params: PL[K]): void => { route.writeSlot(boxParams<PL[K]>(params)); },
+		setParams: (patch: Partial<Exclude<PL[K], null>>): void => {
+			const slot = route.slot();
+			if (slot === null) {
+				throw new Error("setParams: route '" + route.name + "' holds no params to merge into; use replaceParams");
+			}
+			const base = ((slot as ParamSlot).box as ParamBox<PL[K]>).value as Exclude<PL[K], null>;
+			const merged: Exclude<PL[K], null> = { ...base, ...patch };
+			route.writeSlot(boxParams<PL[K]>(merged as PL[K]));
+		},
+		replaceParams: (params: PL[K]): void => { route.writeSlot(boxParams<PL[K]>(params)); },
 	};
 }
 
