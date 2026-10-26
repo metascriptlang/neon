@@ -497,6 +497,8 @@ export interface AndroidRipple {
 	color?: string | null;
 	borderless?: boolean | null;
 	radius?: number | null;
+	foreground?: boolean | null;
+	attribute?: string | null;
 }
 
 function insetsRect(slop: number | Insets): PressRect {
@@ -514,8 +516,9 @@ function insetsAttr(slop: number | Insets): string {
 }
 
 function rippleAttr(ripple: AndroidRipple): string {
-	const { color = "", borderless = false, radius = -1 } = ripple;
-	return `${color},${borderless ? "true" : "false"},${radius >= 0 ? radius.toString() : ""}`;
+	const { color = "", borderless = false, radius = -1, foreground = false, attribute = "" } = ripple;
+	if (attribute === "" && ripple.color === null && ripple.borderless === null && ripple.radius === null) { return ""; }
+	return `${color},${borderless ? "true" : "false"},${radius >= 0 ? radius.toString() : ""},${foreground ? "true" : "false"},${attribute}`;
 }
 
 interface PressableProps extends HostProps {

@@ -18,7 +18,7 @@ public final class Touch implements View.OnTouchListener {
 	public boolean onTouch(View view, MotionEvent event) {
 		int action = event.getActionMasked();
 		if (action == MotionEvent.ACTION_DOWN) target = Spans.tagAt(view, event.getX(), event.getY(), tag);
-		if (android.os.Build.VERSION.SDK_INT >= 23 && view.getForeground() instanceof android.graphics.drawable.RippleDrawable) {
+		if (Props.hasRipple(view)) {
 			view.drawableHotspotChanged(event.getX(), event.getY());
 			if (action == MotionEvent.ACTION_DOWN) view.setPressed(true);
 			else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) view.setPressed(false);
