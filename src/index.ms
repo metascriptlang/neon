@@ -47,6 +47,7 @@ export {
 export { TextInputHandle } from "./components/primitives";
 export { Image, ImageProps, ImageSource, ImageResizeMode, ImageLoader } from "./components/image";
 export { Modal, ModalAnimationType } from "./components/modal";
+export { InputAccessoryView } from "./components/inputAccessoryView";
 export { SafeAreaView } from "./components/safeAreaView";
 export { KeyboardAvoidingView, KeyboardAvoidingBehavior } from "./components/keyboardAvoidingView";
 export { RefreshControl } from "./components/refreshControl";

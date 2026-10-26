@@ -807,6 +807,7 @@ interface TextInputProps extends AccessibilityProps {
 	maxLength?: Accessor<number> | null;
 	keyboardType?: Accessor<KeyboardType> | null;
 	returnKeyType?: Accessor<ReturnKeyType> | null;
+	inputAccessoryViewID?: Accessor<string> | null;
 	selection?: Accessor<TextSelection> | null;
 	onSelectionChange?: ((selection: TextSelection) => void) | null;
 	onChangeText?: ((t: string) => void) | null;
@@ -848,6 +849,7 @@ export function TextInput(props: TextInputProps): NeonNode {
 			};
 		}
 	}
+	stringAttr(attrs, "inputAccessoryViewID", props.inputAccessoryViewID);
 	flagAttr(attrs, "autoFocus", props.autoFocus);
 	flagAttr(attrs, "autoCorrect", props.autoCorrect);
 	flagAttr(attrs, "blurOnSubmit", props.blurOnSubmit);
