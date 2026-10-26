@@ -526,6 +526,24 @@ URLs, which are registry keys and not addresses. References: Solid
 Router `d0379e7`. `tests/navigation/routerBase.test.ms`, `tests/render/routerBaseServer.test.ms`
 and `tests/browser/routerBase.test.ms` pin it.
 
+## Leaving a route
+
+`useBeforeLeave(listener)` (`router.ms`) ports Solid's `useBeforeLeave` (`routing.ts:281-287`,
+`lifecycle.ts:5-45`): the listener gets `from`, `to` (the resolved address, or the delta of a
+back or forward), `options`, `defaultPrevented` (live across listeners), `preventDefault()` and
+`retry(force)`. A forced retry skips the listeners once. The router asks before an in-app
+navigation lands (`routing.ts:620`; an unchanged address is not asked) and, as Solid's
+`notifyIfNotBlocked` does for popstate (`routers/Router.ts:49-57`), before a browser or
+`router.go` traversal commits: a prevented traversal returns `RoutingError.Refused`, which
+`RoutingSession` answers by going back to the entry it came from. `navigate` returns true for
+a prevented attempt, because the router took the address and `followLinks` must not let the
+browser load the page. Solid does not listen to `beforeunload`, so neither does Neon: closing the
+tab or leaving the origin is not asked. The navigator's `beforeRemove` (`core.ms`) is the other
+gate, on the same `Refused` path for a traversal, and the two share no state: a listener of
+either one blocks. Solid keys traversal by `_depth` in the history state; Neon's
+`__neonIndex` plays that part.
+`tests/navigation/routerBeforeLeave.test.ms` and `tests/browser/beforeLeave.test.ms` pin it.
+
 ## Scroll
 
 `followScroll(router)` (`src/platform/browser/scroll.ms`) gives a web router its scroll
