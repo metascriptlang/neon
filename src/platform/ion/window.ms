@@ -6,7 +6,8 @@ import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName, setTitle,
+	setOptionAsAlt as ionSetOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
@@ -88,6 +89,31 @@ let _requested = 0;
 let _drawn = 0;
 
 export function frameCounts(): number[] { return [_requested, _drawn]; }
+
+export type OptionAsAlt = "neither" | "left" | "right" | "both";
+
+let _window: Window | null = null;
+let _optionAsAlt: OptionAsAlt = "neither";
+
+export function setWindowTitle(title: string): void {
+	if (_window === null) { throw new Error(`setWindowTitle("${title}") ran before runWindow opened its window; the first title goes in desktopOptions`); }
+	setTitle(_window as Window, title);
+}
+
+// macOS only, kept until runWindow opens its window: which Option keys type as Alt instead of composing.
+export function setOptionAsAlt(sides: OptionAsAlt): void {
+	_optionAsAlt = sides;
+	if (_window !== null) { applyOptionAsAlt(_window as Window); }
+}
+
+function applyOptionAsAlt(win: Window): void {
+	ionSetOptionAsAlt(win, match (_optionAsAlt) {
+		"neither" => OptionAsAltNeither,
+		"left" => OptionAsAltLeft,
+		"right" => OptionAsAltRight,
+		"both" => OptionAsAltBoth,
+	});
+}
 
 const _areas: Area[] = [];
 let _retiredViews: ViewId[] = [];
@@ -344,6 +370,8 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
 	const frameWin: Window = win;
+	_window = frameWin;
+	applyOptionAsAlt(frameWin);
 	setFaceResolver(systemFace);
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
 	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
@@ -373,6 +401,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	runLoop();
 	reportProfile();
 	dispose();
+	_window = null;
 	return 0;
 }
 
