@@ -157,6 +157,7 @@ test "DateTimePicker opens a calendar at the value's month, honours the bounds a
 	const overlay = overlayOf(host);
 	fireEvent(field, "onPress");
 	flush();
+	assert overlay.children.length === 1 && overlay.children[0].tag === "modal", "the dialog sits in the modal, not under it: " + mockToString(overlay);
 	assert mockToString(overlay).indexOf("October 2026") > 0, "month: " + mockToString(overlay);
 	assert attr(labelled(overlay, "October 7, 2026") as MockNode, "accessibilityState") === "selected", "the value is selected";
 	assert attr(labelled(overlay, "October 4, 2026") as MockNode, "accessibilityState") === "disabled", "before the minimum";
