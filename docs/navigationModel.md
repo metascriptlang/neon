@@ -322,7 +322,7 @@ first redirect's status and final location, or the route's status. The query of 
 `URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`): a malformed escape stays literal and an
 invalid byte becomes U+FFFD, while a malformed escape in the path is `InvalidAddress` and a 400 (Next
 `DecodeError`, `base-server.ts:1545`). A double slash inside a path matches no route (Solid `createMatcher`,
-`utils.ts:71-73`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
+`utils.ts:73-76`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
 `routing.ts:572-605`): `?q` keeps the current path, and `useNavigate` joins the target onto the calling route's
 path, while `router.navigate`, which has no route, joins it onto the root like Solid's base route; dot segments are
 removed as the URL parser does for Solid. A redirect whose target has a scheme or starts with `//` leaves the app:
