@@ -6,7 +6,7 @@ import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
@@ -179,7 +179,7 @@ function areaKey(e: KeyEvent): AreaKeyEvent {
 	};
 }
 
-function areaPointer(e: PointerEvent): AreaPointerEvent {
+export function areaPointer(e: PointerEvent): AreaPointerEvent {
 	return {
 		kind: match (e.kind) {
 			PointerKind.Motion => AreaPointerKind.Motion,
@@ -193,7 +193,7 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 		pressed: e.pressed,
 		dx: e.dx,
 		dy: e.dy,
-		deltaMode: e.kind === PointerKind.Wheel ? DOM_DELTA_LINE : DOM_DELTA_PIXEL,
+		deltaMode: e.kind === PointerKind.Wheel && e.deltaMode === DeltaMode.Line ? DOM_DELTA_LINE : DOM_DELTA_PIXEL,
 		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
 	};
 }

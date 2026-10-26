@@ -42,7 +42,7 @@ export interface NeonEvent {
 	locationY: number;
 	deltaX: number;        // onWheel, in the unit deltaMode names, with Ion's signs: dy > 0 is away from the user
 	deltaY: number;
-	deltaMode: number;     // onWheel: DOM_DELTA_PIXEL for layout points (a touch pan), DOM_DELTA_LINE for wheel notches
+	deltaMode: number;     // onWheel: DOM_DELTA_PIXEL for layout points (a touch pan, a trackpad), DOM_DELTA_LINE for wheel notches
 	propagationStopped: boolean;
 }
 
