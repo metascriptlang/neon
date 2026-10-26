@@ -213,6 +213,7 @@ function containerLink(initialState: NavigationState | null): ContainerSlot {
 	};
 	const link: NavigatorLink = {
 		kind: NavigatorKind.Container,
+		navigatorId: null,
 		hasRoute: (name: string): boolean => {
 			return root !== null && (root as NavigatorLink).hasRoute(name);
 		},

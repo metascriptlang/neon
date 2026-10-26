@@ -332,6 +332,7 @@ export interface TabNavigator<PL> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
+		id?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptions> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		tabBarStyle?: Accessor<Style> | null;
@@ -366,6 +367,7 @@ function createTabs<PL>(material: boolean): TabNavigator<PL> {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
+			id?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			tabBarStyle?: Accessor<Style> | null;
@@ -379,6 +381,7 @@ function createTabs<PL>(material: boolean): TabNavigator<PL> {
 				kind: NavigatorKind.Tabs,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
+				navigatorId: readName(props.id),
 				screenOptions: material ? withoutHeader(declared) : declared,
 				scope: currentScope("Tab.Navigator"),
 				model: (

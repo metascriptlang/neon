@@ -204,6 +204,7 @@ export interface WebRoutes {
 
 export interface NavigatorLink {
 	kind: NavigatorKind;
+	navigatorId: string | null;
 	hasRoute: (name: string) => boolean;
 	navigateTo: (target: NavTarget) => boolean;
 	pushTo: (name: string) => boolean;
@@ -808,7 +809,19 @@ export class Navigation<PL> {
 	}
 }
 
-export function getParent<PL, Q>(this navigation: Navigation<PL>): Navigation<Q> {
+export function getParent<PL, Q>(this navigation: Navigation<PL>, id: string | null = null): Navigation<Q> {
+	if (id !== null) {
+		if (navigation.core.navigatorId === id) { return navigation as unknown as Navigation<Q>; }
+		let hosted: unknown = navigation.core.parentNavigation;
+		let link = navigation.core.parent;
+		while (link !== null && hosted !== null) {
+			const here = link as NavigatorLink;
+			if (here.navigatorId === id) { return hosted as Navigation<Q>; }
+			hosted = here.screen();
+			link = here.parent();
+		}
+		throw new Error("getParent: no navigator with id '" + (id as string) + "' contains '" + navigation.route.name + "'");
+	}
 	const outer = navigation.core.parentNavigation;
 	if (outer === null) {
 		throw new Error(
@@ -877,6 +890,7 @@ export interface NavigatorSetup<PL> {
 	kind: NavigatorKind;
 	screens: ScreenConfig<PL>[];
 	initialRouteName: string | null;
+	navigatorId: string | null;
 	screenOptions: Accessor<ScreenOptions>;
 	scope: ScreenScope;
 	model: (
@@ -894,6 +908,7 @@ export class NavigatorCore<PL> {
 	index: Accessor<int32>;
 	screenOptions: Accessor<ScreenOptions>;
 	initialName: string;
+	navigatorId: string | null;
 	parent: NavigatorLink | null;
 	parentKey: string;
 	focused: Accessor<boolean>;
@@ -914,6 +929,7 @@ export class NavigatorCore<PL> {
 		this.screens = setup.screens;
 		this.screenOptions = setup.screenOptions;
 		this.initialName = initialName;
+		this.navigatorId = setup.navigatorId;
 		const scope = setup.scope;
 		this.parent = scope.link;
 		this.parentKey = scope.routeKey;
@@ -1515,6 +1531,7 @@ export class NavigatorCore<PL> {
 export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 	const link: NavigatorLink = {
 		kind: core.kind,
+		navigatorId: core.navigatorId,
 		hasRoute: (name: string): boolean => core.hasRoute(name),
 		navigateTo: (target: NavTarget): boolean => core.navigateTo(target),
 		pushTo: (name: string): boolean => core.hasRoute(name) && core.model.push(name, null),

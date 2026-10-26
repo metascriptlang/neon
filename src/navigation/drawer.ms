@@ -321,6 +321,7 @@ export interface DrawerNavigator<PL> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
+		id?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptions> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
@@ -348,6 +349,7 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
+			id?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
@@ -364,6 +366,7 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 				kind: NavigatorKind.Drawer,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
+				navigatorId: readName(props.id),
 				screenOptions: readOptions(props.screenOptions),
 				scope: currentScope("Drawer.Navigator"),
 				model: (

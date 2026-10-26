@@ -283,6 +283,7 @@ export interface StackNavigator<PL> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
+		id?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptions> | null;
 	}) => NeonNode;
 	Group: (props: {
@@ -306,6 +307,7 @@ export function createStackNavigator<PL>(): StackNavigator<PL> {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
+			id?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
 		}): NeonNode => {
 			const collection = collectScreens<PL>(collector, props.children);
@@ -314,6 +316,7 @@ export function createStackNavigator<PL>(): StackNavigator<PL> {
 				kind: NavigatorKind.Stack,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
+				navigatorId: readName(props.id),
 				screenOptions: readOptions(props.screenOptions),
 				scope: currentScope("Stack.Navigator"),
 				model: (
