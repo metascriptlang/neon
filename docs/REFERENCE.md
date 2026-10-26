@@ -74,6 +74,15 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Pin:** `tests/render/match.test.ms`, `tests/render/matchServer.test.ms`, `tests/browser/match.test.ms`, the `Match`/`Case` programs in `tests/macros/`
 - **Checked:** 2026-10-16, read and measured on C, JS, the server build and Chrome.
 
+### SF-5 · `Settings.watchKeys` fires when a watched value's JSON changes, not when a fresh object arrives
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** `_sendObservations` compares `this._settings[key] !== newValue` on the dictionary every `settingsUpdated` carries (`packages/react-native/Libraries/Settings/Settings.ios.js:58-73`), so a watched object or array value fires on every outside write to any key, changed or not
+- **MS:** `Settings.watchKeys` in `src/api/settings.ms` keeps each watched key's JSON text and fires when that text changes
+- **Why:** the callback means "this setting changed"; a firing for an equal object is noise RN produces only because its values are fresh JS objects. For strings, numbers and booleans both fire on the same writes (the person, 2026-10-27).
+- **Pin:** `tests/api/iosApis.test.ms` "Settings.watchKeys fires per changed watched key for outside writes only, until clearWatch"
+- **Checked:** 2026-10-27, read.
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
