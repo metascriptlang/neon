@@ -308,7 +308,7 @@ async function guestbook() {
 			const changes = new MutationObserver((records) => {
 				for (const record of records) {
 					const owner = record.target instanceof Element ? record.target : record.target.parentElement;
-					if (owner === null || owner.closest("#site") === null) { continue; }
+					if (owner === null || owner.closest("#app") === null) { continue; }
 					const status = document.getElementById("status");
 					if (status !== null && status.contains(record.target)) {
 						globalThis.neonSiteStatus.push(status.textContent);
