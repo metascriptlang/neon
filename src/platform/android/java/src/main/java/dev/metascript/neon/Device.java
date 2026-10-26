@@ -2,6 +2,7 @@ package dev.metascript.neon;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -40,6 +41,10 @@ final class Device {
 			case "device.info": return info(a);
 			case "device.battery": return battery(a);
 			case "locale.info": return locales(a);
+			case "i18n.info": return i18nInfo(a);
+			case "i18n.allowRTL": return i18nSet(a, "RCTI18nUtil_allowRTL", arg);
+			case "i18n.forceRTL": return i18nSet(a, "RCTI18nUtil_forceRTL", arg);
+			case "i18n.swapLeftAndRightInRTL": return i18nSet(a, "RCTI18nUtil_makeRTLFlipLeftAndRightStyles", arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}
@@ -148,5 +153,23 @@ final class Device {
 			records.add(locale(Locale.getDefault()));
 		}
 		return String.join(RECORD, records);
+	}
+
+	private static final String I18N_PREFS = "com.facebook.react.modules.i18nmanager.I18nUtil";
+
+	private static String i18nInfo(Activity a) {
+		SharedPreferences prefs = a.getSharedPreferences(I18N_PREFS, Context.MODE_PRIVATE);
+		boolean supportsRtl = (a.getApplicationInfo().flags & ApplicationInfo.FLAG_SUPPORTS_RTL) != 0;
+		boolean deviceRtl = TextUtils.getLayoutDirectionFromLocale(Locale.getDefault()) == View.LAYOUT_DIRECTION_RTL;
+		return String.join(FIELD,
+			prefs.getBoolean("RCTI18nUtil_allowRTL", true) ? "1" : "0",
+			prefs.getBoolean("RCTI18nUtil_forceRTL", false) ? "1" : "0",
+			prefs.getBoolean("RCTI18nUtil_makeRTLFlipLeftAndRightStyles", true) ? "1" : "0",
+			supportsRtl ? "1" : "0", deviceRtl ? "1" : "0", Locale.getDefault().toString());
+	}
+
+	private static String i18nSet(Activity a, String key, String value) {
+		a.getSharedPreferences(I18N_PREFS, Context.MODE_PRIVATE).edit().putBoolean(key, value.equals("1")).apply();
+		return "";
 	}
 }

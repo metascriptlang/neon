@@ -99,6 +99,7 @@ export {
 	Calendar, Locale, LocalizeLocale, NumberFormatSettings, getCalendars, getCountry, getCurrencies, getLocales,
 	getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit, getTimeZone, uses24HourClock, usesMetricSystem,
 } from "./api/localization";
+export { I18nManager, I18nManagerConstants } from "./api/i18nManager";
 when (js) {
 	export { ScrollPosition, useWindowScrollPosition, useWindowScrollRange } from "./api/pageScroll";
 }
