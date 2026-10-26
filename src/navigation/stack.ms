@@ -79,6 +79,31 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 			return kept;
 		});
 	};
+	const lastWithId = (list: Navigation<PL>[], name: string, id: string): int32 => {
+		for (let i = list.length - 1; i >= 0; i -= 1) {
+			if (list[i].route.name !== name) { continue; }
+			if (core.idOf(name, untrack((): ParamSlot | null => list[i].route.slot())) === id) {
+				return i as int32;
+			}
+		}
+		return -1;
+	};
+	const raise = (list: Navigation<PL>[], at: int32, params: ParamSlot | null): void => {
+		const entry = list[at];
+		reuseWith<PL>(entry, params);
+		const key = entry.route.key;
+		core.apply((): void => {
+			stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => {
+				const kept: RouteSeed<PL>[] = [];
+				let moved: RouteSeed<PL> | null = null;
+				for (const seed of current) {
+					if (seed.key === key) { moved = seed; } else { kept.push(seed); }
+				}
+				kept.push(moved as RouteSeed<PL>);
+				return kept;
+			});
+		});
+	};
 	const back = (): boolean => {
 		const list = core.snapshot();
 		if (list.length <= 1) { return false; }
@@ -106,7 +131,17 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const top = list.length - 1;
-			const at = list[top].route.name === name ? top : pop ? core.indexOfName(list, name) : -1;
+			const id = core.idOf(name, params);
+			if (id !== null && !pop) {
+				const found = lastWithId(list, name, id as string);
+				if (found >= 0) {
+					raise(list, found, params);
+					return;
+				}
+			}
+			const at = id !== null
+				? (pop ? lastWithId(list, name, id as string) : -1)
+				: list[top].route.name === name ? top : pop ? core.indexOfName(list, name) : -1;
 			if (at < 0) {
 				const seed = core.seed(name, params);
 				core.apply((): void => { stack.push(seed); });
@@ -118,6 +153,15 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 			});
 		},
 		push: (name: string, params: ParamSlot | null): boolean => {
+			const id = core.idOf(name, params);
+			if (id !== null) {
+				const list = core.snapshot();
+				const found = lastWithId(list, name, id as string);
+				if (found >= 0) {
+					raise(list, found, params);
+					return true;
+				}
+			}
 			const seed = core.seed(name, params);
 			core.apply((): void => { stack.push(seed); });
 			return true;

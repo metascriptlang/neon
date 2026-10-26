@@ -181,6 +181,7 @@ export function screenOf<PL>(
 			: new ScreenConfig<PL>(name, component, options, (params as ScreenParams<PL>).initial, (params as ScreenParams<PL>).parse);
 		config.options = withGroups(useContext(collector.groups), options);
 		if (params !== null) { config.stringifyParams = (params as ScreenParams<PL>).stringify; }
+		if (params !== null) { config.getId = (params as ScreenParams<PL>).getId; }
 		config.navigationKey = withKeys(useContext(collector.keys), navigationKey);
 		collection.add(config, parent, before);
 	};

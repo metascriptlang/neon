@@ -444,6 +444,7 @@ export class ScreenConfig<PL> {
 	initialParams: ParamSlot | null;
 	parseParams: ((values: Map<string, string>) => ParamSlot | null) | null;
 	stringifyParams: ((params: ParamSlot | null) => Map<string, string>) | null = null;
+	getId: ((params: ParamSlot | null) => string) | null = null;
 
 	constructor(
 		name: string,
@@ -464,6 +465,7 @@ export interface ScreenCodec<PL, K extends keyof PL> {
 	initial?: PL[K] | null;
 	parse?: ((values: Map<string, string>) => PL[K]) | null;
 	stringify?: ((params: PL[K]) => Map<string, string>) | null;
+	getId?: ((params: PL[K] | null) => string) | null;
 }
 
 export class ScreenParams<PL> {
@@ -471,17 +473,20 @@ export class ScreenParams<PL> {
 	initial: ParamSlot | null;
 	parse: ((values: Map<string, string>) => ParamSlot | null) | null;
 	stringify: ((params: ParamSlot | null) => Map<string, string>) | null;
+	getId: ((params: ParamSlot | null) => string) | null;
 
 	constructor(
 		name: string,
 		initial: ParamSlot | null,
 		parse: ((values: Map<string, string>) => ParamSlot | null) | null,
 		stringify: ((params: ParamSlot | null) => Map<string, string>) | null,
+		getId: ((params: ParamSlot | null) => string) | null,
 	) {
 		this.name = name;
 		this.initial = initial;
 		this.parse = parse;
 		this.stringify = stringify;
+		this.getId = getId;
 	}
 }
 
@@ -490,6 +495,7 @@ export class ScreenParamsBuilder<PL> {
 		const initial = codec.initial;
 		const parse = codec.parse;
 		const stringify = codec.stringify;
+		const getId = codec.getId;
 		return new ScreenParams<PL>(
 			name as string,
 			initial === undefined || initial === null ? null : boxParams<PL[K]>(initial as PL[K]),
@@ -499,6 +505,11 @@ export class ScreenParamsBuilder<PL> {
 			stringify === undefined || stringify === null
 				? null
 				: (slot: ParamSlot | null): Map<string, string> => (stringify as (params: PL[K]) => Map<string, string>)(((slot as ParamSlot).box as ParamBox<PL[K]>).value),
+			getId === undefined || getId === null
+				? null
+				: (slot: ParamSlot | null): string => (getId as (params: PL[K] | null) => string)(
+					slot === null ? null : ((slot as ParamSlot).box as ParamBox<PL[K]>).value,
+				),
 		);
 	}
 }
@@ -929,6 +940,12 @@ export class NavigatorCore<PL> {
 
 	hasRoute(name: string): boolean {
 		return this.config(name) !== null;
+	}
+
+	idOf(name: string, params: ParamSlot | null): string | null {
+		const screen = this.config(name);
+		if (screen === null || screen.getId === null) { return null; }
+		return (screen.getId as (params: ParamSlot | null) => string)(params);
 	}
 
 	reconfigure(screens: ScreenConfig<PL>[]): void {
