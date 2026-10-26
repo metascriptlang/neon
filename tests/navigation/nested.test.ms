@@ -272,7 +272,7 @@ test "focus and blur reach a screen when its route, tab or drawer item changes" 
 	flush();
 	ref.navigate("Settings");
 	flush();
-	assert focusLog === "list-;list+;list-;list+;list-;", focusLog;
+	assert focusLog === "list+;list-;list+;list-;list+;list-;", focusLog;
 }
 
 test "a deep link reaches a nested screen with parsed params" {

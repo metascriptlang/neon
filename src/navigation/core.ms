@@ -1,6 +1,6 @@
 import { Accessor, Setter, Signal, accessor, createSignal, untrack } from "../core/signal";
 import { flush } from "../core/runtime";
-import { createEffect, createRenderEffect } from "../core/effect";
+import { createEffect, createRenderEffect, onSettled } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
@@ -753,6 +753,12 @@ export class Navigation<PL> {
 					return null;
 				},
 			);
+			if (wantFocus) {
+				onSettled((): Cleanup | null => {
+					if (this.isFocused()) { notify(event); }
+					return null;
+				});
+			}
 			return dispose;
 		});
 	}
