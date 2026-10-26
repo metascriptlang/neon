@@ -1,3 +1,4 @@
+#include <windows.h>
 #include "modal.h"
 #include <algorithm>
 #include <cstring>
