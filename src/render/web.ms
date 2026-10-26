@@ -326,6 +326,7 @@ export function domAttrName(name: string): string {
 		"accessibilityElementsHidden" | "importantForAccessibility" => "aria-hidden",
 		"accessibilityViewIsModal" => "aria-modal",
 		"focusable" => "tabindex",
+		"nativeID" => "id",
 		"editable" => "readonly",
 		"keyboardType" => "inputmode",
 		"returnKeyType" => "enterkeyhint",

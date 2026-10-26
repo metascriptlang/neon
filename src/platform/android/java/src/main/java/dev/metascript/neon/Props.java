@@ -27,7 +27,7 @@ public final class Props {
 			case "accessibilityLabel": case "accessibilityHint": case "accessibilityRole": case "role": case "accessibilityState":
 			case "accessibilityValue": case "accessibilityActions": case "accessibilityLiveRegion":
 			case "importantForAccessibility": case "focusable":
-			case "accessibilityLabelledBy": case "accessibilityElementsHidden": case "accessibilityViewIsModal":
+			case "accessibilityLabelledBy": case "nativeID": case "accessibilityElementsHidden": case "accessibilityViewIsModal":
 				A11y.set(view, name, value);
 				return;
 			case "accessible": {

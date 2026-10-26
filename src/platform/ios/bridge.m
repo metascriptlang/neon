@@ -540,6 +540,8 @@ static char kNeonAccessibilityRole;
 static char kNeonStateValue;
 static char kNeonValueProp;
 static char kNeonActions;
+// RN UIView+React.m nativeID: the id is stored on the view and nothing reads it for accessibility.
+static char kNeonNativeID;
 
 static BOOL groupRole(const char *role) {
 	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0 || strcmp(role, "alert") == 0;
@@ -1204,6 +1206,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 	else if (strcmp(name, "accessibilityLiveRegion") == 0 || strcmp(name, "importantForAccessibility") == 0 ||
 		strcmp(name, "accessibilityLabelledBy") == 0 || strcmp(name, "focusable") == 0) {}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
+	else if (strcmp(name, "nativeID") == 0) objc_setAssociatedObject(v, &kNeonNativeID, text[0] ? [NSString stringWithUTF8String:text] : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
 	else if (strcmp(name, "hitSlop") == 0) {
 		float top = 0, left = 0, bottom = 0, right = 0;

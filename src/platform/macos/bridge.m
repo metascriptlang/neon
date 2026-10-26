@@ -1886,7 +1886,7 @@ static BOOL isAccessibilityProp(const char *name) {
 	static const char *names[] = {
 		"accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole", "accessibilityState", "role",
 		"accessibilityValue", "accessibilityLiveRegion", "importantForAccessibility", "accessibilityElementsHidden",
-		"accessibilityViewIsModal", "accessibilityLabelledBy", "accessibilityActions", "focusable",
+		"accessibilityViewIsModal", "accessibilityLabelledBy", "accessibilityActions", "focusable", "nativeID",
 	};
 	for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
 		if (!strcmp(name, names[i])) return YES;
