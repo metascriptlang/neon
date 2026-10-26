@@ -132,12 +132,30 @@ function followStyleProp(host: Host, node: HostNode, own: Style, name: string, g
 	);
 }
 
+function noBreakpointTable(s: Style): Style {
+	throw new Error("a style carries media blocks but no breakpoint table was loaded: build the table with createBreakpoints from src/render/breakpoints");
+}
+
+let mediaResolve: (s: Style) => Style = noBreakpointTable;
+let mediaFollow: (host: Host, node: HostNode, s: Style) => void = (host: Host, node: HostNode, s: Style): void => {
+	host.setStyle(node, mediaResolve(s));
+};
+
+export function installMediaBinding(follow: (host: Host, node: HostNode, s: Style) => void, resolve: (s: Style) => Style): void {
+	mediaFollow = follow;
+	mediaResolve = resolve;
+}
+
 export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 	const setCls = host.setStyleClass;
 	const id = s.cssId;
 	if (id !== null && setCls !== null) {
 		setCls(node, id as string, s.css === null ? "" : s.css as string);
-	} else { host.setStyle(node, s); }
+	} else if (s.media === null) {
+		host.setStyle(node, s);
+	} else if (isServer()) {
+		host.setStyle(node, mediaResolve(s));
+	} else { mediaFollow(host, node, s); }
 }
 
 // One effect re-applying the whole style (reactive variant selection, layered
@@ -158,7 +176,11 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	let classed = false;
 	let inlined = false;
 	createRenderEffect<Style>(
-		(last: Style | null): Style => get(),
+		(last: Style | null): Style => {
+			const s = get();
+			if (s.media === null || (s.cssId !== null && setCls !== null)) { return s; }
+			return mediaResolve(s);
+		},
 		(s: Style, before: Style | null): Cleanup | null => {
 			const id = s.cssId;
 			if (id !== null && setCls !== null) {

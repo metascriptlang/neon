@@ -1,4 +1,4 @@
-import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 
 @comptime export function styleTable(): string[][] {
 	return [
@@ -71,6 +71,7 @@ import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 	return [
 		["cssId", "string"],
 		["css",   "string"],
+		["media", "StyleBlock[]"],
 	];
 }
 
@@ -322,11 +323,13 @@ export macro terminalStyleCoverage(node: Node): Node {
 
 export macro styleInterfaceBody(node: Node): Node {
 	const table = styleTable();
-	const classFields = styleClassFields();
+	const block = node.kind === NodeKind.StringLiteral && stringValue(node) === "block";
+	if (!block && node.kind === NodeKind.StringLiteral) { error("styleInterfaceBody takes 0 for Style or \"block\" for StyleBlock", node); }
+	const classFields = block ? [] : styleClassFields();
 	const L = node.line;
 	const C = node.column;
-	const names: string[] = [];
-	const types: string[] = [];
+	const names: string[] = block ? ["fromWidth"] : [];
+	const types: string[] = block ? ["number"] : [];
 	for (let i = 0; i < table.length; i = i + 1) {
 		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
@@ -343,7 +346,7 @@ export macro styleInterfaceBody(node: Node): Node {
 			kind: NodeKind.ExportDecl, line: L, column: C,
 			exportedDecl: {
 				kind: NodeKind.InterfaceDecl, line: L, column: C,
-				interfaceName: "Style", interfaceFields: names, interfaceFieldTypes: types, interfaceExtends: [],
+				interfaceName: block ? "StyleBlock" : "Style", interfaceFields: names, interfaceFieldTypes: types, interfaceExtends: [],
 				nameLocation: { line: L, column: C },
 			},
 		}],
@@ -421,6 +424,8 @@ export macro setStyleFieldBody(node: Node): Node {
 
 export macro mergeStyleBody(node: Node): Node {
 	const table = styleTable();
+	const variant = node.kind === NodeKind.StringLiteral ? stringValue(node) : "style";
+	if (variant !== "style" && variant !== "block" && variant !== "mask") { error("mergeStyleBody takes 0, \"block\" or \"mask\"", node); }
 	const L = node.line;
 	const C = node.column;
 	const props: Node[] = [];
@@ -441,18 +446,37 @@ export macro mergeStyleBody(node: Node): Node {
 			ternaryAlternate: { kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "base" }, property: fieldName, isOptional: false },
 		});
 	}
+	if (variant === "style") {
+		keys.push("media");
+		props.push({
+			kind: NodeKind.CallExpr, line: L, column: C,
+			callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mergeMedia" },
+			arguments: [
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "base" },
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "over" },
+			],
+		});
+	}
+	if (variant === "mask") {
+		keys.push("fromWidth");
+		props.push({ kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "base" }, property: "fromWidth", isOptional: false });
+	}
+	const fnName = variant === "style" ? "mergeStyle" : variant === "block" ? "mergeBlock" : "maskBlock";
+	const baseType = variant === "mask" ? "StyleBlock" : "Style";
+	const overType = variant === "block" ? "StyleBlock" : "Style";
+	const resultType = variant === "mask" ? "StyleBlock" : "Style";
 	return {
 		kind: NodeKind.SpliceMany, line: L, column: C,
 		spliceNodes: [{
 			kind: NodeKind.ExportDecl, line: L, column: C,
 			exportedDecl: {
 				kind: NodeKind.FunctionDecl, line: L, column: C,
-				fnName: "mergeStyle", params: ["base", "over"], fnParamTypes: ["Style", "Style"],
+				fnName: fnName, params: ["base", "over"], fnParamTypes: [baseType, overType],
 				fnBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: [{
 			kind: NodeKind.ReturnStmt, line: L, column: C,
 			argument: { kind: NodeKind.ObjectLiteral, line: L, column: C, properties: props, keys: keys, keyLocations: [] },
 		}] },
-				fnFlags: "", fnReturnType: "Style", fnDefaults: [], nativeName: "",
+				fnFlags: "", fnReturnType: resultType, fnDefaults: [], nativeName: "",
 				nameLocation: { line: L, column: C },
 			},
 		}],

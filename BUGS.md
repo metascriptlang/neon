@@ -303,17 +303,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `807d96ef7`, 2026-10-20), after the counter and list apps generate and build.
   Parked at those two files.
 
-- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
-  form): `export const screen = createBreakpoints({ wide: 900 })`, and a sheet names it as a key,
-  `createStyles({ sidebar: { when: { [screen.wide]: { … } } } })`, so the checker sees `screen.wide`
-  and the macro reads 900 at expansion. Written on branch `park/breakpoints` (`89b2050`: web
-  `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
-  Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
-  `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
-  reaches a recursive one, so a provider tag stops compiling (`<Ctx.Provider>` when measured; the 2.0 tag `<Ctx value>` is not re-measured) (`tests/render/ssr.test.ms`, msc
-  `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
-  Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
-
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
   value is refused against it on C and JS; with a written target type the `===` against a number then

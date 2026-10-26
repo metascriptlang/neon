@@ -36,6 +36,16 @@ export function useWindowDimensions(): Accessor<WindowDimensions> {
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
 }
 
+when (server) {
+	export function mediaWidth(): number {
+		return useWindowDimensions()().width;
+	}
+} else {
+	export function mediaWidth(): number {
+		return windowWidth();
+	}
+}
+
 export function useColorScheme(): Accessor<ColorScheme> {
 	return accessor((): ColorScheme => dark() ? "dark" : "light");
 }

@@ -732,11 +732,22 @@ export macro element(node: Node): Node {
 			return;
 		}
 		if (!allStatic) {
-			pushStyleConst(into, {
-				kind: NodeKind.CallExpr, line: ln, column: col,
-				callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "layerStyles" },
-				arguments: [sv],
-			}, nodeVar, tempName, ln, col);
+			into.push({
+				kind: NodeKind.ExprStmt, line: ln, column: col,
+				expr: {
+					kind: NodeKind.CallExpr, line: ln, column: col,
+					callee: ident("applyStaticStyle", ln, col),
+					arguments: [
+						ident("host", ln, col),
+						ident(nodeVar, ln, col),
+						{
+							kind: NodeKind.CallExpr, line: ln, column: col,
+							callee: ident("layerStyles", ln, col),
+							arguments: [sv],
+						},
+					],
+				},
+			});
 			return;
 		}
 		const mergedKeys: string[] = [];
