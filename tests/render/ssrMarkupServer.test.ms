@@ -37,6 +37,13 @@ test "SSR writes accessibilityState as the aria attributes the DOM host writes" 
 	assert none === "<div class=\"neon-view\"></div>", none;
 }
 
+test "SSR writes nativeID as the DOM id, as react-native-web createDOMProps does" {
+	const view = renderToString(el("view", [attr("nativeID", "title")], [], null));
+	assert view === "<div id=\"title\" class=\"neon-view\"></div>", view;
+	const scroll = renderToString(el("scrollview", [attr("nativeID", "feed")], [], null));
+	assert scroll.startsWith("<div id=\"feed\" "), scroll;
+}
+
 test "SSR writes a scrollview as the div, classes and scroll style the DOM host builds" {
 	const page = renderToMarkup(el("scrollview", [attr("horizontal", "true"),
 		attr("showsHorizontalScrollIndicator", "false")], [], null));

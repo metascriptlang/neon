@@ -286,6 +286,7 @@ export function domAttrName(name: string): string {
 		"accessibilityLabel" => "aria-label",
 		"accessibilityHint" => "aria-description",
 		"accessibilityRole" => "role",
+		"nativeID" => "id",
 		"editable" => "readonly",
 		"keyboardType" => "inputmode",
 		"returnKeyType" => "enterkeyhint",

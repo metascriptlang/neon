@@ -4,7 +4,8 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
-import { Pressable, Text, TextInput, View, accessibilityActionsText } from "../../src/components/primitives";
+import { Image } from "../../src/components/image";
+import { Pressable, ScrollView, Text, TextInput, View, accessibilityActionsText } from "../../src/components/primitives";
 
 function attrOf(n: MockNode, name: string): string {
 	for (const a of n.attrs) {
@@ -64,6 +65,21 @@ function mockAttrs(n: MockNode): string {
 	let out = "";
 	for (const a of n.attrs) { out = out + a.name + "=" + (a.value ?? "") + ";"; }
 	return out;
+}
+
+test "nativeID reaches the host as the nativeID attribute on every primitive" {
+	const [id, setId] = createSignal("a");
+	const view = mounted(element(<View nativeID={id()} />));
+	assert attrOf(view, "nativeID") === "a", mockAttrs(view);
+	setId("b");
+	flush();
+	assert attrOf(view, "nativeID") === "b", mockAttrs(view);
+	assert attrOf(mounted(element(<Text nativeID="t">t</Text>)), "nativeID") === "t";
+	assert attrOf(mounted(element(<TextInput nativeID="in" />)), "nativeID") === "in";
+	assert attrOf(mounted(element(<Pressable nativeID="p" onPress={(e: NeonEvent): void => {}}><Text>p</Text></Pressable>)), "nativeID") === "p";
+	assert attrOf(mounted(element(<Image nativeID="img" />)), "nativeID") === "img";
+	assert attrOf(mounted(element(<ScrollView nativeID="sv"><View /></ScrollView>)), "nativeID") === "sv";
+	assert attrOf(mounted(element(<View />)), "nativeID") === "<unset>";
 }
 
 test "a prop that is not given writes no attribute" {

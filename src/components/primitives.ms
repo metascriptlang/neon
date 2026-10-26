@@ -149,6 +149,7 @@ export interface AccessibilityProps {
 	accessibilityElementsHidden?: Accessor<boolean> | null;
 	accessibilityViewIsModal?: Accessor<boolean> | null;
 	accessibilityLabelledBy?: Accessor<string> | null;
+	nativeID?: Accessor<string> | null;
 	accessibilityActions?: Accessor<AccessibilityAction[]> | null;
 	onAccessibilityAction?: ((e: NeonEvent) => void) | null;
 	tabIndex?: Accessor<number> | null;
@@ -224,6 +225,7 @@ export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): V
 	flagAttr(attrs, "accessible", props.accessible);
 	stringAttr(attrs, "accessibilityLabel", props.accessibilityLabel);
 	stringAttr(attrs, "accessibilityHint", props.accessibilityHint);
+	stringAttr(attrs, "nativeID", props.nativeID);
 	const role = props.accessibilityRole;
 	if (role !== null) {
 		const read = role as Accessor<AccessibilityRole>;
@@ -760,6 +762,7 @@ export type KeyboardDismissMode = "none" | "on-drag" | "interactive";
 export type KeyboardShouldPersistTaps = "never" | "always" | "handled";
 
 export interface ScrollViewProps {
+	nativeID?: Accessor<string> | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
@@ -797,6 +800,7 @@ const SCROLL_HORIZONTAL: Style = { display: "flex", flexGrow: 1, flexShrink: 1, 
 export function ScrollView(props: ScrollViewProps): NeonNode {
 	const evts: VEvent[] = [];
 	const attrs: VAttr[] = [];
+	stringAttr(attrs, "nativeID", props.nativeID);
 	const horizontal = props.horizontal;
 	if (horizontal !== null) { attrs.push(dynAttr("horizontal", (): string | null => `${(horizontal as () => boolean)()}`)); }
 	const enabled = props.scrollEnabled;
