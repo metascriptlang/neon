@@ -16,6 +16,7 @@
 #include "textInput.h"
 #include "handoff.h"
 #include "scrollView.h"
+#include "modal.h"
 extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
@@ -44,6 +45,7 @@ struct View {
 	std::unique_ptr<ImagePicture> picture;
 	bool pictureQueued = false;
 	std::unique_ptr<ActivityIndicator> indicator;
+	std::unique_ptr<Modal> modal;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -312,7 +314,7 @@ void applyGeometry(View *view) {
 	float top = roundf(view->y * g_scale);
 	float right = roundf((view->x + view->w) * g_scale);
 	float bottom = roundf((view->y + view->h) * g_scale);
-	view->visual->Offset(left, top);
+	view->visual->Offset(left, top + (view->modal ? roundf(view->modal->SlideShift()) : 0));
 	view->visual->Size(right - left, bottom - top);
 	if (view->label) queueLabel(view);
 	if (view->scroller) {
@@ -423,6 +425,27 @@ double nowMs() {
 	QueryPerformanceFrequency(&frequency);
 	QueryPerformanceCounter(&counter);
 	return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
+}
+
+View *topModal() {
+	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
+		if ((*child)->modal) return *child;
+	}
+	return nullptr;
+}
+
+void stepModals() {
+	double now = nowMs();
+	for (View *child : g_container->children) {
+		if (child->modal && child->modal->Step(now, child->visual)) applyGeometry(child);
+	}
+}
+
+bool modalsPending() {
+	for (const View *child : g_container->children) {
+		if (child->modal && child->modal->Animating()) return true;
+	}
+	return false;
 }
 
 void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
@@ -623,12 +646,13 @@ void niwFrame(void) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
 	}
+	stepModals();
 	drawInputs();
 	drawPictures();
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
-	if (scrollsPending() || indicatorsPending()) requestHostFrame();
+	if (scrollsPending() || indicatorsPending() || modalsPending()) requestHostFrame();
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -722,6 +746,7 @@ int niwPump(void) {
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	stepIndicators();
+	stepModals();
 	drawInputs();
 	drawPictures();
 	drawLabels();
@@ -759,6 +784,14 @@ void *niIndicatorCreate(void) {
 	view->visual = g_context->CreateSpriteVisual();
 	view->indicator.reset(new ActivityIndicator(g_context, view->visual));
 	g_indicators.push_back(view);
+	return view;
+}
+
+void *niModalCreate(void) {
+	requireAttached("niModalCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->modal.reset(new Modal());
 	return view;
 }
 
@@ -845,6 +878,14 @@ float niLastControlWidth(void) { return g_controlWidth; }
 float niLastControlHeight(void) { return g_controlHeight; }
 
 void niwKey(int action, int ionScancode, int ctrl, const char *text) {
+	if (action != NIW_KEY_RELEASE && MapVirtualKeyW((UINT)ionScancode, MAPVK_VSC_TO_VK_EX) == VK_ESCAPE) {
+		View *modal = topModal();
+		if (modal && modal->tag != 0) {
+			reportControl(modal, 7, "");
+			flushReports();
+			return;
+		}
+	}
 	if (!g_focusedInput) return;
 	g_focusedInput->input->Key(action, ionScancode, ctrl != 0, text ? text : "");
 	flushReports();
@@ -913,6 +954,7 @@ void niAddChild(void *parent, void *child) {
 	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	c->parent = p;
+	if (c->modal && isMounted(c)) c->modal->Present(nowMs(), c->visual, g_height * g_scale);
 	changed();
 }
 
@@ -1099,6 +1141,7 @@ float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	if (as(view)->modal && as(view)->modal->SetProp(name, value)) return;
 	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
 	if (as(view)->indicator && as(view)->indicator->SetProp(name, value)) {
 		changed();

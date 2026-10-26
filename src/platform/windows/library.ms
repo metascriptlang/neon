@@ -4,6 +4,7 @@ when (windows) {
 	@compile("./dcompComposition.cpp");
 	@compile("./dwriteText.cpp");
 	@compile("./image.cpp");
+	@compile("./modal.cpp");
 	@compile("./scrollView.cpp");
 	@compile("./textInput.cpp");
 	@passL("-luser32");
