@@ -115,7 +115,7 @@ static void refreshAccessoryInputs(NSString *key) {
 	[self.neonContent neonSetSize:bounds.size];
 	if (self.neonID == nil && !self.neonClaimed && bounds.size.height > 0) {
 		self.neonClaimed = YES;
-		dispatch_async(dispatch_get_main_queue(), ^{ if (self.window) [self becomeFirstResponder]; });
+		dispatch_async(dispatch_get_main_queue(), ^{ if (self.window && self.neonID == nil) [self becomeFirstResponder]; });
 	}
 }
 
@@ -124,6 +124,7 @@ static void refreshAccessoryInputs(NSString *key) {
 		NSString *old = self.neonID;
 		if (old && [accessories() objectForKey:old] == self) [accessories() removeObjectForKey:old];
 		self.neonID = text[0] ? [NSString stringWithUTF8String:text] : nil;
+		if (self.neonID && self.isFirstResponder) [self resignFirstResponder];
 		if (self.neonID) [accessories() setObject:self forKey:self.neonID];
 		if (old) refreshAccessoryInputs(old);
 		if (self.neonID) refreshAccessoryInputs(self.neonID);

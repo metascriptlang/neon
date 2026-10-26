@@ -1208,7 +1208,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 	else if (strcmp(name, "accessibilityLiveRegion") == 0 || strcmp(name, "importantForAccessibility") == 0 ||
 		strcmp(name, "accessibilityLabelledBy") == 0 || strcmp(name, "focusable") == 0) {}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
-	else if (strcmp(name, "nativeID") == 0) objc_setAssociatedObject(v, &kNeonNativeID, text[0] ? [NSString stringWithUTF8String:text] : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	else if (strcmp(name, "nativeID") == 0) {
+		objc_setAssociatedObject(v, &kNeonNativeID, text[0] ? [NSString stringWithUTF8String:text] : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		if ([v conformsToProtocol:@protocol(NeonComponentView)]) [(id<NeonComponentView>)v neonSetProp:name value:text];
+	}
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
 	else if (strcmp(name, "hitSlop") == 0) {
 		float top = 0, left = 0, bottom = 0, right = 0;
