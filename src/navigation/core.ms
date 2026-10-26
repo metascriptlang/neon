@@ -186,8 +186,8 @@ export interface NavigatorLink {
 	canBackLocal: () => boolean;
 	canPop: () => boolean;
 	popToTop: () => boolean;
-	popBy?: (count: int32) => boolean;
-	replaceTo?: (name: string) => boolean;
+	popBy: (count: int32) => boolean;
+	replaceTo: (name: string) => boolean;
 	handleBack: () => boolean;
 	drawerAction: (action: DrawerAction) => boolean;
 	isFocused: Accessor<boolean>;
@@ -203,7 +203,7 @@ export interface NavigatorLink {
 	webNavigation: (routes: WebRoutes) => WebNavigationNode;
 	screen: () => unknown;
 	nested: (routeKey: string) => NavigatorLink | null;
-	prevents?: (action: NavigationAction) => boolean;
+	prevents: (action: NavigationAction) => boolean;
 	seedNested: (routeKey: string, state: NavigationState | null) => void;
 }
 
@@ -1149,8 +1149,7 @@ export class NavigatorCore<PL> {
 	asksRemoval(route: Navigation<PL>, action: NavigationAction): boolean {
 		for (const entry of this.children) {
 			if (entry.routeKey !== route.route.key) { continue; }
-			const ask = entry.link.prevents;
-			if (ask !== undefined && ask(action)) { return true; }
+			if (entry.link.prevents(action)) { return true; }
 		}
 		return route.emitBeforeRemove(action);
 	}
@@ -1214,8 +1213,7 @@ export class NavigatorCore<PL> {
 		let link = this.parent;
 		while (link !== null) {
 			const current = link as NavigatorLink;
-			const replaceTo = current.replaceTo;
-			if (replaceTo !== undefined && replaceTo(name)) { return; }
+			if (current.replaceTo(name)) { return; }
 			link = current.parent();
 		}
 		throw new Error("The action 'REPLACE' with payload {\"name\":\"" + name + "\"} was not handled by any navigator");
@@ -1229,8 +1227,7 @@ export class NavigatorCore<PL> {
 		let link = this.parent;
 		while (link !== null) {
 			const current = link as NavigatorLink;
-			const popBy = current.popBy;
-			if (popBy !== undefined && popBy(count)) { return; }
+			if (current.popBy(count)) { return; }
 			link = current.parent();
 		}
 		reportUnhandled("POP", null);

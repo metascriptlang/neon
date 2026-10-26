@@ -264,7 +264,9 @@ export function pagesModel<PL>(
 		replace: (key: string, name: string, params: ParamSlot | null): void => {
 			core.navigate(name, params);
 		},
-		popTo: (at: int32, type: string): void => {},
+		popTo: (at: int32, type: string): void => {
+			throw new Error("tabs popTo: '" + type + "' reached a navigator whose canPop is false");
+		},
 		popToRoute: (name: string, params: ParamSlot | null, source: string | null): boolean => false,
 		reset: (list: RouteSeed<PL>[], at: int32): void => {
 			const next = resetPages<PL>(core, list, at);
