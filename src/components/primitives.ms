@@ -45,6 +45,88 @@ import { Pressability, PressRect } from "../render/pressability";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
 
+export type Role =
+	| "alert"
+	| "alertdialog"
+	| "application"
+	| "article"
+	| "banner"
+	| "button"
+	| "cell"
+	| "checkbox"
+	| "columnheader"
+	| "combobox"
+	| "complementary"
+	| "contentinfo"
+	| "definition"
+	| "dialog"
+	| "directory"
+	| "document"
+	| "feed"
+	| "figure"
+	| "form"
+	| "grid"
+	| "group"
+	| "heading"
+	| "img"
+	| "link"
+	| "list"
+	| "listitem"
+	| "log"
+	| "main"
+	| "marquee"
+	| "math"
+	| "menu"
+	| "menubar"
+	| "menuitem"
+	| "meter"
+	| "navigation"
+	| "none"
+	| "note"
+	| "option"
+	| "presentation"
+	| "progressbar"
+	| "radio"
+	| "radiogroup"
+	| "region"
+	| "row"
+	| "rowgroup"
+	| "rowheader"
+	| "scrollbar"
+	| "searchbox"
+	| "separator"
+	| "slider"
+	| "spinbutton"
+	| "status"
+	| "summary"
+	| "switch"
+	| "tab"
+	| "table"
+	| "tablist"
+	| "tabpanel"
+	| "term"
+	| "timer"
+	| "toolbar"
+	| "tooltip"
+	| "tree"
+	| "treegrid"
+	| "treeitem";
+
+export type AccessibilityLiveRegion = "none" | "polite" | "assertive";
+export type ImportantForAccessibility = "auto" | "yes" | "no" | "no-hide-descendants";
+
+export interface AccessibilityValue {
+	min?: number | null;
+	max?: number | null;
+	now?: number | null;
+	text?: string | null;
+}
+
+export interface AccessibilityAction {
+	name: string;
+	label?: string | null;
+}
+
 // Parked on ~/metascript/.inbox/compiler/2026-10-21-boolean-or-string-literal-union-compares-wrong-on-c.md: React Native's `checked?: boolean | "mixed"` joins these fields once that card is fixed.
 export interface AccessibilityState {
 	disabled?: boolean | null;
@@ -53,12 +135,23 @@ export interface AccessibilityState {
 	expanded?: boolean | null;
 }
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-18-quoted-member-names-are-refused-outside-object-literals.md: React Native's aria-* aliases (aria-label, aria-busy, aria-checked, aria-disabled, aria-expanded, aria-selected, aria-hidden, aria-live, aria-modal, aria-valuemax/min/now/text, aria-labelledby) join these fields once a quoted interface field parses.
 export interface AccessibilityProps {
 	accessible?: Accessor<boolean> | null;
 	accessibilityLabel?: Accessor<string> | null;
 	accessibilityHint?: Accessor<string> | null;
 	accessibilityRole?: Accessor<AccessibilityRole> | null;
 	accessibilityState?: Accessor<AccessibilityState> | null;
+	role?: Accessor<Role> | null;
+	accessibilityValue?: Accessor<AccessibilityValue> | null;
+	accessibilityLiveRegion?: Accessor<AccessibilityLiveRegion> | null;
+	importantForAccessibility?: Accessor<ImportantForAccessibility> | null;
+	accessibilityElementsHidden?: Accessor<boolean> | null;
+	accessibilityViewIsModal?: Accessor<boolean> | null;
+	accessibilityLabelledBy?: Accessor<string> | null;
+	accessibilityActions?: Accessor<AccessibilityAction[]> | null;
+	onAccessibilityAction?: ((e: NeonEvent) => void) | null;
+	tabIndex?: Accessor<number> | null;
 }
 
 export interface HostProps extends AccessibilityProps {
@@ -98,6 +191,35 @@ function accessibilityStateAttr(state: Accessor<AccessibilityState> | null): Acc
 	return accessor((): string => accessibilityStateTokens(read()));
 }
 
+function numberField(n: number | null): string {
+	return n === null ? "" : Math.round(n as number).toString();
+}
+
+// "min,max,now,text": the numbers rounded and empty when absent, the text last so its commas stay its own.
+export function accessibilityValueText(v: AccessibilityValue): string {
+	return numberField(v.min) + "," + numberField(v.max) + "," + numberField(v.now) + "," + (v.text ?? "");
+}
+
+// RN View.js splits aria-labelledby on /\s*,\s*/ into the id list the host reads: ids joined by ",".
+export function labelledByIds(ids: string): string {
+	const out: string[] = [];
+	for (const id of ids.split(",")) { out.push(id.trim()); }
+	return out.join(",");
+}
+
+// One action per line, "name" or "name\tlabel"; a name or label holding either separator is refused.
+export function accessibilityActionsText(actions: AccessibilityAction[]): string {
+	const lines: string[] = [];
+	for (const a of actions) {
+		const label = a.label ?? "";
+		if (a.name.includes("\n") || a.name.includes("\t") || label.includes("\n") || label.includes("\t")) {
+			throw new Error(`accessibilityActions: name and label cannot hold a tab or a newline (${a.name})`);
+		}
+		lines.push(label === "" ? a.name : a.name + "\t" + label);
+	}
+	return lines.join("\n");
+}
+
 export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): VAttr[] {
 	flagAttr(attrs, "accessible", props.accessible);
 	stringAttr(attrs, "accessibilityLabel", props.accessibilityLabel);
@@ -108,7 +230,49 @@ export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): V
 		attrs.push(dynAttr("accessibilityRole", (): string | null => { const v: AccessibilityRole = read(); return v; }));
 	}
 	stringAttr(attrs, "accessibilityState", accessibilityStateAttr(props.accessibilityState));
+	const roleProp = props.role;
+	if (roleProp !== null) {
+		const read = roleProp as Accessor<Role>;
+		attrs.push(dynAttr("role", (): string | null => { const v: Role = read(); return v; }));
+	}
+	const value = props.accessibilityValue;
+	if (value !== null) {
+		const read = value as Accessor<AccessibilityValue>;
+		attrs.push(dynAttr("accessibilityValue", (): string | null => accessibilityValueText(read())));
+	}
+	const live = props.accessibilityLiveRegion;
+	if (live !== null) {
+		const read = live as Accessor<AccessibilityLiveRegion>;
+		attrs.push(dynAttr("accessibilityLiveRegion", (): string | null => { const v: AccessibilityLiveRegion = read(); return v; }));
+	}
+	const important = props.importantForAccessibility;
+	if (important !== null) {
+		const read = important as Accessor<ImportantForAccessibility>;
+		attrs.push(dynAttr("importantForAccessibility", (): string | null => { const v: ImportantForAccessibility = read(); return v; }));
+	}
+	flagAttr(attrs, "accessibilityElementsHidden", props.accessibilityElementsHidden);
+	flagAttr(attrs, "accessibilityViewIsModal", props.accessibilityViewIsModal);
+	const labelledBy = props.accessibilityLabelledBy;
+	if (labelledBy !== null) {
+		const read = labelledBy as Accessor<string>;
+		attrs.push(dynAttr("accessibilityLabelledBy", (): string | null => labelledByIds(read())));
+	}
+	const actions = props.accessibilityActions;
+	if (actions !== null) {
+		const read = actions as Accessor<AccessibilityAction[]>;
+		attrs.push(dynAttr("accessibilityActions", (): string | null => accessibilityActionsText(read())));
+	}
+	const tab = props.tabIndex;
+	if (tab !== null) {
+		const read = tab as Accessor<number>;
+		attrs.push(dynAttr("focusable", (): string | null => read() === 0 ? "true" : "false"));
+	}
 	return attrs;
+}
+
+export function accessibilityEvents(props: AccessibilityProps, evts: VEvent[]): VEvent[] {
+	if (props.onAccessibilityAction !== null) { evts.push(evt("onAccessibilityAction", props.onAccessibilityAction as (e: NeonEvent) => void)); }
+	return evts;
 }
 
 function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null, rawRef: RefFn | null = null, ref: ((handle: ViewHandle) => void) | null = null): NeonNode {
@@ -117,6 +281,7 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 		attrs.push(dynAttr("class", () => cls()));
 	}
 	accessibilityAttrs(props, attrs);
+	accessibilityEvents(props, evts);
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
 	const handle = viewRef(ref);
@@ -168,7 +333,7 @@ function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
 }
 
 function interactiveAttrs(props: InteractiveProps, attrs: VAttr[]): VAttr[] {
-	flagAttr(attrs, "focusable", props.focusable);
+	if (props.tabIndex === null) { flagAttr(attrs, "focusable", props.focusable); }
 	const rect = props.imeRect;
 	if (rect !== null) {
 		const read = rect as Accessor<ImeRect>;
@@ -558,11 +723,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	if (props.onHoverIn !== null) { evts.push(evt("onPointerEnter", (e: NeonEvent): void => { pressability.pointerEnter(e); })); }
 	if (props.onHoverOut !== null) { evts.push(evt("onPointerLeave", (e: NeonEvent): void => { pressability.pointerLeave(e); })); }
 	return withPressability(pressability, evts, props.children, (all: VEvent[], kids: NeonNode | null, grab: RefFn): NeonNode =>
-		primitive("pressable", {
-			style: props.style, class: props.class,
-			accessible: accessor((): boolean => accessible() === "true"),
-			accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole, accessibilityState: props.accessibilityState,
-		}, attrs, all, kids, grab, props.ref));
+		primitive("pressable", { ...props, accessible: accessor((): boolean => accessible() === "true") }, attrs, all, kids, grab, props.ref));
 }
 
 export interface ScrollToOptions {
@@ -891,6 +1052,7 @@ export function TextInput(props: TextInputProps): NeonNode {
 	}
 	if (props.onKeyPress !== null) { evts.push(evt("onKeyPress", props.onKeyPress as (e: NeonEvent) => void)); }
 	if (props.onSubmitEditing !== null) { evts.push(evt("onSubmitEditing", props.onSubmitEditing as (e: NeonEvent) => void)); }
+	accessibilityEvents(props, evts);
 	const userRef = props.ref;
 	let focused = false;
 	const userFocus = props.onFocus;
