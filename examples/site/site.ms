@@ -75,7 +75,7 @@ const styles = createStyles({
 function Layout(props: LayoutProps): NeonNode {
 	return <View>
 		<nav>
-			<A href="/">Home</A>
+			<A href="/" end>Home</A>
 			<A href="/docs/start">Start</A>
 			<A href="/docs/routing">Routing</A>
 			<A href="/docs/routing#notes">Notes</A>
