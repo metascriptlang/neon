@@ -1,6 +1,8 @@
 #import "modules.h"
 #import <UIKit/UIKit.h>
 
+NSString *niLinkingInitial(void);
+
 static NSString *call(NSString *name, NSString *arg) {
 	if ([name isEqualToString:@"linking.open"] || [name isEqualToString:@"linking.settings"]) {
 		NSURL *url = [name isEqualToString:@"linking.settings"] ? [NSURL URLWithString:UIApplicationOpenSettingsURLString] : [NSURL URLWithString:arg];
@@ -12,7 +14,7 @@ static NSString *call(NSString *name, NSString *arg) {
 		NSURL *url = [NSURL URLWithString:arg];
 		return url && [UIApplication.sharedApplication canOpenURL:url] ? @"1" : @"0";
 	}
-	if ([name isEqualToString:@"linking.initial"]) return @"";
+	if ([name isEqualToString:@"linking.initial"]) return niLinkingInitial();
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
 }

@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #include "../native/app.h"
 #import "modules.h"
+#import <objc/runtime.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,6 +10,8 @@ static int g_event;
 static char *g_value;
 static int g_started;
 static NSString *g_state = @"active";
+static NSString *g_initialUrl = @"";
+static BOOL g_launched;
 
 static NSString *const FIELD = @"\x1f";
 static NSString *const RECORD = @"\x1e";
@@ -158,6 +161,26 @@ static NSString *imageSize(NSString *arg) {
 		emit(NI_APP_IMAGE_SIZE, [@[requestId, @(w).stringValue, @(h).stringValue, error ?: @""] componentsJoinedByString:FIELD]);
 	});
 	return @"";
+}
+
+NSString *niLinkingInitial(void) {
+	return g_initialUrl;
+}
+
+static BOOL openURLWithOptions(id self, SEL command, UIApplication *application, NSURL *url, NSDictionary *options) {
+	if (!g_launched && !g_initialUrl.length) g_initialUrl = url.absoluteString;
+	else emit(NI_APP_URL, url.absoluteString);
+	return YES;
+}
+
+__attribute__((constructor)) static void installUrlHandling(void) {
+	NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+	[center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *n) { g_launched = YES; }];
+	Class delegate = NSClassFromString(@"NeonAppDelegate");
+	if (!delegate || !class_addMethod(delegate, @selector(application:openURL:options:), (IMP)openURLWithOptions, "c@:@@@")) {
+		NSLog(@"Neon: cannot install application:openURL:options: on NeonAppDelegate");
+		abort();
+	}
 }
 
 static NSString *call(NSString *name, NSString *arg) {
