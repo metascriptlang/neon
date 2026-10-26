@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void setInputAccessoryID(UIView *input, const char *value);
+
 static msClosure s_mount;
 static msClosure s_touch;
 static msClosure s_resize;
@@ -679,7 +681,7 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	else if (strcmp(name, "secureTextEntry") == 0) input.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) input.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) input.returnKeyType = returnKeyType(value);
-	else if (strcmp(name, "inputAccessoryViewID") == 0) neonSetInputAccessoryID(input, value);
+	else if (strcmp(name, "inputAccessoryViewID") == 0) setInputAccessoryID(input, value);
 	else if (strcmp(name, "autoCorrect") == 0) input.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		input.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
@@ -784,7 +786,7 @@ static void setTextAreaProp(NeonTextArea *area, const char *name, const char *va
 	else if (strcmp(name, "secureTextEntry") == 0) area.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) area.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) area.returnKeyType = value[0] ? returnKeyType(value) : UIReturnKeyDefault;
-	else if (strcmp(name, "inputAccessoryViewID") == 0) neonSetInputAccessoryID(area, value);
+	else if (strcmp(name, "inputAccessoryViewID") == 0) setInputAccessoryID(area, value);
 	else if (strcmp(name, "autoCorrect") == 0) area.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		area.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
@@ -1316,6 +1318,26 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	bounds.size = CGSizeMake(w, h);
 	v.bounds = bounds;
 	v.center = CGPointMake(x + w * 0.5f, y + h * 0.5f);
+}
+
+static const void *kNeonAccessoryIDKey = &kNeonAccessoryIDKey;
+void (*neonApplyInputAccessory)(UIView *input);
+
+NSHashTable<UIView *> *neonAccessoryInputs(void) {
+	static NSHashTable *table;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+	return table;
+}
+
+NSString *neonInputAccessoryID(UIView *input) { return objc_getAssociatedObject(input, kNeonAccessoryIDKey); }
+
+static void setInputAccessoryID(UIView *input, const char *value) {
+	NSString *key = value[0] ? [NSString stringWithUTF8String:value] : nil;
+	objc_setAssociatedObject(input, kNeonAccessoryIDKey, key, OBJC_ASSOCIATION_COPY_NONATOMIC);
+	if (key) [neonAccessoryInputs() addObject:input];
+	else [neonAccessoryInputs() removeObject:input];
+	if (neonApplyInputAccessory) neonApplyInputAccessory(input);
 }
 
 static const void *kNeonRotationKey = &kNeonRotationKey;

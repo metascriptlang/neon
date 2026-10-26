@@ -20,8 +20,11 @@
 void neonEmitControl(int tag, int phase, NSString *value, float width, float height);
 // Attach the renderer's touch recognizer to a view outside the root's hierarchy.
 void neonAttachTouchHandler(UIView *view);
-// Point a text input at the accessory whose nativeID is `value` ("" clears it).
-void neonSetInputAccessoryID(UIView *input, const char *value);
+// The text inputs holding an inputAccessoryViewID, and that ID; an InputAccessoryView renderer, once
+// created, attaches itself through neonApplyInputAccessory whenever an input's ID changes.
+NSHashTable<UIView *> *neonAccessoryInputs(void);
+NSString *neonInputAccessoryID(UIView *input);
+extern void (*neonApplyInputAccessory)(UIView *input);
 UIColor *neonCssColor(const char *css, UIColor *fallback);
 
 #endif

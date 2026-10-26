@@ -62,15 +62,6 @@ static NSMapTable<NSString *, NeonInputAccessoryView *> *accessories(void) {
 	return table;
 }
 
-static NSHashTable<UIView *> *accessoryInputs(void) {
-	static NSHashTable *table;
-	static dispatch_once_t once;
-	dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
-	return table;
-}
-
-static const void *kAccessoryID = &kAccessoryID;
-
 @interface NeonInputAccessoryView : NeonTouchView <NeonComponentView>
 @property (nonatomic, strong) NeonAccessoryContent *neonContent;
 @property (nonatomic, copy) NSString *neonID;
@@ -78,7 +69,7 @@ static const void *kAccessoryID = &kAccessoryID;
 @end
 
 static void applyAccessory(UIView *input) {
-	NSString *key = objc_getAssociatedObject(input, kAccessoryID);
+	NSString *key = neonInputAccessoryID(input);
 	UIView *content = key ? [accessories() objectForKey:key].neonContent : nil;
 	if ([input isKindOfClass:UITextField.class]) ((UITextField *)input).inputAccessoryView = content;
 	else if ([input isKindOfClass:UITextView.class]) ((UITextView *)input).inputAccessoryView = content;
@@ -87,17 +78,9 @@ static void applyAccessory(UIView *input) {
 }
 
 static void refreshAccessoryInputs(NSString *key) {
-	for (UIView *input in accessoryInputs().allObjects) {
-		if ([objc_getAssociatedObject(input, kAccessoryID) isEqualToString:key]) applyAccessory(input);
+	for (UIView *input in neonAccessoryInputs().allObjects) {
+		if ([neonInputAccessoryID(input) isEqualToString:key]) applyAccessory(input);
 	}
-}
-
-void neonSetInputAccessoryID(UIView *input, const char *value) {
-	NSString *key = value[0] ? [NSString stringWithUTF8String:value] : nil;
-	objc_setAssociatedObject(input, kAccessoryID, key, OBJC_ASSOCIATION_COPY_NONATOMIC);
-	if (key) [accessoryInputs() addObject:input];
-	else [accessoryInputs() removeObject:input];
-	applyAccessory(input);
 }
 
 @implementation NeonInputAccessoryView
@@ -159,5 +142,6 @@ void neonSetInputAccessoryID(UIView *input, const char *value) {
 @end
 
 void *niInputAccessoryViewCreate(void) {
+	neonApplyInputAccessory = applyAccessory;
 	return CFBridgingRetain([[NeonInputAccessoryView alloc] initWithFrame:CGRectZero]);
 }
