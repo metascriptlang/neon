@@ -41,7 +41,7 @@ Where each cell is proved:
 Two hosts render a narrower set:
 - **The full-window `<Void>` host** (`src/platform/void/host.ms`) draws View, Text, TextInput and ScrollView, and renders
   any other tag as an empty group, without an error.
-- **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes.
+- **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes. It drops layout styles except `display: "none"`, which hides the view and its descendants as in React Native.
 
 ## Device APIs on an Ion desktop host
 

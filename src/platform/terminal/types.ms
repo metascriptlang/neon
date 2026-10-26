@@ -11,6 +11,7 @@ export interface TerminalStyle {
 	dim: boolean;
 	italic: boolean;
 	underline: boolean;
+	hidden: boolean;
 }
 
 export interface TerminalEvent {
@@ -19,7 +20,7 @@ export interface TerminalEvent {
 }
 
 export function makeStyle(): TerminalStyle {
-	return { color: "", bg: "", bold: false, dim: false, italic: false, underline: false };
+	return { color: "", bg: "", bold: false, dim: false, italic: false, underline: false, hidden: false };
 }
 
 export class TerminalNode {
