@@ -225,6 +225,10 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 
 @end
 
+void neonAttachTouchHandler(UIView *view) {
+	[view addGestureRecognizer:[[NeonRootTouchHandler alloc] init]];
+}
+
 static void emitControl(int tag, int phase, NSString *value, float width, float height) {
 	if (tag == 0) return;
 	free(g_controlValue);
@@ -546,6 +550,7 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	else if (strcmp(name, "secureTextEntry") == 0) input.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) input.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) input.returnKeyType = returnKeyType(value);
+	else if (strcmp(name, "inputAccessoryViewID") == 0) neonSetInputAccessoryID(input, value);
 	else if (strcmp(name, "autoCorrect") == 0) input.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		input.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
@@ -650,6 +655,7 @@ static void setTextAreaProp(NeonTextArea *area, const char *name, const char *va
 	else if (strcmp(name, "secureTextEntry") == 0) area.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) area.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) area.returnKeyType = value[0] ? returnKeyType(value) : UIReturnKeyDefault;
+	else if (strcmp(name, "inputAccessoryViewID") == 0) neonSetInputAccessoryID(area, value);
 	else if (strcmp(name, "autoCorrect") == 0) area.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		area.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
