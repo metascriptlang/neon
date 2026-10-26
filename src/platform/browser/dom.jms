@@ -1179,7 +1179,8 @@ export function domHost(): Host {
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			const base = name === "class" ? baseClassOf(el) : "";
-			el.removeAttribute(domAttrName(name));
+			if (name === "accessibilityState") { writeAccessibilityState(el, ""); }
+			else { el.removeAttribute(domAttrName(name)); }
 			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
