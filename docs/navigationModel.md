@@ -139,8 +139,13 @@ never knows a URL, a pattern or a component.
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
 A renderer takes a model and a `render(child)` function; input events call model
-operations: edge swipe and hardware back today, while no renderer wires the mouse back
-button or keyboard shortcuts yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+operations: edge swipe and hardware back today. A desktop app wires back itself, as
+Decompose's Compose for Desktop recipe does (`docs/component/back-button.md:123-160`,
+`f48655a`): a focusable root `View` takes `onKeyUp` and calls `dispatchHardwareBackPress()` on
+`e.code === "Escape"`, and a focused `TextInput` that calls `e.stopPropagation()` on Escape keeps
+the screen, because key events bubble from the focused node. The framework maps no key by default;
+`examples/navigation/desktop.ms` is the recipe and `tests/platform/voidDesktopBack.test.ms` pins it.
+The mouse back button is not wired. It never imports routing. `navigatorMotion.ms` stays the transition engine.
 `renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
 time in single mode, main beside details or extra in dual, three columns in triple,
 with weights and placeholders for an empty panel. The app picks the mode from its
