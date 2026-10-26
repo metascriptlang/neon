@@ -479,6 +479,41 @@ space and a malformed escape keeps its raw text; in a path param, a malformed es
 that route and the next candidate is tried. Two things are left for the person: a repeated query
 key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
 `Map<string, string>` and keeps the last value and `""`.
+## Scroll
+
+`followScroll(router)` (`src/platform/browser/scroll.ms`) gives a web router its scroll
+behaviour; routing stays host-free and sees only `Scroller.arrived(address, replace, scroll)`
+(`src/navigation/scroll.ms`), which the router calls from each history write
+(`RoutingSession.observeWrites`). References: Solid Router `d0379e7`
+(`routers/createRouter.ts:55`, `routers/Router.ts:39-45`, `routers/scrollRestoration.ts`),
+TanStack Router `6777b8b` (`router-core/src/scroll-restoration.ts`), Next.js `648110d4`
+(`layout-router.tsx:145-270`).
+
+- A push or a replace scrolls to the `#hash` element, else to the top (`scrollToHash`,
+  `createRouter.ts:55-61`; TanStack `scroll-restoration.ts` `onRendered`, replace included).
+  A search-only change is an ordinary navigation, so it scrolls too; Solid's `useSearchParams`
+  defaults `scroll: false` (`routing.ts:246`), and Neon has no such setter yet.
+- `navigate(href, { scroll: false })` skips the scroll to the top and still scrolls to a hash
+  target that exists, as Solid (`createRouter.ts:55-61`) and TanStack's `resetScroll: false`
+  with a hash do. Next's `scroll={false}` leaves everything alone; Neon follows the two owners.
+  `<A noScroll>` is not built: `followLinks` would need the choice passed to its callback.
+- `followScroll` sets `history.scrollRestoration = "manual"` and puts it back on dispose
+  (`scrollRestoration.ts:33`). It records `scrollY` on every scroll event under the entry's
+  `__neonIndex` (Solid keys by `_depth`, `:48-50`), drops the offsets from a new entry on
+  (`onPush`, `:77-80`), saves them in `sessionStorage` on `pagehide` (`:51-57`) and restores
+  on `popstate`, after the router's own listener has rendered. An entry with no record goes to
+  its hash, else the top.
+- A document that loads as a reload or back_forward restores its entry's offset
+  (`:92-98`); `followScroll(router, type)` takes the navigation type for a test.
+- Late content: Solid restores once, after routing settles, and says a document still
+  growing is not chased (`scrollRestoration.ts:21-27`); TanStack restores after `onRendered`,
+  once its loaders resolved. Neon mounts a page under a `Loading` at once and has no routing
+  settle, so a restore whose offset the document cannot yet hold waits on a `ResizeObserver`
+  and scrolls only when the offset is reachable (never to a clamped value). A wheel, touch or
+  key event, the next navigation, or dispose cancels the wait. This hold has no reference;
+  it is a separate commit so it can be dropped.
+- Not built: nested scroll containers (TanStack `data-scroll-restoration-id`, needs an id on
+  `ScrollView`); smooth `scrollRestorationBehavior`.
 
 ## Provisional choices and remaining limits
 
@@ -614,7 +649,7 @@ key is an array in React Navigation and `?flag` is `null`, while `NavTarget.valu
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
 - Not in the first version of the layers: data loading per route (TanStack `loader`;
-  Solid's `preload` is in, without its `data` result), scroll restoration on client navigation, focus and
+  Solid's `preload` is in, without its `data` result), focus and
   announcement after a navigation, and guards that re-run by themselves when sign-in
   state changes (the first version offers an explicit revalidation, as TanStack
   `router.invalidate`).
