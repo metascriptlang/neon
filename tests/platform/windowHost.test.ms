@@ -3,7 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Show } from "../../src/macros/ui/flow";
 import { render } from "../../src/render/host";
-import { NeonEvent } from "../../src/render/event";
+import { NeonEvent, DOM_DELTA_PIXEL } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import {
 	VoidAreaHandle,
@@ -33,6 +33,8 @@ import {
 	logicalHeight,
 	drawArea,
 } from "../../src/platform/void/windowHost";
+import { areaPointer } from "../../src/platform/ion/window";
+import { PointerEvent, PointerKind, DeltaMode, KeyMod } from "../../../ion/src/index";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { useWindowDimensions } from "../../src/render/environment";
 import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
@@ -321,4 +323,25 @@ test "the control channel drives a window: tree shows what is laid out, press an
 	assert log.join("|") === "pressed|text hi", log.join("|");
 	dispose();
 	assert devDriver() === null, "releasing the area drops the driver";
+}
+
+function wheel(deltaMode: DeltaMode, dy: float64): PointerEvent {
+	return { window: 0 as int32, kind: PointerKind.Wheel, x: 20.0, y: 40.0, button: 0 as int32, pressed: false, dx: 0.0, dy, deltaMode, mods: 0 as BitSet<KeyMod> };
+}
+
+test "an Ion trackpad wheel reaches onWheel in layout points and a notch as one line" {
+	const p = probe();
+	const log: string[] = [];
+	render(element(
+		<Void>
+			<View style={{ width: 200, height: 100 }}
+				onWheel={(e: NeonEvent): void => { log.push(`${e.deltaMode === DOM_DELTA_PIXEL ? "pixel" : "line"} ${e.deltaY}`); }} />
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	const area = p.areas[0];
+	deliverResize(area, 800 as int32, 400 as int32, 2.0);
+	area.vh.layout(area.logicalWidth(), area.logicalHeight());
+	deliverPointer(area, areaPointer(wheel(DeltaMode.Pixel, -40.0)));
+	deliverPointer(area, areaPointer(wheel(DeltaMode.Line, 1.0)));
+	assert log.join("|") === "pixel -20|line 1", log.join("|");
 }
