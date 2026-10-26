@@ -94,6 +94,8 @@ static NSWindow *windowTitled(const char *title) {
 // The content's layers rendered by Core Animation into a bitmap at the backing scale: what the
 // views draw, not what the window server composited.
 static CGContextRef capture(NSWindow *window, CGFloat *scaleOut) {
+	[window displayIfNeeded];
+	[CATransaction flush];
 	NSView *content = window.contentView;
 	CGFloat scale = window.backingScaleFactor;
 	size_t width = (size_t)ceil(content.bounds.size.width * scale), height = (size_t)ceil(content.bounds.size.height * scale);
