@@ -12,7 +12,7 @@ import { Button } from "../../src/components/button";
 import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { ImageBackground } from "../../src/components/imageBackground";
-import { TouchableOpacity, TouchableHighlight, TouchableWithoutFeedback } from "../../src/components/touchable";
+import { TouchableOpacity, TouchableHighlight, TouchableWithoutFeedback, TouchableNativeFeedback, NativeFeedback } from "../../src/components/touchable";
 import { Modal } from "../../src/components/modal";
 import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
@@ -97,10 +97,18 @@ function ParityScreen(props: { back: () => void; say: (s: string) => void; edge:
 				<Text style={{ color: "#cdd6f4" }}>{`hairline ${Math.round(StyleSheet.hairlineWidth * 1000) / 1000}`}</Text>
 			</Section>
 			<Section title="Pressable">
-				<View style={{ flexDirection: "row", padding: 32 }}>
+				<View style={{ flexDirection: "row", padding: 32, gap: 24 }}>
 					<Pressable hitSlop={24} android_ripple={{ color: "#5589b4fa", borderless: true }} accessibilityLabel="Slop target"
 						style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: "#89b4fa" }}
 						onPress={(e: NeonEvent): void => { say("slop pressed"); }} />
+					<Pressable android_ripple={{ color: "#88f38ba8", foreground: true }} accessibilityLabel="Foreground ripple"
+						style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: "#89b4fa" }}
+						onPress={(e: NeonEvent): void => { say("foreground pressed"); }} />
+					<TouchableNativeFeedback background={NativeFeedback.SelectableBackgroundBorderless()} accessibilityLabel="Native feedback"
+						style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: "#a6e3a1" }}
+						onPress={(e: NeonEvent): void => { say("native feedback pressed"); }}>
+						<Text style={{ color: "#1e1e2e" }}>TNF</Text>
+					</TouchableNativeFeedback>
 				</View>
 			</Section>
 			<Section title="Dialog">

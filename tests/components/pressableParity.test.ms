@@ -26,7 +26,20 @@ test "Pressable sends a number hitSlop as four insets and android_ripple as one 
 	flush();
 	assert all === "10,10,10,10", "a number reaches every edge: " + all;
 	assert attrOf(button, "hitSlop") === "6,6,6,6", "follows its signal: " + attrOf(button, "hitSlop");
-	assert attrOf(button, "androidRipple") === "#33ff0000,true,24", "ripple: " + attrOf(button, "androidRipple");
+	assert attrOf(button, "androidRipple") === "#33ff0000,true,24,false,", "ripple: " + attrOf(button, "androidRipple");
+}
+
+test "android_ripple foreground and a config with no color, borderless or radius follow useAndroidRippleForView" {
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Pressable android_ripple={{ color: "#33ff0000", foreground: true }} onPress={(e: NeonEvent): void => {}}><Text>a</Text></Pressable>
+		<Pressable android_ripple={{ foreground: true }} onPress={(e: NeonEvent): void => {}}><Text>b</Text></Pressable>
+		<Pressable android_ripple={{ borderless: false }} onPress={(e: NeonEvent): void => {}}><Text>c</Text></Pressable>
+	</View>), mockHost(), root as unknown as HostNode);
+	const kids = root.children[0].children;
+	assert attrOf(kids[0], "androidRipple") === "#33ff0000,false,,true,", "foreground: " + attrOf(kids[0], "androidRipple");
+	assert attrOf(kids[1], "androidRipple") === "", "RN emits nothing for foreground alone: " + attrOf(kids[1], "androidRipple");
+	assert attrOf(kids[2], "androidRipple") === ",false,,false,", "an explicit borderless counts: " + attrOf(kids[2], "androidRipple");
 }
 
 test "a Pressable without hitSlop or ripple writes neither" {
