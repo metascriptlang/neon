@@ -400,6 +400,19 @@ bool toLocal(const View *view, float px, float py, float *lx, float *ly) {
 	return true;
 }
 
+void toParent(const View *view, float lx, float ly, float *px, float *py) {
+	float radians = view->rotation * 3.14159265358979f / 180.0f;
+	float c = cosf(radians), s = sinf(radians);
+	float m11 = view->scaleX * c, m12 = view->scaleX * s, m21 = -view->scaleY * s, m22 = view->scaleY * c;
+	float cx = view->w / 2, cy = view->h / 2;
+	*px = view->x + cx + view->translateX + (lx - cx) * m11 + (ly - cy) * m21;
+	*py = view->y + cy + view->translateY + (lx - cx) * m12 + (ly - cy) * m22;
+	if (view->parent && view->parent->scroller) {
+		*px -= view->parent->scroller->x;
+		*py -= view->parent->scroller->y;
+	}
+}
+
 View *hit(View *view, float px, float py, float *foundX, float *foundY) {
 	float lx, ly;
 	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
@@ -1348,6 +1361,33 @@ void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
 void niSetAppHandler(msClosure handler) { s_app = handler; }
+
+double g_measurement[4];
+
+int32_t niMeasureInWindow(void *view) {
+	View *v = as(view);
+	if (!g_container || !isMounted(v)) return -1;
+	float corners[4][2] = {{0, 0}, {v->w, 0}, {0, v->h}, {v->w, v->h}};
+	float minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+	for (auto &corner : corners) {
+		float x = corner[0], y = corner[1];
+		for (const View *at = v; at && at != g_container; at = at->parent) toParent(at, x, y, &x, &y);
+		minX = std::min(minX, x);
+		minY = std::min(minY, y);
+		maxX = std::max(maxX, x);
+		maxY = std::max(maxY, y);
+	}
+	g_measurement[0] = minX;
+	g_measurement[1] = minY;
+	g_measurement[2] = maxX - minX;
+	g_measurement[3] = maxY - minY;
+	return 1;
+}
+
+double niMeasurementX(void) { return g_measurement[0]; }
+double niMeasurementY(void) { return g_measurement[1]; }
+double niMeasurementW(void) { return g_measurement[2]; }
+double niMeasurementH(void) { return g_measurement[3]; }
 
 int niRequestFrame(void) {
 	if (!s_requester.fn) return 0;
