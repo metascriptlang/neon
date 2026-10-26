@@ -29,6 +29,7 @@ const ALERT: int32 = 2;
 const SCREEN_READER: int32 = 3;
 const URL: int32 = 4;
 const SHARE: int32 = 5;
+const REDUCE_MOTION: int32 = 7;
 const ACCESSIBILITY: int32 = 15;
 const FIELD = "\u001f";
 
@@ -238,5 +239,16 @@ test "accessibility events from the native side reach the change and announcemen
 	finished.remove();
 	Platform.OS = os;
 	assert seen.join(",") === "bold true,darker false,Saved false", seen.join(",");
+	nmTeardown();
+}
+
+test "the reduce motion event from the native side reaches reduceMotionChanged listeners" {
+	mount((): NeonNode => <View />);
+	const seen: string[] = [];
+	const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (on: boolean): void => { seen.push(on.toString()); });
+	nmAppEvent(REDUCE_MOTION, "1");
+	nmAppEvent(REDUCE_MOTION, "0");
+	subscription.remove();
+	assert seen.join(",") === "true,false", seen.join(",");
 	nmTeardown();
 }
