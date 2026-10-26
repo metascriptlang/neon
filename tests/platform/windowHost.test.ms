@@ -33,7 +33,7 @@ import {
 	logicalHeight,
 	drawArea,
 } from "../../src/platform/void/windowHost";
-import { areaPointer } from "../../src/platform/ion/window";
+import { areaPointer, setWindowTitle } from "../../src/platform/ion/window";
 import { PointerEvent, PointerKind, DeltaMode, KeyMod } from "../../../ion/src/index";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { useWindowDimensions } from "../../src/render/environment";
@@ -344,4 +344,8 @@ test "an Ion trackpad wheel reaches onWheel in layout points and a notch as one 
 	deliverPointer(area, areaPointer(wheel(DeltaMode.Pixel, -40.0)));
 	deliverPointer(area, areaPointer(wheel(DeltaMode.Line, 1.0)));
 	assert log.join("|") === "pixel -20|line 1", log.join("|");
+}
+
+test "setWindowTitle before runWindow opened its window names the call" {
+	assert thrown((): void => { setWindowTitle("vim"); }) === "setWindowTitle(\"vim\") ran before runWindow opened its window; the first title goes in desktopOptions", "a title with no window is refused";
 }
