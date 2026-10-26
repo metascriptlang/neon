@@ -98,6 +98,7 @@ export class AccessibilityInfo {
 		return await services.recommendedTimeoutMillis(originalTimeout as int32);
 	}
 
+	// RN spells this addEventListener("announcementFinished", …); parked on ~/metascript/.inbox/compiler/2026-10-16-class-overload-signature-without-a-body-parses-as-an-empty-method.md
 	static addAnnouncementFinishedListener(
 		handler: (event: AccessibilityAnnouncementFinishedEvent) => void,
 	): EventSubscription {
