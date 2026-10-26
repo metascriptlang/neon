@@ -87,3 +87,15 @@ test "navigate removes dot segments as the url parser does" {
 	assert at.history.read().url === "/docs/start/docs/a", at.history.read().url;
 	at.router.dispose();
 }
+
+test "navigate to an absolute address that no redirect produced throws naming the case" {
+	const opening = opened("/docs/a");
+	let message = "";
+	try { opening.router.navigate("https://example.com/x"); } catch (error) { message = error.message; }
+	assert message === "routing: \"https://example.com/x\" is not a routable path", message;
+	message = "";
+	try { opening.router.navigate("//example.com/x"); } catch (error) { message = error.message; }
+	assert message === "routing: \"//example.com/x\" is not a routable path", message;
+	assert opening.history.read().url === "/docs/a", opening.history.read().url;
+	opening.router.dispose();
+}

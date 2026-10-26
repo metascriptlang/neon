@@ -1013,7 +1013,9 @@ export class Router {
 	navigateFrom(from: string, to: string, options: NavigateOptions | null): boolean {
 		const queryOnly = to === "" || to.startsWith("?");
 		const current = queryOnly ? untrack((): string => leafStop(this.root).path) : from;
-		return this.land(resolvePath(this.routes.tree.base, to, current) ?? to, options);
+		const href = resolvePath(this.routes.tree.base, to, current);
+		if (href === null) { throw new Error("routing: \"" + to + "\" is not a routable path"); }
+		return this.land(href as string, options);
 	}
 
 	private land(href: string, options: NavigateOptions | null): boolean {
