@@ -8,6 +8,7 @@ import { runApp } from "../native/host";
 import { useAppServices, useCaptureServices } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
+import { useIonStorage } from "../ion/storage";
 import { NeonNode } from "../../render/node";
 import { flush } from "../../core/runtime";
 import {
@@ -59,6 +60,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	const win: Window = created;
 	setFramePolicy(win, FrameOnDemand);
 	useCaptureServices(ionCaptureServices);
+	useIonStorage(opts.title);
 	useAppServices(ionAppServices);
 	niwSetFrameRequester((): void => { requestFrame(win); });
 

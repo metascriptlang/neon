@@ -1,7 +1,6 @@
 import { installAppServices } from "../../src/api/services";
 import { Permissions } from "../../src/api/permissions";
 import { Alert } from "../../src/api/alert";
-import { AsyncStorage } from "../../src/api/asyncStorage";
 import { Linking, LinkingUrlEvent } from "../../src/api/linking";
 import { AppState, AppStateStatus } from "../../src/api/appState";
 import { installLinkingServices } from "../../src/api/linkingServices";
@@ -38,13 +37,6 @@ test "a service Ion does not back is refused with the name the author called" {
 		message = (e as Error).message;
 	}
 	assert message === "Alert.alert is not available on an Ion desktop host yet", message;
-	message = "";
-	try {
-		await AsyncStorage.setItem("k", "v");
-	} catch (e) {
-		message = (e as Error).message;
-	}
-	assert message === "AsyncStorage.setItem is not available on this host", message;
 }
 
 test "Linking on an Ion host opens through Ion, answers canOpenURL true as RN macOS does, and has no initial URL before a deeplink" {
