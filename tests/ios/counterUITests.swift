@@ -1526,6 +1526,28 @@ final class NavigationUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: absent, evaluatedWith: app)], timeout: 10), .completed, "\(label) is still shown")
     }
 
+    private func confirmOpen() {
+        let prompt = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["Open"]
+        if prompt.waitForExistence(timeout: 3) { prompt.tap() }
+    }
+
+    @available(iOS 16.4, *)
+    func testLinkingUrlOpensNestedScreenWhileRunningAndFromLaunch() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        _ = any("Home taps 0", timeout: 20)
+        app.open(URL(string: "neonnav://items/2")!)
+        confirmOpen()
+        _ = any("Item number 2", timeout: 20)
+        report("url-running")
+
+        app.terminate()
+        app.open(URL(string: "neonnav://items/1")!)
+        confirmOpen()
+        _ = any("Item number 1", timeout: 30)
+        report("url-launch")
+    }
+
     func testStackTabsDrawerAndBack() {
         XCUIDevice.shared.orientation = .portrait
         app.launch()

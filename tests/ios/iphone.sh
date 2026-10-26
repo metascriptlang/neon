@@ -20,8 +20,9 @@ for lane in $lanes; do
 	manifest=examples/$ex/ios/project.ms; [ -f "$manifest" ] || manifest=examples/$ex/project.ms
 	HOME=$ionhome "$ionhome/.metascript/bin/ion" generate "$manifest" "$d" > "$r/$ex.generate.log" 2>&1 || { echo "$cls FAIL generate"; status=1; continue; }
 	proj=$(ls -d "$d"/*.xcodeproj | head -1); app=$(basename "$proj" .xcodeproj)
+	urls=(); [ "$ex" = navigation ] && urls=("INFOPLIST_FILE=$PWD/tests/ios/navigationUrl.plist")
 	xcodebuild -project "$proj" -target "$app" -configuration Debug -sdk iphoneos -jobs 2 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
-		SYMROOT="$r/products" OBJROOT="$r/objects-$ex" "${sign[@]}" "${plist[@]}" build > "$r/$ex.build.log" 2>&1 || { echo "$cls FAIL build"; grep -E "error" "$r/$ex.build.log" | head -5; status=1; continue; }
+		SYMROOT="$r/products" OBJROOT="$r/objects-$ex" "${sign[@]}" "${plist[@]}" "${urls[@]}" build > "$r/$ex.build.log" 2>&1 || { echo "$cls FAIL build"; grep -E "error" "$r/$ex.build.log" | head -5; status=1; continue; }
 	bundle=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$r/products/Debug-iphoneos/$app.app/Info.plist")
 	xcrun devicectl device uninstall app --device "$IOS_DEVICE" "$bundle" > "$r/$ex.uninstall.log" 2>&1
 	xcrun devicectl device install app --device "$IOS_DEVICE" "$r/products/Debug-iphoneos/$app.app" > "$r/$ex.install.log" 2>&1 || { echo "$cls FAIL install"; tail -5 "$r/$ex.install.log"; status=1; continue; }
