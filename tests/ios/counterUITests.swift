@@ -878,8 +878,8 @@ final class ApisUITests: XCTestCase {
         tap("share")
         let copy = app.buttons["Copy"].firstMatch
         let cell = app.cells["Copy"].firstMatch
-        let sheet = NSPredicate { _, _ in copy.exists || cell.exists }
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: sheet, evaluatedWith: app)], timeout: 15), .completed, "the activity sheet offers Copy")
+        let shareSheet = NSPredicate { _, _ in copy.exists || cell.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: shareSheet, evaluatedWith: app)], timeout: 15), .completed, "the activity sheet offers Copy")
         report("share-sheet")
         if copy.exists { copy.tap() } else { cell.tap() }
         waitLabel("share ", containing: "share sharedAction")
