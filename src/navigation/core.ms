@@ -201,6 +201,7 @@ export interface NavigatorLink {
 	webNavigation: (routes: WebRoutes) => WebNavigationNode;
 	screen: () => unknown;
 	nested: (routeKey: string) => NavigatorLink | null;
+	prevents?: (action: NavigationAction) => boolean;
 	seedNested: (routeKey: string, state: NavigationState | null) => void;
 }
 
@@ -1135,9 +1136,26 @@ export class NavigatorCore<PL> {
 			this.bypass = false;
 		});
 		for (let i = removed.length - 1; i >= 0; i -= 1) {
-			if (removed[i].emitBeforeRemove(action)) { return false; }
+			if (this.asksRemoval(removed[i], action)) { return false; }
 		}
 		return true;
+	}
+
+	asksRemoval(route: Navigation<PL>, action: NavigationAction): boolean {
+		for (const entry of this.children) {
+			if (entry.routeKey !== route.route.key) { continue; }
+			const ask = entry.link.prevents;
+			if (ask !== undefined && ask(action)) { return true; }
+		}
+		return route.emitBeforeRemove(action);
+	}
+
+	preventsAll(action: NavigationAction): boolean {
+		const list = this.snapshot();
+		for (let i = list.length - 1; i >= 0; i -= 1) {
+			if (this.asksRemoval(list[i], action)) { return true; }
+		}
+		return false;
 	}
 
 	guarded(type: string, removed: Navigation<PL>[], apply: () => void): boolean {
@@ -1440,6 +1458,7 @@ export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 		webNavigation: (routes: WebRoutes): WebNavigationNode => core.webNavigation(routes),
 		screen: (): unknown => core.parentNavigation,
 		nested: (routeKey: string): NavigatorLink | null => core.nestedLink(routeKey),
+		prevents: (action: NavigationAction): boolean => core.preventsAll(action),
 		seedNested: (routeKey: string, state: NavigationState | null): void => {
 			core.seedNested(routeKey, state);
 		},
