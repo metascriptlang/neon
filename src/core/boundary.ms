@@ -1,4 +1,4 @@
-import { Computation, NotReadyError, STATUS_PENDING, STATUS_ERROR, CONFIG_REDERIVE } from "./types";
+import { Computation, NotReadyError, STATUS_PENDING, STATUS_ERROR, CONFIG_REDERIVE, CONFIG_NO_SNAPSHOT } from "./types";
 import { getOwner, createOwner, isDisposed, linkDependency, recomputeNode, wakeNode, requestFlush, requeueEffect, installBoundaryHooks } from "./runtime";
 import { runWithOwner } from "./owner";
 import { Accessor, Signal, accessor } from "./signal";
@@ -24,7 +24,7 @@ class Boundary {
 	constructor(kind: int32, parent: Boundary | null) {
 		this.kind = kind;
 		this.parent = parent;
-		this.failure = kind === STATUS_ERROR ? new Signal<Error | null>(null, null, true) : null;
+		this.failure = kind === STATUS_ERROR ? new Signal<Error | null>(null, null, true, true) : null;
 	}
 }
 
@@ -163,7 +163,7 @@ export type RaiseError = (error: Error) => void;
 
 export function createErrorRoute(resume: () => void): RaiseError | null {
 	if (getOwner() === null) { return null; }
-	const raised = new Signal<boolean>(true, (a: boolean, b: boolean): boolean => false, true);
+	const raised = new Signal<boolean>(true, (a: boolean, b: boolean): boolean => false, true, true);
 	let pending: Error | null = null;
 	let failed = false;
 	createRenderEffect<boolean>(
@@ -258,7 +258,7 @@ function derive<T>(b: Boundary, content: Accessor<T>, show: (b: Boundary) => T):
 	const self = getOwner() as Computation;
 	if (b.output === null) {
 		b.output = self;
-		self.config = self.config | CONFIG_REDERIVE;
+		self.config = self.config | CONFIG_REDERIVE | CONFIG_NO_SNAPSHOT;
 	}
 	const tree = b.tree as Computation;
 	const status = tree.status & (STATUS_PENDING | STATUS_ERROR);

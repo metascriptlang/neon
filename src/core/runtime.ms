@@ -1,10 +1,11 @@
 import {
 	Computation, Source, Link, NotReadyError,
 	REACTIVE_CHECK, REACTIVE_DIRTY, REACTIVE_RECOMPUTING_DEPS, REACTIVE_IN_HEAP, REACTIVE_IN_HEAP_HEIGHT,
-	REACTIVE_DISPOSED, REACTIVE_LAZY, REACTIVE_MISSED_WAKE, REACTIVE_REASK, REACTIVE_PROBED,
+	REACTIVE_DISPOSED, REACTIVE_LAZY, REACTIVE_MISSED_WAKE, REACTIVE_REASK, REACTIVE_PROBED, REACTIVE_SNAPSHOT_STALE,
 	STATUS_PENDING, STATUS_ERROR, STATUS_UNINITIALIZED,
 	CONFIG_OWNED_WRITE, CONFIG_TRANSPARENT, CONFIG_AUTO_DISPOSE, CONFIG_STAGED, CONFIG_PROMOTED, CONFIG_ROOT, CONFIG_MODIFIED,
 	CONFIG_DORMANT_QUEUED, CONFIG_VERDICT, CONFIG_REDERIVE, EFFECT_PURE, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED, RUN_STAGED,
+	CONFIG_IN_SNAPSHOT_SCOPE, CONFIG_HAS_SNAPSHOT, CONFIG_NO_SNAPSHOT, CONFIG_SNAPSHOT_SCOPE, READ_VALUE, READ_STAGED, READ_SNAPSHOT,
 } from "./types";
 
 const LOOP_LIMIT: int32 = 100000;
@@ -51,6 +52,13 @@ let verdictOpen: boolean = false;
 let latestActive: boolean = false;
 let probing: boolean = false;
 let probeFound: boolean = false;
+
+export interface SnapshotStore {
+	keep: (el: Source, cell: unknown) => void;
+	kept: (el: Source) => unknown;
+}
+
+let snapshots: SnapshotStore | null = null;
 
 let heapHead: (Computation | null)[] = [null];
 let heapTail: (Computation | null)[] = [null];
@@ -200,10 +208,15 @@ function enqueueSub(node: Computation): void {
 }
 
 function insertSubs(node: Source): void {
+	const held = (node.config & CONFIG_HAS_SNAPSHOT) !== 0;
 	for (let s = node.subs; s !== null; s = s.nextSub) {
 		const sub = s.sub;
 		if ((sub.flags & REACTIVE_RECOMPUTING_DEPS) !== 0 && s.gen === sub.depGen && s !== sub.depsTail) {
 			sub.flags = sub.flags | REACTIVE_MISSED_WAKE;
+		}
+		if (held && (sub.config & CONFIG_IN_SNAPSHOT_SCOPE) !== 0) {
+			sub.flags = sub.flags | REACTIVE_SNAPSHOT_STALE;
+			continue;
 		}
 		enqueueSub(sub);
 	}
@@ -647,6 +660,39 @@ function nearestComputed(parent: Computation | null): Computation | null {
 	return (parent.config & CONFIG_ROOT) !== 0 ? parent.parentComputed : parent;
 }
 
+function inSnapshotScope(owner: Computation | null): boolean {
+	let at = owner;
+	while (at !== null) {
+		if ((at.config & CONFIG_SNAPSHOT_SCOPE) !== 0) { return true; }
+		at = at.parent;
+	}
+	return false;
+}
+
+export function setSnapshotStore(store: SnapshotStore | null): void { snapshots = store; }
+
+export function wantsSnapshot(el: Source): boolean {
+	return snapshots !== null && (el.config & (CONFIG_HAS_SNAPSHOT | CONFIG_NO_SNAPSHOT)) === 0;
+}
+
+export function keepSnapshot(el: Source, cell: unknown): void {
+	const store = snapshots;
+	if (store === null) { throw new Error("[SNAPSHOT_WITHOUT_CAPTURE] a snapshot was kept while no hydration capture is on"); }
+	el.config = el.config | CONFIG_HAS_SNAPSHOT;
+	store.keep(el, cell);
+}
+
+export function snapshotOf(el: Source): unknown {
+	const store = snapshots;
+	if (store === null) { throw new Error("[SNAPSHOT_WITHOUT_CAPTURE] a snapshot was read while no hydration capture is on"); }
+	return store.kept(el);
+}
+
+export function markSnapshotStale(): void {
+	const c = nearestComputed(currentOwner);
+	if (c !== null) { c.flags = c.flags | REACTIVE_SNAPSHOT_STALE; }
+}
+
 function newNode(config: int32, flags: int32, computed: boolean, run: ((self: Computation, create: boolean) => int32) | null, type: int32, parent: Computation | null): Computation {
 	return new Computation(config, flags, computed, run, type, parent, clock);
 }
@@ -668,7 +714,9 @@ export function createComputed(
 	unobservedHook: (() => void) | null,
 ): Computation {
 	const parent = currentOwner;
-	const config = (transparent ? CONFIG_TRANSPARENT : 0) | (parent === null || lazy ? CONFIG_AUTO_DISPOSE : 0);
+	const config = (transparent ? CONFIG_TRANSPARENT : 0) |
+		(parent === null || lazy ? CONFIG_AUTO_DISPOSE : 0) |
+		(snapshots !== null && inSnapshotScope(parent) ? CONFIG_IN_SNAPSHOT_SCOPE : 0);
 	const node = newNode(config, lazy ? REACTIVE_LAZY : 0, true, run, type, parent);
 	node.id = inheritId(parent, transparent);
 	node.unobserved = unobservedHook;
@@ -738,7 +786,7 @@ function recompute(el: Computation, create: boolean): void {
 		currentOwner = oldOwner;
 		missedWake = (el.flags & REACTIVE_MISSED_WAKE) !== 0;
 		if ((el.flags & REACTIVE_PROBED) === 0) { el.config = el.config & ~CONFIG_VERDICT; }
-		el.flags = el.flags & REACTIVE_DISPOSED;
+		el.flags = el.flags & (REACTIVE_DISPOSED | (create ? REACTIVE_SNAPSHOT_STALE : 0));
 		el.reask = reask && thrown instanceof NotReadyError;
 	}
 	if (thrown !== null) {
@@ -826,7 +874,7 @@ function updateIfNecessary(el: Computation): void {
 		}
 	}
 	if ((el.flags & REACTIVE_DIRTY) !== 0 || isStaleError(el)) { recompute(el, false); }
-	el.flags = el.flags & (REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT | REACTIVE_DISPOSED);
+	el.flags = el.flags & (REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT | REACTIVE_DISPOSED | REACTIVE_SNAPSHOT_STALE);
 }
 
 function prepareComputed(comp: Computation): void {
@@ -924,7 +972,7 @@ function verdictRead(el: Source, c: Computation | null): boolean {
 	return latestActive ? serveStaged(el, c) : false;
 }
 
-export function readSource(el: Source): boolean {
+export function readSource(el: Source): int32 {
 	let c = currentOwner;
 	const underScope = c !== null && (c.config & CONFIG_ROOT) !== 0;
 	if (underScope) { c = (c as Computation).parentComputed; }
@@ -939,6 +987,9 @@ export function readSource(el: Source): boolean {
 			if (el.computed) { pullComputed(el as Computation, c); }
 		}
 		if (el.computed) { throwIfUnready(el as Computation, c, underScope); }
+		if (snapshots !== null && c !== null && (c.config & CONFIG_IN_SNAPSHOT_SCOPE) !== 0 && (el.config & CONFIG_HAS_SNAPSHOT) !== 0) {
+			return READ_SNAPSHOT;
+		}
 		staged = serveStaged(el, c);
 	}
 	if (c === null && el.computed && el.subs === null) {
@@ -949,7 +1000,7 @@ export function readSource(el: Source): boolean {
 			dormantPending = true;
 		}
 	}
-	return staged;
+	return staged ? READ_STAGED : READ_VALUE;
 }
 
 function stageNode(el: Source): void {

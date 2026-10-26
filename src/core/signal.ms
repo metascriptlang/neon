@@ -1,5 +1,8 @@
-import { Source, CONFIG_OWNED_WRITE } from "./types";
-import { newSource, readSource, isStaged, writeSource, assertWritable, isTracking, setTracking } from "./runtime";
+import { Source, CONFIG_OWNED_WRITE, CONFIG_NO_SNAPSHOT, READ_STAGED, READ_SNAPSHOT } from "./types";
+import {
+	newSource, readSource, isStaged, writeSource, assertWritable, isTracking, setTracking,
+	wantsSnapshot, keepSnapshot, snapshotOf, markSnapshotStale,
+} from "./runtime";
 when (debug) { import { swapStrictLabel } from "./runtime"; }
 
 export class Cell<T> {
@@ -26,14 +29,21 @@ export class Signal<T> {
 	private node: Source;
 	private equals: ((a: T, b: T) => boolean) | null;
 
-	constructor(initialValue: T, equals: ((a: T, b: T) => boolean) | null = null, ownedWrite: boolean = false) {
+	constructor(
+		initialValue: T,
+		equals: ((a: T, b: T) => boolean) | null = null,
+		ownedWrite: boolean = false,
+		noSnapshot: boolean = false,
+	) {
 		this.cell = new Cell<T>(initialValue);
-		this.node = newSource(ownedWrite ? CONFIG_OWNED_WRITE : 0);
+		this.node = newSource((ownedWrite ? CONFIG_OWNED_WRITE : 0) | (noSnapshot ? CONFIG_NO_SNAPSHOT : 0));
 		this.equals = equals;
 	}
 
 	get(): T {
-		return readSource(this.node) ? this.cell.pending : this.cell.value;
+		const read = readSource(this.node);
+		if (read === READ_SNAPSHOT) { return servedSnapshot<T>(this.node, this.peek()); }
+		return read === READ_STAGED ? this.cell.pending : this.cell.value;
 	}
 
 	peek(): T {
@@ -42,7 +52,9 @@ export class Signal<T> {
 
 	set(newValue: T): void {
 		assertWritable(this.node);
-		if (isEqual(this.equals, this.peek(), newValue)) { return; }
+		const current = this.peek();
+		if (isEqual(this.equals, current, newValue)) { return; }
+		if (wantsSnapshot(this.node)) { keepSnapshot(this.node, new Cell<T>(current) as unknown); }
 		const wasStaged = isStaged(this.node);
 		this.cell.pending = newValue;
 		if (this.node.commit === null) {
@@ -55,6 +67,12 @@ export class Signal<T> {
 	update(fn: (current: T) => T): void {
 		this.set(fn(this.peek()));
 	}
+}
+
+export function servedSnapshot<T>(node: Source, current: T): T {
+	const kept = (snapshotOf(node) as Cell<T>).value;
+	if (kept !== current) { markSnapshotStale(); }
+	return kept;
 }
 
 export type Accessor<T> = distinct (() => T);

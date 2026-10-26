@@ -1,7 +1,11 @@
-import { Computation, NotReadyError, EFFECT_PURE, RUN_UNCHANGED, RUN_PUBLISHED, RUN_STAGED } from "./types";
-import { Cell, Accessor, accessor, isEqual, untrack } from "./signal";
+import {
+	Computation, NotReadyError, EFFECT_PURE, RUN_UNCHANGED, RUN_PUBLISHED, RUN_STAGED, STATUS_PENDING, READ_STAGED, READ_SNAPSHOT,
+} from "./types";
+import { Cell, Accessor, accessor, isEqual, untrack, servedSnapshot } from "./signal";
 import { ServerContext, serverContext } from "./serverContext";
-import { createComputed, readSource, isStaged, writeSource, beginFlight, landFlight, failFlight, markRefresh } from "./runtime";
+import {
+	createComputed, readSource, isStaged, writeSource, beginFlight, landFlight, failFlight, markRefresh, wantsSnapshot, keepSnapshot,
+} from "./runtime";
 
 export interface MemoOptions<T> {
 	equals?: ((a: T, b: T) => boolean) | false;
@@ -182,18 +186,23 @@ function buildMemo<T>(produce: (self: Computation, prev: T | null, land: (self: 
 		return RUN_STAGED;
 	};
 	const node = createComputed(run, EFFECT_PURE, lazy, false, hook);
+	const first: Cell<T> | null = cell;
+	if (first !== null && wantsSnapshot(node) && (node.status & STATUS_PENDING) === 0) {
+		keepSnapshot(node, new Cell<T>(first.value) as unknown);
+	}
 
 	return accessor((): T => {
 		if (refreshProbing) {
 			refreshTarget = node;
 			throw new RefreshProbeStop();
 		}
-		const staged = readSource(node);
+		const read = readSource(node);
 		const held = cell;
 		if (held === null) {
 			throw new Error("Memo accessed before initialization");
 		}
-		return staged ? held.pending : held.value;
+		if (read === READ_SNAPSHOT) { return servedSnapshot<T>(node, isStaged(node) ? held.pending : held.value); }
+		return read === READ_STAGED ? held.pending : held.value;
 	});
 }
 
