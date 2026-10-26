@@ -153,16 +153,70 @@ function matchFrom(
 	return matchFrom(segments, from + 1, parts, at + 1, values);
 }
 
-export function pathOf(url: string, prefixes: string[]): string | null {
-	let best: string | null = null;
-	let bestLength = -1;
-	for (const prefix of prefixes) {
-		if (url.startsWith(prefix) && prefix.length > bestLength) {
-			best = url.substring(prefix.length, url.length);
-			bestLength = prefix.length;
-		}
+function collapseSlashes(text: string): string {
+	let out = "";
+	let previousSlash = false;
+	for (let i = 0; i < text.length; i += 1) {
+		const char = text.charAt(i);
+		const slash = char === "/";
+		if (!(slash && previousSlash)) { out += char; }
+		previousSlash = slash;
 	}
-	return best;
+	return out;
+}
+
+function isDelimiter(char: string): boolean {
+	return char === "/" || char === "?" || char === "#";
+}
+
+function matchHost(labels: string[], label: int32, url: string, at: int32, closed: boolean): int32 {
+	if (label >= labels.length) {
+		if (closed || at >= url.length || isDelimiter(url.charAt(at))) { return at; }
+		return -1;
+	}
+	let from = at;
+	if (label > 0) {
+		if (at >= url.length || url.charAt(at) !== ".") { return -1; }
+		from = at + 1;
+	}
+	if (labels[label] !== "*") {
+		const text = labels[label];
+		if (url.substring(from, from + text.length) !== text) { return -1; }
+		return matchHost(labels, label + 1, url, from + text.length, closed);
+	}
+	let end = from;
+	while (end < url.length && !isDelimiter(url.charAt(end))) { end += 1; }
+	for (let stop = end; stop > from; stop -= 1) {
+		const matched = matchHost(labels, label + 1, url, stop, closed);
+		if (matched >= 0) { return matched; }
+	}
+	return -1;
+}
+
+function pathAfterPrefix(url: string, prefix: string): string | null {
+	const colon = prefix.indexOf(":");
+	const protocol = colon > 0 ? prefix.substring(0, colon + 1) : "";
+	let host = collapseSlashes(prefix.substring(protocol.length, prefix.length));
+	if (host.startsWith("/")) { host = host.substring(1, host.length); }
+	const mark = url.indexOf("?");
+	const normalized = mark < 0
+		? collapseSlashes(url)
+		: collapseSlashes(url.substring(0, mark)) + url.substring(mark, url.length);
+	if (!normalized.startsWith(protocol)) { return null; }
+	let at = protocol.length;
+	while (at < normalized.length && normalized.charAt(at) === "/") { at += 1; }
+	const end = matchHost(host.split("."), 0, normalized, at, host === "" || host.endsWith("/"));
+	if (end < 0) { return null; }
+	const rest = normalized.substring(end, normalized.length);
+	return rest.startsWith("?") || rest.startsWith("#") ? "/" + rest : rest;
+}
+
+export function pathOf(url: string, prefixes: string[]): string | null {
+	for (const prefix of prefixes) {
+		const path = pathAfterPrefix(url, prefix);
+		if (path !== null) { return path; }
+	}
+	return null;
 }
 
 export function targetFromPath(path: string, config: LinkingConfig): NavTarget | null {
