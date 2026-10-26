@@ -174,12 +174,12 @@ export function pagesModel<PL>(
 	const leave = (left: Navigation<PL> | null): void => {
 		if (left === null) { return; }
 		const gone = left as Navigation<PL>;
-		if (!shown(gone.options().popToTopOnBlur, false) || gone.isFocused()) { return; }
+		if (!untrack((): boolean => shown(gone.options().popToTopOnBlur, false)) || gone.isFocused()) { return; }
 		const nested = core.nestedLink(gone.route.key);
 		if (nested !== null) { (nested as NavigatorLink).popToTop(); }
 	};
 	const focus = (at: int32): void => {
-		const left = core.current();
+		const left = untrack((): Navigation<PL> | null => core.current());
 		visit(core.snapshot()[at].route.key);
 		core.apply((): void => { pages.select(at); });
 		leave(left);
@@ -220,7 +220,7 @@ export function pagesModel<PL>(
 		const goal = backTarget();
 		if (goal < 0) { return false; }
 		if (behavior === "history") {
-			const left = core.current();
+			const left = untrack((): Navigation<PL> | null => core.current());
 			history.pop();
 			core.apply((): void => { pages.select(goal); });
 			leave(left);
