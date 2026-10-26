@@ -261,7 +261,7 @@ public final class App {
 		return (AccessibilityManager) a.getSystemService(Context.ACCESSIBILITY_SERVICE);
 	}
 
-	private static boolean reduceMotion(Activity a) {
+	static boolean reduceMotion(Activity a) {
 		float scale = Settings.Global.getFloat(a.getContentResolver(), Settings.Global.TRANSITION_ANIMATION_SCALE, 1f);
 		return scale == 0f;
 	}

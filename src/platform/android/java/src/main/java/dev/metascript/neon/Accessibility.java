@@ -11,7 +11,7 @@ import android.provider.Settings;
 import android.view.accessibility.AccessibilityManager;
 import java.util.HashMap;
 
-// Mirrors AccessibilityInfoModule.kt: the same settings keys, read when asked and watched for changes.
+// Mirrors AccessibilityInfoModule.kt (animationScaleObserver for reduce motion): the same settings keys, read when asked and watched for changes.
 final class Accessibility {
 	private static final String HIGH_TEXT_CONTRAST = "high_text_contrast_enabled";
 	private static final String DALTONIZER_ENABLED = "accessibility_display_daltonizer_enabled";
@@ -41,6 +41,11 @@ final class Accessibility {
 		publish("grayscaleChanged", grayscale(a));
 		publish("highTextContrastChanged", highTextContrast(a));
 		publish("accessibilityServiceChanged", manager(a).isEnabled());
+		watch(resolver, Settings.Global.getUriFor(Settings.Global.TRANSITION_ANIMATION_SCALE), () -> {
+			String value = flag(App.reduceMotion(a));
+			if (!value.equals(published.put("reduceMotion", value))) App.event(App.REDUCE_MOTION, value);
+		});
+		published.put("reduceMotion", flag(App.reduceMotion(a)));
 		manager(a).addAccessibilityStateChangeListener(enabled -> publish("accessibilityServiceChanged", enabled));
 		watch(resolver, Settings.Secure.getUriFor(Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED),
 			() -> publish("invertColorsChanged", invertColors(a)));
