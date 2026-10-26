@@ -55,6 +55,61 @@ def wait_match(prefix, pattern, seconds):
     raise LaneError("expected %s... to match %r; it reads %r" % (prefix, pattern, current))
 
 
+def device_locale():
+    tag = adb("shell", "getprop", "persist.sys.locale").strip() or adb("shell", "getprop", "ro.product.locale").strip()
+    zone = adb("shell", "getprop", "persist.sys.timezone").strip()
+    hours = adb("shell", "settings", "get", "system", "time_12_24").strip()
+    return tag, zone, hours
+
+
+def read_locale():
+    shown = controls.wait_label("locale ", "tz ")
+    match = re.match(r"^locale (\S+) tz (\S+) 24h (\S+) rtl (yes|no)$", shown)
+    if not match:
+        raise LaneError("locale line is malformed: %r" % shown)
+    print("NEON_ANDROID devicemodules-locale %s" % shown)
+    return match.groups()
+
+
+def subtags(tag):
+    parts = tag.replace("_", "-").lower().split("-")
+    return parts[0], parts[-1] if len(parts) > 1 else ""
+
+
+def check_locale():
+    shown_tag, shown_zone, shown_hours, _ = read_locale()
+    device_tag, device_zone, device_hours = device_locale()
+    if subtags(shown_tag) != subtags(device_tag):
+        raise LaneError("locale tag %r differs from the device %r" % (shown_tag, device_tag))
+    if device_zone and shown_zone != device_zone:
+        raise LaneError("timezone %r differs from the device %r" % (shown_zone, device_zone))
+    if device_hours in ("12", "24") and shown_hours != ("yes" if device_hours == "24" else "no"):
+        raise LaneError("24h %r differs from time_12_24 %r" % (shown_hours, device_hours))
+    if not device_zone or device_hours not in ("12", "24"):
+        print("NEON_ANDROID devicemodules-locale SKIP partial compare: persist.sys.timezone=%r time_12_24=%r" % (device_zone, device_hours))
+
+
+def check_app_rtl():
+    sdk = int(adb("shell", "getprop", "ro.build.version.sdk").strip())
+    if sdk < 33:
+        print("NEON_ANDROID devicemodules-rtl SKIP sdk %d has no per-app locale (needs 33)" % sdk)
+        return
+    try:
+        adb("shell", "cmd", "locale", "set-app-locales", PACKAGE, "--user", "0", "--locales", "ar-EG")
+        adb("shell", "am", "force-stop", PACKAGE)
+        launch()
+        tag, _, _, rtl = read_locale()
+        if rtl != "yes" or subtags(tag)[0] != "ar":
+            raise LaneError("per-app ar-EG gave tag %r rtl %r, expected an ar tag and rtl yes" % (tag, rtl))
+    finally:
+        adb("shell", "cmd", "locale", "set-app-locales", PACKAGE, "--user", "0", "--locales", "", check=False)
+        adb("shell", "am", "force-stop", PACKAGE)
+        launch()
+    tag, _, _, rtl = read_locale()
+    if subtags(tag)[0] == "ar" and subtags(device_locale()[0])[0] != "ar":
+        raise LaneError("per-app locale not restored: tag %r rtl %r" % (tag, rtl))
+
+
 def lane():
     controls.require_awake()
     counter.PACKAGE = PACKAGE
@@ -72,6 +127,8 @@ def lane():
     controls.wait_label("device ", "device %s Android %s emulator %s" % (model, release, emulated))
     controls.wait_label("app ", "app " + PACKAGE + " ")
     shot("initial")
+    check_locale()
+    check_app_rtl()
 
     press("save note")
     controls.wait_label("stored ", "stored note-1")
