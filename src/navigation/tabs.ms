@@ -19,6 +19,7 @@ import {
 	NavigatorCore,
 	NavigatorKind,
 	NavigatorLink,
+	NavigationHistoryItem,
 	NavigatorModel,
 	RouteSeed,
 	RouteWebMap,
@@ -328,6 +329,35 @@ export function pagesModel<PL>(
 		canBack: (): boolean => backTarget() >= 0,
 		back,
 		canPop: (): boolean => false,
+		history: (): NavigationHistoryItem[] | null => {
+			const items: NavigationHistoryItem[] = [];
+			const list = core.snapshot();
+			if (behavior === "history" || behavior === "fullHistory") {
+				for (const visit of history) { items.push({ type: "route", key: visit.key }); }
+				return items;
+			}
+			for (const at of backPath()) { items.push({ type: "route", key: list[at].route.key }); }
+			return items;
+		},
+		defaultStatus: null,
+		restoreHistory: (items: NavigationHistoryItem[]): void => {
+			if (behavior !== "history" && behavior !== "fullHistory") { return; }
+			const list = core.snapshot();
+			const restored: Visit[] = [];
+			for (const item of items) {
+				if (item.type !== "route") { continue; }
+				for (const entry of list) {
+					if (entry.route.key === item.key) {
+						restored.push({ key: entry.route.key, slot: untrack((): ParamSlot | null => entry.route.slot()) });
+					}
+				}
+			}
+			const current = list[untrack((): int32 => pages.selectedIndex())];
+			if (restored.length === 0 || restored[restored.length - 1].key !== current.route.key) {
+				restored.push({ key: current.route.key, slot: untrack((): ParamSlot | null => current.route.slot()) });
+			}
+			history = restored;
+		},
 		drawer: (action: DrawerAction): boolean => false,
 		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
 			const web = childPagesWebNavigation<RouteSeed<PL>, Navigation<PL>>(pages, map.serializer, {

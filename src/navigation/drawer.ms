@@ -20,6 +20,7 @@ import {
 	NavigatorCore,
 	NavigatorKind,
 	NavigatorLink,
+	NavigationHistoryItem,
 	NavigatorModel,
 	RouteSeed,
 	RouteWebMap,
@@ -169,6 +170,7 @@ function drawerModel<PL>(
 	pages: NavigatorModel<PL>,
 	open: Accessor<boolean>,
 	writeOpen: Setter<boolean>,
+	fallback: DrawerStatus,
 ): NavigatorModel<PL> {
 	const back = (): boolean => {
 		if (untrack((): boolean => open())) {
@@ -197,6 +199,21 @@ function drawerModel<PL>(
 		canBack: (): boolean => untrack((): boolean => open()) || pages.canBack(),
 		back,
 		canPop: pages.canPop,
+		history: (): NavigationHistoryItem[] | null => {
+			const items = pages.history() as NavigationHistoryItem[];
+			const now: DrawerStatus = open() ? "open" : "closed";
+			if (now !== fallback) { items.push({ type: "drawer", status: now }); }
+			return items;
+		},
+		defaultStatus: fallback,
+		restoreHistory: (items: NavigationHistoryItem[]): void => {
+			let now: DrawerStatus = fallback;
+			for (const item of items) {
+				if (item.type === "drawer") { now = item.status === "open" ? "open" : "closed"; }
+			}
+			writeOpen(now === "open");
+			pages.restoreHistory(items);
+		},
 		drawer: (action: DrawerAction): boolean => {
 			writeOpen((current: boolean): boolean => {
 				const next = match (action) {
@@ -374,7 +391,7 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 					at: int32,
 				): NavigatorModel<PL> => {
 					const pages = pagesModel<PL>(core, behavior, restored, at);
-					return drawerModel<PL>(pages, open, writeOpen);
+					return drawerModel<PL>(pages, open, writeOpen, opening ? "open" : "closed");
 				},
 			});
 			watchScreens<PL>(collection, core);

@@ -186,10 +186,18 @@ export interface NavigationRoute {
 	state: NavigationState | null;
 }
 
+export interface NavigationHistoryItem {
+	type: string;
+	key?: string | null;
+	status?: string | null;
+}
+
 export interface NavigationState {
 	index: int32;
 	routeNames: string[];
 	routes: NavigationRoute[];
+	history?: NavigationHistoryItem[] | null;
+	default?: string | null;
 }
 
 export interface WebRoutes {
@@ -877,6 +885,9 @@ export interface NavigatorModel<PL> {
 	canPop: () => boolean;
 	drawer: (action: DrawerAction) => boolean;
 	webNavigation: (map: RouteWebMap<PL>) => WebNavigationNode;
+	history: () => NavigationHistoryItem[] | null;
+	defaultStatus: string | null;
+	restoreHistory: (items: NavigationHistoryItem[]) => void;
 }
 
 export interface RouteWebMap<PL> {
@@ -945,6 +956,7 @@ export class NavigatorCore<PL> {
 		}
 		this.entries = this.model.entries;
 		this.index = this.model.index;
+		if (restored !== null) { this.restoreHistory(restored as NavigationState); }
 	}
 
 	config(name: string): ScreenConfig<PL> | null {
@@ -1429,6 +1441,14 @@ export class NavigatorCore<PL> {
 	restore(state: NavigationState): void {
 		const list = this.restoredSeeds(state);
 		this.model.reset(list, this.resetIndex(list, state.index));
+		this.restoreHistory(state);
+	}
+
+	restoreHistory(state: NavigationState): void {
+		const items = state.history;
+		if (items !== null && items !== undefined) {
+			this.model.restoreHistory(items as NavigationHistoryItem[]);
+		}
 	}
 
 	unregister(routeKey: string, child: NavigatorLink): void {
@@ -1509,7 +1529,13 @@ export class NavigatorCore<PL> {
 			}
 			routes.push({ key, name: entry.route.name, params: this.encodeParams(entry), state: child });
 		}
-		return { index: this.index(), routeNames: this.routeNames(), routes };
+		return {
+			index: this.index(),
+			routeNames: this.routeNames(),
+			routes,
+			history: this.model.history(),
+			default: this.model.defaultStatus,
+		};
 	}
 
 	encodeParams(entry: Navigation<PL>): Map<string, string> | null {

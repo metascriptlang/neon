@@ -17,6 +17,7 @@ import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
+	NavigationHistoryItem,
 	NavigatorModel,
 	RouteSeed,
 	RouteWebMap,
@@ -243,6 +244,11 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 		canBack: (): boolean => untrack((): Navigation<PL>[] => entries()).length > 1,
 		back,
 		canPop: (): boolean => entries().length > 1,
+		history: (): NavigationHistoryItem[] | null => null,
+		defaultStatus: null,
+		restoreHistory: (items: NavigationHistoryItem[]): void => {
+			throw new Error("a stack's state carries no visit history");
+		},
 		drawer: (action: DrawerAction): boolean => false,
 		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
 			const web = childStackWebNavigation<RouteSeed<PL>, Navigation<PL>>(stack, map.serializer, {

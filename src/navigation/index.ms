@@ -11,6 +11,7 @@ export {
 	NavigateActionOptions,
 	RouteKey,
 	NavigationState,
+	NavigationHistoryItem,
 	NavigationRoute,
 	NavigatorLink,
 	ScreenScope,
