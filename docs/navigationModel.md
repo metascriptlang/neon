@@ -622,6 +622,19 @@ uses a shadow root.
 - A stack's focused route is its last: a reset or restored state keeps every route
   and focuses the last whatever its `index`, as React Navigation's
   `StackRouter.getRehydratedState` does for a state that is not `stale: false`.
+- Events and bubbling follow React Navigation 7 (`@react-navigation/core` 7.24.0,
+  `routers` 7.6.5). A screen mounted focused receives `focus` once after mount, after the
+  blur of the screen it replaces (`useFocusEvents.tsx:45-74`). Removing a route asks the
+  `beforeRemove` listeners of every nested screen, deepest first, before its own
+  (`useOnPreventRemove.tsx:55-83`). `pop`, `popToTop` and `replace` a navigator cannot
+  handle (a nested stack at its root, a name only a parent has) go to the parent
+  navigator (`StackRouter.tsx` `POP` and `REPLACE` return `null`); an action no navigator
+  handles is reported by name (`replace` throws). `popToTop` reports `POP_TO_TOP` to
+  `beforeRemove`. The `state` event carries the navigator state in `data.state`
+  (`useNavigationBuilder.tsx:929`). A tab or drawer `navigate` without params resets the
+  route's params and a tab or drawer item press keeps them (`SwitchRouter.tsx:375-465`);
+  the drawer closes when a `navigate` changes the focused route (`DrawerRouter.tsx:221-235`),
+  and a press on the focused item closes it.
 - Transitions belong to the render layer, as Decompose's
   `Children(animation = stackAnimation())`: `navigatorMotion.ms` diffs the route
   children, keeps a leaving screen rendered until its exit ends
