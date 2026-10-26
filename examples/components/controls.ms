@@ -69,6 +69,8 @@ export function BookingForm(): NeonNode {
 	const [payment, setPayment] = createSignal("card");
 	const [prefs, setPrefs] = createSignal([] as string[]);
 	const [status, setStatus] = createSignal("idle");
+	const [party, setParty] = createSignal(2 as int32);
+	const [partyAction, setPartyAction] = createSignal("none");
 	const [confirming, setConfirming] = createSignal(false);
 	const [details, setDetails] = createSignal(false);
 	const [booked, setBooked] = createSignal(false);
@@ -147,6 +149,19 @@ export function BookingForm(): NeonNode {
 				</View>
 				<Slider value={guests()} minimumValue={1} maximumValue={8} step={1} accessibilityLabel="Guests"
 					minimumTrackTintColor="#6750a4" onValueChange={(v: float64): void => { setGuests(v); }} />
+				<View accessible={true} accessibilityRole="adjustable" accessibilityLabel="Party size"
+					accessibilityValue={{ min: 0, max: 10, now: party() }}
+					accessibilityActions={[{ name: "increment" }, { name: "decrement" }, { name: "reset", label: "Reset party" }]}
+					onAccessibilityAction={(e: NeonEvent): void => {
+						setPartyAction(e.value);
+						if (e.value === "increment") { setParty(party() + 1); }
+						else if (e.value === "decrement") { setParty(party() - 1); }
+						else if (e.value === "reset") { setParty(2); }
+					}}>
+					<Text style={label}>adjust party</Text>
+				</View>
+				<Text style={value}>{`party ${party()} via ${partyAction()}`}</Text>
+				<View accessibilityElementsHidden={true}><Text style={label}>Hidden tip</Text></View>
 			</Field>
 			<Divider inset={true} />
 			<Field title="Room">
