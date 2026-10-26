@@ -675,7 +675,7 @@ uses a shadow root.
   React Navigation's per-screen ParamList: `createStackNavigator<PL>()`,
   `navigation.navigate(name, params?)` typed per screen (`params` required unless
   `null` is in the screen's entry), `useRoute<PL, "Name">()` for `route.params`
-  and `route.setParams`, `getParent<PL, Q>()` for the parent's list. Each route
+  and `route.setParams` (shallow merge) / `route.replaceParams`, `getParent<PL, Q>()` for the parent's list. Each route
   keeps its params as a `ParamBox<PL[K]>` in one slot (`core.ms`), whose type
   argument is the identity a read checks, so reading a route as another screen's
   type stops with `invalid object conversion` instead of reinterpreting memory.
