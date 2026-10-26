@@ -16,7 +16,11 @@ import { Linking, LinkingUrlEvent, publishUrl } from "../../src/api/linking";
 import { Share, ShareAction } from "../../src/api/share";
 import { Vibration } from "../../src/api/vibration";
 import { Platform, Clipboard } from "../../src/index";
-import { AccessibilityInfo, publishScreenReader } from "../../src/api/accessibilityInfo";
+import {
+	AccessibilityInfo, AccessibilityAnnouncementFinishedEvent, publishAccessibilityFlag, publishAnnouncementFinished,
+	publishScreenReader,
+} from "../../src/api/accessibilityInfo";
+import { Platform } from "../../src/api/platform";
 import { FakeServices } from "./fakeServices";
 
 test "Platform names the compile-time OS and selects its entry, then native, then default" {
@@ -354,4 +358,89 @@ test "AccessibilityInfo asks the host, follows the published screen reader and a
 	assert fake.joined() === "announce Saved", fake.joined();
 	publishScreenReader(false);
 	flush();
+}
+
+test "AccessibilityInfo answers each query from the host on the platform that has it and false on the other" {
+	const fake = new FakeServices();
+	fake.install();
+	fake.flags = ["boldText", "grayscale", "invertColors", "reduceTransparency", "highTextContrast", "darkerSystemColors", "crossFade", "accessibilityService"];
+	fake.timeoutScale = 3;
+	const os = Platform.OS;
+	Platform.OS = "ios";
+	assert await AccessibilityInfo.isBoldTextEnabled();
+	assert await AccessibilityInfo.isGrayscaleEnabled();
+	assert await AccessibilityInfo.isInvertColorsEnabled();
+	assert await AccessibilityInfo.isReduceTransparencyEnabled();
+	assert await AccessibilityInfo.isDarkerSystemColorsEnabled();
+	assert await AccessibilityInfo.prefersCrossFadeTransitions();
+	assert !(await AccessibilityInfo.isHighTextContrastEnabled());
+	assert await AccessibilityInfo.getRecommendedTimeoutMillis(4000) === 4000;
+	let message = "";
+	try {
+		await AccessibilityInfo.isAccessibilityServiceEnabled();
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "isAccessibilityServiceEnabled is only available on Android", message;
+	Platform.OS = "android";
+	assert !(await AccessibilityInfo.isBoldTextEnabled());
+	assert await AccessibilityInfo.isGrayscaleEnabled();
+	assert await AccessibilityInfo.isInvertColorsEnabled();
+	assert !(await AccessibilityInfo.isReduceTransparencyEnabled());
+	assert !(await AccessibilityInfo.isDarkerSystemColorsEnabled());
+	assert !(await AccessibilityInfo.prefersCrossFadeTransitions());
+	assert await AccessibilityInfo.isHighTextContrastEnabled();
+	assert await AccessibilityInfo.isAccessibilityServiceEnabled();
+	assert await AccessibilityInfo.getRecommendedTimeoutMillis(4000) === 12000;
+	Platform.OS = os;
+}
+
+test "AccessibilityInfo change events reach their own listeners, and only on the platform that emits them" {
+	const fake = new FakeServices();
+	fake.install();
+	const os = Platform.OS;
+	const seen: string[] = [];
+	Platform.OS = "ios";
+	const bold = AccessibilityInfo.addEventListener("boldTextChanged", (on: boolean): void => { seen.push("bold " + on.toString()); });
+	const invert = AccessibilityInfo.addEventListener("invertColorsChanged", (on: boolean): void => { seen.push("invert " + on.toString()); });
+	const contrast = AccessibilityInfo.addEventListener("highTextContrastChanged", (on: boolean): void => { seen.push("contrast"); });
+	const finished = AccessibilityInfo.addAnnouncementFinishedListener((e: AccessibilityAnnouncementFinishedEvent): void => {
+		seen.push("finished " + e.announcement + " " + e.success.toString());
+	});
+	publishAccessibilityFlag("boldTextChanged", true);
+	publishAccessibilityFlag("invertColorsChanged", true);
+	publishAccessibilityFlag("highTextContrastChanged", true);
+	publishAnnouncementFinished("Saved", true);
+	bold.remove();
+	publishAccessibilityFlag("boldTextChanged", false);
+	assert seen.join(",") === "bold true,invert true,finished Saved true", seen.join(",");
+	invert.remove();
+	finished.remove();
+	contrast.remove();
+	Platform.OS = "android";
+	const service = AccessibilityInfo.addEventListener("accessibilityServiceChanged", (on: boolean): void => { seen.push("service " + on.toString()); });
+	const iosOnly = AccessibilityInfo.addEventListener("boldTextChanged", (on: boolean): void => { seen.push("never"); });
+	const announce = AccessibilityInfo.addAnnouncementFinishedListener((e: AccessibilityAnnouncementFinishedEvent): void => { seen.push("never"); });
+	publishAccessibilityFlag("accessibilityServiceChanged", true);
+	publishAccessibilityFlag("boldTextChanged", true);
+	publishAnnouncementFinished("Saved", true);
+	service.remove();
+	iosOnly.remove();
+	announce.remove();
+	assert seen.join(",") === "bold true,invert true,finished Saved true,service true", seen.join(",");
+	Platform.OS = os;
+}
+
+test "announceForAccessibilityWithOptions queues on iOS and plain-announces without a queue option or on Android" {
+	const fake = new FakeServices();
+	fake.install();
+	const os = Platform.OS;
+	Platform.OS = "ios";
+	AccessibilityInfo.announceForAccessibilityWithOptions("One", { queue: true });
+	AccessibilityInfo.announceForAccessibilityWithOptions("Two", { queue: false });
+	AccessibilityInfo.announceForAccessibilityWithOptions("Three", {});
+	Platform.OS = "android";
+	AccessibilityInfo.announceForAccessibilityWithOptions("Four", { queue: true });
+	Platform.OS = os;
+	assert fake.joined() === "announce One queued;announce Two unqueued;announce Three;announce Four", fake.joined();
 }

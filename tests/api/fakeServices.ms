@@ -2,7 +2,7 @@ import {
 	AppServices, AlertRequest,
 	ShareRequest, installAppServices,
 } from "../../src/api/services";
-import { AccessibilityServices, installAccessibilityServices } from "../../src/api/accessibilityServices";
+import { AccessibilityFlag, AccessibilityServices, installAccessibilityServices } from "../../src/api/accessibilityServices";
 import { VibrationServices, installVibrationServices } from "../../src/api/vibrationServices";
 import { LinkingServices, installLinkingServices } from "../../src/api/linkingServices";
 import { ClipboardServices, installClipboardServices } from "../../src/api/clipboardServices";
@@ -29,6 +29,8 @@ export class FakeServices {
 	openable: boolean = true;
 	initial: string = "";
 	screenReader: boolean = false;
+	flags: string[] = [];
+	timeoutScale: int32 = 1;
 	images: string[] = [];
 	imageDone: ((width: number, height: number, error: string) => void)[] = [];
 	storedKeys: string[] = [];
@@ -132,6 +134,11 @@ export class FakeServices {
 		const services: AccessibilityServices = {
 			screenReaderEnabled: async (): Promise<boolean> => { return this.screenReader; },
 			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
+			flag: async (name: AccessibilityFlag): Promise<boolean> => { return this.flags.includes(name); },
+			recommendedTimeoutMillis: async (original: int32): Promise<int32> => { return original * this.timeoutScale; },
+			announceWithQueue: (text: string, queue: boolean): void => {
+				this.log.push("announce " + text + (queue ? " queued" : " unqueued"));
+			},
 		};
 		installAccessibilityServices(services);
 	}
