@@ -33,6 +33,7 @@ public:
 	void SetFamily(const char *utf8);
 	void SetAlignment(const char *value);
 	void Invalidate() { paintDirty = true; }
+	const std::wstring &Text() const { return text; }
 	void Measure(float maxWidth, float scale, float *width, float *height);
 	bool NeedsDraw(int32_t pixelWidth, int32_t pixelHeight) const;
 	void Draw(ICompositionContext *context, IVisual *visual, int32_t pixelWidth, int32_t pixelHeight, float scale);
