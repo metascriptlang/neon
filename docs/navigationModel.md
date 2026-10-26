@@ -740,6 +740,23 @@ uses a shadow root.
   path, status, guard and paths from its definition, so a config naming them beside it throws.
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
+- React Navigation 7 options and helpers carried (core 7.24, routers 7.6.5, unpkg `@7`):
+  `headerLeft`, `headerRight` and `headerTitle` take the function form with
+  `HeaderItemProps` (`tintColor`, `canGoBack`) and `HeaderTitleProps`; `headerBackVisible`
+  and `contentStyle` as native-stack's; `popToTopOnBlur` (bottom-tabs); drawer
+  `defaultStatus`, `drawerType` (`front`, `slide`), `overlayColor` and `swipeEdgeWidth`;
+  tab and drawer `backBehavior` `order` and `fullHistory`; `getId` on a screen's
+  `params.of` codec (StackRouter PUSH and NAVIGATE reuse the screen with that id and move
+  it to the top); navigator `id` with `getParent(id)`; `usePreventRemove` and
+  `getFocusedRouteNameFromRoute`; the container ref's `resetRoot`, `addListener("state")`
+  and `getCurrentOptions`. The persisted state carries `history` (visited route keys, and
+  a `drawer` item when the status differs from `default`) as TabRouter and DrawerRouter
+  state does; a `fullHistory` visit's params snapshot is not persisted. Not carried:
+  options as `({ route, navigation }) => options` (compiler cards pending),
+  `navigation.dispatch` with `CommonActions`, `StackActions`, `TabActions` and
+  `DrawerActions` (their payload is an untyped `object`, and Neon types params by the
+  navigator's list), `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
+  bar are fixed-size, with no measured height or safe-area inset to report).
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
 - Not in the first version of the layers: data loading per route (TanStack `loader`;
