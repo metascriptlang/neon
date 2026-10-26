@@ -939,6 +939,30 @@ test "a native Pressable is one accessibility element by default, and accessible
 	nmTeardown();
 }
 
+test "a native View writes the RN accessibility props and routes onAccessibilityAction with the action name" {
+	let log = "";
+	const app = (): NeonNode => <View>
+		<View accessible={true} role="button" accessibilityRole="adjustable" accessibilityLabel="Volume"
+			accessibilityValue={{ min: 0, max: 10, now: 3, text: "loud, very" }}
+			accessibilityElementsHidden={true} accessibilityViewIsModal={true}
+			accessibilityActions={[{ name: "increment" }, { name: "reset", label: "Reset" }]}
+			onAccessibilityAction={(e: NeonEvent): void => { log += `${e.value};`; }}>
+			<Text>Vol</Text>
+		</View>
+	</View>;
+	runApp(app);
+	const tag = nmTagWithProp("accessibilityLabel", "Volume");
+	assert prop(tag, "role") === "button" && prop(tag, "accessibilityRole") === "adjustable", "both role props reach the bridge, which lets role win";
+	assert prop(tag, "accessibilityValue") === "0,10,3,loud, very", "value text last: " + prop(tag, "accessibilityValue");
+	assert prop(tag, "accessibilityElementsHidden") === "true" && prop(tag, "accessibilityViewIsModal") === "true", "hidden and modal";
+	assert prop(tag, "accessibilityActions") === "increment\nreset\tReset", "actions: " + prop(tag, "accessibilityActions");
+	nmControl(tag, 15, "reset");
+	nmControl(tag, 15, "increment");
+	nmLoop();
+	assert log === "reset;increment;", "the action name arrives in event.value: " + log;
+	nmTeardown();
+}
+
 test "a native TouchableHighlight paints its underlay while pressed and clears it to transparent" {
 	const app = (): NeonNode => <View>
 		<TouchableHighlight underlayColor="#336699" onPress={(e: NeonEvent): void => {}}><Text>Row</Text></TouchableHighlight>

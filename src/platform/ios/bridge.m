@@ -68,7 +68,20 @@ static void call0(msClosure c) {
 	loopArm(0);
 }
 
+static BOOL performNeonAccessibilityAction(UIView *view, NSString *name);
+
+// RN RCTView.m:414-467: activate, escape and magicTap route to the named action when the
+// view declares it; increment and decrement always try theirs.
+#define NEON_ACCESSIBILITY_ACTIONS \
+	- (BOOL)accessibilityActivate { return performNeonAccessibilityAction(self, @"activate"); } \
+	- (BOOL)accessibilityPerformMagicTap { return performNeonAccessibilityAction(self, @"magicTap"); } \
+	- (BOOL)accessibilityPerformEscape { return performNeonAccessibilityAction(self, @"escape"); } \
+	- (void)accessibilityIncrement { performNeonAccessibilityAction(self, @"increment"); } \
+	- (void)accessibilityDecrement { performNeonAccessibilityAction(self, @"decrement"); }
+
 @implementation NeonTouchView
+
+NEON_ACCESSIBILITY_ACTIONS
 
 // RN hitSlop: the touch target reaches past the bounds by the slop on each edge (within the
 // superview, which hit-tests first).
@@ -110,6 +123,8 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 @end
 
 @implementation NeonLabel
+
+NEON_ACCESSIBILITY_ACTIONS
 
 - (int)neonTagAt:(CGPoint)point {
 	if (self.neonSpanTags.count == 0 || self.attributedText.length == 0) return (int)self.tag;
@@ -474,8 +489,10 @@ static void setLabelSpans(NeonLabel *label, const char *text) {
 static UIAccessibilityTraits roleTraits(const char *role) {
 	if (strcmp(role, "button") == 0) return UIAccessibilityTraitButton;
 	if (strcmp(role, "link") == 0) return UIAccessibilityTraitLink;
-	if (strcmp(role, "header") == 0) return UIAccessibilityTraitHeader;
-	if (strcmp(role, "image") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "header") == 0 || strcmp(role, "heading") == 0) return UIAccessibilityTraitHeader;
+	if (strcmp(role, "image") == 0 || strcmp(role, "img") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "imagebutton") == 0) return UIAccessibilityTraitImage | UIAccessibilityTraitButton;
+	if (strcmp(role, "key") == 0 || strcmp(role, "keyboardkey") == 0) return UIAccessibilityTraitKeyboardKey;
 	if (strcmp(role, "search") == 0) return UIAccessibilityTraitSearchField;
 	if (strcmp(role, "adjustable") == 0) return UIAccessibilityTraitAdjustable;
 	if (strcmp(role, "text") == 0 || strcmp(role, "summary") == 0) return UIAccessibilityTraitStaticText;
@@ -488,6 +505,11 @@ static UIAccessibilityTraits roleTraits(const char *role) {
 static char kNeonRoleTraits;
 static char kNeonStateTraits;
 static char kNeonGroup;
+static char kNeonRoleProp;
+static char kNeonAccessibilityRole;
+static char kNeonStateValue;
+static char kNeonValueProp;
+static char kNeonActions;
 
 static BOOL groupRole(const char *role) {
 	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0 || strcmp(role, "alert") == 0;
@@ -501,6 +523,83 @@ static void applyTraits(UIView *v) {
 	v.accessibilityTraits = (UIAccessibilityTraits)(role.unsignedLongLongValue | state.unsignedLongLongValue);
 }
 
+// RN RCTViewManager.m:222-258: role wins over accessibilityRole.
+static void applyRole(UIView *v) {
+	NSString *role = objc_getAssociatedObject(v, &kNeonRoleProp);
+	if (role.length == 0) role = objc_getAssociatedObject(v, &kNeonAccessibilityRole);
+	const char *text = role ? role.UTF8String : "";
+	objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	applyTraits(v);
+	BOOL group = groupRole(text);
+	objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	if (group) {
+		v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
+		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
+	}
+}
+
+// RN RCTView.m:288-397: the state words and the accessibilityValue text (else now as a percentage
+// of the range) join with ", ".
+static void refreshAccessibilityValue(UIView *v) {
+	NSString *state = objc_getAssociatedObject(v, &kNeonStateValue);
+	NSString *value = objc_getAssociatedObject(v, &kNeonValueProp);
+	NSMutableArray<NSString *> *parts = [NSMutableArray array];
+	if (state) [parts addObject:state];
+	if (value) [parts addObject:value];
+	v.accessibilityValue = parts.count ? [parts componentsJoinedByString:@", "] : nil;
+}
+
+// text is "min,max,now,text"; the text field is last and may hold commas.
+static void setAccessibilityValue(UIView *v, const char *text) {
+	NSString *value = nil;
+	NSString *rest = neonText(text);
+	NSMutableArray<NSString *> *fields = [NSMutableArray array];
+	for (int i = 0; i < 3; i++) {
+		NSRange comma = [rest rangeOfString:@","];
+		if (comma.location == NSNotFound) break;
+		[fields addObject:[rest substringToIndex:comma.location]];
+		rest = [rest substringFromIndex:comma.location + 1];
+	}
+	if (fields.count == 3) {
+		if (rest.length > 0) value = rest;
+		else if (fields[0].length && fields[1].length && fields[2].length) {
+			int min = fields[0].intValue, max = fields[1].intValue, now = fields[2].intValue;
+			if (min < max && min <= now && now <= max) value = [NSString stringWithFormat:@"%d percent", (now * 100) / (max - min)];
+		}
+	}
+	objc_setAssociatedObject(v, &kNeonValueProp, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	refreshAccessibilityValue(v);
+}
+
+// RN RCTView.m:249-286: only a labelled action is a VoiceOver custom action; the label maps back
+// to the action name that reaches onAccessibilityAction.
+static BOOL performNeonAccessibilityAction(UIView *view, NSString *name) {
+	NSDictionary<NSString *, NSString *> *actions = objc_getAssociatedObject(view, &kNeonActions);
+	if (!actions[name]) return NO;
+	neonEmitControl((int)view.tag, 15, name, 0, 0);
+	return YES;
+}
+
+static void setAccessibilityActions(UIView *v, const char *text) {
+	NSMutableDictionary<NSString *, NSString *> *byName = [NSMutableDictionary dictionary];
+	NSMutableArray<UIAccessibilityCustomAction *> *custom = [NSMutableArray array];
+	__weak UIView *weak = v;
+	for (NSString *line in text[0] ? [neonText(text) componentsSeparatedByString:@"\n"] : @[]) {
+		NSArray<NSString *> *fields = [line componentsSeparatedByString:@"\t"];
+		NSString *name = fields[0];
+		if (name.length == 0) continue;
+		NSString *label = fields.count > 1 ? fields[1] : @"";
+		byName[name] = label;
+		if (label.length == 0) continue;
+		[custom addObject:[[UIAccessibilityCustomAction alloc] initWithName:label actionHandler:^BOOL(UIAccessibilityCustomAction *action) {
+			UIView *view = weak;
+			return view ? performNeonAccessibilityAction(view, name) : NO;
+		}]];
+	}
+	objc_setAssociatedObject(v, &kNeonActions, byName.count ? byName : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	v.accessibilityCustomActions = custom.count ? custom : nil;
+}
+
 static BOOL hasToken(NSArray<NSString *> *tokens, NSString *token) { return [tokens containsObject:token]; }
 
 static void setAccessibilityState(UIView *v, const char *text) {
@@ -509,8 +608,10 @@ static void setAccessibilityState(UIView *v, const char *text) {
 	if (hasToken(tokens, @"selected")) traits |= UIAccessibilityTraitSelected;
 	if (hasToken(tokens, @"disabled")) traits |= UIAccessibilityTraitNotEnabled;
 	objc_setAssociatedObject(v, &kNeonStateTraits, @(traits), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-	v.accessibilityValue = hasToken(tokens, @"checked") ? @"checked" : hasToken(tokens, @"unchecked") ? @"unchecked" :
+	NSString *word = hasToken(tokens, @"checked") ? @"checked" : hasToken(tokens, @"unchecked") ? @"unchecked" :
 		hasToken(tokens, @"mixed") ? @"mixed" : hasToken(tokens, @"expanded") ? @"expanded" : hasToken(tokens, @"collapsed") ? @"collapsed" : nil;
+	objc_setAssociatedObject(v, &kNeonStateValue, word, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	refreshAccessibilityValue(v);
 	applyTraits(v);
 }
 
@@ -1060,16 +1161,16 @@ void niSetProp(void *view, const char *name, const char *value) {
 		v.isAccessibilityElement = strcmp(text, "true") == 0;
 		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
 	}
-	else if (strcmp(name, "accessibilityRole") == 0) {
-		objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-		applyTraits(v);
-		BOOL group = groupRole(text);
-		objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-		if (group) {
-			v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
-			if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
-		}
+	else if (strcmp(name, "accessibilityRole") == 0 || strcmp(name, "role") == 0) {
+		objc_setAssociatedObject(v, strcmp(name, "role") == 0 ? &kNeonRoleProp : &kNeonAccessibilityRole, [NSString stringWithUTF8String:text], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		applyRole(v);
 	}
+	else if (strcmp(name, "accessibilityValue") == 0) setAccessibilityValue(v, text);
+	else if (strcmp(name, "accessibilityElementsHidden") == 0) v.accessibilityElementsHidden = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessibilityViewIsModal") == 0) v.accessibilityViewIsModal = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessibilityActions") == 0) setAccessibilityActions(v, text);
+	else if (strcmp(name, "accessibilityLiveRegion") == 0 || strcmp(name, "importantForAccessibility") == 0 ||
+		strcmp(name, "accessibilityLabelledBy") == 0 || strcmp(name, "focusable") == 0) {}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
 	else if (strcmp(name, "hitSlop") == 0) {
