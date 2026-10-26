@@ -477,7 +477,11 @@ void harnessClick(const char *title, int x, int y) {
 }
 
 void harnessHover(const char *title, int x, int y) {
-	PostMessageW(findOwnWindow(title), WM_MOUSEMOVE, 0, MAKELPARAM(x, y));
+	HWND window = findOwnWindow(title);
+	POINT screen = {x, y};
+	ClientToScreen(window, &screen);
+	SetCursorPos(screen.x, screen.y);
+	PostMessageW(window, WM_MOUSEMOVE, 0, MAKELPARAM(x, y));
 }
 
 void harnessDrag(const char *title, int fromX, int fromY, int toX, int toY, int steps) {

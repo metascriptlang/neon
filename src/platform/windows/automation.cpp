@@ -475,9 +475,12 @@ public:
 		return *out || text.empty() ? S_OK : E_OUTOFMEMORY;
 	}
 	HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR) override { return act("setValue"); }
+	// :734-753: accessibilityState.readOnly, false when the state does not say.
 	HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL *out) override {
 		if (!out) return E_POINTER;
-		*out = TRUE;
+		Element e;
+		if (!Describe(id, &e)) return UIA_E_ELEMENTNOTAVAILABLE;
+		*out = hasToken(e.state, "readOnly");
 		return S_OK;
 	}
 
