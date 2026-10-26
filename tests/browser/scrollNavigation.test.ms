@@ -3,9 +3,11 @@ import { createBrowserRoutingHistory } from "../../src/platform/browser/routingH
 import { followScroll } from "../../src/platform/browser/scroll";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
-import { NeonNode, el, attr, text } from "../../src/render/node";
+import { NeonNode, el, attr, text, dynText } from "../../src/render/node";
 import { RoutingHistory } from "../../src/navigation/routingHistory";
 import { Router, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
+import { createAsync } from "../../src/navigation/data";
+import { Loading } from "../../src/macros/ui/flow";
 import { Dispose } from "../../src/core/types";
 import { sleepAsync } from "std/core/promise";
 
@@ -26,6 +28,23 @@ function tall(): NeonNode {
 		el("div", [attr("id", "spot"), attr("style", "position:absolute;top:1500px")], [], text("spot")));
 }
 
+interface Arrival {
+	word: string;
+}
+
+async function arrives(): Promise<Arrival> {
+	await sleepAsync(150);
+	return { word: "arrived" };
+}
+
+function late(): NeonNode {
+	const note = createAsync((): Promise<Arrival> => arrives());
+	return Loading({
+		children: el("div", [attr("style", "height:3000px")], [], dynText((): string => note().word)),
+		fallback: el("div", [attr("style", "height:100px")], [], text("loading")),
+	});
+}
+
 struct Open {
 	router: Router;
 	history: RoutingHistory;
@@ -42,6 +61,7 @@ function open(start: string, navigationType: string = "navigate"): Open {
 	const routes = createRoutes([
 		{ path: "/a", component: tall },
 		{ path: "/b", component: tall },
+		{ path: "/late", component: late },
 	]);
 	const created = createRouter(routes, history);
 	if (!created.ok) { throw new Error("router: " + created.error.toString()); }
@@ -211,5 +231,43 @@ test "a reloaded page restores the offset its entry left at pagehide" {
 	} finally {
 		close(again);
 		reach("sessionStorage.clear()");
+	}
+}
+
+test "back restores the offset on a page whose content arrives after the navigation" {
+	const app = open("/late");
+	try {
+		await sleepAsync(400);
+		scrollTo(900);
+		await settle();
+		assert scrolledTo() === 900, "at " + scrolledTo().toString();
+		assert app.router.navigate("/b");
+		await settle();
+		assert app.history.go(-1);
+		await settle();
+		assert scrolledTo() === 0, "while the content is late " + scrolledTo().toString();
+		await sleepAsync(400);
+		assert scrolledTo() === 900, "once it arrived " + scrolledTo().toString();
+	} finally {
+		close(app);
+	}
+}
+
+test "a restore still waiting for late content gives way to the next navigation" {
+	const app = open("/late");
+	try {
+		await sleepAsync(400);
+		scrollTo(900);
+		await settle();
+		assert app.router.navigate("/b");
+		await settle();
+		assert app.history.go(-1);
+		await sleepAsync(30);
+		assert app.history.read().url === "/late", app.history.read().url;
+		assert app.router.navigate("/b");
+		await sleepAsync(500);
+		assert scrolledTo() === 0, "at " + scrolledTo().toString();
+	} finally {
+		close(app);
 	}
 }
