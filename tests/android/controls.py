@@ -150,6 +150,13 @@ def lane():
     adb("shell", "input", "tap", str(x), str(y))
     wait_label("payment ", "payment cash")
 
+    rating = reveal("Rating, 3 of 5")
+    print("NEON_ANDROID controls-rating class=%s scrollable=%s desc=%s" % (rating.get("class"), rating.get("scrollable"), rating.get("content-desc")))
+    if rating.get("class") != "android.widget.SeekBar":
+        raise LaneError("role slider should read as a SeekBar; the dump says %r" % rating.get("class"))
+    if rating.get("scrollable") != "true":
+        raise LaneError("the increment and decrement actions should show as scrollable; the dump says %r" % rating.get("scrollable"))
+
     x, y = center(reveal("Sea view"))
     adb("shell", "input", "tap", str(x), str(y))
     wait_label("prefs ", "prefs Sea view")
