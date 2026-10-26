@@ -1050,7 +1050,7 @@ static BOOL flagValue(const char *value, const char *name) {
 	else if (!strcmp(name, "autoCorrect")) {
 		self.autoCorrect = value[0] == '\0' ? self.defaultAutoCorrect : flagValue(value, name);
 		[self applyAutoCorrect];
-	} else if (!strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType")) {}
+	} else if (!strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType") || !strcmp(name, "inputAccessoryViewID")) {}
 	else if (!strcmp(name, "selection")) [self select:text];
 	else if (!strcmp(name, "textInsets")) {
 		float left = 0, top = 0, right = 0, bottom = 0;
