@@ -14,5 +14,6 @@ when (windows) {
 	@passL("-loleaut32");
 	@passL("-lole32");
 	@passL("-lwindowscodecs");
+	@passL("-lurlmon");
 	@passL("-ldxguid");
 }

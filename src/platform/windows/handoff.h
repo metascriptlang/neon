@@ -43,6 +43,8 @@ int niwCaretPixelH(void);
 int niwStoredAccessibility(const char *name, const char *value);
 // DirectWrite text layouts built since the process began, so a check can see that a colour change built none.
 int niwLayoutsBuilt(void);
+// Delivers the image downloads and sizes that finished since the last call; run it from Ion's onWake, on the loop thread.
+void niwDrainImages(void);
 void niwShutdown(void);
 
 #ifdef __cplusplus

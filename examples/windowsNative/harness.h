@@ -14,6 +14,7 @@ void harnessExpectSize(const char *layout, const char *text, float fontSize, int
 void harnessExpectSizeIn(const char *layout, const char *text, const char *family, float fontSize, int bold, float maxWidth);
 int harnessRun(void);
 int harnessIsCheck(void);
+int harnessHasFlag(const char *flag);
 int harnessSample(const char *title);
 int harnessShot(const char *title, const char *name, int x, int y, int width, int height);
 int harnessCompareShots(const char *first, const char *second, int wantSame, int minDifferent);

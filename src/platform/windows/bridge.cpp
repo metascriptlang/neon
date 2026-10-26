@@ -22,6 +22,7 @@ extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
 #include "../native/loop.h"
+void ionWakeLoop(void);
 }
 
 namespace {
@@ -659,6 +660,45 @@ void endTouch() {
 	for (View *view : chain) release(view);
 }
 
+
+int g_appEvent = 0;
+std::string g_appValue;
+std::map<uint32_t, std::string> g_sizeFetches;
+std::vector<std::string> g_sizeReady;
+
+void emitApp(int kind, const std::string &value) {
+	if (!s_app.fn) return;
+	g_appEvent = kind;
+	g_appValue = value;
+	invoke(s_app);
+	changed();
+}
+
+// The NI_APP_IMAGE_SIZE value, as the macOS host sends it: "id 0x1f width 0x1f height 0x1f error", in pixels.
+std::string sizeValue(const std::string &request, const ImageSize &size) {
+	bool failed = !size.error.empty();
+	return request + "\x1f" + std::to_string(failed ? 0 : size.width) + "\x1f" + std::to_string(failed ? 0 : size.height) + "\x1f" + size.error;
+}
+
+// Image.getSize / Image.prefetch: "id 0x1f uri" in; the answer comes back through the app handler once the host thread
+// is woken, for a local source as for a download.
+void imageSize(const char *arg) {
+	const char *split = strchr(arg, '\x1f');
+	if (!split) {
+		char message[256];
+		snprintf(message, sizeof message, "niAppCall(image.size) wants \"id 0x1f uri\": %s", arg);
+		fail(message);
+	}
+	std::string request(arg, split);
+	const char *uri = split + 1;
+	if (ImageIsNetwork(uri)) {
+		g_sizeFetches[ImageFetch(uri)] = request;
+		return;
+	}
+	g_sizeReady.push_back(sizeValue(request, ImageHeaderSize(uri)));
+	ionWakeLoop();
+}
+
 }
 
 extern "C" {
@@ -806,6 +846,25 @@ int niwPump(void) {
 	return niLoopNext();
 }
 
+void niwDrainImages(void) {
+	if (!g_context) return;
+	std::vector<std::string> ready;
+	ready.swap(g_sizeReady);
+	for (const std::string &value : ready) emitApp(NI_APP_IMAGE_SIZE, value);
+	for (const ImageDownload &download : ImageTakeDownloads()) {
+		auto request = g_sizeFetches.find(download.id);
+		if (request != g_sizeFetches.end()) {
+			std::string id = request->second;
+			g_sizeFetches.erase(request);
+			ImageSize size = download.error.empty() ? ImageHeaderSizeOfFile(download.path) : ImageSize{0, 0, download.error};
+			emitApp(NI_APP_IMAGE_SIZE, sizeValue(id, size));
+		} else if (ImagePicture *picture = ImagePicture::Waiting(download.id)) {
+			picture->Deliver(download);
+			queuePicture(static_cast<View *>(picture->owner));
+		}
+	}
+}
+
 void niwShutdown(void) {
 	if (s_teardown.fn) invoke(s_teardown);
 }
@@ -896,6 +955,7 @@ void *niImageCreate(void) {
 	View *view = new View();
 	view->visual = g_context->CreateSpriteVisual();
 	view->picture.reset(new ImagePicture());
+	view->picture->owner = view;
 	return view;
 }
 
@@ -1134,8 +1194,10 @@ void niInvokeClosure(msClosure c) { invoke(c); }
 
 const char *niAppCall(const char *name, const char *arg) {
 	static char reply[64];
-	(void)arg;
-	if (!strcmp(name, "platform")) {
+	if (!strcmp(name, "image.size")) {
+		imageSize(arg ? arg : "");
+		reply[0] = '\0';
+	} else if (!strcmp(name, "platform")) {
 		typedef LONG(WINAPI * RtlGetVersionFn)(PRTL_OSVERSIONINFOW);
 		RtlGetVersionFn getVersion = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
 		RTL_OSVERSIONINFOW version = {};
@@ -1165,8 +1227,8 @@ const char *niAppCall(const char *name, const char *arg) {
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
-UNIMPLEMENTED(int, niLastAppEvent, (void))
-UNIMPLEMENTED(const char *, niLastAppValue, (void))
+int niLastAppEvent(void) { return g_appEvent; }
+const char *niLastAppValue(void) { return g_appValue.c_str(); }
 UNIMPLEMENTED(void, niSetAppEventResult, (int result))
 
 void niSetText(void *label, const char *s) {

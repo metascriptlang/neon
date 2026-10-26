@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <urlmon.h>
 #include <d2d1_1.h>
 #include <d2d1effects.h>
 #include <wincodec.h>
@@ -7,11 +8,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <vector>
 #include "image.h"
 #include "must.h"
 
 using Microsoft::WRL::ComPtr;
+
+extern "C" void ionWakeLoop(void);
 
 namespace {
 
@@ -35,6 +40,51 @@ std::string loadError(const char *what, HRESULT hr) {
 	char message[160];
 	snprintf(message, sizeof message, "%s, HRESULT 0x%08lx", what, (unsigned long)hr);
 	return message;
+}
+
+std::string systemText(HRESULT hr) {
+	char text[200];
+	DWORD length = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_IGNORE_INSERTS,
+		GetModuleHandleW(L"urlmon.dll"), (DWORD)hr, 0, text, sizeof text, nullptr);
+	while (length > 0 && (text[length - 1] == '\r' || text[length - 1] == '\n' || text[length - 1] == ' ')) length--;
+	return length ? std::string(text, length) : "unknown error";
+}
+
+std::mutex g_downloadsLock;
+std::vector<ImageDownload> g_downloads;
+std::map<uint32_t, ImagePicture *> g_waiting;
+uint32_t g_nextFetch = 1;
+
+struct FetchJob {
+	uint32_t id;
+	std::string uri;
+};
+
+// A worker thread downloads into the URL cache and queues the result; only ionWakeLoop is called from it, and the host
+// thread takes the queue from its wake handler (niwDrainImages).
+DWORD WINAPI fetchWorker(void *arg) {
+	std::unique_ptr<FetchJob> job(static_cast<FetchJob *>(arg));
+	ImageDownload done;
+	done.id = job->id;
+	HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, job->uri.c_str(), -1, nullptr, 0);
+	if (length == 0) {
+		done.error = "malformed URI";
+	} else {
+		std::wstring wide((size_t)length, L'\0');
+		MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, job->uri.c_str(), -1, &wide[0], length);
+		wchar_t path[MAX_PATH];
+		HRESULT hr = URLDownloadToCacheFileW(nullptr, wide.c_str(), path, MAX_PATH, 0, nullptr);
+		if (FAILED(hr)) done.error = loadError(("network request failed: " + systemText(hr)).c_str(), hr);
+		else done.path = path;
+	}
+	if (SUCCEEDED(init)) CoUninitialize();
+	{
+		std::lock_guard<std::mutex> lock(g_downloadsLock);
+		g_downloads.push_back(std::move(done));
+	}
+	ionWakeLoop();
+	return 0;
 }
 
 int hexValue(char c) {
@@ -117,26 +167,115 @@ HRESULT openDecoder(const char *uri, std::vector<BYTE> *data, ComPtr<IWICBitmapD
 		if (FAILED(hr)) *error = loadError("cannot decode image", hr);
 		return hr;
 	}
-	*error = startsWith(uri, "http://") || startsWith(uri, "https://") ? "network images are not implemented on Windows yet" : "unsupported URI scheme";
+	*error = "unsupported URI scheme";
 	return E_NOTIMPL;
 }
 
+bool isNetwork(const char *uri) { return startsWith(uri, "http://") || startsWith(uri, "https://"); }
+
+ImageSize frameSize(HRESULT opened, IWICBitmapDecoder *decoder, std::string error) {
+	ImageSize size;
+	ComPtr<IWICBitmapFrameDecode> frame;
+	HRESULT hr = opened;
+	if (SUCCEEDED(hr)) hr = decoder->GetFrame(0, &frame);
+	if (SUCCEEDED(hr)) hr = frame->GetSize(&size.width, &size.height);
+	if (FAILED(hr)) size.error = error.empty() ? loadError("cannot decode image", hr) : error;
+	return size;
+}
+
+}
+
+// RNW ImageLoader getSize (ImageViewManagerModule.cpp:21-84) reads IWICBitmapSource::GetSize of frame 0 of the decoded stream.
+ImageSize ImageHeaderSize(const char *uri) {
+	std::vector<BYTE> data;
+	ComPtr<IWICBitmapDecoder> decoder;
+	std::string error;
+	HRESULT hr = openDecoder(uri, &data, &decoder, &error);
+	return frameSize(hr, decoder.Get(), error);
+}
+
+ImageSize ImageHeaderSizeOfFile(const std::wstring &path) {
+	ComPtr<IWICBitmapDecoder> decoder;
+	HRESULT hr = factory()->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder);
+	return frameSize(hr, decoder.Get(), "");
+}
+
+bool ImageIsNetwork(const char *uri) { return isNetwork(uri); }
+
+uint32_t ImageFetch(const char *uri) {
+	uint32_t id = g_nextFetch++;
+	HANDLE thread = CreateThread(nullptr, 0, fetchWorker, new FetchJob{id, uri}, 0, nullptr);
+	if (!thread) {
+		fprintf(stderr, "neon windows bridge: CreateThread for an image download failed, error %lu\n", GetLastError());
+		fflush(stderr);
+		abort();
+	}
+	CloseHandle(thread);
+	return id;
+}
+
+std::vector<ImageDownload> ImageTakeDownloads() {
+	std::vector<ImageDownload> taken;
+	std::lock_guard<std::mutex> lock(g_downloadsLock);
+	taken.swap(g_downloads);
+	return taken;
+}
+
+ImagePicture *ImagePicture::Waiting(uint32_t id) {
+	auto at = g_waiting.find(id);
+	return at == g_waiting.end() ? nullptr : at->second;
+}
+
+ImagePicture::~ImagePicture() { CancelFetch(); }
+
+void ImagePicture::CancelFetch() {
+	if (fetching) g_waiting.erase(fetching);
+	fetching = 0;
+}
+
+void ImagePicture::Deliver(const ImageDownload &download) {
+	fetching = 0;
+	g_waiting.erase(download.id);
+	paintDirty = true;
+	if (!download.error.empty()) {
+		failure = download.error;
+		pending = kImageError;
+		return;
+	}
+	ComPtr<IWICBitmapDecoder> decoder;
+	HRESULT hr = factory()->CreateDecoderFromFilename(download.path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder);
+	if (FAILED(hr)) {
+		failure = loadError("cannot decode image", hr);
+		pending = kImageError;
+		return;
+	}
+	Decode(decoder.Get());
 }
 
 void ImagePicture::Load(const char *newUri) {
 	uri = newUri;
+	CancelFetch();
 	pixels.Reset();
 	pixelsWide = pixelsHigh = 0;
 	pending = kImageNone;
 	failure.clear();
 	paintDirty = true;
 	if (uri.empty()) return;
+	if (isNetwork(newUri)) {
+		fetching = ImageFetch(newUri);
+		g_waiting[fetching] = this;
+		return;
+	}
 	std::vector<BYTE> data;
 	ComPtr<IWICBitmapDecoder> decoder;
 	if (FAILED(openDecoder(newUri, &data, &decoder, &failure))) {
 		pending = kImageError;
 		return;
 	}
+	Decode(decoder.Get());
+}
+
+void ImagePicture::Decode(IWICBitmapDecoder *decoder) {
 	IWICImagingFactory *wic = factory();
 	ComPtr<IWICBitmapFrameDecode> frame;
 	ComPtr<IWICFormatConverter> converter;

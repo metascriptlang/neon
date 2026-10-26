@@ -272,6 +272,11 @@ const char *harnessFileUri(const char *relativePath) {
 
 int harnessIsCheck(void) { return wcsstr(GetCommandLineW(), L"--check") != nullptr; }
 
+int harnessHasFlag(const char *flag) {
+	std::wstring wide(flag, flag + strlen(flag));
+	return wcsstr(GetCommandLineW(), wide.c_str()) != nullptr;
+}
+
 static HWND findOwnWindow(const char *title) {
 	struct Search {
 		const wchar_t *title;
