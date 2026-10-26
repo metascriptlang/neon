@@ -173,8 +173,9 @@ function drawerModel<PL>(
 		arrange: pages.arrange,
 		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			flush((): void => {
+				const before = untrack((): int32 => pages.index());
 				pages.navigate(name, params, pop);
-				writeOpen(false);
+				if (untrack((): int32 => pages.index()) !== before) { writeOpen(false); }
 			});
 		},
 		push: pages.push,
@@ -286,7 +287,13 @@ export function drawerItem<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): 
 			? (core.container.theme().dark ? "#1c2b40" : "#e5f0ff")
 			: core.container.theme().colors.card,
 	}));
-	const press = (e: NeonEvent): void => { core.navigateLocal(entry.route.name, null); };
+	const press = (e: NeonEvent): void => {
+		if (untrack((): boolean => focused())) {
+			core.drawerLocal(DrawerAction.Close);
+			return;
+		}
+		core.navigateLocal(entry.route.name, untrack((): ParamSlot | null => entry.route.slot()));
+	};
 	const text = accessor((): Style => ({
 		color: focused() ? tint() : core.container.theme().colors.text,
 		fontSize: 15,

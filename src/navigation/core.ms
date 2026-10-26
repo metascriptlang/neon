@@ -500,9 +500,11 @@ export class NavigationAction {
 
 export class NavigationEventData {
 	action: NavigationAction;
+	state: NavigationState | null;
 
-	constructor(action: NavigationAction) {
+	constructor(action: NavigationAction, state: NavigationState | null = null) {
 		this.action = action;
+		this.state = state;
 	}
 }
 
@@ -727,7 +729,8 @@ export class Navigation<PL> {
 	addListener(event: NavigationEvent, handler: (event: NavigationEventArg) => void): Unsubscribe {
 		const target = this.route.key;
 		const notify = (type: string): void => {
-			const data = new NavigationEventData(new NavigationAction("NONE", noAction));
+			const state = type === "state" ? untrack((): NavigationState => this.core.state()) : null;
+			const data = new NavigationEventData(new NavigationAction("NONE", noAction), state);
 			handler(new NavigationEventArg(type, target, data));
 		};
 		if (event === "state") {
@@ -815,7 +818,7 @@ export interface NavigatorModel<PL> {
 	push: (name: string, params: ParamSlot | null) => boolean;
 	popToRoute: (name: string, params: ParamSlot | null, source: string | null) => boolean;
 	replace: (key: string, name: string, params: ParamSlot | null) => void;
-	popTo: (at: int32) => void;
+	popTo: (at: int32, type: string) => void;
 	reset: (list: RouteSeed<PL>[], at: int32) => void;
 	goBackFrom: (key: string) => boolean;
 	canBack: () => boolean;
@@ -1235,12 +1238,12 @@ export class NavigatorCore<PL> {
 
 	popLocal(count: int32): void {
 		const keep = Math.max(1, this.snapshot().length - count);
-		this.popTo((keep - 1) as int32);
+		this.popTo((keep - 1) as int32, "POP");
 	}
 
 	popToTopFrom(): void {
 		if (untrack((): boolean => this.model.canPop())) {
-			this.popTo(0);
+			this.popTo(0, "POP_TO_TOP");
 			return;
 		}
 		let link = this.parent;
@@ -1252,8 +1255,8 @@ export class NavigatorCore<PL> {
 		reportUnhandled("POP_TO_TOP", null);
 	}
 
-	popTo(at: int32): void {
-		this.model.popTo(at);
+	popTo(at: int32, type: string): void {
+		this.model.popTo(at, type);
 	}
 
 	resetIndex(list: RouteSeed<PL>[], wanted: int32 | null): int32 {
@@ -1491,7 +1494,7 @@ export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 		},
 		popToTop: (): boolean => {
 			if (!untrack((): boolean => core.model.canPop())) { return false; }
-			core.popTo(0);
+			core.popTo(0, "POP_TO_TOP");
 			return true;
 		},
 		handleBack: (): boolean => core.handleBack(),

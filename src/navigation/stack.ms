@@ -169,10 +169,10 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 			});
 			return true;
 		},
-		popTo: (at: int32): void => {
+		popTo: (at: int32, type: string): void => {
 			const list = core.snapshot();
 			if (at >= list.length - 1) { return; }
-			core.guarded("POP", list.slice(at + 1, list.length), (): void => {
+			core.guarded(type, list.slice(at + 1, list.length), (): void => {
 				core.apply((): void => { stack.popTo(at); });
 			});
 		},

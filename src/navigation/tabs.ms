@@ -108,7 +108,7 @@ function triggerOf<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): TabTrigg
 				core.repressFocused();
 				return;
 			}
-			core.navigateLocal(entry.route.name, null);
+			core.navigateLocal(entry.route.name, untrack((): ParamSlot | null => entry.route.slot()));
 		},
 	};
 }
@@ -256,14 +256,15 @@ export function pagesModel<PL>(
 		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const at = core.indexOfName(list, name);
-			if (params !== null) { list[at].writeParams(params); }
+			const next = params !== null ? params : list[at].config.initialParams;
+			if (untrack((): ParamSlot | null => list[at].route.slot()) !== next) { list[at].writeParams(next); }
 			focus(at);
 		},
 		push: (name: string, params: ParamSlot | null): boolean => false,
 		replace: (key: string, name: string, params: ParamSlot | null): void => {
 			core.navigate(name, params);
 		},
-		popTo: (at: int32): void => {},
+		popTo: (at: int32, type: string): void => {},
 		popToRoute: (name: string, params: ParamSlot | null, source: string | null): boolean => false,
 		reset: (list: RouteSeed<PL>[], at: int32): void => {
 			const next = resetPages<PL>(core, list, at);
