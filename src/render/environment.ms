@@ -32,6 +32,12 @@ export function useWindowDimensions(): Accessor<WindowDimensions> {
 			const size = published as WindowDimensions;
 			return accessor((): WindowDimensions => size);
 		}
+		return accessor((): WindowDimensions => {
+			if (getOwner() !== null && useContext(renderWindow) !== null) {
+				throw new Error("useWindowDimensions() was called outside the render that published this request's window, so it reads the process-wide window; call it inside the component");
+			}
+			return { width: windowWidth(), height: windowHeight() };
+		});
 	}
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
 }

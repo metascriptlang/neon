@@ -62,6 +62,13 @@ function Sized(): NeonNode {
 	return <Text>{ready() + " " + size().width.toString() + "x" + size().height.toString()}</Text>;
 }
 
+const moduleSize = useWindowDimensions();
+
+function SizedAtModule(): NeonNode {
+	publishWindow(390, 800);
+	return <Text>{moduleSize().width.toString()}</Text>;
+}
+
 function agent(value: string): Map<string, string> {
 	const headers = new Map<string, string>();
 	headers.set("User-Agent", value);
@@ -80,6 +87,7 @@ const routes: Routes = createRoutes([
 	{ path: "/later", component: Later },
 	{ path: "/tag", component: Tag },
 	{ path: "/sized", component: Sized },
+	{ path: "/sizedAtModule", component: SizedAtModule },
 ]);
 
 const app: App = { routes: routes, notFound: <Text>app not found</Text>, client: "/client.js", document: null };
@@ -201,6 +209,16 @@ test "two requests in flight at once each render with the window size their own 
 	const deskBody = (await desk).body;
 	assert phoneBody.indexOf("sized 390x800<") > 0, phoneBody;
 	assert deskBody.indexOf("sized 1440x800<") > 0, deskBody;
+}
+
+test "a window read taken at module level is refused once the render published its own window" {
+	let message = "";
+	try {
+		await serve(app, "/sizedAtModule", agent("Mobile"));
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message.indexOf("call it inside the component") >= 0, message;
 }
 
 test "outside a request there is no request event" {
