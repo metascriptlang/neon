@@ -1381,6 +1381,17 @@ final class ControlsUITests: XCTestCase {
         waitLabel("guests ", containing: "guests 5")
         report("slider")
 
+        let party = any("Party size")
+        reveal(party)
+        XCTAssertEqual(party.value as? String ?? "", "20 percent", "accessibilityValue now 2 of 0...10 reads as a percentage")
+        XCTAssertFalse(any("Hidden tip").exists, "accessibilityElementsHidden removes the subtree from the accessibility tree")
+        XCTAssertFalse(any("adjust party").exists, "an accessible view is one element; its text is not separate")
+        party.adjust(toNormalizedSliderPosition: 1.0)
+        waitLabel("party ", containing: "party 3 via increment")
+        XCTAssertEqual(party.value as? String ?? "", "30 percent", "the value follows the state")
+        party.adjust(toNormalizedSliderPosition: 0.0)
+        waitLabel("party ", containing: "party 2 via decrement")
+
         let tip = any("Guest limit")
         tip.press(forDuration: 1.0)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Up to 8 guests per room")).firstMatch.waitForExistence(timeout: 5), "the tooltip shows on long press")
