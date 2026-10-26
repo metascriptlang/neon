@@ -3,6 +3,7 @@ import {
 	PathMatch,
 	joinPaths,
 	normalizePath,
+	hasScheme,
 	createMatcher,
 	scoreRoute,
 	expandOptionals,
@@ -159,6 +160,7 @@ export interface RouteResolution {
 }
 
 export interface RouteTree {
+	base: string;
 	match: (address: string, through?: RouteNode | null) => Result<RouteMatch, RoutingError>;
 	resolve: (address: string, absent?: RouteNode[] | null) => Result<RouteResolution, RoutingError>;
 	href: (
@@ -673,14 +675,18 @@ function staticPathsOf(places: Placed[]): Result<string[], RoutingError> {
 	return Result.ok(paths);
 }
 
-export function createRouteTree(entries: RouteEntry[]): RouteTree {
+export function createRouteTree(entries: RouteEntry[], base: string = ""): RouteTree {
+	if (hasScheme(base)) { throw new Error("routing: the base \"" + base + "\" is an absolute address, and a base is a path"); }
+	const normal = normalizePath(base);
+	const root = normal.endsWith("/") ? normal.substring(0, normal.length - 1) : normal;
 	const places: Placed[] = [];
-	declare(entries, "", [], places);
+	declare(entries, root, [], places);
 	const branches: Branch[] = [];
-	collect(entries, "", [], branches);
+	collect(entries, root, [], branches);
 	checkShapes(branches, places);
 	const ranked = rank(branches);
 	return {
+		base: root,
 		match: (address: string, through: RouteNode | null = null): Result<RouteMatch, RoutingError> => {
 			return matchAddress(ranked, address, through);
 		},

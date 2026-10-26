@@ -237,11 +237,11 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], paren
 	return entries;
 }
 
-export function createRoutes(configs: RouteConfig[]): Routes {
+export function createRoutes(configs: RouteConfig[], base: string = ""): Routes {
 	const views: RouteView[] = [];
 	const roots: int32[] = [];
 	const entries = compile(configs, views, roots, null);
-	return { tree: createRouteTree(entries), views, roots };
+	return { tree: createRouteTree(entries, base), views, roots };
 }
 
 export { RouterLocation, PreloadArgs, PreloadIntent } from "./route";
@@ -307,7 +307,7 @@ function follow(tree: RouteTree, address: string, absent: RouteNode[] | null = n
 		if (hasScheme(target)) {
 			return Result.ok({ address: target, match: resolved.match, status: resolved.status, redirect: first });
 		}
-		at = resolvePath("", target, "") as string;
+		at = resolvePath(tree.base, target, "") as string;
 	}
 	throw new Error(
 		"routing: more than " + MAX_REDIRECTS.toString() + " redirects from \"" + address + "\"",
@@ -827,6 +827,10 @@ export class Router {
 		});
 	}
 
+	get base(): string {
+		return this.routes.tree.base;
+	}
+
 	view(): NeonNode {
 		if (this.swapping) {
 			this.swapping = false;
@@ -835,7 +839,7 @@ export class Router {
 		const steer: Steer = {
 			within: (intent: PreloadIntent, run: () => void): void => { this.within(intent, run); },
 			preloading: (intent: PreloadIntent, run: () => void): void => { this.preloading(intent, run); },
-			navigate: (href: string): boolean => this.navigate(href),
+			navigate: (href: string): boolean => this.land(href, null),
 			popToRoot: (stack: ChildStack<Stop, Place>): void => {
 				this.group((): void => { stack.popTo(0); }, false);
 				const settled = follow(this.routes.tree, addressOf(untrack((): Stop => leafStop(this.root))));
@@ -889,7 +893,7 @@ export class Router {
 	navigate<P, D>(options: ToOptions<P, D>): boolean {
 		const built = hrefOf<P, D>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
 		if (!built.ok) { throw new Error("routing: navigate({ to }) cannot build an address for " + (options.to.node.pattern ?? "a pathless route") + ": " + built.error.toString()); }
-		return this.navigate(built.value, { replace: options.replace ?? false });
+		return this.land(built.value, { replace: options.replace ?? false });
 	}
 
 	scrollWith(scroller: Scroller | null): void {
@@ -914,11 +918,14 @@ export class Router {
 	}
 
 	navigateFrom(from: string, to: string, options: NavigateOptions | null): boolean {
-		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
-		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const queryOnly = to === "" || to.startsWith("?");
 		const current = queryOnly ? untrack((): string => leafStop(this.root).path) : from;
-		const href = resolvePath("", to, current) ?? to;
+		return this.land(resolvePath(this.routes.tree.base, to, current) ?? to, options);
+	}
+
+	private land(href: string, options: NavigateOptions | null): boolean {
+		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
+		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
 		if (hasScheme(resolved.value.address)) { return this.leave(resolved.value.address); }
@@ -1362,8 +1369,13 @@ export function A(props: {
 	preload?: boolean | null;
 	children: NeonNode;
 }): NeonNode {
-	const location = useRouter("A").location;
-	const href = props.href;
+	const router = useRouter("A");
+	const location = router.location;
+	const given = props.href;
+	const href = accessor((): string => {
+		const to = given();
+		return to.startsWith("/") ? resolvePath(router.base, to, "") ?? to : to;
+	});
 	const own = props.class;
 	const activeClass = props.activeClass;
 	const inactiveClass = props.inactiveClass;

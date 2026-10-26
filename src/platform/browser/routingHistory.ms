@@ -125,14 +125,25 @@ export function followExternalRedirects(router: Router): Dispose {
 	}
 }
 
-export function followLinks(navigate: (url: string, options: NavigateOptions) => boolean): Dispose {
+function withoutBase(address: string, base: string): string | null {
+	if (address === "") { return null; }
+	if (base === "") { return address; }
+	if (!address.toLowerCase().startsWith(base.toLowerCase())) { return null; }
+	const rest = address.substring(base.length);
+	if (rest === "") { return "/"; }
+	if (rest.startsWith("/")) { return rest; }
+	return rest.startsWith("?") || rest.startsWith("#") ? "/" + rest : null;
+}
+
+export function followLinks(navigate: (url: string, options: NavigateOptions) => boolean, base: string = ""): Dispose {
 	when (js) {
 		const handler = (event: unknown): void => {
 			const click = event as Event;
-			const url = sameOriginLink(click);
-			if (url === "") { return; }
+			const address = sameOriginLink(click);
+			const url = withoutBase(address, base);
+			if (url === null) { return; }
 			const options: NavigateOptions = { replace: linkHas(click, "replace"), scroll: !linkHas(click, "noscroll") };
-			if (!navigate(url, options)) { return; }
+			if (!navigate(url as string, options)) { return; }
 			click.preventDefault();
 		};
 		window.addEventListener("click", handler, false);
