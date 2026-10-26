@@ -865,18 +865,19 @@ function serveStaged(el: Source, c: Computation | null): boolean {
 	return true;
 }
 
-function throwIfUnready(el: Computation, c: Computation | null): void {
+function throwIfUnready(el: Computation, c: Computation | null, underScope: boolean): void {
 	const status = el.status;
 	if ((status & STATUS_PENDING) !== 0) {
 		if (c !== null) {
-			if (!tracking && el !== c) { link(el, c); }
+			const retriedByServerPass = underScope && onServer();
+			if (!tracking && el !== c && !retriedByServerPass) { link(el, c); }
 			throw statusError(el);
 		}
 		if ((status & STATUS_UNINITIALIZED) !== 0) { throw statusError(el); }
 	} else if ((status & STATUS_ERROR) !== 0) {
 		if (retriesError(el)) {
 			recompute(el, false);
-			throwIfUnready(el, c);
+			throwIfUnready(el, c, underScope);
 			return;
 		}
 		throw statusError(el);
@@ -925,7 +926,8 @@ function verdictRead(el: Source, c: Computation | null): boolean {
 
 export function readSource(el: Source): boolean {
 	let c = currentOwner;
-	if (c !== null && (c.config & CONFIG_ROOT) !== 0) { c = c.parentComputed; }
+	const underScope = c !== null && (c.config & CONFIG_ROOT) !== 0;
+	if (underScope) { c = (c as Computation).parentComputed; }
 	if (el.computed) { prepareComputed(el as Computation); }
 	let staged = false;
 	if (verdictOpen) {
@@ -936,7 +938,7 @@ export function readSource(el: Source): boolean {
 			link(el, c);
 			if (el.computed) { pullComputed(el as Computation, c); }
 		}
-		if (el.computed) { throwIfUnready(el as Computation, c); }
+		if (el.computed) { throwIfUnready(el as Computation, c, underScope); }
 		staged = serveStaged(el, c);
 	}
 	if (c === null && el.computed && el.subs === null) {
