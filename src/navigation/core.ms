@@ -43,6 +43,16 @@ export type StackAnimation = "default" | "slide_from_right" | "slide_from_bottom
 
 export type HeaderTitleAlign = "left" | "center";
 
+export interface HeaderItemProps {
+	tintColor: string;
+	canGoBack: boolean;
+}
+
+export interface HeaderTitleProps {
+	children: string;
+	tintColor: string;
+}
+
 export interface ScreenOptions {
 	title?: string | null;
 	presentation?: StackPresentation | null;
@@ -52,12 +62,14 @@ export interface ScreenOptions {
 	swipeEnabled?: boolean | null;
 	headerTitleAlign?: HeaderTitleAlign | null;
 	headerShown?: boolean | null;
-	headerTitle?: string | null;
+	headerTitle?: string | ((props: HeaderTitleProps) => NeonNode) | null;
 	headerBackTitle?: string | null;
 	headerTintColor?: string | null;
 	headerStyle?: Style | null;
-	headerLeft?: NeonNode | null;
-	headerRight?: NeonNode | null;
+	headerBackVisible?: boolean | null;
+	headerLeft?: ((props: HeaderItemProps) => NeonNode) | null;
+	headerRight?: ((props: HeaderItemProps) => NeonNode) | null;
+	contentStyle?: Style | null;
 	tabBarLabel?: string | null;
 	tabBarBadge?: string | null;
 	tabBarIcon?: ((props: TabBarIconProps) => NeonNode) | null;
@@ -92,6 +104,10 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 			? over.headerTintColor
 			: base.headerTintColor,
 		headerStyle: over.headerStyle !== null ? over.headerStyle : base.headerStyle,
+		headerBackVisible: over.headerBackVisible !== null
+			? over.headerBackVisible
+			: base.headerBackVisible,
+		contentStyle: over.contentStyle !== null ? over.contentStyle : base.contentStyle,
 		headerLeft: over.headerLeft !== null ? over.headerLeft : base.headerLeft,
 		headerRight: over.headerRight !== null ? over.headerRight : base.headerRight,
 		tabBarLabel: over.tabBarLabel !== null ? over.tabBarLabel : base.tabBarLabel,

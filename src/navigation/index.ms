@@ -2,6 +2,8 @@ export {
 	NavigatorKind,
 	DrawerAction,
 	TabBarIconProps,
+	HeaderItemProps,
+	HeaderTitleProps,
 	ScreenOptions,
 	mergeOptions,
 	NavTarget,

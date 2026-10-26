@@ -20,6 +20,8 @@ import {
 	DrawerAction,
 	NavigatorCore,
 	Navigation,
+	HeaderItemProps,
+	HeaderTitleProps,
 	NavigatorLink,
 	ScopeContext,
 	ScreenOptions,
@@ -130,10 +132,25 @@ export function Header(props: {
 		if (extra === null) { return base; }
 		return { ...base, backgroundColor: (extra as Style).backgroundColor };
 	});
-	const left = accessor((): NeonNode | null => options().headerLeft);
-	const right = accessor((): NeonNode | null => options().headerRight);
+	const item = (make: ((props: HeaderItemProps) => NeonNode) | null): NeonNode | null => {
+		if (make === null) { return null; }
+		return (make as (props: HeaderItemProps) => NeonNode)({
+			tintColor: tint(),
+			canGoBack: props.back(),
+		});
+	};
+	const left = accessor((): NeonNode | null => item(options().headerLeft));
+	const right = accessor((): NeonNode | null => item(options().headerRight));
+	const customTitle = accessor((): NeonNode | null => {
+		const make = options().headerTitle;
+		if (make === null || typeof make === "string") { return null; }
+		return (make as (props: HeaderTitleProps) => NeonNode)({
+			children: props.title(),
+			tintColor: tint(),
+		});
+	});
 	const hasLeft = accessor((): boolean => options().headerLeft !== null);
-	const showBack = accessor((): boolean => !hasLeft() && props.back());
+	const showBack = accessor((): boolean => props.back() && shown(options().headerBackVisible, !hasLeft()));
 	const showMenu = accessor((): boolean => !hasLeft() && !props.back() && props.menu());
 	const align = accessor((): TextAlign => {
 		const own = options().headerTitleAlign;
@@ -167,8 +184,11 @@ export function Header(props: {
 		</Show>
 		<Slot node={left} />
 		<View style={titleBox}>
-			<Text style={titleText}
-				accessibilityRole="header">{props.title()}</Text>
+			<Show when={customTitle() === null}>
+				<Text style={titleText}
+					accessibilityRole="header">{props.title()}</Text>
+			</Show>
+			<Slot node={customTitle} />
 		</View>
 		<Slot node={right} />
 	</View><View style={{ height: 1, backgroundColor: theme().colors.border }} /></View>;
@@ -177,7 +197,7 @@ export function Header(props: {
 export function titleOf<PL>(entry: Navigation<PL>): string {
 	const options = entry.options();
 	const headerTitle = options.headerTitle;
-	if (headerTitle !== null) { return headerTitle as string; }
+	if (headerTitle !== null && typeof headerTitle === "string") { return headerTitle as string; }
 	const title = options.title;
 	return title === null ? entry.route.name : title as string;
 }
@@ -298,6 +318,11 @@ export function screenView<PL>(
 		bottom: 0,
 		width: EDGE_WIDTH,
 	}));
+	const content = accessor((): Style => {
+		const own = options().contentStyle;
+		const base: Style = { flex: 1, flexDirection: "column" };
+		return own === null ? base : { ...base, ...(own as Style) };
+	});
 	const handlers = backGesture<PL>(core, motion, entry);
 	const props: ScreenProps<PL> = { navigation: entry, route: entry.route };
 	const body = createComponent(entry.config.component, props);
@@ -308,7 +333,7 @@ export function screenView<PL>(
 				<Header title={title} options={options} back={back} backTitle={backTitle}
 					onBack={goBack} menu={showMenu} />
 			</Show>
-			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
+			<View style={content}>{body}</View>
 			<Show when={swipeBack()}>
 				<View {...handlers} style={edge} />
 			</Show>

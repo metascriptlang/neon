@@ -11,6 +11,7 @@ import {
 	NavigationContainerRef,
 	ScreenProps,
 	TabBarIconProps,
+	HeaderItemProps,
 	createBottomTabNavigator,
 	createDrawerNavigator,
 	createNavigationContainerRef,
@@ -149,7 +150,7 @@ function ItemEdit(props: ScreenProps<HomeParams>): NeonNode {
 		navigation.goBack();
 	};
 	navigation.setOptions({
-		headerRight: <Pressable style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Save"
+		headerRight: (p: HeaderItemProps): NeonNode => <Pressable style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Save"
 			onPress={(e: NeonEvent): void => { save(); }}>
 			<Text style={styles.headerButtonText}>Save</Text>
 		</Pressable>,
@@ -163,7 +164,7 @@ function ItemEdit(props: ScreenProps<HomeParams>): NeonNode {
 
 function HomeTab(props: ScreenProps<TabParams>): NeonNode {
 	return <HomeStack.Navigator>
-		<HomeStack.Screen name="List" component={ItemList} options={{ title: "Items", headerLeft: <DrawerToggleButton /> }} />
+		<HomeStack.Screen name="List" component={ItemList} options={{ title: "Items", headerLeft: (p: HeaderItemProps): NeonNode => <DrawerToggleButton /> }} />
 		<HomeStack.Screen name="Detail" component={ItemDetail} options={{ title: "Item" }}
 			params={HomeStack.params.of("Detail", {
 				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "1") as int32 }),
