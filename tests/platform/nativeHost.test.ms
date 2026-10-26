@@ -2,6 +2,8 @@ import { runApp, createNativeHost } from "../../src/platform/native/host";
 import "../../src/platform/native/switch";
 import "../../src/platform/native/activityIndicator";
 import "../../src/platform/native/modal";
+import "../../src/platform/native/inputAccessoryView";
+import { inputAccessoryViewNode } from "../../src/components/inputAccessoryView";
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { For, Errored } from "../../src/macros/ui/flow";
@@ -1016,6 +1018,28 @@ test "a native Modal fills the root above the app, takes the touches below it an
 	assert log === "under;inside;close;under;", "closed: the app presses again: " + log;
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "the modal layer is released";
+}
+
+test "a native InputAccessoryView lays its children out across the top of the root above the app and presses them" {
+	let log = "";
+	const tools = (): NeonNode => <Pressable accessibilityLabel="Done" style={{ height: 44 }} onPress={(e: NeonEvent): void => { log += "tool;"; }}><Text>Done</Text></Pressable>;
+	const bar = inputAccessoryViewNode({ nativeID: accessor((): string => "bar"), backgroundColor: accessor((): string => "#eeeeee"), children: tools() });
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<TextInput inputAccessoryViewID="bar" style={{ height: 40 }} />
+		<Pressable style={{ height: 100 }} onPress={(e: NeonEvent): void => { log += "under;"; }}><Text>under</Text></Pressable>
+		{bar}
+	</View>;
+	runApp(app);
+	assert anyProp("nativeID") === "bar", "the accessory carries its nativeID: " + anyProp("nativeID");
+	assert anyProp("backgroundColor") === "#eeeeee", "and its backgroundColor: " + anyProp("backgroundColor");
+	assert anyProp("inputAccessoryViewID") === "bar", "the input names it: " + anyProp("inputAccessoryViewID");
+	const tool = nmTagWithProp("accessibilityLabel", "Done");
+	assert `${nmLayoutWidth(tool)}x${nmLayoutHeight(tool)}` === "400x44", "full width: " + `${nmLayoutWidth(tool)}x${nmLayoutHeight(tool)}`;
+	nmTapAt(10, 20);
+	nmLoop();
+	assert log === "tool;", "its child presses and the app below does not: " + log;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "the accessory views are released";
 }
 
 test "native numberOfLines caps a wrapping label's measured height, and 0 lifts the cap" {
