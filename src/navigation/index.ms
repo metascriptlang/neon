@@ -39,6 +39,8 @@ export {
 	useRoute,
 	useIsFocused,
 	useFocusEffect,
+	usePreventRemove,
+	getFocusedRouteNameFromRoute,
 	useNavigationState,
 	StackAnimation,
 	HeaderTitleAlign,

@@ -1634,6 +1634,29 @@ export function useFocusEffect(effect: () => Cleanup | null): void {
 	);
 }
 
+export function usePreventRemove<PL>(
+	prevent: Accessor<boolean>,
+	callback: (event: NavigationEventArg) => void,
+): void {
+	const stop = useNavigation<PL>().addListener("beforeRemove", (event: NavigationEventArg): void => {
+		if (!untrack((): boolean => prevent())) { return; }
+		event.preventDefault();
+		callback(event);
+	});
+	onCleanup(stop);
+}
+
+export function getFocusedRouteNameFromRoute(route: NavigationRoute): string | null {
+	const state = route.state;
+	if (state !== null) {
+		const nested = state as NavigationState;
+		return nested.routes[nested.index].name;
+	}
+	const params = route.params;
+	if (params === null) { return null; }
+	return (params as Map<string, string>).get("screen") ?? null;
+}
+
 export function useTheme(): Accessor<Theme> {
 	return currentScope("useTheme").container.theme;
 }
