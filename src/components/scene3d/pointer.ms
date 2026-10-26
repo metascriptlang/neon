@@ -31,12 +31,16 @@ export interface PointerProps extends NodeProps {
 	onLongPress?: ((e: Pointer3DEvent) => void) | null;
 	onHoverIn?: ((e: Pointer3DEvent) => void) | null;
 	onHoverOut?: ((e: Pointer3DEvent) => void) | null;
+	onPointerMove?: ((e: Pointer3DEvent) => void) | null;
+	onWheel?: ((e: Pointer3DEvent) => void) | null;
 }
 
 interface PointerEntry {
 	node: NodeId3D;
 	events: PressEvents<Pointer3DEvent>;
 	hovers: boolean;
+	onMove: ((e: Pointer3DEvent) => void) | null;
+	onWheel: ((e: Pointer3DEvent) => void) | null;
 }
 
 // A control that drives the scene from drags no node takes, as drei's controls listen on the canvas.
@@ -95,6 +99,8 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	let byRow: (PointerEntry | null)[] = [];
 	let count: int32 = 0;
 	let hovers: int32 = 0;
+	let moves: int32 = 0;
+	let wheels: int32 = 0;
 	let hovered: PointerEntry[] = [];
 	let captured: NodeId3D | null = null;
 	let pressEntry: PointerEntry | null = null;
@@ -274,17 +280,28 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	const pointerMove = (x: float32, y: float32, e: NeonEvent): boolean => {
 		const drag = dragging;
 		if (drag !== null) { drag.drag(x, y, e); }
-		if (hovers === 0 && !pressTracks) { return captured !== null || dragging !== null; }
+		if (hovers === 0 && moves === 0 && !pressTracks) { return captured !== null || dragging !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
+		along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onMove,
+			pointerEventOf("pointermove", e, ray, aimed));
 		return hovered.length > 0 || captured !== null || dragging !== null;
 	};
 
 	const pointerWheel = (x: float32, y: float32, e: NeonEvent): boolean => {
+		let taken = false;
+		if (wheels > 0) {
+			aim(x, y);
+			for (const entry of scratch) {
+				if (entry.onWheel !== null) { taken = true; }
+			}
+			along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onWheel,
+				pointerEventOf("wheel", e, ray, aimed));
+		}
 		for (let i = drags.length - 1; i >= 0; i -= 1) {
 			if (drags[i].wheel(x, y, e)) { return true; }
 		}
-		return false;
+		return taken;
 	};
 
 	const pointerLeave = (x: float32, y: float32, e: NeonEvent): void => {
@@ -333,6 +350,8 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 			byRow[row] = entry;
 			count += 1;
 			if (entry.hovers) { hovers += 1; }
+			if (entry.onMove !== null) { moves += 1; }
+			if (entry.onWheel !== null) { wheels += 1; }
 		},
 		drop: (entry: PointerEntry): void => {
 			const row = entry.node.index;
@@ -340,6 +359,8 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 				byRow[row] = null;
 				count -= 1;
 				if (entry.hovers) { hovers -= 1; }
+				if (entry.onMove !== null) { moves -= 1; }
+				if (entry.onWheel !== null) { wheels -= 1; }
 			}
 			without(hovered, entry);
 			if (pressEntry === entry) { pressEntry = null; }
@@ -353,7 +374,8 @@ function cancelled(): Pointer3DEvent {
 
 export function hasPointerHandlers(props: PointerProps): boolean {
 	return props.onPress !== null || props.onPressIn !== null || props.onPressOut !== null ||
-		props.onLongPress !== null || props.onHoverIn !== null || props.onHoverOut !== null;
+		props.onLongPress !== null || props.onHoverIn !== null || props.onHoverOut !== null ||
+		props.onPointerMove !== null || props.onWheel !== null;
 }
 
 // A node with a pointer handler is made pickable unless the author set `pickable`, and gets its own flag back on unmount.
@@ -372,7 +394,8 @@ export function bindPointer(state: SceneState, node: NodeId3D, props: PointerPro
 		onHoverOut: props.onHoverOut,
 		delayLongPress: accessor((): number => LONG_PRESS_DELAY_MS),
 	}, cancelled);
-	const entry: PointerEntry = { node, events, hovers: props.onHoverIn !== null || props.onHoverOut !== null };
+	const entry: PointerEntry = { node, events, hovers: props.onHoverIn !== null || props.onHoverOut !== null,
+		onMove: props.onPointerMove, onWheel: props.onWheel };
 	const wasPickable = scene.nodes[node.index].flags.has(NodeFlag.Pickable);
 	if (props.pickable === null) { setPickable(scene, node, true); }
 	pointer.add(entry);
