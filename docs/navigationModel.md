@@ -525,7 +525,8 @@ TanStack Router `6777b8b` (`router-core/src/scroll-restoration.ts`), Next.js `64
 - `navigate(href, { scroll: false })` skips the scroll to the top and still scrolls to a hash
   target that exists, as Solid (`createRouter.ts:55-61`) and TanStack's `resetScroll: false`
   with a hash do. Next's `scroll={false}` leaves everything alone; Neon follows the two owners.
-  `<A noScroll>` is not built: `followLinks` would need the choice passed to its callback.
+  `<A noScroll>` renders the attribute and `followLinks` passes `{ scroll: false }` to its
+  callback, as Solid reads `noscroll` off the anchor (`data/events.ts` handleAnchorClick).
 - `followScroll` sets `history.scrollRestoration = "manual"` and puts it back on dispose
   (`scrollRestoration.ts:33`). It records `scrollY` on every scroll event under the entry's
   `__neonIndex` (Solid keys by `_depth`, `:48-50`), drops the offsets from a new entry on
