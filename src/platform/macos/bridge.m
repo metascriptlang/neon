@@ -345,6 +345,7 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot);
 @property(nonatomic) BOOL bold;
 @property(nonatomic, copy) NSString *family;
 @property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic) NSWritingDirection direction;
 @property(nonatomic) BOOL layoutStale;
 @property(nonatomic, strong) NSTextStorage *storage;
 @property(nonatomic, strong) NSLayoutManager *layoutManager;
@@ -417,6 +418,7 @@ static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic)
 - (void)rebuild {
 	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
 	paragraph.alignment = self.alignment;
+	paragraph.baseWritingDirection = self.direction;
 	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] initWithString:self.text];
 	for (NeonRun *run in [self effectiveRuns]) {
 		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
@@ -549,6 +551,14 @@ static NSTextAlignment alignmentOf(const char *value) {
 	snprintf(message, sizeof message, "textAlign \"%s\"", value);
 	unimplemented(message);
 	return NSTextAlignmentNatural;
+}
+
+// RN macOS RCTTextPrimitivesConversions.h:30 (react-native-macos 8941740): auto is Natural, and RN falls back to Natural
+// for a value it does not know (conversions.h:630); RCTAttributedTextUtils.mm:224 puts it on the paragraph style.
+static NSWritingDirection writingDirectionOf(const char *value) {
+	if (!strcmp(value, "ltr")) return NSWritingDirectionLeftToRight;
+	if (!strcmp(value, "rtl")) return NSWritingDirectionRightToLeft;
+	return NSWritingDirectionNatural;
 }
 
 // --- ScrollView: an NSScrollView over a flipped document view, as RN macOS's RCTScrollViewComponentView ---
@@ -756,6 +766,7 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 @property(nonatomic) BOOL bold;
 @property(nonatomic, strong) NSColor *color, *placeholderColor;
 @property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic) NSWritingDirection direction;
 @property(nonatomic, strong) NSTextField *field;
 @property(nonatomic, strong) NSScrollView *scroll;
 @property(nonatomic, strong) NeonTextView *textView;
@@ -869,6 +880,7 @@ static BOOL flagValue(const char *value, const char *name) {
 		self.textView.font = font;
 		self.textView.textColor = self.color;
 		self.textView.alignment = self.alignment;
+		self.textView.baseWritingDirection = self.direction;
 		self.textView.editable = self.editable;
 		self.textView.typingAttributes = @{NSFontAttributeName: font, NSForegroundColorAttributeName: self.color};
 		self.textView.needsDisplay = YES;
@@ -876,6 +888,7 @@ static BOOL flagValue(const char *value, const char *name) {
 		self.field.font = font;
 		self.field.textColor = self.color;
 		self.field.alignment = self.alignment;
+		self.field.baseWritingDirection = self.direction;
 		self.field.editable = self.editable;
 		self.field.selectable = YES;
 		self.field.placeholderAttributedString = [[NSAttributedString alloc] initWithString:self.placeholder attributes:@{
@@ -1066,6 +1079,9 @@ static BOOL flagValue(const char *value, const char *name) {
 		[self applyStyle];
 	} else if (!strcmp(name, "textAlign")) {
 		self.alignment = alignmentOf(value);
+		[self applyStyle];
+	} else if (!strcmp(name, "writingDirection")) {
+		self.direction = writingDirectionOf(value);
 		[self applyStyle];
 	} else {
 		char what[128];
@@ -1634,6 +1650,12 @@ void niSetProp(void *view, const char *name, const char *value) {
 	if (isLabel(as(view)) && !strcmp(name, "textAlign")) {
 		NeonLabel *l = (NeonLabel *)as(view);
 		l.alignment = alignmentOf(text);
+		[l changed:YES];
+		return;
+	}
+	if (isLabel(as(view)) && !strcmp(name, "writingDirection")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.direction = writingDirectionOf(text);
 		[l changed:YES];
 		return;
 	}
