@@ -160,7 +160,7 @@ export interface RouteResolution {
 
 export interface RouteTree {
 	match: (address: string, through?: RouteNode | null) => Result<RouteMatch, RoutingError>;
-	resolve: (address: string) => Result<RouteResolution, RoutingError>;
+	resolve: (address: string, absent?: RouteNode[] | null) => Result<RouteResolution, RoutingError>;
 	href: (
 		node: RouteNode,
 		values: Map<string, string>,
@@ -599,11 +599,12 @@ function decide(found: RouteMatch): GuardDecision {
 	return proceed();
 }
 
-function resolveAddress(ranked: Branch[], address: string): Result<RouteResolution, RoutingError> {
+function resolveAddress(ranked: Branch[], address: string, absent: RouteNode[] | null): Result<RouteResolution, RoutingError> {
 	const parts = try splitAddress(address);
 	for (const branch of ranked) {
 		const chain = matchBranch(branch, parts.pathname);
 		if (chain === null) { continue; }
+		if (absent !== null && absent.includes(chain[chain.length - 1].node)) { continue; }
 		const found: RouteMatch = { chain: chain as MatchedRoute[], search: parts.search, hash: parts.hash };
 		const decision = decide(found);
 		if (decision.action === GuardAction.NotFound) { continue; }
@@ -683,8 +684,8 @@ export function createRouteTree(entries: RouteEntry[]): RouteTree {
 		match: (address: string, through: RouteNode | null = null): Result<RouteMatch, RoutingError> => {
 			return matchAddress(ranked, address, through);
 		},
-		resolve: (address: string): Result<RouteResolution, RoutingError> => {
-			return resolveAddress(ranked, address);
+		resolve: (address: string, absent: RouteNode[] | null = null): Result<RouteResolution, RoutingError> => {
+			return resolveAddress(ranked, address, absent);
 		},
 		href: (
 			node: RouteNode,

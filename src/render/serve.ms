@@ -58,7 +58,7 @@ when (server) {
 	import { rawHtml, renderToStream, renderToString } from "./ssr";
 	import { RoutingError } from "../navigation/routing";
 	import { createRequestRoutingHistory } from "../navigation/routingHistory";
-	import { RouterProvider, createRouter } from "../navigation/router";
+	import { Router, RouterProvider, createRouter } from "../navigation/router";
 
 	function injectAssets(assets: string, html: string): string {
 		const at = html.indexOf("</head>");
@@ -94,6 +94,25 @@ when (server) {
 		return "<!doctype html>" + injectAssets(markup.head + "<style>" + markup.css + "</style>", html);
 	}
 
+	async function rendered(app: App, event: RequestEvent, router: Router, retry: boolean): Promise<Served> {
+		const early = router.response();
+		if (early.location !== null) { return { status: early.status, location: early.location, body: "" }; }
+		let body = "";
+		let failed: Error | null = null;
+		try {
+			body = await page(app, event, <RouterProvider router={router} />);
+		} catch (failure) {
+			failed = failure;
+		}
+		const response = router.response();
+		if (response.location !== null) { return { status: response.status, location: response.location, body: "" }; }
+		if (failed !== null) {
+			if (retry && response.status !== early.status) { return await rendered(app, event, router, false); }
+			throw failed;
+		}
+		return { status: response.status, location: null, body: body };
+	}
+
 	export async function serve(
 		app: App,
 		url: string,
@@ -110,11 +129,7 @@ when (server) {
 		}
 		const router = opened.value;
 		try {
-			const response = router.response();
-			if (response.location !== null) {
-				return { status: response.status, location: response.location, body: "" };
-			}
-			return { status: response.status, location: null, body: await page(app, event, <RouterProvider router={router} />) };
+			return await rendered(app, event, router, true);
 		} finally {
 			router.dispose();
 		}

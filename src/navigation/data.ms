@@ -118,12 +118,20 @@ async function moved<R>(reply: Reply, router: Router | null): Promise<R> {
 	return await new Promise<R>((resolve: (value: R) => void, reject: (reason: Error | string) => void): void => {});
 }
 
+async function absent<R>(reply: Reply, router: Router | null): Promise<R> {
+	if (router === null) { throw new Error("query: the answer is not found, and no RouterProvider is in scope to render the route that takes its place"); }
+	if (!router.missing(reply)) { throw reply; }
+	return await new Promise<R>((resolve: (value: R) => void, reject: (reason: Error | string) => void): void => {});
+}
+
 async function answered<R>(promise: Promise<R>, router: Router | null): Promise<R> {
 	try {
 		return await promise;
 	} catch (failure) {
 		const reply = replyOf(failure);
-		if (reply === null || reply.action !== GuardAction.Redirect) { throw failure; }
+		if (reply === null) { throw failure; }
+		if (reply.action === GuardAction.NotFound) { return await absent<R>(reply, router); }
+		if (reply.action !== GuardAction.Redirect) { throw failure; }
 		return await moved<R>(reply, router);
 	}
 }

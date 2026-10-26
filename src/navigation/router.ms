@@ -285,7 +285,7 @@ function withoutTrailingSlash(address: string): string | null {
 	return pathname.substring(0, end) + address.substring(pathname.length, address.length);
 }
 
-function follow(tree: RouteTree, address: string): Result<Resolved, RoutingError> {
+function follow(tree: RouteTree, address: string, absent: RouteNode[] | null = null): Result<Resolved, RoutingError> {
 	let at = address;
 	let first: int32 = 0;
 	for (let hop: int32 = 0; hop <= MAX_REDIRECTS; hop += 1) {
@@ -295,7 +295,7 @@ function follow(tree: RouteTree, address: string): Result<Resolved, RoutingError
 			at = trimmed as string;
 			continue;
 		}
-		const resolved = try tree.resolve(at);
+		const resolved = try tree.resolve(at, absent);
 		const next = resolved.redirect;
 		if (next === null) {
 			return Result.ok({ address: at, match: resolved.match, status: resolved.status, redirect: first });
@@ -795,6 +795,10 @@ export class Router {
 	inPreload: boolean = false;
 	private owner: Computation | null = null;
 	private redirected: Reply | null = null;
+	private missed: Reply | null = null;
+	private absent: RouteNode[] = [];
+	private absentAt: string = "";
+	private swapping: boolean = false;
 	private root: Level;
 	private current: Signal<Resolved>;
 	private history: RoutingHistory;
@@ -815,6 +819,10 @@ export class Router {
 	}
 
 	view(): NeonNode {
+		if (this.swapping) {
+			this.swapping = false;
+			runWithOwner<number>(null, (): number => untrack((): number => { this.swapIn(); return 0; }));
+		}
 		const steer: Steer = {
 			within: (intent: PreloadIntent, run: () => void): void => { this.within(intent, run); },
 			preloading: (intent: PreloadIntent, run: () => void): void => { this.preloading(intent, run); },
@@ -840,6 +848,7 @@ export class Router {
 
 	apply(resolved: Resolved, replace: boolean, visit: boolean = false, intent: PreloadIntent = "native"): Walked {
 		let walked = Walked.Unchanged;
+		this.missed = null;
 		this.group((): void => {
 			walked = walk(this.routes, this.root, targetOf(resolved, replace, intent), 0);
 			this.current.set(resolved);
@@ -914,6 +923,33 @@ export class Router {
 		return true;
 	}
 
+	missing(reply: Reply): boolean {
+		const resolved = untrack((): Resolved => this.current.get());
+		if (resolved.address !== this.absentAt) {
+			this.absent = [];
+			this.absentAt = resolved.address;
+		}
+		this.absent.push(resolved.match.chain[resolved.match.chain.length - 1].node);
+		const next = follow(this.routes.tree, resolved.address, this.absent);
+		if (!next.ok) { throw new Error("routing: " + resolved.address + " answered not found and no other route matches it"); }
+		this.missed = reply;
+		if (!this.history.writable) {
+			this.swapping = true;
+			return false;
+		}
+		this.swapIn();
+		return true;
+	}
+
+	private swapIn(): void {
+		const missed = this.missed;
+		const resolved = untrack((): Resolved => this.current.get());
+		const next = follow(this.routes.tree, resolved.address, this.absent);
+		if (!next.ok) { throw new Error("routing: " + resolved.address + " answered not found and no other route matches it"); }
+		this.apply(next.value, true);
+		this.missed = missed;
+	}
+
 	preload(href: string): void {
 		const found = this.routes.tree.match(href);
 		if (!found.ok) { return; }
@@ -949,6 +985,8 @@ export class Router {
 		if (redirected !== null) { return { status: redirected.status, location: redirected.address }; }
 		const resolved = untrack((): Resolved => this.current.get());
 		if (resolved.redirect !== 0) { return { status: resolved.redirect, location: resolved.address }; }
+		const missed = this.missed;
+		if (missed !== null) { return { status: missed.status, location: null }; }
 		return { status: resolved.status, location: null };
 	}
 
