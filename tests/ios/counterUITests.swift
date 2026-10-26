@@ -2211,3 +2211,48 @@ final class CaptureUITests: XCTestCase {
         report("recording-finished")
     }
 }
+
+@MainActor
+final class InputAccessoryUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonInputAccessory")
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.terminate()
+        app.launch()
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ expected: String, prefix: String) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix) == expected }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "expected \(expected); it reads \(label(startingWith: prefix))")
+    }
+
+    func testAccessoryBarAboveTheKeyboard() {
+        let field = app.textFields["Message"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Accessory Send"].exists, "no accessory before an input has focus")
+        field.tap()
+        let send = app.buttons["Accessory Send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 10), "the accessory shows with the keyboard")
+        XCTAssertTrue(send.isHittable)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(send.frame.maxY, app.keyboards.firstMatch.frame.minY + 1, "the accessory sits above the keyboard")
+        field.typeText("hi")
+        waitLabel("typed: hi", prefix: "typed: ")
+        send.tap()
+        waitLabel("accessory taps: 1", prefix: "accessory taps: ")
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "a tap on the accessory leaves the input focused")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "input-accessory"
+        shot.lifetime = .keepAlways
+        add(shot)
+        print("NEON_IOS inputAccessory \(label(startingWith: "accessory taps: "))")
+        app.terminate()
+    }
+}

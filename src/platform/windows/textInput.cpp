@@ -106,7 +106,7 @@ COLORREF colorRef(Color c) {
 }
 
 bool noSoftKeyboardOrCorrectionProc(const char *name) {
-	return !strcmp(name, "autoCorrect") || !strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType");
+	return !strcmp(name, "autoCorrect") || !strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType") || !strcmp(name, "inputAccessoryViewID");
 }
 
 bool flag(const char *value, const char *name) {

@@ -18,6 +18,10 @@
 @end
 
 void neonEmitControl(int tag, int phase, NSString *value, float width, float height);
+// Attach the renderer's touch recognizer to a view outside the root's hierarchy.
+void neonAttachTouchHandler(UIView *view);
+// Point a text input at the accessory whose nativeID is `value` ("" clears it).
+void neonSetInputAccessoryID(UIView *input, const char *value);
 UIColor *neonCssColor(const char *css, UIColor *fallback);
 
 #endif

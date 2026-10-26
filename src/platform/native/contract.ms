@@ -66,6 +66,7 @@ export function nativeComponentOf(tag: string): string {
 		"switch" => "Switch from src/components/switch",
 		"activityindicator" => "ActivityIndicator from src/components/activityIndicator",
 		"modal" => "Modal from src/components/modal",
+		"inputaccessoryview" => "InputAccessoryView from src/components/inputAccessoryView",
 		"webview" => "WebView from src/components/webView",
 		"video" => "Video from src/components/video",
 		"camera" => "CameraView from src/components/cameraView",

@@ -131,6 +131,7 @@ void *niSwitchCreate(void) { return createControl(2); }
 void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
 void *niModalCreate(void) { return createControl(5); }
+void *niInputAccessoryViewCreate(void) { return createControl(13); }
 void *niWebViewCreate(void) { return createControl(10); }
 void *niVideoCreate(void) { return createControl(11); }
 void *niCameraCreate(void) { return createControl(12); }
