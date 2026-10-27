@@ -86,7 +86,6 @@ class NativeNode {
 	multiline: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
 	sizesItself: boolean = false;
-	spanData: TextSpan[] | null = null;
 	spanTags: int32[] = [];
 	pressable: boolean = false;
 	text: string = "";
@@ -151,6 +150,7 @@ class NativeTree {
 	downs: NativeNode[][] = [];
 	stacks: NativeNode[][] = [];
 	anchors: (NativeNode | null)[] = [];
+	spans: (TextSpan[] | null)[] = [];
 	open: int32[] = [];
 
 	rowOf(n: NativeNode): int32 {
@@ -172,6 +172,7 @@ class NativeTree {
 			this.downs[at] = [];
 			this.stacks[at] = [];
 			this.anchors[at] = null;
+			this.spans[at] = null;
 		} else {
 			at = this.nodes.length as int32;
 			this.nodes.push(n);
@@ -179,6 +180,7 @@ class NativeTree {
 			this.downs.push([]);
 			this.stacks.push([]);
 			this.anchors.push(null);
+			this.spans.push(null);
 		}
 		n.row = at;
 		return at;
@@ -232,6 +234,16 @@ class NativeTree {
 		this.anchors[this.enter(n)] = anchor;
 	}
 
+	spansOf(n: NativeNode): TextSpan[] | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.spans[at];
+	}
+
+	setSpans(n: NativeNode, spans: TextSpan[] | null): void {
+		if (spans === null && this.rowOf(n) < 0) { return; }
+		this.spans[this.enter(n)] = spans;
+	}
+
 	drop(n: NativeNode): void {
 		const row = this.rowOf(n);
 		if (row < 0) { return; }
@@ -241,6 +253,7 @@ class NativeTree {
 		this.downs[row] = [];
 		this.stacks[row] = [];
 		this.anchors[row] = null;
+		this.spans[row] = null;
 		this.open.push(row);
 		n.row = -1;
 	}
@@ -707,7 +720,7 @@ function releaseNativeTree(n: NativeNode): void {
 		if (tag !== 0) { dropSpanTag(tag); }
 	}
 	n.spanTags = [];
-	n.spanData = null;
+	tree.setSpans(n, null);
 }
 
 function onResize(): void {
@@ -775,7 +788,8 @@ function refuseLineStyle(s: Style | null): void {
 function refreshLabel(n: NativeNode): void {
 	if (n.view === null) { return; }
 	const base: Style = n.styleCache !== null ? n.styleCache as Style : {};
-	const spans: TextSpan[] = n.spanData !== null ? n.spanData as TextSpan[] : [];
+	const known = tree.spansOf(n);
+	const spans: TextSpan[] = known !== null ? known as TextSpan[] : [];
 	refuseLineStyle(base);
 	let rich = styledRun(base);
 	for (const span of spans) {
@@ -840,7 +854,7 @@ function deliverSpans(node: HostNode, spans: TextSpan[]): void {
 }
 
 function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
-	n.spanData = spans;
+	tree.setSpans(n, spans);
 	let pressable = false;
 	for (let i = 0; i < spans.length; i += 1) {
 		if (i >= n.spanTags.length) { n.spanTags.push(0); }
@@ -1261,7 +1275,7 @@ export function createNativeHost(): NativeHost {
 			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
 			n.minFromMeasure = false;
 			applyPaint(n, style);
-			if (n.isText && !n.isString && n.spanData !== null) { refreshLabel(n); }
+			if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
 			else if (n.isText) { remeasureText(n); }
 			if (isMounted(n)) { requestLayout(); }
 		},
@@ -1602,7 +1616,8 @@ when (hcr || testBuild) {
 		const children: DevNode[] = [];
 		for (const c of tree.childrenOf(n)) { children.push(devNode(c, x + c.x, y + c.y)); }
 		let text = n.isString ? n.text : "";
-		if (n.spanData !== null) { for (const span of n.spanData as TextSpan[]) { text += span.text; } }
+		const spans = tree.spansOf(n);
+		if (spans !== null) { for (const span of spans as TextSpan[]) { text += span.text; } }
 		return {
 			tag: n.tag,
 			text,
