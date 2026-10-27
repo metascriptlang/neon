@@ -689,7 +689,7 @@ function freeVisit(stops: Stop[], route: int32, path: string, skip: int32): int3
 }
 
 function sameSearch(a: QueryParams, b: QueryParams): boolean {
-	return a.encoded() === b.encoded();
+	return a.toString() === b.toString();
 }
 
 enum Walked {
@@ -1265,7 +1265,7 @@ interface Steer {
 
 function addressOf(stop: Stop): string {
 	let address = stop.path;
-	if (stop.search.count() > 0) { address += "?" + stop.search.encoded(); }
+	if (stop.search.size > 0) { address += "?" + stop.search.toString(); }
 	return stop.hash === "" ? address : address + "#" + stop.hash;
 }
 

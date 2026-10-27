@@ -58,7 +58,7 @@ export class QueryParams {
 		}
 	}
 
-	count(): int32 {
+	get size(): int32 {
 		return this.names.length as int32;
 	}
 
@@ -68,7 +68,7 @@ export class QueryParams {
 		return pairs;
 	}
 
-	encoded(): string {
+	toString(): string {
 		const pairs: string[] = [];
 		for (let i = 0; i < this.names.length; i += 1) {
 			pairs.push(encodeRouteComponent(this.names[i]) + "=" + encodeRouteComponent(this.values[i]));

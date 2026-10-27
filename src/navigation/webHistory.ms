@@ -135,7 +135,7 @@ function addressOf(nodes: HistoryNode[]): string {
 	const parameters = new QueryParams();
 	collectAddress(nodes[nodes.length - 1], segments, parameters);
 	const path = "/" + segments.join("/");
-	return parameters.names.length === 0 ? path : path + "?" + parameters.encoded();
+	return parameters.names.length === 0 ? path : path + "?" + parameters.toString();
 }
 
 function encodeHistory(nodes: HistoryNode[]): string {
@@ -186,7 +186,7 @@ function startsWith(keys: string[], prefix: string[]): boolean {
 }
 
 function sameParameters(a: QueryParams, b: QueryParams): boolean {
-	return a.encoded() === b.encoded();
+	return a.toString() === b.toString();
 }
 
 function sameItems(a: WebHistoryItem<string>[], b: WebHistoryItem<string>[]): boolean {

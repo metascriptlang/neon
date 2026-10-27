@@ -239,7 +239,7 @@ test "a stack publishes every entry with the last active and follows the model" 
 	const typed = web.history();
 	assert typed[2].key.name === "edit" && typed[2].key.detail === "7";
 	assert typed[2].parameters.get("id") === "7";
-	assert typed[0].parameters.count() === 0 && typed[0].child === null;
+	assert typed[0].parameters.size === 0 && typed[0].child === null;
 	assert stack.pop();
 	flush();
 	assert runs === 3, runs.toString();

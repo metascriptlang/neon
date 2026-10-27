@@ -644,7 +644,7 @@ function buildPath(pattern: string, values: Map<string, string>): Result<string,
 }
 
 function searchText(search: QueryParams): string {
-	return search.count() === 0 ? "" : "?" + search.encoded();
+	return search.size === 0 ? "" : "?" + search.toString();
 }
 
 function hasParams(pattern: string): boolean {
