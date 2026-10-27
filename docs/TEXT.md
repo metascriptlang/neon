@@ -106,9 +106,10 @@ and the rest its `fallbacks`, so a character the first family lacks is drawn fro
 (`~/metascript/.inbox/void/2026-10-18-system-font-fallback.md`). A weight or slant the family has no file for is synthesised by void2d, as
 Ghostty, WezTerm, DirectWrite and CSS `font-synthesis` do (RN iOS takes the nearest weight instead,
 `RCTFont.mm:480`), and the person chose synthesis on 2026-10-16. A family with no registered face, or a weight asked
-for with no family at all, is refused by name. `textDecorationStyle: "wavy"` maps to the run's `wavy`, and
-`textDecorationColor` colours the run's underline and line-through (a terminal's SGR 58), the text colour when unset.
-The native hosts refuse every line style but `solid`, and refuse `textDecorationColor` by name. They take one `fontFamily` per Text, refuse a family list, and refuse a span that changes it;
+for with no family at all, is refused by name. `textDecorationStyle` (`solid`, `double`, `dotted`, `dashed`, `wavy`) maps to the run's
+`underlineStyle`, and only the underline takes it; `overline` in `textDecorationLine` sets the run's `overline`.
+`textDecorationColor` colours the run's underline, overline and line-through (a terminal's SGR 58), the text colour when unset.
+The native hosts refuse every line style but `solid`, an `overline`, and `textDecorationColor` by name. They take one `fontFamily` per Text, refuse a family list, and refuse a span that changes it;
 Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
 a device lane proves them.
 
@@ -119,7 +120,6 @@ a Text that takes presses needs a height until yoga has its measure hook.
 Refused by name until the slice that adds each one:
 - a `View` inside a `Text` (inline views);
 - a nested `fontSize` (a void2d label has one size);
-- `textDecorationStyle` `double`, `dotted` or `dashed`;
 - `cellWidth` on a nested Text. `<Text cellWidth={n}>` maps to void2d `setForceWidth`, so grapheme k sits at k×n, and
   the line never wraps: a cell row narrower than its text stays one line, as a terminal row does, instead of breaking
   onto a second line over the row below. `cellWidths` gives the grid's own widths beside it, one entry per UTF-8 byte
