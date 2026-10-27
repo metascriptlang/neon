@@ -144,6 +144,10 @@ test "a navigation issued right after a tab switch lands after the switch's go" 
 		assert visibleText(root) === "post 2", visibleText(root);
 		assert history.go(-1);
 		await sleepAsync(100);
+		assert history.read().url === "/feed/1", history.read().url;
+		assert visibleText(root) === "post 1", visibleText(root);
+		assert history.go(-1);
+		await sleepAsync(100);
 		assert history.read().url === "/feed", history.read().url;
 		assert visibleText(root) === "feed", visibleText(root);
 	} finally {
