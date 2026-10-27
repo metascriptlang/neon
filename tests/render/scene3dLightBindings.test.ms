@@ -7,7 +7,7 @@ import { Scene3D, Scene3DHandle, Light } from "../../src/components/scene3d";
 import {
 	NodeId3D, NO_NODE_ID, LightKind, collectLights, nodeCount,
 } from "../../../void/src/void3d/scene";
-import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../../../void/src/void3d/gpu3d";
+import { LIGHT_UNIFORM_LENGTH, LIGHT_RECORD_LENGTH, LIGHT_RECORD_COLOR } from "../../../void/src/void3d/gpu3d";
 import { vec3 } from "../../../void/src/math/math3d";
 import { approx } from "../../../void/src/test/helpers";
 
@@ -38,24 +38,25 @@ test "Light color radius priority power and pose update retained nodes and colle
 	try {
 		const scene = refs[0].scene;
 		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-		const colorAt = 12 + MAX_POINT_LIGHTS * 4;
+		const first = LIGHT_UNIFORM_LENGTH;
+		const second = LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_LENGTH;
 		assert collectLights(scene, block).ok;
-		assert approx(block[12], 1.0) && approx(block[15], 2.0);
+		assert approx(block[first], 1.0) && approx(block[first + 3], 2.0);
 		const requests = frameRequests(root.children[0]);
 		setValue(7.0); setPriority(0); flush();
 		assert nodes.length === 2 && scene.nodeCount() === 3;
 		assert collectLights(scene, block).ok;
-		assert approx(block[12], 20.0) && approx(block[15], 4.0);
-		assert approx(block[colorAt], 0.4) && approx(block[colorAt + 3], 8.0);
-		assert approx(block[16], 7.0) && approx(block[19], 14.0);
-		assert approx(block[colorAt + 4], 7.0) && approx(block[colorAt + 7], 9.0);
+		assert approx(block[first], 20.0) && approx(block[first + 3], 4.0);
+		assert approx(block[first + LIGHT_RECORD_COLOR], 0.4) && approx(block[first + LIGHT_RECORD_COLOR + 3], 8.0);
+		assert approx(block[second], 7.0) && approx(block[second + 3], 14.0);
+		assert approx(block[second + LIGHT_RECORD_COLOR], 7.0) && approx(block[second + LIGHT_RECORD_COLOR + 3], 9.0);
 		assert scene.lights[scene.nodes[nodes[1].index].payload].priority === 3;
 		assert frameRequests(root.children[0]) > requests;
 		setValue(2.0); setPriority(9); flush();
 		assert collectLights(scene, block).ok;
-		assert approx(block[12], 2.0) && approx(block[15], 4.0);
-		assert approx(block[colorAt], 2.0) && approx(block[colorAt + 3], 4.0);
-		assert approx(block[16], 20.0), "priority restores order without changing sibling";
+		assert approx(block[first], 2.0) && approx(block[first + 3], 4.0);
+		assert approx(block[first + LIGHT_RECORD_COLOR], 2.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 4.0);
+		assert approx(block[second], 20.0), "priority restores order without changing sibling";
 	} finally { dispose(); resetErrorHalt(); }
 	const requests = frameRequests(outer);
 	setValue(3.0); setPriority(1); flush();
