@@ -320,7 +320,10 @@ server, in static output and in the browser. A route in a Stack may name
 `presentation: "transparentModal"` to show over the screen below it (Expo's
 `presentation`); anywhere else the declaration throws. `Router.response()` gives a server the
 first redirect's status and final location, or the route's status. The query of an address is decoded as
-`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`): a malformed escape stays literal and an
+`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`; `QueryParams` is the ordered multimap
+that `URLSearchParams` models, so `?tag=a&tag=b` keeps both values, `get` reads the first, `getAll` every one, and a bare
+`?flag` is present with `""`; path params stay a separate single-valued map, as Solid keeps `params` and `searchParams`
+apart): a malformed escape stays literal and an
 invalid byte becomes U+FFFD, while a malformed escape in the path is `InvalidAddress` and a 400 (Next
 `DecodeError`, `base-server.ts:1545`). A double slash inside a path matches no route (Solid `createMatcher`,
 `utils.ts:73-76`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
@@ -509,9 +512,10 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
 boundary (`$`, `/`, `?`, `#`), so `https://x.com` never matches `https://x.com.evil.com`, and a
 `*` label matches one or more host characters (`https://*.example.com`). In the query, `+` is a
 space and a malformed escape keeps its raw text; in a path param, a malformed escape rejects
-that route and the next candidate is tried. Two things are left for the person: a repeated query
-key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
-`Map<string, string>` and keeps the last value and `""`.
+that route and the next candidate is tried. A repeated query key is an array in React Navigation and `?flag` is `null`; the rule for
+Neon is the router's: one `QueryParams` per query, `?flag` is `""`. `NavTarget.values` is still
+`Map<string, string>` and keeps the last value until the route params of a navigator
+(`NavigationRoute.params`, `ScreenParams`) and the container history that reads them carry `QueryParams`.
 
 ## Base path
 
