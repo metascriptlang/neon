@@ -511,6 +511,7 @@ space and a malformed escape keeps its raw text; in a path param, a malformed es
 that route and the next candidate is tried. Two things are left for the person: a repeated query
 key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
 `Map<string, string>` and keeps the last value and `""`.
+
 ## Base path
 
 `createRoutes(configs, base)` mounts the whole tree under `base` (Solid `createBranches(routeDefs,
