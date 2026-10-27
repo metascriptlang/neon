@@ -139,13 +139,9 @@ never knows a URL, a pattern or a component.
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
 A renderer takes a model and a `render(child)` function; input events call model
-operations: edge swipe and hardware back today. A desktop app wires back itself, as
-Decompose's Compose for Desktop recipe does (`docs/component/back-button.md:123-160`,
-`f48655a`): a focusable root `View` takes `onKeyUp` and calls `dispatchHardwareBackPress()` on
-`e.code === "Escape"`, and a focused `TextInput` that calls `e.stopPropagation()` on Escape keeps
-the screen, because key events bubble from the focused node. The framework maps no key by default;
-`examples/navigation/desktop.ms` is the recipe and `tests/platform/voidDesktopBack.test.ms` pins it.
-The mouse back button is not wired. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+operations: edge swipe and hardware back today. A desktop has no hardware back: its back is the mouse
+back button (Ion delivers it as button 4 on macOS and Windows), Cmd+[ on macOS and Alt+Left on
+Windows and Linux, the inputs a browser maps to history back. No desktop renderer wires them yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
 `renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
 time in single mode, main beside details or extra in dual, three columns in triple,
 with weights and placeholders for an empty panel. The app picks the mode from its
@@ -754,9 +750,10 @@ uses a shadow root.
   a `drawer` item when the status differs from `default`) as TabRouter and DrawerRouter
   state does; a `fullHistory` visit's params snapshot is not persisted. Not carried:
   options as `({ route, navigation }) => options` (parked on `~/metascript/.inbox/compiler/2026-10-08-jsx-inline-handler-local-owner.md`: a destructured arrow parameter is refused),
-  `navigation.dispatch` with `CommonActions`, `StackActions`, `TabActions` and
-  `DrawerActions` (their payload is an untyped `object`, and Neon types params by the
-  navigator's list), `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
+  action objects (`CommonActions`, `StackActions`, `TabActions`, `DrawerActions`): each one is a
+  typed method here (`navigate`, `push`, `pop`, `popTo`, `replace`, `reset`, `setParams`,
+  `jumpTo`, `openDrawer`), and the one place an app holds an action as a value, resuming a
+  removal it blocked, is `navigation.dispatch(e.data.action)` on the event's action; `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
   bar are fixed-size, with no measured height or safe-area inset to report).
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
