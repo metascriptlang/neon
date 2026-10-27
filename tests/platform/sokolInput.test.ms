@@ -44,6 +44,7 @@ function event(type: AppEventType): AppEvent {
 		framebufferHeight: 0 as int32,
 		text: "",
 		cursor: 0 as int32,
+		touches: [],
 	};
 }
 
