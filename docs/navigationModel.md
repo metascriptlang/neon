@@ -513,9 +513,12 @@ boundary (`$`, `/`, `?`, `#`), so `https://x.com` never matches `https://x.com.e
 `*` label matches one or more host characters (`https://*.example.com`). In the query, `+` is a
 space and a malformed escape keeps its raw text; in a path param, a malformed escape rejects
 that route and the next candidate is tried. A repeated query key is an array in React Navigation and `?flag` is `null`; the rule for
-Neon is the router's: one `QueryParams` per query, `?flag` is `""`. `NavTarget.values` is still
-`Map<string, string>` and keeps the last value until the route params of a navigator
-(`NavigationRoute.params`, `ScreenParams`) and the container history that reads them carry `QueryParams`.
+Neon is the router's: one `QueryParams` per query, `?flag` is `""`. `NavTarget.values`,
+`NavigationRoute.params`, the `ScreenParams` codec input and output and the container history carry it too, so a
+deep link, `initialState` and the exported state keep every value; path params stay single-valued in the same
+object, and the first query occurrence of a name that a path param owns replaces the path value, as before.
+The address a history writes keeps every value in order, and an opened address that the router did not change is not
+rewritten (`?flag` stays `?flag`, though `QueryParams` writes `flag=` for a changed one).
 
 ## Base path
 
