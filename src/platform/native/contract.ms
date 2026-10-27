@@ -1,6 +1,6 @@
 import { NeonEvent, eventType, neonEvent } from "../../render/event";
-import { Style, PositionType as StylePositionType, Display as StyleDisplay } from "../../render/style";
-import { FlexStyle, PositionType, Display } from "../../../../yoga/src/index";
+import { Style, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { FlexStyle, PositionType, Display, Overflow } from "../../../../yoga/src/index";
 import { asFlexStyleBody } from "../../macros/style/fields";
 
 export enum NativeElementKind {
@@ -63,6 +63,13 @@ function display(v: StyleDisplay | null): Display | null {
 	if (v === "flex") { return "flex"; }
 	if (v === "none") { return "none"; }
 	if (v === "contents") { return "contents"; }
+	return null;
+}
+
+function overflow(v: StyleOverflow | null): Overflow | null {
+	if (v === "visible") { return "visible"; }
+	if (v === "hidden" || v === "clip") { return "hidden"; }
+	if (v === "scroll") { return "scroll"; }
 	return null;
 }
 

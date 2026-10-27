@@ -19,8 +19,8 @@ import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/voi
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, YGNode, PositionType, Display, Direction, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, FontWeight, PositionType as StylePositionType, Display as StyleDisplay } from "../../render/style";
+import { FlexStyle, YGNode, PositionType, Display, Overflow, Direction, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
+import { Style, FontWeight, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
@@ -280,6 +280,13 @@ function display(v: StyleDisplay | null): Display | null {
 	if (v === "flex") { return "flex"; }
 	if (v === "none") { return "none"; }
 	if (v === "contents") { return "contents"; }
+	return null;
+}
+
+function overflow(v: StyleOverflow | null): Overflow | null {
+	if (v === "visible") { return "visible"; }
+	if (v === "hidden" || v === "clip") { return "hidden"; }
+	if (v === "scroll") { return "scroll"; }
 	return null;
 }
 

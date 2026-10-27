@@ -94,7 +94,9 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["textTransform",       "TextTransform",     "word", "ignore", "ignore"],
 		["whiteSpace",          "WhiteSpace",        "word", "ignore", "ignore"],
 		["writingDirection",    "WritingDirection",  "word", "ignore", "ignore"],
-		["overflow",            "Overflow",          "word", "enum",   "ignore"],
+		["overflow",            "Overflow",          "word", "overflow", "ignore"],
+		["overflowX",           "Overflow",          "word", "ignore", "ignore"],
+		["overflowY",           "Overflow",          "word", "ignore", "ignore"],
 		["zIndex",              "number",            "num",  "paint",  "ignore"],
 		["fontFamily",          "string",            "word", "paint",  "ignore"],
 		["transform",           "string",            "word", "ignore", "ignore"],
@@ -326,7 +328,7 @@ export macro asFlexStyleBody(node: Node): Node {
 		const fieldName = row[0];
 		const how = row[COL_VOID];
 		if (how === "paint" || how === "ignore") { continue; }
-		if (how !== "enum" && how !== "num" && how !== "dim" && how !== "position" && how !== "display") { error("void projection for " + fieldName + " must be enum, num, dim, position, display, paint or ignore", node); }
+		if (how !== "enum" && how !== "num" && how !== "dim" && how !== "position" && how !== "display" && how !== "overflow") { error("void projection for " + fieldName + " must be enum, num, dim, position, display, overflow, paint or ignore", node); }
 		const read: Node = {
 			kind: NodeKind.MemberExpr, line: L, column: C,
 			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },

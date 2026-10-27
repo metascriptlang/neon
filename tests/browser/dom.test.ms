@@ -362,6 +362,17 @@ test "the React Native layout aliases reach the element as their logical CSS pro
 	probe(el).remove();
 }
 
+test "overflow clip and the per-axis overflows reach the element" {
+	const h = domHost();
+	const el = mount("view");
+	const s = emptyStyle();
+	s.overflow = "clip";
+	s.overflowY = "auto";
+	h.setStyle(el, s);
+	assert probe(el).style.cssText.includes("overflow: clip auto"), probe(el).style.cssText;
+	probe(el).remove();
+}
+
 test "clipPath reaches the element" {
 	const h = domHost();
 	const el = mount("view");

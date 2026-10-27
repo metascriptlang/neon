@@ -332,7 +332,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 				niSetOpacity(n.view, 1.0);
 				n.faded = false;
 			}
-			const clip = s.overflow === "hidden" ? "hidden" : "visible";
+			const clip = s.overflow === "hidden" || s.overflow === "clip" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;
 				niSetProp(n.view, "overflow", clip);

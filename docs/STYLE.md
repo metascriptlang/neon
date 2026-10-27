@@ -208,7 +208,7 @@ matrix: one row per field, one column per host. A host column reading `ignore` m
 accepts the field and drops it, so the same `Style`
 builds everywhere and only the browser paints it. As of 2026-10-27 the yoga hosts (native, Void)
 lay out none of the start/end edges, `inset`, the per-side border widths, and lay out the web-only
-`position` (`fixed`, `sticky`) and `display` (`block`, `inline`, `inline-block`, `inline-flex`)
+`position` (`fixed`, `sticky`), `overflow` (`auto`; `clip` lays out as `hidden`) and `display` (`block`, `inline`, `inline-block`, `inline-flex`)
 values as unset; the browser maps React Native's `*Horizontal`, `*Vertical`, `*Start`, `*End` and
 `start`/`end` to the logical CSS properties (`cssProperty` in the same file).
 

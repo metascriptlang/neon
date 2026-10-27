@@ -185,7 +185,7 @@ test "setStyle: flex shorthand, basis, wrap and self-alignment reach yoga" {
 	assert flexOf(n).display === "none", "display reached yoga";
 }
 
-test "setStyle: position fixed and sticky stay unset in yoga and absolute applies" {
+test "setStyle: web-only position and overflow values stay unset in yoga, clip is hidden, absolute applies" {
 	const vh = createVoidHost();
 	const fixedNode = vh.host.createElement("div");
 	vh.host.setStyle(fixedNode, { position: "fixed" } as Style);
@@ -193,6 +193,12 @@ test "setStyle: position fixed and sticky stay unset in yoga and absolute applie
 	const stickyNode = vh.host.createElement("div");
 	vh.host.setStyle(stickyNode, { position: "sticky" } as Style);
 	assert flexOf(stickyNode as VoidNode).position === null, "sticky is a position yoga cannot carry, so it stays unset";
+	const clipNode = vh.host.createElement("div");
+	vh.host.setStyle(clipNode, { overflow: "clip" } as Style);
+	assert flexOf(clipNode as VoidNode).overflow === "hidden", "clip clips as hidden does in yoga";
+	const autoNode = vh.host.createElement("div");
+	vh.host.setStyle(autoNode, { overflow: "auto" } as Style);
+	assert flexOf(autoNode as VoidNode).overflow === null, "auto is web-only, so it stays unset";
 	const absoluteNode = vh.host.createElement("div");
 	vh.host.setStyle(absoluteNode, { position: "absolute" } as Style);
 	assert flexOf(absoluteNode as VoidNode).position === "absolute", "absolute reached yoga";

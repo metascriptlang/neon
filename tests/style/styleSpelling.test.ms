@@ -30,7 +30,7 @@ const sheet = createStyles({
 		backdropFilter: "blur(4px)", mixBlendMode: "multiply", isolation: "isolate", backfaceVisibility: "hidden",
 		transformOrigin: "top left", userSelect: "none", textTransform: "uppercase", whiteSpace: "nowrap",
 		textDecorationThickness: 2, textUnderlineOffset: "0.2em", objectFit: "cover", listStyleType: "disc",
-		borderCollapse: "collapse", borderSpacing: 4,
+		borderCollapse: "collapse", borderSpacing: 4, overflowX: "clip", overflowY: "auto",
 	},
 	lengthsAsText: { flexBasis: "auto", width: "50%", margin: "auto", top: "10%" },
 	emptyValues: { color: "", width: "", opacity: 0.5 },
