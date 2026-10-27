@@ -1,7 +1,7 @@
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, setFramePolicy, requestFrame, FrameOnDemand,
 	onWake, setImeRect, setCursor, onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window,
+	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window, keyName,
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
@@ -9,6 +9,7 @@ import { useAppServices, useCaptureServices, imageSize } from "../native/appServ
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { useIonStorage } from "../ion/storage";
+import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { NeonNode } from "../../render/node";
 import { flush } from "../../core/runtime";
 import {
@@ -23,6 +24,11 @@ const POINTER_UP: int32 = 1;
 const POINTER_MOVE: int32 = 2;
 const POINTER_CANCEL: int32 = 3;
 const LEFT_BUTTON: int32 = 1;
+
+function chordBack(e: KeyEvent): boolean {
+	const mods = e.mods;
+	return keyName(e.key) === "ArrowLeft" && mods.has(KeyMod.Alt) && !mods.has(KeyMod.Ctrl) && !mods.has(KeyMod.Shift) && !mods.has(KeyMod.Super);
+}
 
 export interface NativeWindowOptions {
 	title: string;
@@ -90,6 +96,10 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 		const x = e.x as float32;
 		const y = e.y as float32;
 		if (e.kind === PointerKind.Button) {
+			if (e.button === DESKTOP_BACK_BUTTON) {
+				if (!e.pressed) { dispatchHardwareBackPress(); }
+				return;
+			}
 			if (e.button !== LEFT_BUTTON) { return; }
 			niwPointer(e.pressed ? POINTER_DOWN : POINTER_UP, x, y);
 		} else if (e.kind === PointerKind.Motion) {
@@ -112,6 +122,10 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	});
 	onKey((e: KeyEvent): void => {
 		if (e.window !== win.id || !attached) { return; }
+		if (chordBack(e)) {
+			if (e.action === KeyAction.Press) { dispatchHardwareBackPress(); }
+			return;
+		}
 		niwKey(keyAction(e.action), e.scancode, e.mods.has(KeyMod.Ctrl) ? 1 : 0, e.text);
 	});
 	onText((window: int32, text: string): void => {
