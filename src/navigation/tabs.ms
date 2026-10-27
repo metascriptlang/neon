@@ -6,6 +6,7 @@ import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
 import { mapArray } from "../core/array";
 import { NavigationChild } from "./children";
+import { QueryParams } from "./queryParams";
 import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
 import {
 	WebNavigationNode,
@@ -366,7 +367,7 @@ export function pagesModel<PL>(
 				): string | null => map.path(page.instance),
 				parametersMapper: (
 					page: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
-				): Map<string, string> | null => map.parameters(page.instance),
+				): QueryParams | null => map.parameters(page.instance),
 				childSelector: (
 					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): WebNavigationOwner | null => map.child(child.instance),

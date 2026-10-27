@@ -603,9 +603,9 @@ function createLevel(
 		};
 		const web = childPagesWebNavigation<Stop, Place>(pages, serializer, {
 			pathMapper: (page: NavigationChild<Stop, Place>): string | null => page.configuration().part,
-			parametersMapper: (page: NavigationChild<Stop, Place>): Map<string, string> | null => {
+			parametersMapper: (page: NavigationChild<Stop, Place>): QueryParams | null => {
 				const stop = page.configuration();
-				return leafView(routes, stop) ? stop.search.firstValues() : null;
+				return leafView(routes, stop) ? stop.search : null;
 			},
 			childSelector: (child: NavigationChild<Stop, Place>): WebNavigationOwner | null => {
 				return nested(child.instance);
@@ -645,9 +645,9 @@ function createLevel(
 	);
 	const web = childStackWebNavigation<Stop, Place>(stack, serializer, {
 		pathMapper: (child: NavigationChild<Stop, Place>): string | null => child.configuration().part,
-		parametersMapper: (child: NavigationChild<Stop, Place>): Map<string, string> | null => {
+		parametersMapper: (child: NavigationChild<Stop, Place>): QueryParams | null => {
 			const stop = child.configuration();
-			return leafView(routes, stop) ? stop.search.firstValues() : null;
+			return leafView(routes, stop) ? stop.search : null;
 		},
 		childSelector: (child: NavigationChild<Stop, Place>): WebNavigationOwner | null => {
 			return nested(child.instance);

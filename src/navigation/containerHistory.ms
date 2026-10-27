@@ -19,7 +19,7 @@ import {
 	screenQuery,
 	targetFromPath,
 } from "./linking";
-import { RoutePlan, RoutingError, RoutingParticipant } from "./routing";
+import { QueryParams, RoutePlan, RoutingError, RoutingParticipant } from "./routing";
 import { RoutingSession } from "./routingHistory";
 import {
 	WebHistoryItem,
@@ -188,7 +188,7 @@ class HistorySlot {
 				routeKey: string,
 				name: string,
 				values: Map<string, string> | null,
-			): Map<string, string> | null => {
+			): QueryParams | null => {
 				const child = this.childSlot(link, routeKey, name);
 				if (child.present(name, this.screens) && !child.empty()) { return null; }
 				return screenQuery(this.screens, name, values);
@@ -240,7 +240,7 @@ class HistorySlot {
 		if (target !== null) {
 			return this.pendingItems(pendingOfState(stateOfTarget(target as NavTarget)));
 		}
-		return [{ key: "", path: "", parameters: new Map<string, string>(), child: null }];
+		return [{ key: "", path: "", parameters: new QueryParams(), child: null }];
 	}
 
 	pendingItems(pending: Pending): WebHistoryItem<string>[] {
@@ -271,7 +271,7 @@ class HistorySlot {
 		return {
 			key,
 			path: screenPathPart(this.screens, entry.name, entry.params),
-			parameters: query === null ? new Map<string, string>() : query as Map<string, string>,
+			parameters: query === null ? new QueryParams() : query as QueryParams,
 			child: child === null ? null : (child as HistorySlot).owner,
 		};
 	}

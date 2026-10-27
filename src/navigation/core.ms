@@ -16,6 +16,7 @@ import {
 	WebNavigationNode,
 	WebNavigationOwner,
 } from "./webNavigation";
+import { QueryParams } from "./queryParams";
 
 export enum NavigatorKind {
 	Container,
@@ -206,7 +207,7 @@ export interface WebRoutes {
 		routeKey: string,
 		name: string,
 		values: Map<string, string> | null,
-	) => Map<string, string> | null;
+	) => QueryParams | null;
 	child: (routeKey: string, name: string) => WebNavigationOwner | null;
 }
 
@@ -893,7 +894,7 @@ export interface NavigatorModel<PL> {
 export interface RouteWebMap<PL> {
 	serializer: WebKeySerializer<RouteSeed<PL>>;
 	path: (entry: Navigation<PL>) => string | null;
-	parameters: (entry: Navigation<PL>) => Map<string, string> | null;
+	parameters: (entry: Navigation<PL>) => QueryParams | null;
 	child: (entry: Navigation<PL>) => WebNavigationOwner | null;
 }
 
@@ -1092,7 +1093,7 @@ export class NavigatorCore<PL> {
 			path: (entry: Navigation<PL>): string | null => {
 				return routes.path(entry.route.name, values(entry));
 			},
-			parameters: (entry: Navigation<PL>): Map<string, string> | null => {
+			parameters: (entry: Navigation<PL>): QueryParams | null => {
 				return routes.parameters(entry.route.key, entry.route.name, values(entry));
 			},
 			child: (entry: Navigation<PL>): WebNavigationOwner | null => {

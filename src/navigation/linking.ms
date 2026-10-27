@@ -1,5 +1,5 @@
 import { NavTarget, NavigationState } from "./core";
-import { encodeRouteComponent } from "./routing";
+import { QueryParams, encodeRouteComponent } from "./routing";
 
 export interface LinkingScreen {
 	name: string;
@@ -458,11 +458,11 @@ export function screenQuery(
 	screens: LinkingScreen[] | null,
 	name: string,
 	values: Map<string, string> | null,
-): Map<string, string> | null {
+): QueryParams | null {
 	if (values === null) { return null; }
 	const held = values as Map<string, string>;
 	const segments = ownSegments(screens, name);
-	const query = new Map<string, string>();
+	const query = new QueryParams();
 	for (const key of unclaimedKeys(held, segments === null ? [] : segments as Segment[], 0)) {
 		query.set(key, held.get(key) ?? "");
 	}

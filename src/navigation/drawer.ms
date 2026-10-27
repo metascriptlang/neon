@@ -2,6 +2,7 @@ import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signa
 import { flush } from "../core/runtime";
 import { createEffect, createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
+import { QueryParams } from "./queryParams";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import {
 	GestureResponderHandlers,
@@ -156,10 +157,13 @@ class DrawerMotion {
 function branchAddress(
 	item: WebHistoryItem<string>,
 	parts: string[],
-	parameters: Map<string, string>,
+	parameters: QueryParams,
 ): void {
 	if (item.path !== "") { parts.push(item.path); }
-	for (const [name, value] of item.parameters) { parameters.set(name, value); }
+	for (const name of item.parameters.names) { parameters.delete(name); }
+	for (let i = 0; i < item.parameters.names.length; i += 1) {
+		parameters.append(item.parameters.names[i], item.parameters.values[i]);
+	}
 	const owner = item.child;
 	if (owner === null) { return; }
 	const items = (owner as WebNavigationOwner).webNavigation.history();
@@ -232,7 +236,7 @@ function drawerModel<PL>(
 					const items = web.history();
 					if (!open()) { return items; }
 					const parts: string[] = [];
-					const parameters = new Map<string, string>();
+					const parameters = new QueryParams();
 					branchAddress(items[items.length - 1], parts, parameters);
 					const opened = items.slice(0, items.length);
 					opened.push({ key: DRAWER_OPEN_KEY, path: parts.join("/"), parameters, child: null });

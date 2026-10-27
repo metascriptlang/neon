@@ -6,8 +6,8 @@ import { Cleanup, Dispose } from "../core/types";
 import {
 	RoutePlan,
 	RoutingError,
+	QueryParams,
 	RoutingParticipant,
-	encodeRouteComponent,
 } from "./routing";
 import { RoutingSession } from "./routingHistory";
 import { WebHistoryItem, WebNavigationError, WebNavigationNode, WebNavigationOwner } from "./webNavigation";
@@ -22,7 +22,7 @@ export interface WebHistory {
 interface HistoryNode {
 	key: string;
 	path: string;
-	parameters: Map<string, string>;
+	parameters: QueryParams;
 	children: HistoryNode[];
 }
 
@@ -118,10 +118,13 @@ function trimSlashes(path: string): string {
 function collectAddress(
 	node: HistoryNode,
 	segments: string[],
-	parameters: Map<string, string>,
+	parameters: QueryParams,
 ): void {
 	if (node.path !== "") { segments.push(trimSlashes(node.path)); }
-	for (const [name, value] of node.parameters) { parameters.set(name, value); }
+	for (const name of node.parameters.names) { parameters.delete(name); }
+	for (let i = 0; i < node.parameters.names.length; i += 1) {
+		parameters.append(node.parameters.names[i], node.parameters.values[i]);
+	}
 	if (node.children.length > 0) {
 		collectAddress(node.children[node.children.length - 1], segments, parameters);
 	}
@@ -129,14 +132,10 @@ function collectAddress(
 
 function addressOf(nodes: HistoryNode[]): string {
 	const segments: string[] = [];
-	const parameters = new Map<string, string>();
+	const parameters = new QueryParams();
 	collectAddress(nodes[nodes.length - 1], segments, parameters);
 	const path = "/" + segments.join("/");
-	const pairs: string[] = [];
-	for (const [name, value] of parameters) {
-		pairs.push(encodeRouteComponent(name) + "=" + encodeRouteComponent(value));
-	}
-	return pairs.length === 0 ? path : path + "?" + pairs.join("&");
+	return parameters.names.length === 0 ? path : path + "?" + parameters.encoded();
 }
 
 function encodeHistory(nodes: HistoryNode[]): string {
@@ -186,12 +185,8 @@ function startsWith(keys: string[], prefix: string[]): boolean {
 	return true;
 }
 
-function sameParameters(a: Map<string, string>, b: Map<string, string>): boolean {
-	if (a.size !== b.size) { return false; }
-	for (const [name, value] of a) {
-		if (!b.has(name) || b.get(name) !== value) { return false; }
-	}
-	return true;
+function sameParameters(a: QueryParams, b: QueryParams): boolean {
+	return a.encoded() === b.encoded();
 }
 
 function sameItems(a: WebHistoryItem<string>[], b: WebHistoryItem<string>[]): boolean {
