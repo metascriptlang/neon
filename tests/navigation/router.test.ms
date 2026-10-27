@@ -5,7 +5,7 @@ import { Cleanup, Dispose } from "../../src/core/types";
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { RoutingError } from "../../src/navigation/routing";
+import { RoutingError, QueryParams } from "../../src/navigation/routing";
 import {
 	RoutingHistory,
 	createMemoryRoutingHistory,
@@ -428,8 +428,7 @@ test "navigate({ to, params }) writes a typed route's address through its codec,
 	assert router.navigate({ to: thread, params: { id: "8" } });
 	flush();
 	assert mockToString(root) === "<root><h1>thread 8|-</h1></root>", mockToString(root);
-	const search = new Map<string, string>();
-	search.set("q", "a b");
+	const search = new QueryParams().append("q", "a b");
 	assert router.navigate({ to: thread, params: { id: "9" }, search, replace: true });
 	flush();
 	assert history.read().url === "/threads/9?q=a%20b", history.read().url;

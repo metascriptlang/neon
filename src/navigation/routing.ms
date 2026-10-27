@@ -164,6 +164,76 @@ export function decodeQueryComponent(value: string): string {
 	return repaired.asString();
 }
 
+export class QueryParams {
+	names: string[] = [];
+	values: string[] = [];
+
+	get(name: string): string | null {
+		for (let i = 0; i < this.names.length; i += 1) {
+			if (this.names[i] === name) { return this.values[i]; }
+		}
+		return null;
+	}
+
+	getAll(name: string): string[] {
+		const found: string[] = [];
+		for (let i = 0; i < this.names.length; i += 1) {
+			if (this.names[i] === name) { found.push(this.values[i]); }
+		}
+		return found;
+	}
+
+	has(name: string): boolean {
+		return this.names.indexOf(name) >= 0;
+	}
+
+	append(name: string, value: string): QueryParams {
+		this.names.push(name);
+		this.values.push(value);
+		return this;
+	}
+
+	set(name: string, value: string): QueryParams {
+		this.delete(name);
+		return this.append(name, value);
+	}
+
+	delete(name: string): void {
+		for (let i = this.names.length - 1; i >= 0; i -= 1) {
+			if (this.names[i] === name) {
+				this.names.splice(i, 1);
+				this.values.splice(i, 1);
+			}
+		}
+	}
+
+	count(): int32 {
+		return this.names.length as int32;
+	}
+
+	entries(): Array<[string, string]> {
+		const pairs: Array<[string, string]> = [];
+		for (let i = 0; i < this.names.length; i += 1) { pairs.push([this.names[i], this.values[i]]); }
+		return pairs;
+	}
+
+	firstValues(): Map<string, string> {
+		const first = new Map<string, string>();
+		for (let i = 0; i < this.names.length; i += 1) {
+			if (!first.has(this.names[i])) { first.set(this.names[i], this.values[i]); }
+		}
+		return first;
+	}
+
+	encoded(): string {
+		const pairs: string[] = [];
+		for (let i = 0; i < this.names.length; i += 1) {
+			pairs.push(encodeRouteComponent(this.names[i]) + "=" + encodeRouteComponent(this.values[i]));
+		}
+		return pairs.join("&");
+	}
+}
+
 export struct RegionAddress {
 	scope: string;
 	address: string;
