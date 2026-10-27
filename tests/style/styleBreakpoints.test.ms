@@ -7,7 +7,10 @@ import { publishWindow } from "../../src/render/environment";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { screen } from "./styleBreakpointsTable";
 
+const FRAME: Style = { position: "relative", borderWidth: 1, boxShadow: "4px 4px 0 #ff6b35" };
+
 const sheet = createStyles({
+	framed: { ...FRAME, borderWidth: 2, when: { [screen.wide]: { boxShadow: "6px 6px 0 #00d4ff" } } },
 	sidebar: {
 		width: "100%",
 		when: {
@@ -54,6 +57,15 @@ test "the web rule bakes every block as a min-width media query" {
 		+ "@media (min-width:900px){." + id + "{width:280px;padding:8px;}}"
 		+ "@media (min-width:1200px){." + id + "{width:400px;}}";
 	assert sheet.sidebar.css === want, "got " + (sheet.sidebar.css as string);
+}
+
+test "a spread base reaches the entry and its class rule, a later field overrides it" {
+	assert sheet.framed.position === "relative" && sheet.framed.borderWidth === 2, "the base fields and the override";
+	if (!onWeb) { return; }
+	const id = sheet.framed.cssId as string;
+	const want = "." + id + "{position:relative;border-width:2px;box-shadow:4px 4px 0 #ff6b35;}"
+		+ "@media (min-width:900px){." + id + "{box-shadow:6px 6px 0 #00d4ff;}}";
+	assert sheet.framed.css === want, "got " + (sheet.framed.css as string);
 }
 
 test "resolving picks every block the width reaches, wider last" {
