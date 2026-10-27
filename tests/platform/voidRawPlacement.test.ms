@@ -23,7 +23,7 @@ test "scoped root accepts empty markers and refuses visible strings without read
 		try { vh.host.append(vh.root, vh.host.createText("visible")); }
 		catch (error) { visible = error.message; }
 		assert visible.includes("Scene2D") && visible.includes("Label");
-		assert (vh.root as VoidNode).children.length === 1;
+		assert vh.tree.childrenOf(vh.root as VoidNode).length === 1;
 	} finally { vh.scene.close(); }
 }
 
@@ -36,7 +36,7 @@ test "scoped raw insertion accepts markers while mapped UI still owns visible te
 		vh.host.append(raw, view);
 		const anchor = vh.host.createText("");
 		vh.host.insertBefore(raw, anchor, view);
-		assert raw.children[0] === anchor && raw.children[1] === view;
+		assert vh.tree.childrenOf(raw)[0] === anchor && vh.tree.childrenOf(raw)[1] === view;
 		let visible = "";
 		const label = vh.host.createText("visible");
 		try { vh.host.insertBefore(raw, label, view); } catch (error) { visible = error.message; }
@@ -45,6 +45,6 @@ test "scoped raw insertion accepts markers while mapped UI still owns visible te
 		assert vh.host.parentOf(label) === view;
 		vh.host.setText(label, "mapped UI");
 		assert (label as VoidNode).ref.text() === "mapped UI";
-		assert raw.children.length === 2;
+		assert vh.tree.childrenOf(raw).length === 2;
 	} finally { vh.scene.close(); }
 }

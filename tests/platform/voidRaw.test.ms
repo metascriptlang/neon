@@ -39,15 +39,15 @@ test "raw wrappers use actual host parent, insertion, move and subtree disposal"
 		vh.host.append(group, first);
 		vh.host.append(group, second);
 		vh.host.insertBefore(group, inserted, second);
-		assert group.children[0] === first && group.children[1] === inserted;
+		assert vh.tree.childrenOf(group)[0] === first && vh.tree.childrenOf(group)[1] === inserted;
 		const next = vh.host.nextSibling(inserted);
 		assert next !== null;
 		assert (next as VoidNode) === second;
 		assert group.ref.getChildIndex(inserted.ref) === 1;
 		vh.host.insertBefore(group, second, first);
-		assert group.children[0] === second && group.ref.getChildIndex(second.ref) === 0;
+		assert vh.tree.childrenOf(group)[0] === second && group.ref.getChildIndex(second.ref) === 0;
 		vh.host.append(vh.root, inserted);
-		assert inserted.parent === vh.root && group.children.length === 2;
+		assert vh.tree.parentOf(inserted) === vh.root && vh.tree.childrenOf(group).length === 2;
 		vh.host.removeChild(vh.root, group);
 		assert group.disposed && first.disposed && second.disposed;
 		assert !group.ref.isLive() && !first.ref.isLive() && !second.ref.isLive();
@@ -100,7 +100,7 @@ test "UI parent text paint never overwrites raw Label props on insertion restyle
 		assert first.ref.textStyle().size === 16.0 && first.ref.paint().color.g === 1.0;
 		assert ui.ref.textStyle().size === 40.0 && ui.ref.paint().color.b === 1.0;
 		vh.host.insertBefore(parent, second, first);
-		assert parent.children[0] === second && parent.children[1] === first;
+		assert vh.tree.childrenOf(parent)[0] === second && vh.tree.childrenOf(parent)[1] === first;
 		assert first.ref.id === firstId && second.ref.id === secondId;
 		assert first.ref.textStyle().size === 16.0 && first.ref.paint().color.g === 1.0;
 		assert second.ref.textStyle().size === 16.0 && second.ref.paint().color.g === 1.0;
@@ -302,7 +302,7 @@ test "raw nodes keep ScrollView box background and inner Mask child-holder order
 		assert mask.kind() === DrawKind.Mask && mask.getChildIndex(second.ref) === 0;
 		const up = second.ref.parent();
 		assert up !== null && up.id.index === mask.id.index;
-		assert second.parent === scroll && scroll.children[0] === second;
+		assert vh.tree.parentOf(second) === scroll && vh.tree.childrenOf(scroll)[0] === second;
 		assert scroll.ref.content().w === 100.0 && mask.content().w === 100.0;
 		vh.host.removeChild(vh.root, scroll);
 		assert scroll.disposed && first.disposed && second.disposed && !mask.isLive();

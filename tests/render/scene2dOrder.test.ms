@@ -7,7 +7,10 @@ import { NeonNode } from "../../src/render/node";
 import { Void, View, Text, TextInput, TextInputHandle, ViewHandle } from "../../src/components/primitives";
 import { Scene2D, Group, Rect } from "../../src/components/scene2d";
 import { NodeRef, Scene2D as VoidScene2D, refOf, getChildAt, getChildIndex } from "../../../void/src/void2d/node";
-import { VoidNode, layoutPass } from "../../src/platform/void/host";
+import { VoidNode } from "../../src/platform/void/host";
+import { VoidArea } from "../../src/render/hostTypes";
+import { useContext } from "../../src/render/context";
+import { getVoidAreaContext } from "../../src/render/voidScope";
 import { local, content, isLive } from "../../../void/src/void2d/node";
 import { rgba } from "../../../void/src/void2d/types";
 
@@ -98,8 +101,12 @@ test "Scene2D UI and raw children share actual VoidNode parent and layout contra
 	const views: VoidNode[] = [];
 	const fields: VoidNode[] = [];
 	const raw: NodeRef[] = [];
+	const hosts: Host[] = [];
+	const areas: VoidArea[] = [];
 	const capture: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		hosts.push(host);
 		parents.push(parent as VoidNode);
+		areas.push(useContext(getVoidAreaContext()) as VoidArea);
 	};
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D><Group width={120.0} height={80.0}>
@@ -116,11 +123,13 @@ test "Scene2D UI and raw children share actual VoidNode parent and layout contra
 	const parent = parents[0];
 	const view = views[0];
 	try {
-		assert parent.raw && view.parent === parent && !view.raw;
-		assert view.children.length === 2 && fields[0].parent === view;
+		assert parent.raw && (hosts[0].parentOf(view) as VoidNode | null) === parent && !view.raw;
+		let kids = 0;
+		let kid = hosts[0].firstChild(view);
+		while (kid !== null) { kids += 1; kid = hosts[0].nextSibling(kid as HostNode); }
+		assert kids === 2 && (hosts[0].parentOf(fields[0]) as VoidNode | null) === view;
 		assert parent.ref.getChildIndex(view.ref) < parent.ref.getChildIndex(raw[0]);
-		const box = parent.ref.content();
-		layoutPass(view, box.w, box.h);
+		for (const layer of areas[0].hub.layers()) { layer.layout(120, 80); }
 		assert view.ref.content().w === 40.0 && view.ref.content().h === 20.0;
 	} finally { dispose(); }
 	assert parent.disposed && view.disposed && fields[0].disposed;

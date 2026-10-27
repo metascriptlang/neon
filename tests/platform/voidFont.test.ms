@@ -22,7 +22,7 @@ function host(): VoidHost {
 }
 
 function top(vh: VoidHost): VoidNode {
-	return (vh.root as VoidNode).children[0];
+	return vh.tree.childrenOf(vh.root as VoidNode)[0];
 }
 
 function paragraph(text: VoidNode): NodeRef {
@@ -59,7 +59,7 @@ test "a span's fontWeight and fontStyle pick its face in the Text's family, and 
 		{ text: "bi ", style: { fontWeight: "700", fontStyle: "italic" } },
 		{ text: "w", style: { textDecorationLine: "underline", textDecorationStyle: "wavy" } },
 	]} /></View>), vh.host, vh.root);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	const runs = runsOf(vh, label);
 	const regular = probeFace(400, false);
 	assert label.textStyle().font === regular, "the paragraph takes the family's regular face";
@@ -80,7 +80,7 @@ test "every underline style and an overline reach their runs" {
 		{ text: "w ", style: { textDecorationLine: "underline", textDecorationStyle: "wavy" } },
 		{ text: "v", style: { textDecorationLine: "overline line-through" } },
 	]} /></View>), vh.host, vh.root);
-	const runs = runsOf(vh, paragraph(top(vh).children[0]));
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(top(vh))[0]));
 	assert runs[0].underlineStyle === UnderlineStyle.Solid && runs[0].underline.a > 0.0, "solid";
 	assert runs[1].underlineStyle === UnderlineStyle.Double, "double";
 	assert runs[2].underlineStyle === UnderlineStyle.Dotted, "dotted";
@@ -95,8 +95,8 @@ test "a plain Text's weight comes from the host's default family, and its underl
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), loadedFont(), PROBE_FAMILY);
 	render(element(<View style={{ width: 300 }}><Text style={{ fontWeight: "bold" }}>heavy</Text><Text style={{ textDecorationLine: "underline", textDecorationStyle: "wavy" }}>curly</Text></View>), vh.host, vh.root);
 	const view = top(vh);
-	assert paragraph(view.children[0]).textStyle().font === probeFace(700, false), "bold from the default family";
-	const runs = runsOf(vh, paragraph(view.children[1]));
+	assert paragraph(vh.tree.childrenOf(view)[0]).textStyle().font === probeFace(700, false), "bold from the default family";
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(view)[1]));
 	assert runs.length === 1 && runs[0].underlineStyle === UnderlineStyle.Wavy && runs[0].underline.a > 0.0, "a decorated Text draws its underline as one run";
 }
 
@@ -125,8 +125,8 @@ test "a View's handle measures a line with the face and size its Text draws with
 	</View>), vh.host, vh.root);
 	const regular = (frame as ViewHandle).measureText("MMMM", { fontFamily: PROBE_FAMILY, fontSize: 14 });
 	const bold = (frame as ViewHandle).measureText("MMMM", { fontFamily: PROBE_FAMILY, fontSize: 14, fontWeight: "bold" });
-	const drawn = paragraph(top(vh).children[0]).textStyle();
-	const drawnBold = paragraph(top(vh).children[1]).textStyle();
+	const drawn = paragraph(vh.tree.childrenOf(top(vh))[0]).textStyle();
+	const drawnBold = paragraph(vh.tree.childrenOf(top(vh))[1]).textStyle();
 	const width = calcTextWidth("MMMM", drawn);
 	const boldWidth = calcTextWidth("MMMM", drawnBold);
 	assert width.ok && regular.width === width.value as number, `regular width ${regular.width} is the drawn label's`;
@@ -157,7 +157,7 @@ test "a span's textDecorationColor colours its underline and line-through, not i
 		{ text: "gone ", style: { textDecorationLine: "line-through", textDecorationColor: "#00ff00" } },
 		{ text: "plain", style: { textDecorationLine: "underline" } },
 	]} /></View>), vh.host, vh.root);
-	const runs = runsOf(vh, paragraph(top(vh).children[0]));
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(top(vh))[0]));
 	assert runs[0].underlineStyle === UnderlineStyle.Wavy && runs[0].underline.r > 0.99 && runs[0].underline.g < 0.32 && runs[0].color.g > 0.99, "red wavy underline under white text";
 	assert runs[1].strikethrough.g > 0.99 && runs[1].strikethrough.r < 0.01 && runs[1].underline.a === 0.0, "green line-through";
 	assert runs[2].underline.r > 0.99 && runs[2].underline.g > 0.99, "no decoration colour keeps the text colour";
@@ -185,9 +185,9 @@ test "a fontFamily list draws a character its first family lacks in the next fam
 		<Text style={{ fontSize: 14 }} spans={[{ text: "b" }, { text: "中", style: { fontFamily: `${PROBE_FAMILY}, ${CJK_FAMILY}` } }]} />
 	</View>), vh.host, vh.root);
 	const view = top(vh);
-	assert drawsFromFallback(view.children[0], HAN) && !drawsFromFallback(view.children[0], 0x61), "the hanzi comes from the CJK family, the latin from the first";
-	assert !drawsFromFallback(view.children[1], HAN), "one family has no fallback to draw it from";
-	const runs = runsOf(vh, paragraph(view.children[2]));
+	assert drawsFromFallback(vh.tree.childrenOf(view)[0], HAN) && !drawsFromFallback(vh.tree.childrenOf(view)[0], 0x61), "the hanzi comes from the CJK family, the latin from the first";
+	assert !drawsFromFallback(vh.tree.childrenOf(view)[1], HAN), "one family has no fallback to draw it from";
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(view)[2]));
 	assert faceForCodepoint(runs[1].font, HAN) !== fontFace(runs[1].font), "a span's family list falls back too";
 }
 
@@ -200,9 +200,9 @@ test "the host's default family list reaches a Text that names none, in every we
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), plain.value, list);
 	render(element(<View style={{ width: 300 }}><Text>中</Text><Text style={{ fontWeight: "bold" }}>中</Text></View>), vh.host, vh.root);
 	const view = top(vh);
-	assert paragraph(view.children[0]).textStyle().font === plain.value && drawsFromFallback(view.children[0], HAN), "a plain Text takes the default list";
-	assert paragraph(view.children[1]).textStyle().font !== probeFace(700, false), "bold resolves the list, not the first family alone";
-	assert drawsFromFallback(view.children[1], HAN), "a bold Text falls back through the default list";
+	assert paragraph(vh.tree.childrenOf(view)[0]).textStyle().font === plain.value && drawsFromFallback(vh.tree.childrenOf(view)[0], HAN), "a plain Text takes the default list";
+	assert paragraph(vh.tree.childrenOf(view)[1]).textStyle().font !== probeFace(700, false), "bold resolves the list, not the first family alone";
+	assert drawsFromFallback(vh.tree.childrenOf(view)[1], HAN), "a bold Text falls back through the default list";
 }
 
 test "a fallback family the host cannot find, or a family list it cannot read, is refused by name" {

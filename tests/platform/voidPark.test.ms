@@ -14,7 +14,7 @@ import { Host, HostNode } from "../../src/render/hostTypes";
 import { el, text, regionNode, builtRow, NeonNode } from "../../src/render/node";
 import { Row } from "../../src/render/reconcile";
 import { createMemo } from "../../src/core/memo";
-import { createVoidHost, VoidNode } from "../../src/platform/void/host";
+import { createVoidHost, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 
 test "the void host keeps the park contract and release frees the parked nodes" {
@@ -38,18 +38,19 @@ test "a dropped row without a keeper is freed on the void host, and a later row 
 	const vh = createVoidHost();
 	const [on, setOn] = createSignal(true);
 	render(regionNode((h, home) => createMemo<Row[]>(() => on() ? [builtRow(h, home, el("view", [], [], text("hi")))] : [] as Row[])), vh.host, vh.root);
-	const first = (vh.root as VoidNode).children[0];
+	const first = vh.tree.childrenOf(vh.root as VoidNode)[0];
+	const firstChild = vh.tree.childrenOf(first)[0];
 	assert first.ref.isLive(), "the row is alive while shown";
 
 	setOn(false);
 	flush();
-	assert (vh.root as VoidNode).children.indexOf(first) < 0, "the row left the root";
+	assert vh.tree.childrenOf(vh.root as VoidNode).indexOf(first) < 0, "the row left the root";
 	assert first.disposed && !first.ref.isLive(), "the dropped row's node is freed";
-	assert first.children[0].disposed, "its subtree is freed";
+	assert firstChild.disposed, "its subtree is freed";
 
 	setOn(true);
 	flush();
-	const second = (vh.root as VoidNode).children[0];
+	const second = vh.tree.childrenOf(vh.root as VoidNode)[0];
 	assert second !== first && second.ref.isLive(), "the row is built again, never revived from freed nodes";
 }
 
@@ -60,13 +61,13 @@ function failsWhenOne(a: () => int32): void {
 	);
 }
 
-function placedBefore(parent: HostNode, before: HostNode | null): VoidNode {
-	const kids = (parent as VoidNode).children;
+function placedBefore(vh: VoidHost, parent: HostNode, before: HostNode | null): VoidNode {
+	const kids = vh.tree.childrenOf(parent as VoidNode);
 	return before === null ? kids[kids.length - 1] : kids[kids.indexOf(before as VoidNode) - 1];
 }
 
-function lastPlaced(parent: HostNode): VoidNode {
-	const kids = (parent as VoidNode).children;
+function lastPlaced(vh: VoidHost, parent: HostNode): VoidNode {
+	const kids = vh.tree.childrenOf(parent as VoidNode);
 	return kids[kids.length - 1];
 }
 
@@ -80,7 +81,7 @@ test "an Errored that fails while its content mounts frees the partial nodes, an
 	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		attempts = attempts + 1;
 		el("view", [], [], text("partial"))(host, parent, before);
-		seen.push(lastPlaced(parent));
+		seen.push(lastPlaced(vh, parent));
 		if (attempts < 2) { throw new Error("attempt"); }
 	};
 	render(Errored({
@@ -101,13 +102,13 @@ test "disposing an Errored with its content parked frees the parked nodes after 
 		onCleanup(() => { liveAtCleanup = (node as VoidNode).ref.isLive(); });
 		failsWhenOne(a);
 		el("view", [], [], text("ok"))(host, parent, before);
-		node = lastPlaced(parent);
+		node = lastPlaced(vh, parent);
 	};
 	const dispose = render(Errored({ children: content, fallback: caughtView }), vh.host, vh.root);
 	const parked = node as VoidNode;
 	setA(1);
 	flush();
-	assert parked.ref.isLive() && (vh.root as VoidNode).children.indexOf(parked) < 0, "the content is parked and alive";
+	assert parked.ref.isLive() && vh.tree.childrenOf(vh.root as VoidNode).indexOf(parked) < 0, "the content is parked and alive";
 	dispose();
 	assert liveAtCleanup, "the content cleanup ran while its nodes were alive";
 	assert parked.disposed && !parked.ref.isLive(), "the parked nodes are freed with the Errored";
@@ -125,7 +126,7 @@ test "a focused TextInput in content that gets parked loses focus, and the node 
 		children: content,
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return caughtView(err, reset); },
 	}), vh.host, vh.root);
-	const input = (vh.root as VoidNode).children[0];
+	const input = vh.tree.childrenOf(vh.root as VoidNode)[0];
 	vh.focus(input);
 	assert vh.focused() === input, "the input is focused";
 	setA(1);
@@ -135,7 +136,7 @@ test "a focused TextInput in content that gets parked loses focus, and the node 
 	setA(0);
 	flush();
 	(again as () => void)();
-	assert (vh.root as VoidNode).children.indexOf(input) >= 0, "the same input came back";
+	assert vh.tree.childrenOf(vh.root as VoidNode).indexOf(input) >= 0, "the same input came back";
 	assert vh.focused() === null, "and is not focused again";
 }
 
@@ -145,7 +146,7 @@ test "a Loading whose content read a pending value frees the partial nodes and s
 	const partial: VoidNode[] = [];
 	const content = (data: Accessor<int32>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
 		el("view", [], [], text("partial"))(host, parent, before);
-		partial.push((parent as VoidNode).children[0]);
+		partial.push(vh.tree.childrenOf(parent as VoidNode)[0]);
 		const v = data();
 		el("view", [], [], text(v.toString()))(host, parent, before);
 	};
@@ -155,10 +156,10 @@ test "a Loading whose content read a pending value frees the partial nodes and s
 	};
 	const dispose = render(app, vh.host, vh.root);
 	assert partial.length === 1 && partial[0].disposed && !partial[0].ref.isLive(), "the first attempt's partial node is freed, not left parked";
-	assert (vh.root as VoidNode).children[0].children[0].ref.text() === "caught", "the fallback shows";
+	assert vh.tree.childrenOf(vh.tree.childrenOf(vh.root as VoidNode)[0])[0].ref.text() === "caught", "the fallback shows";
 	await release(gate);
 	assert partial.length === 2 && partial[1].ref.isLive(), "the settled attempt built its own nodes";
-	assert (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "and they are in the root";
+	assert vh.tree.childrenOf(vh.root as VoidNode).indexOf(partial[1]) >= 0, "and they are in the root";
 	dispose();
 }
 
@@ -170,7 +171,7 @@ test "a For pass that a pending row aborts frees the rows it had built, and the 
 		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
 		const row = (item: int32, index: Accessor<number>): NeonNode => (ch: Host, cp: HostNode, cb: HostNode | null): void => {
 			el("view", [], [], text(item.toString()))(ch, cp, cb);
-			built.push(placedBefore(cp, cb));
+			built.push(placedBefore(vh, cp, cb));
 			if (item === 2) { data(); }
 		};
 		Loading({ children: For({ each: accessor((): int32[] => [1, 2]), children: row }), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
@@ -180,7 +181,7 @@ test "a For pass that a pending row aborts frees the rows it had built, and the 
 	await release(gate);
 	assert built.length === 4 && built[2].ref.isLive() && built[3].ref.isLive(), "the settled pass built its own rows";
 	assert built[0].disposed && !built[0].ref.isLive(), "the row of the aborted pass is freed, not left parked";
-	assert (vh.root as VoidNode).children.indexOf(built[2]) >= 0 && (vh.root as VoidNode).children.indexOf(built[3]) >= 0, "and they are in the root";
+	assert vh.tree.childrenOf(vh.root as VoidNode).indexOf(built[2]) >= 0 && vh.tree.childrenOf(vh.root as VoidNode).indexOf(built[3]) >= 0, "and they are in the root";
 	dispose();
 }
 
@@ -192,7 +193,7 @@ test "disposing a For whose pass a pending row aborted frees the rows it had bui
 		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
 		const row = (item: int32, index: Accessor<number>): NeonNode => (ch: Host, cp: HostNode, cb: HostNode | null): void => {
 			el("view", [], [], text(item.toString()))(ch, cp, cb);
-			built.push(placedBefore(cp, cb));
+			built.push(placedBefore(vh, cp, cb));
 			if (item === 2) { data(); }
 		};
 		Loading({ children: For({ each: accessor((): int32[] => [1, 2]), children: row }), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
@@ -209,7 +210,7 @@ test "a Show row switched off while its build is pending leaves no node behind" 
 	const partial: VoidNode[] = [];
 	const content = (data: Accessor<int32>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
 		el("view", [], [], text("partial"))(host, parent, before);
-		partial.push(placedBefore(parent, before));
+		partial.push(placedBefore(vh, parent, before));
 		const v = data();
 		el("view", [], [], text(v.toString()))(host, parent, before);
 	};
@@ -223,9 +224,9 @@ test "a Show row switched off while its build is pending leaves no node behind" 
 	flush();
 	await release(gate);
 	assert partial.length === 1, "the row was not built again while it is off";
-	assert (vh.root as VoidNode).children.indexOf(partial[0]) < 0, "nothing of it is in the root";
+	assert vh.tree.childrenOf(vh.root as VoidNode).indexOf(partial[0]) < 0, "nothing of it is in the root";
 	setOn(true);
 	flush();
-	assert partial.length === 2 && partial[1].ref.isLive() && (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "switching it on builds fresh nodes in the root";
+	assert partial.length === 2 && partial[1].ref.isLive() && vh.tree.childrenOf(vh.root as VoidNode).indexOf(partial[1]) >= 0, "switching it on builds fresh nodes in the root";
 	dispose();
 }

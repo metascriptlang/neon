@@ -6,7 +6,7 @@ import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
-import { createVoidHost, layoutPass, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
+import { createVoidHost, layoutOf, layoutPassAt, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 import { Void, View, ViewHandle, Text, ScrollView, Pressable } from "../../src/components/primitives";
@@ -35,24 +35,24 @@ test "counter renders into the Void scene with parsed flex styles" {
 	const vh = createVoidHost();
 	render(app, vh.host, vh.root);
 
-	assert (vh.root as VoidNode).children.length === 1, "root has the div";
-	const div = (vh.root as VoidNode).children[0];
+	assert vh.tree.childrenOf(vh.root as VoidNode).length === 1, "root has the div";
+	const div = vh.tree.childrenOf(vh.root as VoidNode)[0];
 	assert div.ref.kind() === DrawKind.Group, "div is a group";
-	assert div.children.length === 2, "div has p + button";
+	assert vh.tree.childrenOf(div).length === 2, "div has p + button";
 
-	const p = div.children[0];
-	const button = div.children[1];
+	const p = vh.tree.childrenOf(div)[0];
+	const button = vh.tree.childrenOf(div)[1];
 	assert p.ref.kind() === DrawKind.Group, "p is a group";
-	assert p.children.length === 2, "p has a static and a dynamic text node";
-	assert p.children[0].ref.kind() === DrawKind.Label, "text is a label";
-	assert p.children[0].ref.text() === "Count: ", "static text";
-	assert p.children[1].ref.text() === "0", "initial dyn text bound";
-	assert button.children[0].ref.text() === "+", "button label";
+	assert vh.tree.childrenOf(p).length === 2, "p has a static and a dynamic text node";
+	assert vh.tree.childrenOf(p)[0].ref.kind() === DrawKind.Label, "text is a label";
+	assert vh.tree.childrenOf(p)[0].ref.text() === "Count: ", "static text";
+	assert vh.tree.childrenOf(p)[1].ref.text() === "0", "initial dyn text bound";
+	assert vh.tree.childrenOf(button)[0].ref.text() === "+", "button label";
 
 	assert div.flex !== null, "div style parsed";
 	assert button.flex !== null, "button style parsed";
 
-	layoutPass(div, 200.0, 120.0);
+	layoutPassAt(layoutOf(vh.tree, div), 200.0, 120.0);
 	assert button.ref.content().w === 80.0, "button width from style";
 	assert button.ref.content().h === 40.0, "button height from style";
 	assert p.ref.local().y === 0.0, "p at top of column";
@@ -69,24 +69,24 @@ test "clickAt hits the button and reactive text updates" {
 	);
 	const vh = createVoidHost();
 	render(app, vh.host, vh.root);
-	const div = (vh.root as VoidNode).children[0];
-	layoutPass(div, 200.0, 120.0);
+	const div = vh.tree.childrenOf(vh.root as VoidNode)[0];
+	layoutPassAt(layoutOf(vh.tree, div), 200.0, 120.0);
 
-	const p = div.children[0];
+	const p = vh.tree.childrenOf(div)[0];
 
 	vh.clickAt(40.0, 40.0);
 	flush();
-	assert p.children[1].ref.text() === "1", "click inside button increments";
+	assert vh.tree.childrenOf(p)[1].ref.text() === "1", "click inside button increments";
 
 	vh.clickAt(150.0, 100.0);
 	flush();
-	assert p.children[1].ref.text() === "1", "click outside button is ignored";
+	assert vh.tree.childrenOf(p)[1].ref.text() === "1", "click outside button is ignored";
 
 	vh.clickAt(1.0, 21.0);
 	flush();
 	vh.clickAt(79.0, 59.0);
 	flush();
-	assert p.children[1].ref.text() === "3", "edge clicks inside bounds count";
+	assert vh.tree.childrenOf(p)[1].ref.text() === "3", "edge clicks inside bounds count";
 }
 
 test "parseFlexStyle maps numeric + enum keys and ignores junk" {
@@ -343,7 +343,7 @@ test "a scroll view paints its background behind the content it scrolls" {
 	const mask = area.scroller as NodeRef;
 	assert mask.kind() === DrawKind.Mask, "the content sits in a mask inside it";
 	assert mask.content().w === 100.0 && mask.content().h === 50.0, "the mask fills the scroll view";
-	assert (area.children[0].ref.parent() as NodeRef).id === mask.id, "the child hangs under the mask";
+	assert (vh.tree.childrenOf(area)[0].ref.parent() as NodeRef).id === mask.id, "the child hangs under the mask";
 	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
 	scrollTo(area, 0, 40, false);
 	assert mask.scroll().y === 40.0, "the mask scrolled";
@@ -391,7 +391,7 @@ test "the Void host measures a node in the window, laying out a changed tree fir
 	vh.layout(200.0, 100.0);
 	const outer = vh.host.firstChild(vh.root) as HostNode;
 	const area = vh.host.firstChild(outer) as HostNode;
-	const inner = (area as VoidNode).children[0].children[0] as HostNode;
+	const inner = vh.tree.childrenOf(vh.tree.childrenOf(area as VoidNode)[0])[0] as HostNode;
 	const measure = vh.host.measureInWindow as (node: HostNode) => Result<MeasureRect, MeasureError>;
 	assert rectOf(measure(inner)) === "10,20,30,400", "laid out: " + rectOf(measure(inner));
 	vh.host.setStyle(inner, { width: 50, height: 400, marginLeft: 5 } as Style);

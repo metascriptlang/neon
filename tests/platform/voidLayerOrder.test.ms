@@ -141,8 +141,8 @@ test "a scene's place in the area takes no layout room" {
 		try {
 			const root = areas[0].vh.root as VoidNode;
 			areas[0].vh.layout(640.0, 360.0);
-			const place = root.children[0].ref.content();
-			return "y=" + root.children[1].ref.local().y.toString() + " place=" + place.w.toString() + "x" + place.h.toString();
+			const place = areas[0].vh.tree.childrenOf(root)[0].ref.content();
+			return "y=" + areas[0].vh.tree.childrenOf(root)[1].ref.local().y.toString() + " place=" + place.w.toString() + "x" + place.h.toString();
 		} finally {
 			dispose();
 		}
@@ -230,7 +230,7 @@ test "layers inside one Text share the slot after its paragraph and keep their s
 		assert slots[0].id.index === slots[1].id.index, "one slot per Text";
 		const order = dueNames(area, [slots[0]], names);
 		assert order === "t0,t1", "the later mounted t0 comes first in the paragraph: " + order;
-		const text = (area.vh.root as VoidNode).children[0].ref;
+		const text = area.vh.tree.childrenOf(area.vh.root as VoidNode)[0].ref;
 		drawn(area);
 		assert text.getChildIndex(slots[0]) === text.numChildren() - 1, "the slot paints after the paragraph label";
 	} finally {
