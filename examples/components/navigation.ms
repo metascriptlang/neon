@@ -22,6 +22,7 @@ import {
 	useTheme,
 	useNavigation,
 	useRoute,
+	QueryParams,
 } from "../../src/navigation/index";
 
 export interface ItemParams {
@@ -167,7 +168,7 @@ function HomeTab(props: ScreenProps<TabParams>): NeonNode {
 		<HomeStack.Screen name="List" component={ItemList} options={{ title: "Items", headerLeft: (p: HeaderItemProps): NeonNode => <DrawerToggleButton /> }} />
 		<HomeStack.Screen name="Detail" component={ItemDetail} options={{ title: "Item" }}
 			params={HomeStack.params.of("Detail", {
-				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "1") as int32 }),
+				parse: (values: QueryParams): ItemParams => ({ id: parseInt(values.get("id") ?? "1") as int32 }),
 			})} />
 		<HomeStack.Screen name="Edit" component={ItemEdit} options={{ title: "Edit item" }} />
 	</HomeStack.Navigator>;

@@ -144,7 +144,7 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 
 export interface NavTarget {
 	name: string;
-	values: Map<string, string> | null;
+	values: QueryParams | null;
 	child: NavTarget | null;
 	pop: boolean;
 }
@@ -183,7 +183,7 @@ export interface RouteKey {
 export interface NavigationRoute {
 	key: string;
 	name: string;
-	params: Map<string, string> | null;
+	params: QueryParams | null;
 	state: NavigationState | null;
 }
 
@@ -202,11 +202,11 @@ export interface NavigationState {
 }
 
 export interface WebRoutes {
-	path: (name: string, values: Map<string, string> | null) => string | null;
+	path: (name: string, values: QueryParams | null) => string | null;
 	parameters: (
 		routeKey: string,
 		name: string,
-		values: Map<string, string> | null,
+		values: QueryParams | null,
 	) => QueryParams | null;
 	child: (routeKey: string, name: string) => WebNavigationOwner | null;
 }
@@ -247,7 +247,7 @@ export interface NavigatorLink {
 export interface SeedRoute {
 	key: string;
 	name: string;
-	params: Map<string, string> | null;
+	params: QueryParams | null;
 }
 
 struct SeedKey {
@@ -261,9 +261,10 @@ export function encodeSeedRoute(route: SeedRoute): string {
 	const paramPairs: string[] = [];
 	const values = route.params;
 	if (values !== null) {
-		for (const key of values as Map<string, string>) {
-			paramPairs.push(key);
-			paramPairs.push((values as Map<string, string>).get(key) ?? "");
+		const held = values as QueryParams;
+		for (let i = 0; i < held.names.length; i += 1) {
+			paramPairs.push(held.names[i]);
+			paramPairs.push(held.values[i]);
 		}
 	}
 	const stored: SeedKey = { key: route.key, name: route.name, hasParams: values !== null, paramPairs };
@@ -275,11 +276,11 @@ export function decodeSeedRoute(text: string): SeedRoute | null {
 	if (!parsed.ok) { return null; }
 	const stored = parsed.value;
 	if (stored.name === "" || stored.paramPairs.length % 2 !== 0) { return null; }
-	let params: Map<string, string> | null = null;
+	let params: QueryParams | null = null;
 	if (stored.hasParams) {
-		const values = new Map<string, string>();
+		const values = new QueryParams();
 		for (let i = 0; i < stored.paramPairs.length; i += 2) {
-			values.set(stored.paramPairs[i], stored.paramPairs[i + 1]);
+			values.append(stored.paramPairs[i], stored.paramPairs[i + 1]);
 		}
 		params = values;
 	}
@@ -452,8 +453,8 @@ export class ScreenConfig<PL> {
 	component: (props: ScreenProps<PL>) => NeonNode;
 	options: Accessor<ScreenOptions> | null;
 	initialParams: ParamSlot | null;
-	parseParams: ((values: Map<string, string>) => ParamSlot | null) | null;
-	stringifyParams: ((params: ParamSlot | null) => Map<string, string>) | null = null;
+	parseParams: ((values: QueryParams) => ParamSlot | null) | null;
+	stringifyParams: ((params: ParamSlot | null) => QueryParams) | null = null;
 	getId: ((params: ParamSlot | null) => string) | null = null;
 
 	constructor(
@@ -461,7 +462,7 @@ export class ScreenConfig<PL> {
 		component: (props: ScreenProps<PL>) => NeonNode,
 		options: Accessor<ScreenOptions> | null,
 		initialParams: ParamSlot | null,
-		parseParams: ((values: Map<string, string>) => ParamSlot | null) | null,
+		parseParams: ((values: QueryParams) => ParamSlot | null) | null,
 	) {
 		this.name = name;
 		this.component = component;
@@ -473,23 +474,23 @@ export class ScreenConfig<PL> {
 
 export interface ScreenCodec<PL, K extends keyof PL> {
 	initial?: PL[K] | null;
-	parse?: ((values: Map<string, string>) => PL[K]) | null;
-	stringify?: ((params: PL[K]) => Map<string, string>) | null;
+	parse?: ((values: QueryParams) => PL[K]) | null;
+	stringify?: ((params: PL[K]) => QueryParams) | null;
 	getId?: ((params: PL[K] | null) => string) | null;
 }
 
 export class ScreenParams<PL> {
 	name: string;
 	initial: ParamSlot | null;
-	parse: ((values: Map<string, string>) => ParamSlot | null) | null;
-	stringify: ((params: ParamSlot | null) => Map<string, string>) | null;
+	parse: ((values: QueryParams) => ParamSlot | null) | null;
+	stringify: ((params: ParamSlot | null) => QueryParams) | null;
 	getId: ((params: ParamSlot | null) => string) | null;
 
 	constructor(
 		name: string,
 		initial: ParamSlot | null,
-		parse: ((values: Map<string, string>) => ParamSlot | null) | null,
-		stringify: ((params: ParamSlot | null) => Map<string, string>) | null,
+		parse: ((values: QueryParams) => ParamSlot | null) | null,
+		stringify: ((params: ParamSlot | null) => QueryParams) | null,
 		getId: ((params: ParamSlot | null) => string) | null,
 	) {
 		this.name = name;
@@ -511,10 +512,10 @@ export class ScreenParamsBuilder<PL> {
 			initial === undefined || initial === null ? null : boxParams<PL[K]>(initial as PL[K]),
 			parse === undefined || parse === null
 				? null
-				: (values: Map<string, string>): ParamSlot | null => boxParams<PL[K]>((parse as (values: Map<string, string>) => PL[K])(values)),
+				: (values: QueryParams): ParamSlot | null => boxParams<PL[K]>((parse as (values: QueryParams) => PL[K])(values)),
 			stringify === undefined || stringify === null
 				? null
-				: (slot: ParamSlot | null): Map<string, string> => (stringify as (params: PL[K]) => Map<string, string>)(((slot as ParamSlot).box as ParamBox<PL[K]>).value),
+				: (slot: ParamSlot | null): QueryParams => (stringify as (params: PL[K]) => QueryParams)(((slot as ParamSlot).box as ParamBox<PL[K]>).value),
 			getId === undefined || getId === null
 				? null
 				: (slot: ParamSlot | null): string => (getId as (params: PL[K] | null) => string)(
@@ -1079,7 +1080,7 @@ export class NavigatorCore<PL> {
 				if (values !== null) {
 					const parse = (screen as ScreenConfig<PL>).parseParams;
 					if (parse === null) { return Result.err(WebNavigationError.UndecodableKey); }
-					params = (parse as (values: Map<string, string>) => ParamSlot | null)(values as Map<string, string>);
+					params = (parse as (values: QueryParams) => ParamSlot | null)(values as QueryParams);
 				}
 				return Result.ok(this.adopt(stored.key, stored.name, params));
 			},
@@ -1087,7 +1088,7 @@ export class NavigatorCore<PL> {
 	}
 
 	webNavigation(routes: WebRoutes): WebNavigationNode {
-		const values = (entry: Navigation<PL>): Map<string, string> | null => this.encodeParams(entry);
+		const values = (entry: Navigation<PL>): QueryParams | null => this.encodeParams(entry);
 		return this.model.webNavigation({
 			serializer: this.seedSerializer(),
 			path: (entry: Navigation<PL>): string | null => {
@@ -1374,7 +1375,7 @@ export class NavigatorCore<PL> {
 		let params: ParamSlot | null = null;
 		const values = target.values;
 		const parse = config.parseParams;
-		if (values !== null && parse !== null) { params = parse(values as Map<string, string>); }
+		if (values !== null && parse !== null) { params = parse(values as QueryParams); }
 		this.navigateLocal(target.name, params, target.pop);
 		const child = target.child;
 		if (child === null) { return true; }
@@ -1425,7 +1426,7 @@ export class NavigatorCore<PL> {
 				if (parse === null) {
 					throw new Error("initialState: screen '" + route.name + "' has params but no parseParams");
 				}
-				params = (parse as (values: Map<string, string>) => ParamSlot | null)(values as Map<string, string>);
+				params = (parse as (values: QueryParams) => ParamSlot | null)(values as QueryParams);
 			}
 			list.push({ key: "", name: route.name, params });
 		}
@@ -1539,11 +1540,11 @@ export class NavigatorCore<PL> {
 		};
 	}
 
-	encodeParams(entry: Navigation<PL>): Map<string, string> | null {
+	encodeParams(entry: Navigation<PL>): QueryParams | null {
 		const write = entry.config.stringifyParams;
 		const params = entry.route.slot();
 		if (write === null || params === null) { return null; }
-		return (write as (params: ParamSlot | null) => Map<string, string>)(params);
+		return (write as (params: ParamSlot | null) => QueryParams)(params);
 	}
 
 	describe(): string {
@@ -1725,7 +1726,7 @@ export function getFocusedRouteNameFromRoute(route: NavigationRoute): string | n
 	}
 	const params = route.params;
 	if (params === null) { return null; }
-	return (params as Map<string, string>).get("screen") ?? null;
+	return (params as QueryParams).get("screen") ?? null;
 }
 
 export function useTheme(): Accessor<Theme> {

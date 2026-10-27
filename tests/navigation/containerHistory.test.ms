@@ -25,6 +25,7 @@ import {
 	createNavigationContainerRef,
 	createRoutingSession,
 	createStackNavigator,
+	QueryParams,
 } from "../../src/navigation/index";
 import { findLabel, settle, visibleText } from "./navHarness";
 
@@ -127,11 +128,11 @@ function ShopScreen(props: ScreenProps<RootParams>): NeonNode {
 		<Shop.Screen name="Catalog" component={Catalog} />
 		<Shop.Screen name="Product" component={Product}
 			params={Shop.params.of("Product", {
-				parse: (values: Map<string, string>): ItemParams => {
+				parse: (values: QueryParams): ItemParams => {
 					return { id: values.get("id") ?? "" };
 				},
-				stringify: (params: ItemParams): Map<string, string> => {
-					const values = new Map<string, string>();
+				stringify: (params: ItemParams): QueryParams => {
+					const values = new QueryParams();
 					values.set("id", params.id);
 					return values;
 				},

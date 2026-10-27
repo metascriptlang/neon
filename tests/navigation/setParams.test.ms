@@ -12,6 +12,7 @@ import {
 	createNavigationContainerRef,
 	createStackNavigator,
 	useRoute,
+	QueryParams,
 } from "../../src/navigation/index";
 import { press, visibleText } from "./navHarness";
 
@@ -76,8 +77,8 @@ function mount(ref: NavigationContainerRef): MockNode {
 			<Stack.Screen name="Home" component={Home} />
 			<Stack.Screen name="Detail" component={Detail}
 				params={Stack.params.of("Detail", {
-					stringify: (p: DetailParams): Map<string, string> => {
-						const out = new Map<string, string>();
+					stringify: (p: DetailParams): QueryParams => {
+						const out = new QueryParams();
 						out.set("id", p.id);
 						out.set("tab", p.tab);
 						return out;
@@ -91,10 +92,10 @@ function mount(ref: NavigationContainerRef): MockNode {
 	return root;
 }
 
-function detailState(ref: NavigationContainerRef): Map<string, string> {
+function detailState(ref: NavigationContainerRef): QueryParams {
 	const state: NavigationState = ref.getRootState();
 	const params = state.routes[state.index].params;
-	return params === null ? new Map<string, string>() : params as Map<string, string>;
+	return params === null ? new QueryParams() : params as QueryParams;
 }
 
 test "setParams keeps the fields it is not given" {

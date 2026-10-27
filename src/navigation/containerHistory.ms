@@ -181,13 +181,13 @@ class HistorySlot {
 
 	routes(link: NavigatorLink): WebRoutes {
 		return {
-			path: (name: string, values: Map<string, string> | null): string | null => {
+			path: (name: string, values: QueryParams | null): string | null => {
 				return screenPathPart(this.screens, name, values);
 			},
 			parameters: (
 				routeKey: string,
 				name: string,
-				values: Map<string, string> | null,
+				values: QueryParams | null,
 			): QueryParams | null => {
 				const child = this.childSlot(link, routeKey, name);
 				if (child.present(name, this.screens) && !child.empty()) { return null; }

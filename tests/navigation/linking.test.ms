@@ -19,6 +19,7 @@ import {
 	targetFromPath,
 	targetFromURL,
 	useRoute,
+	QueryParams,
 } from "../../src/navigation/index";
 import { FakeServices } from "../api/fakeServices";
 import { visibleText } from "./navHarness";
@@ -48,10 +49,12 @@ function describe(target: NavTarget | null): string {
 		const values = here.values;
 		if (values !== null) {
 			const keys: string[] = [];
-			for (const key of values as Map<string, string>) { keys.push(key); }
+			for (const key of (values as QueryParams).names) {
+				if (keys.indexOf(key) < 0) { keys.push(key); }
+			}
 			keys.sort();
 			const pairs: string[] = [];
-			for (const key of keys) { pairs.push(key + "=" + ((values as Map<string, string>).get(key) ?? "")); }
+			for (const key of keys) { pairs.push(key + "=" + (values as QueryParams).getAll(key).join("|")); }
 			part += "(" + pairs.join(",") + ")";
 		}
 		out = out === "" ? part : out + ">" + part;
@@ -171,7 +174,7 @@ function roundTrip(path: string): string {
 
 function routeOf(
 	name: string,
-	params: Map<string, string> | null,
+	params: QueryParams | null,
 	state: NavigationState | null,
 ): NavigationRoute {
 	return { key: name, name, params, state };
@@ -181,8 +184,8 @@ function stateOf(index: int32, routes: NavigationRoute[]): NavigationState {
 	return { index, routeNames: [], routes };
 }
 
-function paramsOf(key: string, value: string): Map<string, string> {
-	const values = new Map<string, string>();
+function paramsOf(key: string, value: string): QueryParams {
+	const values = new QueryParams();
 	values.set(key, value);
 	return values;
 }
@@ -206,6 +209,29 @@ test "params no pattern claims become a sorted escaped query on the focused rout
 	const product = routeOf("Product", values, null);
 	const shop = routeOf("Shop", paramsOf("ignored", "1"), stateOf(0, [product]));
 	assert pathFromState(stateOf(0, [shop]), config) === "/shop/product/9?sort=asc";
+}
+
+test "a repeated query key keeps every value in order and round trips to the same path" {
+	const options: LinkingOptions = { prefixes: ["myapp://"], config: { screens: [{ name: "Feed", path: "feed" }] } };
+	const target = targetFromURL("myapp://feed?tag=a&tag=b", options) as NavTarget;
+	const values = target.values as QueryParams;
+	assert values.getAll("tag").join(",") === "a,b", values.getAll("tag").join(",");
+	assert values.get("tag") === "a";
+	assert pathFromState(stateOfTarget(target), options.config) === "/feed?tag=a&tag=b",
+		pathFromState(stateOfTarget(target), options.config) ?? "null";
+}
+
+test "a bare query key is present with an empty value" {
+	const options: LinkingOptions = { prefixes: ["myapp://"], config: { screens: [{ name: "Feed", path: "feed" }] } };
+	const values = (targetFromURL("myapp://feed?flag", options) as NavTarget).values as QueryParams;
+	assert values.has("flag");
+	assert values.get("flag") === "";
+	assert values.getAll("flag").length === 1;
+}
+
+test "a query key that names a path param replaces the path value once and then repeats" {
+	const values = (targetFromPath("user/ana?name=bob&name=cy", config) as NavTarget).values as QueryParams;
+	assert values.getAll("name").join(",") === "bob,cy", values.getAll("name").join(",");
 }
 
 test "pathFromState reads the focused route of each level, tabs and stacks alike" {
@@ -276,7 +302,7 @@ test "the initial URL from the host opens its screen once the container mounts" 
 			<Orders.Screen name="OrderList" component={OrderList} />
 			<Orders.Screen name="Order" component={Order}
 				params={Orders.params.of("Order", {
-					parse: (values: Map<string, string>): OrderParams => ({ order: values.get("order") ?? "" }),
+					parse: (values: QueryParams): OrderParams => ({ order: values.get("order") ?? "" }),
 				})} />
 		</Orders.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
@@ -288,5 +314,55 @@ test "the initial URL from the host opens its screen once the container mounts" 
 	assert visibleText(root) === "OrderList|orders", visibleText(root);
 	publishUrl("orders://order/B2");
 	assert visibleText(root) === "‹ OrderList|Order|order B2", visibleText(root);
+	dispose();
+}
+
+interface KeptParams {
+	values: QueryParams;
+}
+
+interface KeptOrdersParams {
+	OrderList: null;
+	Order: KeptParams;
+}
+
+const Kept = createStackNavigator<KeptOrdersParams>();
+
+function KeptList(props: ScreenProps<KeptOrdersParams>): NeonNode {
+	return <Text>orders</Text>;
+}
+
+function KeptOrder(props: ScreenProps<KeptOrdersParams>): NeonNode {
+	return <Text>order</Text>;
+}
+
+test "the initial URL keeps every value of a repeated query key in the exported state" {
+	const services = new FakeServices();
+	services.initial = "orders://order/A17?tag=a&tag=b&flag";
+	services.install();
+	const ref = createNavigationContainerRef();
+	const root: MockNode = mockNode("root");
+	const linking: LinkingOptions = {
+		prefixes: ["orders://"],
+		config: { screens: [{ name: "OrderList", path: "" }, { name: "Order", path: "order/:order" }] },
+	};
+	const dispose: Dispose = render(<NavigationContainer ref={ref} linking={linking}>
+		<Kept.Navigator>
+			<Kept.Screen name="OrderList" component={KeptList} />
+			<Kept.Screen name="Order" component={KeptOrder}
+				params={Kept.params.of("Order", {
+					parse: (values: QueryParams): KeptParams => ({ values }),
+					stringify: (params: KeptParams): QueryParams => params.values,
+				})} />
+		</Kept.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	await Linking.getInitialURL();
+	const state: NavigationState = ref.getRootState();
+	const route = state.routes[state.index];
+	assert route.name === "Order", route.name;
+	const params = route.params as QueryParams;
+	assert params.getAll("tag").join(",") === "a,b", params.getAll("tag").join(",");
+	assert params.has("flag") && params.get("flag") === "";
+	assert params.get("order") === "A17";
 	dispose();
 }

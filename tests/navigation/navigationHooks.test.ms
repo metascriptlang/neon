@@ -14,6 +14,7 @@ import {
 	createStackNavigator,
 	getFocusedRouteNameFromRoute,
 	usePreventRemove,
+	QueryParams,
 } from "../../src/navigation/index";
 import { settle } from "./navHarness";
 
@@ -77,7 +78,7 @@ test "getFocusedRouteNameFromRoute names the focused child route of a nested sta
 }
 
 test "getFocusedRouteNameFromRoute falls back to the screen param, then to nothing" {
-	const params = new Map<string, string>();
+	const params = new QueryParams();
 	params.set("screen", "Profile");
 	const routed: NavigationRoute = { key: "tabs", name: "Tabs", params, state: null };
 	assert getFocusedRouteNameFromRoute(routed) === "Profile";
