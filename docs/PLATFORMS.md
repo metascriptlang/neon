@@ -49,9 +49,10 @@ A desktop has no hardware back key, so a host maps the inputs a browser maps to 
 
 | host | mouse back button (button 4, on release) | Cmd+[ (macOS) / Alt+Left (Windows, Linux) |
 |---|---|---|
-| full-window `<Void>` over Ion (`src/platform/ion/window.ms`) and sokol (`src/platform/sokol/input.ms`) | yes | yes, unless a focused node's `onKeyDown` stops propagation |
+| full-window `<Void>` over Ion (`src/platform/ion/window.ms`) | yes | yes, unless a focused node's `onKeyDown` stops propagation |
+| full-window `<Void>` over sokol (`src/platform/sokol/input.ms`) | no: sokol delivers only buttons 1 to 3 | yes, unless a focused node's `onKeyDown` stops propagation |
 | macOS native views (`src/platform/macos/ion.ms`) | yes, not run on a device | no: Ion's key events reach only its own content view, not a native view holding focus |
-| Windows native views (`src/platform/windows/ion.ms`) | no | no |
+| Windows native views (`src/platform/windows/ion.ms`) | yes, not run on a device | Alt+Left, not run on a device; it is taken before the focused native view |
 | terminal, browser | no: the browser's own history back applies | no |
 
 ## Device APIs on an Ion desktop host
