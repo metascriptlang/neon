@@ -8,13 +8,13 @@ import { Cleanup } from "../src/core/types";
 test "signal get/set basics" {
 	const [count, setCount] = createSignal(0);
 	flush();
-	assert count() === 0 : "initial value is 0";
+	assert count() === 0, "initial value is 0";
 	setCount(5);
 	flush();
-	assert count() === 5 : "value after set is 5";
+	assert count() === 5, "value after set is 5";
 	setCount(10);
 	flush();
-	assert count() === 10 : "value after second set is 10";
+	assert count() === 10, "value after second set is 10";
 }
 
 test "effect auto-runs on creation" {
@@ -25,7 +25,7 @@ test "effect auto-runs on creation" {
 		(value: int32, prev: int32 | null): Cleanup | null => { effectRan = effectRan + 1; return null; },
 	);
 	flush();
-	assert effectRan === 1 : "effect ran once on creation";
+	assert effectRan === 1, "effect ran once on creation";
 }
 
 test "effect re-runs on signal change" {
@@ -36,13 +36,13 @@ test "effect re-runs on signal change" {
 		(value: int32, prev: int32 | null): Cleanup | null => { effectCount = effectCount + 1; return null; },
 	);
 	flush();
-	assert effectCount === 1 : "effect ran once initially";
+	assert effectCount === 1, "effect ran once initially";
 	setB(1);
 	flush();
-	assert effectCount === 2 : "effect re-ran after setB(1)";
+	assert effectCount === 2, "effect re-ran after setB(1)";
 	setB(2);
 	flush();
-	assert effectCount === 3 : "effect re-ran after setB(2)";
+	assert effectCount === 3, "effect re-ran after setB(2)";
 }
 
 test "effect reads correct signal value" {
@@ -53,10 +53,10 @@ test "effect reads correct signal value" {
 		(value: int32, prev: int32 | null): Cleanup | null => { lastSeen = value; return null; },
 	);
 	flush();
-	assert lastSeen === 42 : "effect saw initial value 42";
+	assert lastSeen === 42, "effect saw initial value 42";
 	setC(99);
 	flush();
-	assert lastSeen === 99 : "effect saw updated value 99";
+	assert lastSeen === 99, "effect saw updated value 99";
 }
 
 test "multiple effects on same signal" {
@@ -72,10 +72,10 @@ test "multiple effects on same signal" {
 		(value: int32, prev: int32 | null): Cleanup | null => { effect2Count = effect2Count + 1; return null; },
 	);
 	flush();
-	assert effect1Count === 1 : "effect1 ran once initially";
-	assert effect2Count === 1 : "effect2 ran once initially";
+	assert effect1Count === 1, "effect1 ran once initially";
+	assert effect2Count === 1, "effect2 ran once initially";
 	setD(1);
 	flush();
-	assert effect1Count === 2 : "effect1 re-ran after change";
-	assert effect2Count === 2 : "effect2 re-ran after change";
+	assert effect1Count === 2, "effect1 re-ran after change";
+	assert effect2Count === 2, "effect2 re-ran after change";
 }
