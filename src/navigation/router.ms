@@ -920,6 +920,11 @@ export class Router {
 		return delta === 0 || this.confirmLeave(delta, null);
 	}
 
+	traversingBack(): boolean {
+		const session = this.session;
+		return session !== null && (session as RoutingSession).traversal() < 0;
+	}
+
 	get base(): string {
 		return this.routes.tree.base;
 	}
@@ -1215,7 +1220,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 		(address: string | null): Result<RoutePlan, RoutingError> => {
 			if (address === null) { return Result.err(RoutingError.NoMatch); }
 			const resolved = try follow(routes.tree, address as string);
-			return Result.ok({ commit: (): void => { router.apply(resolved, false); } });
+			return Result.ok({ commit: (): void => { router.apply(resolved, router.traversingBack()); } });
 		},
 	);
 	const registry = new RoutingRegistry("main");
