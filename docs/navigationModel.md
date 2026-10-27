@@ -139,9 +139,10 @@ never knows a URL, a pattern or a component.
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
 A renderer takes a model and a `render(child)` function; input events call model
-operations: edge swipe and hardware back today. A desktop has no hardware back: its back is the mouse
-back button (Ion delivers it as button 4 on macOS and Windows), Cmd+[ on macOS and Alt+Left on
-Windows and Linux, the inputs a browser maps to history back. No desktop renderer wires them yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+operations: edge swipe and hardware back today. A desktop has no hardware back: the Void window host maps the mouse
+back button (Ion delivers it as button 4 on macOS and Windows) on release, Cmd+[ on macOS and Alt+Left on
+Windows and Linux, the inputs a browser maps to history back, to `dispatchHardwareBackPress()` by default; Escape and the
+forward inputs are not mapped (`docs/PLATFORMS.md` lists the hosts). It never imports routing. `navigatorMotion.ms` stays the transition engine.
 `renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
 time in single mode, main beside details or extra in dual, three columns in triple,
 with weights and placeholders for an empty panel. The app picks the mode from its
