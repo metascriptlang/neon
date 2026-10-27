@@ -219,13 +219,17 @@ the ones below, which stay shown down to the first opaque child.
   A reload is told apart as TanStack does (`tempLocationKey`): each router draws a
   random document key and writes it into its entries, so an entry with another key
   was written before the page loaded, while back and forward in the same page restore.
-  A back from a reload that resolved from the address does not know the stack under it: the
-  entries before the reload carry no structure Neon trusts, so a back onto a
-  `resolveOnReload` entry resolves its address as a link does and pushes it over the
-  reloaded page (`[post 2]` then back gives `[post 2, post 1]` at `/feed/1`). TanStack has
-  no stack to rebuild (`router.ts:1519`, a location is rendered whole) and Expo
-  navigates to the entry's path (`browserHistory.ts` `navigateToBrowserPath`), so neither
-  settles whether such a back pops; this stays as is until the person decides.
+  A back from a reload that resolved from the address does not know the stack under it:
+  the entries before the reload carry no structure Neon trusts, and the same holds for any
+  entry without state. React Navigation 7 settles it (`@react-navigation/native@7.5.1`
+  `useLinking.tsx:453-497`): on a traversal onto an entry it has no record for, it computes
+  the state from the path and dispatches a navigate only going forward (`index >
+  previousIndex`, line 463), because an action on a back "will likely add items to
+  history, which would mess things up"; otherwise it resets with `'replace'`. Neon does
+  the same: a back onto such an entry replaces the top of the stack with what the address
+  resolves to, so `[post 2]` then back gives `[post 1]` at `/feed/1`, and a forward onto
+  one resolves its address as a link does and pushes it. An entry the page wrote itself,
+  also the reloaded one, restores its stored structure in both directions.
 - A stack retains every pushed page, so links that ping-pong grow it without bound
   (40 pushes keep 41 mounted). Expo Router and React Navigation do the same on the web:
   `NativeStackView.tsx:143` only sets `display: none` on a page that is not focused, and
