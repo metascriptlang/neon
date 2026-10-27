@@ -46,6 +46,9 @@ struct Frame {
 	h: float32;
 }
 
+// No path leads from a VoidNode back to one (the tree is in VoidTree); the compiler finds a possible cycle only
+// through NodeRef's scene, whose textures hold a realloc closure that Neon never sets.
+@acyclic
 export class VoidNode {
 	ref: NodeRef;
 	raw: boolean;
@@ -68,7 +71,6 @@ export class VoidNode {
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	cellWidths: uint8[] = [];
-	spans: TextSpan[] | null = null;
 	boxed: boolean = false;
 
 	constructor(ref: NodeRef, raw: boolean = false) {
@@ -79,13 +81,15 @@ export class VoidNode {
 
 const NO_CHILDREN: VoidNode[] = [];
 
-// The host's node tree. A node holds no reference to another node, so VoidNode stays out of the cycle collector:
-// its parent and children live here, in the row the node enters on its first append or insert. A node that never
-// entered has no parent and no children; a freed subtree leaves its rows, which later nodes reuse.
+// The host's node tree. A node holds no reference to another node or to a closure, so VoidNode stays out of the
+// cycle collector: its parent, its children and a Text's spans (whose handlers are closures) live here, in the row
+// the node enters on its first append, insert or spans. A node that never entered has no parent, no children and no
+// spans; a freed subtree leaves its rows, which later nodes reuse.
 export class VoidTree {
 	nodes: (VoidNode | null)[] = [];
 	ups: (VoidNode | null)[] = [];
 	downs: VoidNode[][] = [];
+	texts: (TextSpan[] | null)[] = [];
 	open: int32[] = [];
 
 	rowOf(n: VoidNode): int32 {
@@ -105,11 +109,13 @@ export class VoidTree {
 			this.nodes[at] = n;
 			this.ups[at] = null;
 			this.downs[at] = [];
+			this.texts[at] = null;
 		} else {
 			at = this.nodes.length as int32;
 			this.nodes.push(n);
 			this.ups.push(null);
 			this.downs.push([]);
+			this.texts.push(null);
 		}
 		n.row = at;
 		return at;
@@ -123,6 +129,15 @@ export class VoidTree {
 	childrenOf(n: VoidNode): VoidNode[] {
 		const at = this.rowOf(n);
 		return at < 0 ? NO_CHILDREN : this.downs[at];
+	}
+
+	spansOf(n: VoidNode): TextSpan[] | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.texts[at];
+	}
+
+	setSpans(n: VoidNode, spans: TextSpan[]): void {
+		this.texts[this.enter(n)] = spans;
 	}
 
 	attach(c: VoidNode, p: VoidNode, at: int32): void {
@@ -152,6 +167,7 @@ export class VoidTree {
 		this.nodes[row] = null;
 		this.ups[row] = null;
 		this.downs[row] = [];
+		this.texts[row] = null;
 		this.open.push(row);
 		n.row = -1;
 	}
@@ -910,7 +926,8 @@ export function createVoidHostWith(
 		}
 		root.paraStale = false;
 		const base: Style = root.style !== null ? root.style as Style : {};
-		const spans: TextSpan[] = root.spans !== null ? root.spans as TextSpan[] : [];
+		const held = tree.spansOf(root);
+		const spans: TextSpan[] = held !== null ? held as TextSpan[] : [];
 		let text = "";
 		let styled = false;
 		for (const s of spans) {
@@ -1027,7 +1044,7 @@ export function createVoidHostWith(
 		const n = live(node, "setSpans");
 		if (!n.isText) { throw new Error("void host: spans belong on a Text"); }
 		const was = wasDirty();
-		n.spans = spans;
+		tree.setSpans(n, spans);
 		refreshParagraph(n);
 		woke(was);
 		askLayout();
@@ -1064,11 +1081,11 @@ export function createVoidHostWith(
 					if (getOwner() !== null) {
 						const text = n;
 						onCleanup((): void => {
-							const spans = text.spans;
+							const spans = tree.spansOf(text);
 							if (spans === null) { return; }
 							const retired: TextSpan[] = [];
-							for (const span of spans) { retired.push({ text: span.text, style: span.style }); }
-							text.spans = retired;
+							for (const span of spans as TextSpan[]) { retired.push({ text: span.text, style: span.style }); }
+							tree.setSpans(text, retired);
 						});
 					}
 				}
@@ -1299,7 +1316,8 @@ export function createVoidHostWith(
 
 	// The span of a Text under a point: the grapheme the point falls in, none past a line's end.
 	const spanAt = (n: VoidNode, x: float32, y: float32): TextSpan | null => {
-		if (!n.isText || n.para === null || n.spans === null) { return null; }
+		const held = tree.spansOf(n);
+		if (!n.isText || n.para === null || held === null) { return null; }
 		const label = n.para as NodeRef;
 		const at = label.globalToLocal(vec2(x, y));
 		let index = label.indexAt(at.x, at.y);
@@ -1307,7 +1325,7 @@ export function createVoidHostWith(
 		const line = label.lineBoxAt(index);
 		if (at.x < line.x || at.x > line.x + line.width) { return null; }
 		let start: int32 = 0;
-		for (const s of n.spans as TextSpan[]) {
+		for (const s of held as TextSpan[]) {
 			const end = start + (s.text.length as int32);
 			if (index >= start && index < end) { return s; }
 			start = end;
@@ -1819,7 +1837,8 @@ export function createVoidHostWith(
 	const ownText = (n: VoidNode): string => {
 		if (n.isText) {
 			let out = "";
-			if (n.spans !== null) { for (const span of n.spans as TextSpan[]) { out += span.text; } }
+			const held = tree.spansOf(n);
+			if (held !== null) { for (const span of held as TextSpan[]) { out += span.text; } }
 			return out;
 		}
 		return n.ref.kind() === DrawKind.Label ? n.ref.labelText() : "";
