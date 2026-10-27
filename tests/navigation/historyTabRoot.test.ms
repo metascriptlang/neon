@@ -87,3 +87,33 @@ test "reload at a tab root pushed over a retained stack restores the root" {
 	assert visibleText(root) === "feed", visibleText(root);
 	again.dispose();
 }
+
+test "a tab switch and a push to the new tab's stack each write their own entry" {
+	const routes = createRoutes([{ layout: Shell, navigator: Tabs, children: [
+		{ path: "/feed", navigator: Stack, children: [
+			{ path: "", component: Feed },
+			{ path: ":post", component: Post },
+		] },
+		{ path: "/inbox", navigator: Stack, initial: "", children: [
+			{ path: "", component: Inbox },
+			{ path: ":id", component: Thread },
+		] },
+	] }]);
+	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
+	const created = createRouter(routes, history);
+	assert created.ok;
+	const router = created.value;
+	const root = mounted(router);
+	router.navigate("/inbox/7"); flush();
+	router.navigate("/feed/1"); flush();
+	router.navigate("/feed/2"); flush();
+	assert history.read().url === "/feed/2", history.read().url;
+	assert history.go(-1);
+	flush();
+	assert history.read().url === "/feed/1", history.read().url;
+	assert visibleText(root) === "post 1", visibleText(root);
+	assert history.go(-1);
+	flush();
+	assert history.read().url === "/feed", history.read().url;
+	router.dispose();
+}
