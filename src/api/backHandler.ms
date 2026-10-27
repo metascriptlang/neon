@@ -34,6 +34,8 @@ export class BackHandler {
 	}
 }
 
+export const DESKTOP_BACK_BUTTON: int32 = 4;
+
 export function dispatchHardwareBackPress(): boolean {
 	const snapshot = entries.slice(0, entries.length);
 	for (let i = snapshot.length - 1; i >= 0; i -= 1) {

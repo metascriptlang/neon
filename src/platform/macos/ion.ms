@@ -1,6 +1,6 @@
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, setFramePolicy, requestFrame, FrameOnDemand,
-	onResize, onFrame, Window,
+	onResize, onFrame, onPointer, PointerEvent, PointerKind, Window,
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
@@ -8,6 +8,7 @@ import { useAppServices, useCaptureServices, imageSize } from "../native/appServ
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { useIonStorage } from "../ion/storage";
+import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { NeonNode } from "../../render/node";
 import { nimAttach, nimFrame, nimResize, nimShutdown } from "./handoff.h";
 
@@ -55,6 +56,10 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	});
 	onFrame((window: int32, timeMs: float64): void => {
 		if (window === win.id && attached) { nimFrame(); }
+	});
+
+	onPointer((e: PointerEvent): void => {
+		if (e.window === win.id && e.kind === PointerKind.Button && e.button === DESKTOP_BACK_BUTTON && !e.pressed) { dispatchHardwareBackPress(); }
 	});
 
 	runLoop();
