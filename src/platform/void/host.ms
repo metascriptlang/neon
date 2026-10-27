@@ -13,14 +13,14 @@ import {
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
-import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, PositionType, Display, Overflow, Direction, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, FontWeight, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { Style, FontWeight, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
@@ -526,14 +526,23 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	const bg = own.backgroundColor !== null ? own.backgroundColor : base.backgroundColor;
 	const deco: Style = own.textDecorationLine !== null ? own : base;
 	const line = own.textDecorationStyle !== null ? own.textDecorationStyle : base.textDecorationStyle;
-	if (line !== null && line !== "solid" && line !== "wavy") {
-		throw new Error(`void host: textDecorationStyle "${line as string}" is not drawn on the Void host yet; solid and wavy are`);
-	}
 	const decoCss = own.textDecorationColor !== null ? own.textDecorationColor : base.textDecorationColor;
 	const decoColor = decoCss !== null ? colorOf(decoCss as string, "textDecorationColor") : color;
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
-		underline: lineColor(deco, "underline", decoColor), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", decoColor),
+		underline: lineColor(deco, "underline", decoColor), underlineStyle: underlineStyleOf(line),
+		strikethrough: lineColor(deco, "line-through", decoColor), overline: lineColor(deco, "overline", decoColor),
+	};
+}
+
+function underlineStyleOf(line: TextDecorationStyle | null): UnderlineStyle {
+	if (line === null) { return UnderlineStyle.Solid; }
+	return match (line as TextDecorationStyle) {
+		"solid" => UnderlineStyle.Solid,
+		"double" => UnderlineStyle.Double,
+		"dotted" => UnderlineStyle.Dotted,
+		"dashed" => UnderlineStyle.Dashed,
+		"wavy" => UnderlineStyle.Wavy,
 	};
 }
 

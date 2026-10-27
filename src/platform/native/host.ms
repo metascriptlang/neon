@@ -665,6 +665,9 @@ function refuseLineStyle(s: Style | null): void {
 	if (s.textDecorationColor !== null) {
 		throw `native host: textDecorationColor "${s.textDecorationColor as string}" is not drawn by the platform text stacks yet; the line takes the text colour`;
 	}
+	if (s.textDecorationLine !== null && (s.textDecorationLine as string).indexOf("overline") >= 0) {
+		throw `native host: textDecorationLine "${s.textDecorationLine as string}" is not drawn by the platform text stacks yet; underline and line-through are`;
+	}
 	if (s.textDecorationStyle === null || s.textDecorationStyle === "solid") { return; }
 	throw `native host: textDecorationStyle "${s.textDecorationStyle as string}" is not drawn by the platform text stacks yet; solid is`;
 }

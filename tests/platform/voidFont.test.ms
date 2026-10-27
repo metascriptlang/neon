@@ -3,7 +3,7 @@ import { render } from "../../src/render/host";
 import { View, ViewHandle, Text } from "../../src/components/primitives";
 import { createVoidHostWith, familyFont, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Scene2D, NodeRef, textStyle } from "../../../void/src/void2d/node";
-import { TextRun, TextLayout, calcTextWidth } from "../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, UnderlineStyle, calcTextWidth } from "../../../void/src/void2d/textLayout";
 import { create } from "../../../void/src/void2d/scene";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
@@ -67,7 +67,27 @@ test "a span's fontWeight and fontStyle pick its face in the Text's family, and 
 	assert runs[1].font === probeFace(700, false) && runs[1].font !== regular, "bold picks the registered bold face";
 	assert runs[2].font === probeFace(400, true) && runs[2].font !== regular, "italic is synthesised from the regular face";
 	assert runs[3].font === probeFace(700, true) && runs[3].font !== runs[1].font && runs[3].font !== runs[2].font, "bold italic is its own face";
-	assert runs[4].wavy && runs[4].underline.a > 0.0 && !runs[1].wavy, "only the wavy span has a wavy underline";
+	assert runs[4].underlineStyle === UnderlineStyle.Wavy && runs[4].underline.a > 0.0 && runs[1].underline.a === 0.0, "only the wavy span has a wavy underline";
+}
+
+test "every underline style and an overline reach their runs" {
+	const vh = host();
+	render(element(<View style={{ width: 300 }}><Text spans={[
+		{ text: "s ", style: { textDecorationLine: "underline" } },
+		{ text: "d ", style: { textDecorationLine: "underline", textDecorationStyle: "double" } },
+		{ text: "o ", style: { textDecorationLine: "underline", textDecorationStyle: "dotted" } },
+		{ text: "a ", style: { textDecorationLine: "underline", textDecorationStyle: "dashed" } },
+		{ text: "w ", style: { textDecorationLine: "underline", textDecorationStyle: "wavy" } },
+		{ text: "v", style: { textDecorationLine: "overline line-through" } },
+	]} /></View>), vh.host, vh.root);
+	const runs = runsOf(vh, paragraph(top(vh).children[0]));
+	assert runs[0].underlineStyle === UnderlineStyle.Solid && runs[0].underline.a > 0.0, "solid";
+	assert runs[1].underlineStyle === UnderlineStyle.Double, "double";
+	assert runs[2].underlineStyle === UnderlineStyle.Dotted, "dotted";
+	assert runs[3].underlineStyle === UnderlineStyle.Dashed, "dashed";
+	assert runs[4].underlineStyle === UnderlineStyle.Wavy, "wavy";
+	assert runs[5].overline.a > 0.0 && runs[5].strikethrough.a > 0.0 && runs[5].underline.a === 0.0, "overline with line-through, no underline";
+	assert runs[0].overline.a === 0.0, "an underline alone has no overline";
 }
 
 test "a plain Text's weight comes from the host's default family, and its underline draws as one run" {
@@ -77,10 +97,10 @@ test "a plain Text's weight comes from the host's default family, and its underl
 	const view = top(vh);
 	assert paragraph(view.children[0]).textStyle().font === probeFace(700, false), "bold from the default family";
 	const runs = runsOf(vh, paragraph(view.children[1]));
-	assert runs.length === 1 && runs[0].wavy && runs[0].underline.a > 0.0, "a decorated Text draws its underline as one run";
+	assert runs.length === 1 && runs[0].underlineStyle === UnderlineStyle.Wavy && runs[0].underline.a > 0.0, "a decorated Text draws its underline as one run";
 }
 
-test "a face the host cannot find, or a line it cannot draw, is refused by name" {
+test "a face the host cannot find is refused by name" {
 	let message = "";
 	const a = host();
 	try {
@@ -93,12 +113,6 @@ test "a face the host cannot find, or a line it cannot draw, is refused by name"
 		render(element(<Text>a <Text style={{ fontWeight: "bold" }}>b</Text></Text>), b.host, b.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("names no fontFamily, and this host has no default family") >= 0, "bold with no family: " + message;
-	message = "";
-	const c = host();
-	try {
-		render(element(<Text style={{ textDecorationLine: "underline", textDecorationStyle: "dotted" }}>x</Text>), c.host, c.root);
-	} catch (e) { message = e.message; }
-	assert message.indexOf(`textDecorationStyle "dotted" is not drawn on the Void host yet`) >= 0, "dotted: " + message;
 }
 
 test "a View's handle measures a line with the face and size its Text draws with" {
@@ -144,7 +158,7 @@ test "a span's textDecorationColor colours its underline and line-through, not i
 		{ text: "plain", style: { textDecorationLine: "underline" } },
 	]} /></View>), vh.host, vh.root);
 	const runs = runsOf(vh, paragraph(top(vh).children[0]));
-	assert runs[0].wavy && runs[0].underline.r > 0.99 && runs[0].underline.g < 0.32 && runs[0].color.g > 0.99, "red wavy underline under white text";
+	assert runs[0].underlineStyle === UnderlineStyle.Wavy && runs[0].underline.r > 0.99 && runs[0].underline.g < 0.32 && runs[0].color.g > 0.99, "red wavy underline under white text";
 	assert runs[1].strikethrough.g > 0.99 && runs[1].strikethrough.r < 0.01 && runs[1].underline.a === 0.0, "green line-through";
 	assert runs[2].underline.r > 0.99 && runs[2].underline.g > 0.99, "no decoration colour keeps the text colour";
 }
