@@ -22,6 +22,8 @@ export type TextAlign = "auto" | "left" | "center" | "right" | "justify";
 export type FontWeight = "normal" | "bold"
 	| "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";
 export type FontStyle = "normal" | "italic";
+export type FontSizeAdjust = "none" | "from-font"
+	| "ex-height from-font" | "cap-height from-font" | "ic-width from-font";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through"
 	| "overline" | "underline overline" | "overline line-through" | "underline overline line-through";
 export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";

@@ -99,6 +99,7 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["overflowY",           "Overflow",          "word", "ignore", "ignore"],
 		["zIndex",              "number",            "num",  "paint",  "ignore"],
 		["fontFamily",          "string",            "word", "paint",  "ignore"],
+		["fontSizeAdjust",      "FontSizeAdjust",    "word", "paint",  "ignore"],
 		["transform",           "string",            "word", "ignore", "ignore"],
 		["transformOrigin",     "string",            "word", "ignore", "ignore"],
 		["cursor",              "string",            "word", "ignore", "ignore"],
