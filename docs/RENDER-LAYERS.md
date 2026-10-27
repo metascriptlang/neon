@@ -38,6 +38,12 @@ Each platform implements `Host`. The reconciler never knows what a "node" really
 
 `HostNode` is `unknown` (`src/render/hostTypes.ms`), and each host's node is a class (`MockNode`, `NativeNode`, `TerminalNode`; the extern `Node` in `src/platform/browser/dom.jms`). A host reads its own node back with a cast the compiler tests, so a node from another host stops the program with `invalid object conversion` instead of reading foreign memory. `Handle<T>` (`std/ffi`, keeps an object alive while C holds its address) is not used: no Neon object is handed to C — native callbacks are closures registered once (`niSetTouchHandler` in `src/platform/ios/bridge.m`), and native views are platform pointers.
 
+The Void and native hosts keep their node tree in a table, not in the nodes: `VoidTree` (`src/platform/void/host.ms`) and `NativeTree` (`src/platform/native/host.ms`) hold each node's parent and children in the row the node enters on its first append or insert.
+- **Why:** no node class reaches its own type, so DRC frees a node by its reference count alone. The cycle collector does not have to register and trace every node. On `bench/voidMount`, VoidNode was 43% of all collector root registrations before this.
+- **Rows:** `removeChild` and `release` free the subtree's rows, which later nodes reuse. A row lookup checks that the row still holds the same node and throws otherwise. A subtree that is built but never attached or released keeps its rows until its host goes.
+- **Layout:** yoga walks the table through a handle and the indexed pass (`layoutPassAt`), so a layout pass allocates nothing per node.
+- **Choice:** ids were chosen over `Owned<T>` because a host re-parents a node it reaches through a plain reference, which an owned edge refuses.
+
 **This is the React host-config / R3F pattern, exactly:**
 - React = reconciler; ReactDOM / React Native / R3F = Host implementations over DOM / native / THREE.
 - Neon = reconciler; `neon-dom` / `neon-ios` / `neon-void` = Host implementations over DOM / UIKit / void2d's `Scene2D`.
