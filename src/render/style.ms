@@ -12,9 +12,9 @@ import { styleInterfaceBody, setStyleFieldBody, mergeStyleBody } from "../macros
 export type FlexDirection = "row" | "column" | "row-reverse" | "column-reverse";
 export type Justify = "flex-start" | "flex-end" | "center" | "space-between" | "space-around" | "space-evenly";
 export type Align = "auto" | "flex-start" | "flex-end" | "center" | "stretch" | "baseline";
-export type PositionType = "static" | "relative" | "absolute" | "fixed";
+export type PositionType = "static" | "relative" | "absolute" | "fixed" | "sticky";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
-export type Display = "flex" | "none";
+export type Display = "flex" | "none" | "contents" | "block" | "inline" | "inline-block" | "inline-flex";
 export type Overflow = "visible" | "hidden" | "scroll";
 export type Direction = "inherit" | "ltr" | "rtl";
 export type WritingDirection = "auto" | "ltr" | "rtl";
@@ -24,6 +24,15 @@ export type FontWeight = "normal" | "bold"
 export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
+export type BorderStyle = "solid" | "dotted" | "dashed";
+export type BoxSizing = "border-box" | "content-box";
+export type Isolation = "auto" | "isolate";
+export type BackfaceVisibility = "visible" | "hidden";
+export type UserSelect = "auto" | "none" | "text" | "contain" | "all";
+export type TextTransform = "none" | "capitalize" | "uppercase" | "lowercase";
+export type WhiteSpace = "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line" | "break-spaces";
+export type ObjectFit = "cover" | "contain" | "fill" | "scale-down" | "none";
+export type BorderCollapse = "collapse" | "separate";
 
 styleInterfaceBody("block");
 

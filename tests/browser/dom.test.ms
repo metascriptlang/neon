@@ -11,6 +11,7 @@ import { sleepAsync } from "std/core/promise";
 import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
 
 extern class ProbeStyle {
+	cssText: string;
 	backgroundColor: string;
 	color: string;
 	width: string;
@@ -333,6 +334,31 @@ test "position fixed reaches the element" {
 	const el = mount("view");
 	h.setStyle(el, styleWith("position", "fixed"));
 	assert probe(el).style.position === "fixed", probe(el).style.position;
+	probe(el).remove();
+}
+
+test "position sticky reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("position", "sticky"));
+	assert probe(el).style.position === "sticky", probe(el).style.position;
+	probe(el).remove();
+}
+
+test "the React Native layout aliases reach the element as their logical CSS properties" {
+	const h = domHost();
+	const el = mount("view");
+	const s = emptyStyle();
+	s.marginHorizontal = 5;
+	s.paddingVertical = 6;
+	s.start = 7;
+	s.borderTopStartRadius = 8;
+	s.borderStyle = "dashed";
+	h.setStyle(el, s);
+	const text = probe(el).style.cssText;
+	for (const want of ["margin-inline: 5px", "padding-block: 6px", "inset-inline-start: 7px", "border-start-start-radius: 8px", "border-style: dashed"]) {
+		assert text.includes(want), want + " in " + text;
+	}
 	probe(el).remove();
 }
 

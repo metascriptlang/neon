@@ -185,11 +185,14 @@ test "setStyle: flex shorthand, basis, wrap and self-alignment reach yoga" {
 	assert flexOf(n).display === "none", "display reached yoga";
 }
 
-test "setStyle: position fixed stays unset in yoga and absolute applies" {
+test "setStyle: position fixed and sticky stay unset in yoga and absolute applies" {
 	const vh = createVoidHost();
 	const fixedNode = vh.host.createElement("div");
 	vh.host.setStyle(fixedNode, { position: "fixed" } as Style);
 	assert flexOf(fixedNode as VoidNode).position === null, "fixed is a position yoga cannot carry, so it stays unset";
+	const stickyNode = vh.host.createElement("div");
+	vh.host.setStyle(stickyNode, { position: "sticky" } as Style);
+	assert flexOf(stickyNode as VoidNode).position === null, "sticky is a position yoga cannot carry, so it stays unset";
 	const absoluteNode = vh.host.createElement("div");
 	vh.host.setStyle(absoluteNode, { position: "absolute" } as Style);
 	assert flexOf(absoluteNode as VoidNode).position === "absolute", "absolute reached yoga";

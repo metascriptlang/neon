@@ -1,6 +1,6 @@
 import { NeonEvent, eventType, neonEvent } from "../../render/event";
-import { Style, PositionType as StylePositionType } from "../../render/style";
-import { FlexStyle, PositionType } from "../../../../yoga/src/index";
+import { Style, PositionType as StylePositionType, Display as StyleDisplay } from "../../render/style";
+import { FlexStyle, PositionType, Display } from "../../../../yoga/src/index";
 import { asFlexStyleBody } from "../../macros/style/fields";
 
 export enum NativeElementKind {
@@ -55,8 +55,15 @@ function dim(v: number | string | null, field: string): float32 | null {
 }
 
 function position(v: StylePositionType | null): PositionType | null {
-	if (v === null || v === "fixed") { return null; }
+	if (v === null || v === "fixed" || v === "sticky") { return null; }
 	return v;
+}
+
+function display(v: StyleDisplay | null): Display | null {
+	if (v === "flex") { return "flex"; }
+	if (v === "none") { return "none"; }
+	if (v === "contents") { return "contents"; }
+	return null;
 }
 
 asFlexStyleBody(0);
