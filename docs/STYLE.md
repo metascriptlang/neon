@@ -115,6 +115,9 @@ sidebar: { width: "100%", when: { [screen.wide]: { width: 280 }, [screen.xl]: { 
   layer has no class, so on the web it resolves inline against the window: server markup carries
   the published width's result, not a media query, and hydrate corrects it at the real width. A
   page that must not shift uses the sheet entry directly, whose class rule holds the `@media`.
+- **a shared base is a spread.** Entries that differ only in a block share their base fields as
+  `{ ...FRAME, when: { … } }` with `const FRAME: Style = { … }`; the macro reads the const into
+  the entry, so each class rule holds the base too. A spread it cannot read is an error.
 - **cost where unused.** A block is a `StyleBlock` (the table's fields plus `fromWidth`, a field
   `Style` lacks, so `Style` stays acyclic). Resolving, layering and the window binding live in
   `src/render/breakpoints.ms`, which installs them into `style.ms` and `bind.ms` when imported, the
