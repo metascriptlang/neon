@@ -12,6 +12,7 @@ import {
 	numberValue,
 	validate,
 } from "../../src/motion/document";
+import { StaggerFrom, StaggerOptions, resolvePosition, stagger, staggerOptions } from "../../src/motion/compose";
 import { MotionBinding, MotionPlayer, motionOptions } from "../../src/motion/player";
 
 function near(a: float64, b: float64): boolean {
@@ -28,7 +29,7 @@ function ramp(slot: string, property: string, from: float64, to: float64, durati
 }
 
 function clip(id: string, duration: float64, tracks: MotionTrack[], placements: MotionPlacement[]): MotionClip {
-	return { id, duration, tracks, placements };
+	return { id, duration, tracks, placements, labels: [] };
 }
 
 function place(child: string, start: float64, rate: float64, slots: MotionSlotMapping[]): MotionPlacement {
@@ -266,4 +267,94 @@ test "the root duration is authoritative: a placement outside its parent's durat
 	doc.clips[1].placements[0].rate = 1;
 	doc.clips[1].placements[0].start = -1;
 	assert refusal((): void => { validate(doc); }).startsWith("motion: placement of clip leaf");
+}
+
+test "labels are validated: distinct names, finite times inside the clip" {
+	const doc = document([clip("main", 1000, [ramp("box", "x", 0, 1, 1000)], [])]);
+	doc.clips[0].labels = [{ name: "intro", time: 300 }, { name: "intro", time: 400 }];
+	assert refusal((): void => { validate(doc); }).startsWith("motion: label needs a distinct");
+	doc.clips[0].labels = [{ name: "intro", time: 1001 }];
+	assert refusal((): void => { validate(doc); }) === "motion: label intro lies outside clip main";
+	doc.clips[0].labels = [{ name: "intro", time: NaN }];
+	assert refusal((): void => { validate(doc); }).startsWith("motion: non-finite label time");
+	doc.clips[0].labels = [{ name: "intro", time: 300 }];
+	validate(doc);
+}
+
+function positioned(): MotionDocument {
+	let main = clip("main", 2000, [ramp("box", "x", 0, 1, 600)], [
+		place("leaf", 200, 1, []),
+		place("leaf", 500, 0.5, []),
+	]);
+	main.labels = [{ name: "intro", time: 300 }, { name: "50", time: 900 }];
+	return document([main, clip("leaf", 100, [ramp("dot", "x", 0, 1, 100)], [])]);
+}
+
+test "a position string resolves like GSAP's position parameter, to a number" {
+	const doc = positioned();
+	const main = doc.clips[0];
+	const at = (position: string): float64 => resolvePosition(doc, main, position);
+	assert at("250") === 250;
+	assert at("+=100") === 800, "relative to the end of the content: the last placement ends at 700";
+	assert at("-=50") === 650;
+	assert at("<") === 500 && at(">") === 700, "the start and end of the most recently added placement";
+	assert at("<100") === 600 && at("<+=100") === 600 && at(">-=20") === 680;
+	assert at("intro") === 300 && at("intro+=40") === 340 && at("intro-=40") === 260;
+	assert at("50") === 900, "a label wins over a number of the same spelling";
+	const empty = clip("empty", 100, [], []);
+	assert resolvePosition(doc, empty, ">") === 0 && resolvePosition(doc, empty, "+=5") === 5;
+}
+
+test "a position string that names nothing or cannot be read is refused" {
+	const doc = positioned();
+	const main = doc.clips[0];
+	const cases: string[] = ["outro", "outro+=1", "+=abc", "50%", "", "*=1", "<x"];
+	for (const position of cases) {
+		const message = refusal((): void => { resolvePosition(doc, main, position); });
+		assert message.startsWith("motion: "), "accepted " + position;
+	}
+	assert refusal((): void => { resolvePosition(doc, main, "outro"); }) === "motion: unknown label outro in clip main";
+}
+
+function starts(placements: MotionPlacement[]): float64[] {
+	return placements.map((placement: MotionPlacement): float64 => placement.start);
+}
+
+function same(actual: float64[], expected: float64[]): boolean {
+	if (actual.length !== expected.length) { return false; }
+	for (let i: int32 = 0; i < actual.length; i += 1) {
+		if (!near(actual[i], expected[i])) { return false; }
+	}
+	return true;
+}
+
+function slotsFor(count: int32): MotionSlotMapping[][] {
+	const slots: MotionSlotMapping[][] = [];
+	for (let i: int32 = 0; i < count; i += 1) { slots.push([map("item", "item" + i.toString())]); }
+	return slots;
+}
+
+test "stagger spaces placements by anime's rule: start + each * distance from the origin" {
+	const base: StaggerOptions = { ...staggerOptions(100), start: 50 };
+	const first = stagger("fade", 1, slotsFor(5), base);
+	assert same(starts(first), [50, 150, 250, 350, 450]);
+	assert first[3].clip === "fade" && first[3].slots[0].to === "item3" && first[3].rate === 1;
+	assert same(starts(stagger("fade", 1, slotsFor(5), { ...base, from: StaggerFrom.Last })), [450, 350, 250, 150, 50]);
+	assert same(starts(stagger("fade", 1, slotsFor(5), { ...base, from: StaggerFrom.Center })), [250, 150, 50, 150, 250]);
+	assert same(starts(stagger("fade", 1, slotsFor(4), { ...base, from: StaggerFrom.Center })), [200, 100, 100, 200]);
+	assert same(starts(stagger("fade", 1, slotsFor(5), { ...base, from: StaggerFrom.Index, index: 1 })), [150, 50, 150, 250, 350]);
+	const grid: StaggerOptions = { ...staggerOptions(100), from: StaggerFrom.Center, grid: { columns: 3, rows: 2 } };
+	assert same(starts(stagger("fade", 1, slotsFor(6), grid)), [112, 50, 112, 112, 50, 112]);
+	const outside = refusal((): void => { stagger("fade", 1, slotsFor(3), { ...base, from: StaggerFrom.Index, index: 3 }); });
+	assert outside === "motion: stagger index 3 is outside 3 placements", outside;
+}
+
+test "staggered placements play as independent instances" {
+	const main = clip("main", 1000, [], stagger("fade", 1, slotsFor(3), staggerOptions(100)));
+	const doc = document([main, clip("fade", 100, [ramp("item", "opacity", 0, 1, 100)], [])]);
+	const rec = new Recorder();
+	const player = paused(doc, [rec.bind("item0", "opacity"), rec.bind("item1", "opacity"), rec.bind("item2", "opacity")]);
+	player.seek(150);
+	assert near(rec.value("item0.opacity"), 1) && near(rec.value("item1.opacity"), 0.5);
+	assert rec.count("item2.opacity") === 0;
 }

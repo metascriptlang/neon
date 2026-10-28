@@ -16,7 +16,7 @@ function track(slot: string, property: string, keyframes: MotionKeyframe[]): Mot
 }
 
 function clip(id: string, tracks: MotionTrack[], placements: MotionPlacement[]): MotionClip {
-	return { id, duration: 1000, tracks, placements };
+	return { id, duration: 1000, tracks, placements, labels: [] };
 }
 
 function document(clips: MotionClip[]): MotionDocument {

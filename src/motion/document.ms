@@ -52,11 +52,17 @@ export struct MotionPlacement {
 	slots: MotionSlotMapping[];
 }
 
+export struct MotionLabel {
+	name: string;
+	time: float64;
+}
+
 export struct MotionClip {
 	id: string;
 	duration: float64;
 	tracks: MotionTrack[];
 	placements: MotionPlacement[];
+	labels: MotionLabel[];
 }
 
 export struct MotionDocument {
@@ -165,6 +171,16 @@ function checkWindow(placement: MotionPlacement, child: MotionClip, parent: Moti
 	}
 }
 
+function checkLabels(clip: MotionClip, where: string): void {
+	const names: string[] = [];
+	for (const label of clip.labels) {
+		if (label.name === "" || names.includes(label.name)) { fail("label needs a distinct non-empty name in " + where); }
+		names.push(label.name);
+		requireFinite(label.time, "label time in " + where);
+		if (label.time < 0 || label.time > clip.duration) { fail("label " + label.name + " lies outside " + where); }
+	}
+}
+
 function checkAcyclic(doc: MotionDocument, id: string, path: string[]): void {
 	if (path.includes(id)) { fail("placement cycle through clip " + id); }
 	path.push(id);
@@ -198,6 +214,7 @@ export function validate(doc: MotionDocument): void {
 			checkPlacement(placement, where);
 			checkWindow(placement, findClip(doc, placement.clip), clip);
 		}
+		checkLabels(clip, where);
 	}
 	checkAcyclic(doc, doc.root, []);
 	for (const clip of doc.clips) { checkAcyclic(doc, clip.id, []); }

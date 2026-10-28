@@ -23,6 +23,7 @@ function rampDocument(): MotionDocument {
 					},
 				],
 				placements: [],
+				labels: [],
 			},
 		],
 	};
@@ -548,7 +549,7 @@ test "an invalid document is refused by validation before a frame is requested" 
 test "a composed root plays its own tracks beside an empty placed clip" {
 	const clock = new ManualClock();
 	const composed = rampDocument();
-	composed.clips.push({ id: "leaf", duration: 100, tracks: [], placements: [] });
+	composed.clips.push({ id: "leaf", duration: 100, tracks: [], placements: [], labels: [] });
 	composed.clips[0].placements.push({ clip: "leaf", start: 0, rate: 1, slots: [] });
 	const probe = new Probe();
 	new MotionPlayer(composed, [probe.binding(true)], motionOptions(clock.clock));
