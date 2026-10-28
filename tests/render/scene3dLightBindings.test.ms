@@ -169,10 +169,10 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 		assert shadow !== null && (shadow as DirShadowMap).opacity === 0.5;
 		setValue(0.8); flush();
 		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-		const colorAt = 12 + MAX_POINT_LIGHTS * 4;
+		const first = LIGHT_UNIFORM_LENGTH;
 		assert collectLights(scene, block).ok;
 		assert approx(block[7], 0.5) && approx(block[8], 0.8);
-		assert approx(block[12], 4.0) && approx(block[15], 3.0) && approx(block[colorAt + 3], 2.8);
+		assert approx(block[first], 4.0) && approx(block[first + 3], 3.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 2.8);
 		assert scene.lights[1].priority === 2;
 	} finally { dispose(); resetErrorHalt(); }
 	assert refs[0].renderer.closed && refs[0].scene.nodeCount() === 0;
