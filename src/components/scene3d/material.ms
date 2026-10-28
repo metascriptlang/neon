@@ -11,6 +11,7 @@ import {
 	MATERIAL_SATURATION,
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
+	MATERIAL_COLOR,
 	UNLIT_MATERIAL_COLOR,
 	MOVING_UV_MATRIX,
 	MOVING_UV_OFFSET,
@@ -175,6 +176,8 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	values[MATERIAL_ALPHA_KILL] = kill;
 	if (key.program == Program.UnlitTextured) {
 		writeColor(values, UNLIT_MATERIAL_COLOR, props.color === null ? { r: 1.0, g: 1.0, b: 1.0, a: 1.0 } : (props.color as () => Color)());
+	} else {
+		writeColor(values, MATERIAL_COLOR, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
 	}
 	if (key.pbr) {
 		const checked = PbrProperties.heapsValues(floatOf(props.metalness, 0.0), floatOf(props.roughness, 1.0), 1.0);

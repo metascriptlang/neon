@@ -15,7 +15,7 @@ import {
 } from "../../../void/src/void3d/draw";
 import { MaterialKind } from "../../../void/src/void3d/material";
 import {
-	MATERIAL_SATURATION, MATERIAL_ALPHA_KILL, PBR_ROUGHNESS,
+	MATERIAL_SATURATION, MATERIAL_ALPHA_KILL, MATERIAL_COLOR, PBR_ROUGHNESS,
 } from "../../../void/src/void3d/gpu3d";
 import { Color, Vec2, rgba } from "../../../void/src/void2d/types";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
@@ -63,6 +63,7 @@ test "createMaterial owns a lit material: values in place, a key change swaps, u
 		assert shownMaterial(handle, nodes[0]) === first;
 		assert context.materialHolders[first.index] === 2 && context.materialPins[first.index] === 1;
 		assert !context.materials[first.index].program.cutout;
+		assert uniformAt(context, first, MATERIAL_COLOR) === 1.0 && uniformAt(context, first, MATERIAL_COLOR + 3) === 1.0, "a lit material is not tinted black";
 
 		setSaturation(-1.0); flush();
 		assert made[0]() === first, "a value change keeps the material";
