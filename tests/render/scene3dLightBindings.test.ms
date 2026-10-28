@@ -46,17 +46,19 @@ test "Light color radius priority power and pose update retained nodes and colle
 		setValue(7.0); setPriority(0); flush();
 		assert nodes.length === 2 && scene.nodeCount() === 3;
 		assert collectLights(scene, block).ok;
-		assert approx(block[first], 20.0) && approx(block[first + 3], 4.0);
-		assert approx(block[first + LIGHT_RECORD_COLOR], 0.4) && approx(block[first + LIGHT_RECORD_COLOR + 3], 8.0);
-		assert approx(block[second], 7.0) && approx(block[second + 3], 14.0);
-		assert approx(block[second + LIGHT_RECORD_COLOR], 7.0) && approx(block[second + LIGHT_RECORD_COLOR + 3], 9.0);
+		assert approx(block[first], 7.0) && approx(block[first + 3], 14.0);
+		assert approx(block[first + LIGHT_RECORD_COLOR], 7.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 9.0);
+		assert approx(block[second], 20.0) && approx(block[second + 3], 4.0);
+		assert approx(block[second + LIGHT_RECORD_COLOR], 0.4) && approx(block[second + LIGHT_RECORD_COLOR + 3], 8.0);
+		assert scene.lights[scene.nodes[nodes[0].index].payload].priority === 0;
 		assert scene.lights[scene.nodes[nodes[1].index].payload].priority === 3;
 		assert frameRequests(root.children[0]) > requests;
 		setValue(2.0); setPriority(9); flush();
 		assert collectLights(scene, block).ok;
 		assert approx(block[first], 2.0) && approx(block[first + 3], 4.0);
 		assert approx(block[first + LIGHT_RECORD_COLOR], 2.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 4.0);
-		assert approx(block[second], 20.0), "priority restores order without changing sibling";
+		assert approx(block[second], 20.0), "the sibling's record is unchanged";
+		assert scene.lights[scene.nodes[nodes[0].index].payload].priority === 9;
 	} finally { dispose(); resetErrorHalt(); }
 	const requests = frameRequests(outer);
 	setValue(3.0); setPriority(1); flush();
