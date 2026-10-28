@@ -437,13 +437,17 @@ export class AnimatedValue {
 	private onEnd: ((finished: boolean) => void) | null = null;
 	private frameId: int32 = 0;
 	private listeners: Listener[] = [];
-	private disposed: boolean = false;
+	private isDisposed: boolean = false;
 
 	constructor(value: float64, clock: Clock, policy: MotionPolicy) {
 		requireFinite(value, "an animated value");
 		this.value = value;
 		this.clock = clock;
 		this.policy = policy;
+	}
+
+	get disposed(): boolean {
+		return this.isDisposed;
 	}
 
 	get(): float64 {
@@ -508,7 +512,7 @@ export class AnimatedValue {
 
 	dispose(): void {
 		this.requireAlive();
-		this.disposed = true;
+		this.isDisposed = true;
 		for (const listener of this.listeners) {
 			listener.live = false;
 		}
@@ -517,7 +521,7 @@ export class AnimatedValue {
 	}
 
 	private requireAlive(): void {
-		if (this.disposed) {
+		if (this.isDisposed) {
 			throw new Error("motion: an AnimatedValue is used after dispose");
 		}
 	}

@@ -52,6 +52,7 @@ function fadeDocument(): MotionDocument {
 					},
 				],
 				placements: [],
+				labels: [],
 			},
 		],
 	};
@@ -211,6 +212,16 @@ test "unmount disposes an AnimatedValue mid-flight" {
 	assert framePending();
 	dispose();
 	assert !framePending(), "the value's frame is cancelled on unmount";
+	setFrameDriver(null);
+}
+
+test "an AnimatedValue disposed by hand unmounts without a second dispose" {
+	useManualFrames();
+	const [root, dispose, value] = mountValue(new MotionPolicy());
+	value.dispose();
+	assert value.disposed;
+	dispose();
+	assert !framePending();
 	setFrameDriver(null);
 }
 

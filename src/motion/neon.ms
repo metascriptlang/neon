@@ -69,7 +69,7 @@ export function useAnimatedValue(
 	const value = new AnimatedValue(initial, neonClock(), policy);
 	const [read, write] = createSignal<float64>(initial);
 	value.subscribe((next: float64): void => { write(next); });
-	onCleanup((): void => { value.dispose(); });
+	onCleanup((): void => { if (!value.disposed) { value.dispose(); } });
 	return [read, value];
 }
 
