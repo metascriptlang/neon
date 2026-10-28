@@ -48,6 +48,6 @@ test "a DOM tap inside a pan row still presses" {
 	render(element(<View {...pan.panHandlers} accessibilityLabel="neon-tap-row">
 		<Pressable onPress={(e: NeonEvent): void => { log += "press;"; }}><Text>open</Text></Pressable>
 	</View>), domHost(), documentBody());
-	window.eval("const b = document.querySelector('[aria-label=\"neon-tap-row\"]').firstChild; b.id = 'neon-tap-button'; window.neonDrag('neon-tap-button', [100, 102]); b.click();");
+	window.eval("const b = document.querySelector('[aria-label=\"neon-tap-row\"]').firstChild; b.id = 'neon-tap-button'; window.neonDrag('neon-tap-button', [100, 102]); b.dispatchEvent(new PointerEvent('click', { bubbles: true, pointerType: 'touch', clientX: 102, clientY: 10 }));");
 	assert log === "press;", "a tap presses: " + log;
 }

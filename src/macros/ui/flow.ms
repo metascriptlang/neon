@@ -6,12 +6,11 @@ import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../cor
 import { createMemo } from "../../core/memo";
 import { Accessor, Signal, accessor, untrack } from "../../core/signal";
 import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
-import { createOwner, getOwner, getNextChildId, flush, disposeChildren } from "../../core/runtime";
+import { createOwner, getOwner, getNextChildId, flush, disposeChildren, isServer, asServer } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
 import { Hole, Rules, ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, pendingWaits, unconverged } from "../../core/serverContext";
-import { isServer, asServer } from "../../render/environment";
 import { serverCaught } from "../../render/ssr";
 import { NeonNode, RowHome, regionNode, builtRow, mountContent, holderOf } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";

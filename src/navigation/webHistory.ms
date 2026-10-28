@@ -39,9 +39,15 @@ interface HistoryMirror {
 	change: (removed: int32, added: HistoryNode[][], nodes: HistoryNode[]) => void;
 }
 
+interface MirrorEntries {
+	counts: int32[];
+	signatures: string[];
+}
+
 interface MirrorRecord {
 	items: WebHistoryItem<string>[];
 	counts: int32[];
+	signatures: string[];
 	child: MirrorRecord | null;
 }
 
@@ -172,12 +178,6 @@ function allowsTraversal(navigation: WebNavigationNode): boolean {
 	return navigation.onBeforeNavigate();
 }
 
-function keysOf(items: WebHistoryItem<string>[]): string[] {
-	const keys: string[] = [];
-	for (const item of items) { keys.push(item.key); }
-	return keys;
-}
-
 function startsWith(keys: string[], prefix: string[]): boolean {
 	if (prefix.length > keys.length) { return false; }
 	for (let i = 0; i < prefix.length; i += 1) {
@@ -205,33 +205,29 @@ function sameItems(a: WebHistoryItem<string>[], b: WebHistoryItem<string>[]): bo
 	return true;
 }
 
+function entrySignatures(items: WebHistoryItem<string>[]): MirrorEntries {
+	return untrack((): MirrorEntries => {
+		const counts: int32[] = [];
+		const signatures: string[] = [];
+		for (const item of items) {
+			const nodes = historyOf(item);
+			counts.push(nodes.length as int32);
+			for (const node of nodes) { signatures.push(encodeHistory([node])); }
+		}
+		return { counts, signatures };
+	});
+}
+
 function recordLevel(navigation: WebNavigationNode): MirrorRecord {
 	const items = published(navigation);
-	const counts = untrack((): int32[] => {
-		const counted: int32[] = [];
-		for (const item of items) { counted.push(historyOf(item).length as int32); }
-		return counted;
-	});
+	const entries = entrySignatures(items);
 	const child = childNavigation(items[items.length - 1]);
 	return {
 		items,
-		counts,
+		counts: entries.counts,
+		signatures: entries.signatures,
 		child: child === null ? null : recordLevel(child as WebNavigationNode),
 	};
-}
-
-function entryCount(record: MirrorRecord, at: int32): int32 {
-	const child = record.child;
-	if (at === record.items.length - 1 && child !== null) {
-		return totalCount(child as MirrorRecord);
-	}
-	return record.counts[at];
-}
-
-function totalCount(record: MirrorRecord): int32 {
-	let total: int32 = 0;
-	for (let i = 0; i < record.items.length; i += 1) { total += entryCount(record, i); }
-	return total;
 }
 
 function mirrorChange(
@@ -239,16 +235,23 @@ function mirrorChange(
 	previous: MirrorRecord,
 	mirror: HistoryMirror,
 ): void {
-	const newKeys = keysOf(items);
-	const oldKeys = keysOf(previous.items);
+	const entries = entrySignatures(items);
+	const oldSignatures = previous.signatures;
 	let kept: int32 = 0;
-	while (kept < newKeys.length && kept < oldKeys.length && newKeys[kept] === oldKeys[kept]) {
+	while (
+		kept < entries.signatures.length && kept < oldSignatures.length &&
+		entries.signatures[kept] === oldSignatures[kept]
+	) {
 		kept += 1;
 	}
-	let removed: int32 = 0;
-	for (let i = kept; i < previous.items.length; i += 1) { removed += entryCount(previous, i); }
-	const added = entriesOf(items.slice(kept), treesOf(items.slice(0, kept)));
-	mirror.change(removed, added, treesOf(items));
+	let first: int32 = 0;
+	let skipped = kept;
+	while (first < items.length && skipped >= entries.counts[first]) {
+		skipped -= entries.counts[first];
+		first += 1;
+	}
+	const added = entriesOf(items.slice(first), treesOf(items.slice(0, first))).slice(skipped);
+	mirror.change(oldSignatures.length - kept, added, treesOf(items));
 }
 
 function nestedMirror(
@@ -285,15 +288,12 @@ function mirrorLevel(
 	const previousChild = previous.child;
 	if (child === null || previousChild === null) { return previous; }
 	const inactive = untrack((): HistoryNode[] => treesOf(items.slice(0, items.length - 1)));
-	return {
-		items: previous.items,
-		counts: previous.counts,
-		child: mirrorLevel(
-			child as WebNavigationNode,
-			previousChild as MirrorRecord,
-			nestedMirror(mirror, inactive, active),
-		),
-	};
+	const next = mirrorLevel(
+		child as WebNavigationNode,
+		previousChild as MirrorRecord,
+		nestedMirror(mirror, inactive, active),
+	);
+	return next === previousChild ? previous : recordLevel(navigation);
 }
 
 function goBack(session: RoutingSession, count: int32, landed: () => void): void {

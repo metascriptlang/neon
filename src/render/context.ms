@@ -37,6 +37,12 @@ export function useContext<T>(ctx: Context<T>): T {
 	return fallback.value;
 }
 
+export function setContext<T>(ctx: Context<T>, value: T): void {
+	const owner = getOwner();
+	if (owner === null) { throw new NoOwnerError(); }
+	owner.context = { key: ctx.key, value: new Held<T>(value), next: owner.context };
+}
+
 function newContext<T>(fallback: Held<T> | null): Context<T> {
 	const key = new ContextKey();
 	return {

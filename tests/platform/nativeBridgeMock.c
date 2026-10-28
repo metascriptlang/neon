@@ -131,6 +131,7 @@ void *niSwitchCreate(void) { return createControl(2); }
 void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
 void *niModalCreate(void) { return createControl(5); }
+void *niInputAccessoryViewCreate(void) { return createControl(13); }
 void *niWebViewCreate(void) { return createControl(10); }
 void *niVideoCreate(void) { return createControl(11); }
 void *niCameraCreate(void) { return createControl(12); }
@@ -182,6 +183,9 @@ void niSetFocused(void *view, int focused) {
 	v->focused = focused;
 	if (v->tag) nmControl(v->tag, focused ? 1 : 2, v->text);
 }
+
+static int g_accessibilityFocusCalls = 0;
+void niAccessibilityFocus(void *view) { live(view, "niAccessibilityFocus"); g_accessibilityFocusCalls += 1; }
 
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 int niLastControlTag(void) { return g_controlTag; }
@@ -365,6 +369,22 @@ void niMeasureText(void *label, float maxWidth) {
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
+static double g_measurement[4];
+static int32_t g_measurementReady;
+void nmMeasurementRect(double x, double y, double width, double height, int32_t ready) {
+	g_measurement[0] = x; g_measurement[1] = y;
+	g_measurement[2] = width; g_measurement[3] = height;
+	g_measurementReady = ready;
+}
+int32_t niMeasureInWindow(void *view) {
+	live(view, "niMeasureInWindow");
+	return g_measurementReady;
+}
+double niMeasurementX(void) { return g_measurement[0]; }
+double niMeasurementY(void) { return g_measurement[1]; }
+double niMeasurementW(void) { return g_measurement[2]; }
+double niMeasurementH(void) { return g_measurement[3]; }
+
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
@@ -420,6 +440,17 @@ void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time) {
 	g_touchY = y;
 	g_touchTime = time;
 	nmTouch(tag, phase);
+}
+
+// Every native bridge reports a tap as down, then up and its click at one point and time.
+static double g_tapClock = 1000000;
+
+void nmTap(int32_t tag) {
+	g_tapClock += 10;
+	nmTouchFull(tag, 0, g_touchX, g_touchY, g_tapClock);
+	g_tapClock += 10;
+	nmTouchFull(tag, 1, g_touchX, g_touchY, g_tapClock);
+	nmTouchFull(tag, 2, g_touchX, g_touchY, g_tapClock);
 }
 
 void nmTouch(int32_t tag, int32_t phase) {
@@ -497,6 +528,7 @@ int32_t nmLastInputTag(void) {
 }
 
 int32_t nmFocused(int32_t tag) { return tagged(tag)->focused; }
+int32_t nmAccessibilityFocusCalls(void) { return g_accessibilityFocusCalls; }
 
 const char *nmProp(int32_t tag, const char *name) {
 	MockView *v = tagged(tag);
@@ -598,9 +630,14 @@ static MockView *hitView(MockView *p, float x, float y) {
 	return NULL;
 }
 
-void nmTouchAt(float x, float y, int32_t phase) {
+void nmTapAt(float x, float y) {
 	MockView *hit = hitView(&s_container, x, y);
-	if (hit && hit->tag) nmTouch(hit->tag, phase);
+	if (!hit || !hit->tag) return;
+	g_tapClock += 10;
+	nmTouchFull(hit->tag, 0, x, y, g_tapClock);
+	g_tapClock += 10;
+	nmTouchFull(hit->tag, 1, x, y, g_tapClock);
+	nmTouchFull(hit->tag, 2, x, y, g_tapClock);
 }
 
 static MockView *labelled(const char *text) {

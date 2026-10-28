@@ -8,7 +8,7 @@ import {
 } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
 import { VoidNode } from "../../src/platform/void/host";
-import { Void, View, Text, ViewHandle } from "../../src/components/primitives";
+import { Void, View, Text, ViewHandle, ElementHandle } from "../../src/components/primitives";
 import {
 	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid, Underline, Selection,
 } from "../../src/components/scene2d";
@@ -891,7 +891,7 @@ test "View and Text under Scene2D share its native scene without leaking into HU
 	const dispose = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
 		<View ref={(handle: ViewHandle): void => { ui.push(handle.node as VoidNode); }}>
-			<Text ref={(node: HostNode): void => { ui.push(node as VoidNode); }}>UI</Text>
+			<Text ref={(handle: ElementHandle): void => { ui.push(handle.node as VoidNode); }}>UI</Text>
 		</View>
 	</Scene2D></Void>), mockHost(), root);
 	assert ui.length === 2 && ui[0].parent === ui[1];

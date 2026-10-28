@@ -32,6 +32,7 @@ test "a fresh event carries its type and zero everywhere else" {
 	assert e.code === "", "code defaults empty";
 	assert !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey, "modifiers default up";
 	assert !e.repeat && !e.isComposing, "repeat and isComposing default false";
+	assert !e.pointerOrigin, "symbolic events have no pointer provenance";
 }
 
 test "a handler on a jsx element receives the event" {

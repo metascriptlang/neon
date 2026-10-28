@@ -144,8 +144,10 @@ function release(entry: ResponderEntry): void {
 }
 
 function grant(entry: ResponderEntry, e: NeonEvent, moving: boolean): void {
+	const before = path;
 	responder = entry;
 	const block = ask(entry.handlers.onResponderGrant, e);
+	if (path !== before || responder !== entry || !entry.mounted) { return; }
 	if (moving) {
 		claimedThisTouch = true;
 		const watchers = claimWatchers.slice(0, claimWatchers.length);
@@ -183,21 +185,37 @@ function negotiate(phase: TouchPhase, e: NeonEvent, candidates: ResponderEntry[]
 		if (entry !== responder && ask(bubble(entry, phase), e)) { wants = entry; }
 	}
 	if (wants === null) { return; }
-	const next = wants as ResponderEntry;
-	const moving = phase === TouchPhase.Move;
+	transfer(wants as ResponderEntry, e, phase === TouchPhase.Move);
+}
+
+function transfer(next: ResponderEntry, e: NeonEvent, moving: boolean): void {
+	if (!next.mounted || next === responder) { return; }
 	if (responder === null) {
 		grant(next, e, moving);
 		return;
 	}
+	const before = path;
 	const holder = responder as ResponderEntry;
 	const request = holder.handlers.onResponderTerminationRequest;
 	const allowed = request === null ? true : (request as (e: NeonEvent) => boolean)(e);
+	if (path !== before || responder !== holder || !next.mounted) { return; }
 	if (!allowed) {
 		tell(next.handlers.onResponderReject, e);
 		return;
 	}
+	responder = next;
 	tell(holder.handlers.onResponderTerminate, e);
+	if (path !== before || responder !== next || !next.mounted) { return; }
 	grant(next, e, moving);
+}
+
+export function responderScroll(entry: ResponderEntry, e: NeonEvent): boolean {
+	if (!active || !entry.mounted || path.indexOf(entry) < 0) { return false; }
+	if (responder === entry) { return true; }
+	const candidates = responder === null ? path : above(responder as ResponderEntry);
+	if (candidates.indexOf(entry) < 0) { return false; }
+	transfer(entry, e, true);
+	return responder === entry && entry.mounted;
 }
 
 function sample(e: NeonEvent, start: boolean): void {
@@ -219,22 +237,36 @@ function sample(e: NeonEvent, start: boolean): void {
 	history.mostRecentTimeStamp = e.timeStamp;
 }
 
-function finish(e: NeonEvent, released: boolean): void {
+export interface ResponderDelivery {
+	handler: (e: NeonEvent) => void;
+	event: NeonEvent;
+}
+
+export function extractResponderTerminal(e: NeonEvent, released: boolean): ResponderDelivery[] {
+	const deliveries: ResponderDelivery[] = [];
+	if (!active) { return deliveries; }
+	if (released) { sample(e, false); }
 	const holder = responder;
+	if (holder !== null) {
+		const handlers = (holder as ResponderEntry).handlers;
+		const end = handlers.onResponderEnd;
+		const terminal = released ? handlers.onResponderRelease : handlers.onResponderTerminate;
+		if (released && end !== null) { deliveries.push({ handler: end, event: { ...e } }); }
+		if (terminal !== null) { deliveries.push({ handler: terminal, event: { ...e } }); }
+	}
 	responder = null;
 	active = false;
 	history.numberActiveTouches = 0;
 	if (claimedThisTouch) { claimedReleaseTime = e.timeStamp; }
 	claimedThisTouch = false;
-	if (holder === null) { return; }
-	const entry = holder as ResponderEntry;
-	if (released) {
-		tell(entry.handlers.onResponderEnd, e);
-		tell(entry.handlers.onResponderRelease, e);
-	} else {
-		tell(entry.handlers.onResponderTerminate, e);
+	if (holder !== null) { release(holder as ResponderEntry); }
+	return deliveries;
+}
+
+function finish(e: NeonEvent, released: boolean): void {
+	for (const delivery of extractResponderTerminal(e, released)) {
+		delivery.handler(delivery.event);
 	}
-	release(entry);
 }
 
 function repeated(phase: TouchPhase, e: NeonEvent): boolean {
@@ -253,10 +285,7 @@ export function responderTouch(entry: ResponderEntry, phase: TouchPhase, e: Neon
 	match (phase) {
 		TouchPhase.Start => { startTouch(entry, e); },
 		TouchPhase.Move => { moveTouch(e); },
-		TouchPhase.End => {
-			sample(e, false);
-			finish(e, true);
-		},
+		TouchPhase.End => { finish(e, true); },
 		TouchPhase.Cancel => { finish(e, false); },
 	}
 }
@@ -290,6 +319,6 @@ export function responderUnmounted(entry: ResponderEntry): void {
 	e.timeStamp = history.mostRecentTimeStamp;
 	e.x = history.currentX;
 	e.y = history.currentY;
-	tell(entry.handlers.onResponderTerminate, e);
 	release(entry);
+	tell(entry.handlers.onResponderTerminate, e);
 }

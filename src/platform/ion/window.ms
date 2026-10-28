@@ -6,12 +6,14 @@ import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName, setTitle,
+	setOptionAsAlt as ionSetOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
 } from "../../../../ion/src/index";
-import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
+import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { commit as commitFrame } from "../../../../void/src/gpu/door";
-import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { addFont, registerFace, setFaceResolver, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { systemFace } from "./systemFace";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
@@ -20,12 +22,15 @@ import { flush } from "../../core/runtime";
 import {
 	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
 } from "../../render/voidAreaHandle";
+import { DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../render/event";
 import { installCaptureServices } from "../../api/captureServices";
 import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
 import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
@@ -84,6 +89,31 @@ let _requested = 0;
 let _drawn = 0;
 
 export function frameCounts(): number[] { return [_requested, _drawn]; }
+
+export type OptionAsAlt = "neither" | "left" | "right" | "both";
+
+let _window: Window | null = null;
+let _optionAsAlt: OptionAsAlt = "neither";
+
+export function setWindowTitle(title: string): void {
+	if (_window === null) { throw new Error(`setWindowTitle("${title}") ran before runWindow opened its window; the first title goes in desktopOptions`); }
+	setTitle(_window as Window, title);
+}
+
+// macOS only, kept until runWindow opens its window: which Option keys type as Alt instead of composing.
+export function setOptionAsAlt(sides: OptionAsAlt): void {
+	_optionAsAlt = sides;
+	if (_window !== null) { applyOptionAsAlt(_window as Window); }
+}
+
+function applyOptionAsAlt(win: Window): void {
+	ionSetOptionAsAlt(win, match (_optionAsAlt) {
+		"neither" => OptionAsAltNeither,
+		"left" => OptionAsAltLeft,
+		"right" => OptionAsAltRight,
+		"both" => OptionAsAltBoth,
+	});
+}
 
 const _areas: Area[] = [];
 let _retiredViews: ViewId[] = [];
@@ -175,7 +205,7 @@ function areaKey(e: KeyEvent): AreaKeyEvent {
 	};
 }
 
-function areaPointer(e: PointerEvent): AreaPointerEvent {
+export function areaPointer(e: PointerEvent): AreaPointerEvent {
 	return {
 		kind: match (e.kind) {
 			PointerKind.Motion => AreaPointerKind.Motion,
@@ -189,6 +219,7 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 		pressed: e.pressed,
 		dx: e.dx,
 		dy: e.dy,
+		deltaMode: e.kind === PointerKind.Wheel && e.deltaMode === DeltaMode.Line ? DOM_DELTA_LINE : DOM_DELTA_PIXEL,
 		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
 	};
 }
@@ -225,7 +256,7 @@ function showWithFirstFrame(win: Window): void {
 		return;
 	}
 	const owner = a as Area;
-	if (owner.view !== ViewInvalid) { viewFrame(owner.view); }
+	if (owner.view !== ViewInvalid && !viewFrame(owner.view)) { requestFrame(owner.win); }
 	if (!owner.shown) {
 		owner.shown = true;
 		show(win);
@@ -238,12 +269,19 @@ function wireInput(): void {
 	embedRegister(initGpu, drawCurrent);
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
-		runFrameFires();
-		flush();
 		const a = areaOfWindow(window);
 		if (a !== null) {
 			const owner = a as Area;
-			if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty())) { viewFrame(owner.view); }
+			if (owner.view !== ViewInvalid && !viewReady(owner.view)) {
+				requestFrame(owner.win);
+				return;
+			}
+		}
+		runFrameFires();
+		flush();
+		if (a !== null) {
+			const owner = a as Area;
+			if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty()) && !viewFrame(owner.view)) { requestFrame(owner.win); }
 		}
 		const retired = _retiredViews;
 		_retiredViews = [];
@@ -331,6 +369,9 @@ function ionWindowHost(win: Window): Host {
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
+	_window = win;
+	applyOptionAsAlt(win);
+	setFaceResolver(systemFace);
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
 	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
 	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
@@ -359,6 +400,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	runLoop();
 	reportProfile();
 	dispose();
+	_window = null;
 	return 0;
 }
 

@@ -2,36 +2,12 @@ import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, installCaptureServices, unloadedSound,
 } from "../../api/captureServices";
-
-extern class Event {}
+import { Event, HTMLAudioElement, HTMLInputElement } from "../../render/htmlElements";
 
 extern class File {
 	name: string;
 	size: number;
 	type: string;
-}
-
-extern class HTMLInputElement {
-	accept: cstring;
-	multiple: boolean;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
-	extern click(): void;
-	extern remove(): void;
-}
-
-extern class HTMLAudioElement {
-	src: cstring;
-	volume: number;
-	muted: boolean;
-	loop: boolean;
-	playbackRate: number;
-	currentTime: number;
-	paused: boolean;
-	extern pause(): void;
-	extern load(): void;
-	extern removeAttribute(name: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
 }
 
 extern class MediaRecorder {
@@ -44,8 +20,8 @@ extern class MediaRecorder {
 extern function createFileInput(unused: int32): HTMLInputElement from "(#, (() => { const i = document.createElement('input'); i.type = 'file'; i.style.display = 'none'; i.setAttribute('data-neon-picker', ''); document.body.appendChild(i); return i; })())";
 extern function inputFiles(input: HTMLInputElement): File[] from "Array.from(#.files || [])";
 extern function objectUrl(file: File): string from "URL.createObjectURL(#)";
-extern function describeImage(url: cstring, quality: number, base64: boolean, done: (record: string) => void): void from "((url, quality, base64, done) => { const F = String.fromCharCode(31); const img = new Image(); img.onload = () => { const w = img.naturalWidth, h = img.naturalHeight; if (quality >= 1 && !base64) { done([url, w, h, ''].join(F)); return; } const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0); const data = c.toDataURL('image/jpeg', quality); done([quality < 1 ? data : url, w, h, base64 ? data.slice(data.indexOf(',') + 1) : ''].join(F)); }; img.onerror = () => done('!cannot read the picked image'); img.src = url; })(#, #, #, #)";
-extern function describeVideo(url: cstring, done: (record: string) => void): void from "((url, done) => { const F = String.fromCharCode(31); const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.onloadedmetadata = () => done([url, v.videoWidth, v.videoHeight, Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : ''].join(F)); v.onerror = () => done([url, '', '', ''].join(F)); v.src = url; })(#, #)";
+extern function describeImage(url: string, quality: number, base64: boolean, done: (record: string) => void): void from "((url, quality, base64, done) => { const F = String.fromCharCode(31); const img = new Image(); img.onload = () => { const w = img.naturalWidth, h = img.naturalHeight; if (quality >= 1 && !base64) { done([url, w, h, ''].join(F)); return; } const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0); const data = c.toDataURL('image/jpeg', quality); done([quality < 1 ? data : url, w, h, base64 ? data.slice(data.indexOf(',') + 1) : ''].join(F)); }; img.onerror = () => done('!cannot read the picked image'); img.src = url; })(#, #, #, #)";
+extern function describeVideo(url: string, done: (record: string) => void): void from "((url, done) => { const F = String.fromCharCode(31); const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.onloadedmetadata = () => done([url, v.videoWidth, v.videoHeight, Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : ''].join(F)); v.onerror = () => done([url, '', '', ''].join(F)); v.src = url; })(#, #)";
 extern function createAudio(unused: int32): HTMLAudioElement from "(#, new Audio())";
 extern function mediaSeconds(value: number): number from "((v) => Number.isFinite(v) ? v : 0)(#)";
 extern function playAudio(audio: HTMLAudioElement, failed: (message: string) => void): void from "((a, f) => { const p = a.play(); if (p) p.catch((e) => f(String((e && e.message) || e))); })(#, #)";

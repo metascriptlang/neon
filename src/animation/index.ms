@@ -14,3 +14,4 @@ export {
 } from "./layoutAnimation";
 export { Presence, PresenceProps, PresenceType } from "./presence";
 export { FrameDriver, ManualFrames, setFrameDriver, useManualFrames, requestFrame, cancelFrame, frameNow } from "./frame";
+export { useFrame } from "../render/voidClock";

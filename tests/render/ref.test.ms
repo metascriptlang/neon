@@ -24,6 +24,8 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent
 import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 import { flush } from "../../src/core/runtime";
+import { ElementHandle, MeasureRect, MeasureError } from "../../src/render/measure";
+import { Image } from "../../src/components/image";
 
 test "ref hands the completed host node to the callback" {
 	let seen = "";
@@ -68,7 +70,7 @@ test "a callback prop crosses raw when it is named, not only when it is a litera
 	let hits = 0;
 	const inc: (e: NeonEvent) => void = (e) => { hits = hits + 1; };
 	let seenTag = "";
-	const grab: (h: HostNode) => void = (h) => { seenTag = (h as unknown as MockNode).tag; };
+	const grab = (h: ElementHandle): void => { seenTag = (h.node as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
 	render(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
@@ -286,9 +288,9 @@ test "a View's ref focuses it on mount, as a terminal focuses its grid when the 
 	(grid as ViewHandle).blur();
 	assert log === "focus;blur;", "blur: " + log;
 	dispose();
-	let refused = "";
-	try { (grid as ViewHandle).focus(); } catch (e) { refused = e.toString(); }
-	assert refused.indexOf("after the View unmounted") >= 0, "focus after unmount: " + refused;
+	(grid as ViewHandle).focus();
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "focus and blur after unmount do nothing: " + log;
 }
 
 test "a View's ref measures text through its host, and refuses a host that cannot and a View that is gone" {
@@ -308,4 +310,49 @@ test "a View's ref measures text through its host, and refuses a host that canno
 	refused = "";
 	try { (frame as ViewHandle).measureText("x", {}); } catch (e) { refused = e.toString(); }
 	assert refused.indexOf("needs a host that measures text") >= 0, "host with no measure: " + refused;
+}
+
+test "direct Text and Image handle refs apply untracked under the mounting owner" {
+	for (const image of [false, true]) {
+		const [read, write] = createSignal(0);
+		const root = mockNode("root");
+		const host = mockHost();
+		host.measureInWindow = (n: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 1, y: 2, width: 3, height: 4 });
+		const handles: ElementHandle[] = [];
+		let mounts = 0;
+		let seen = -1;
+		let cleanups = 0;
+		const grab = (handle: ElementHandle): void => {
+			seen = read();
+			handles.push(handle);
+			onCleanup((): void => { cleanups += 1; });
+		};
+		const app = image ? Image({ ref: grab }) : Text({ ref: grab });
+		const dispose = createRoot((end: () => void): () => void => {
+			createEffect<int32>(
+				(prev: int32 | null): int32 => {
+					mounts += 1;
+					app(host, root as unknown as HostNode, null);
+					return 0;
+				},
+				(value: int32, prev: int32 | null): Cleanup | null => null,
+			);
+			return end;
+		});
+		assert mounts === 1 && handles.length === 1 && root.children.length === 1;
+		assert seen === 0 && cleanups === 0;
+		write(1);
+		assert mounts === 1 && handles.length === 1 && root.children.length === 1,
+			"a signal read in the public ref must not remount its builder";
+		assert seen === 0 && cleanups === 0;
+		const frame = (): string => {
+			let got = "";
+			handles[0].measureInWindow((x: number, y: number, width: number, height: number): void => { got = `${x},${y},${width},${height}`; });
+			return got;
+		};
+		assert frame() === "1,2,3,4", "the mounted handle measures: " + frame();
+		dispose();
+		assert cleanups === 1, "ref cleanup stays under the mounting owner";
+		assert frame() === "0,0,0,0", "the one public handle is disposed with that owner: " + frame();
+	}
 }

@@ -1,5 +1,6 @@
 import { NeonNode } from "../../src/render/node";
-import { hydrate, mockHost, mockNode, HostNode, Host } from "../../src/render/host";
+import { mockHost, mockNode, HostNode, Host } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import {
 	hasRecord, hasError, readRecord, readError, putRecord, putError, clearRecords, scriptLiteral,
 } from "../../src/render/hydrationRecords";

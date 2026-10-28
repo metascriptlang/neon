@@ -14,6 +14,12 @@ import {
 	NavTarget,
 	NavigatorKind,
 	NavigatorLink,
+	NavigationAction,
+	NavigationEventArg,
+	NavigationEventData,
+	ScreenOptions,
+	Unsubscribe,
+	noAction,
 	NavigationState,
 	RouteKey,
 	ScopeContext,
@@ -35,10 +41,55 @@ export interface ContainerRouting {
 	scope: string;
 }
 
+interface StateListener {
+	id: int32;
+	handler: (event: NavigationEventArg) => void;
+}
+
 export class NavigationContainerRef {
 	link: NavigatorLink | null = null;
 	linkPath: (path: string) => boolean = (path: string): boolean => false;
 	history: ((session: RoutingSession) => Dispose) | null = null;
+	listeners: StateListener[] = [];
+	nextListener: int32 = 1;
+
+	addListener(event: "state", handler: (event: NavigationEventArg) => void): Unsubscribe {
+		const id = this.nextListener;
+		this.nextListener += 1;
+		this.listeners.push({ id, handler });
+		return (): void => {
+			for (let i = 0; i < this.listeners.length; i += 1) {
+				if (this.listeners[i].id === id) {
+					this.listeners.splice(i, 1);
+					return;
+				}
+			}
+		};
+	}
+
+	emitState(state: NavigationState): void {
+		for (const listener of this.listeners.slice(0, this.listeners.length)) {
+			const data = new NavigationEventData(new NavigationAction("NONE", noAction), state);
+			listener.handler(new NavigationEventArg("state", "", data));
+		}
+	}
+
+	resetRoot(state: NavigationState | null = null): void {
+		const link = this.link;
+		if (link === null) {
+			throw new Error("resetRoot: the navigation container is not mounted yet");
+		}
+		(link as NavigatorLink).restore(state === null ? emptyState() : state as NavigationState);
+	}
+
+	getCurrentOptions(): ScreenOptions {
+		const root = this.root();
+		const options = root === null ? null : deepestFocused(root as NavigatorLink).focusedOptions();
+		if (options === null) {
+			throw new Error("getCurrentOptions: the navigation container has no focused screen yet");
+		}
+		return options as ScreenOptions;
+	}
 
 	enableHistory(session: RoutingSession): Dispose {
 		const history = this.history;
@@ -66,6 +117,7 @@ export class NavigationContainerRef {
 		return deepestFocused(root as NavigatorLink);
 	}
 
+	// Parked on ~/metascript/.inbox/compiler/2026-10-25-a-default-type-parameter-of-a-class-or-function-is-not-applied.md: React Navigation's createNavigationContainerRef<ParamList>() types this by the root list, and the untyped callers need `PL = ...` to default
 	navigate(name: string): void {
 		const leaf = this.focusedLeaf("navigate");
 		if (!navigateUp(leaf, { name, values: null, child: null, pop: false })) {
@@ -161,6 +213,7 @@ function containerLink(initialState: NavigationState | null): ContainerSlot {
 	};
 	const link: NavigatorLink = {
 		kind: NavigatorKind.Container,
+		navigatorId: null,
 		hasRoute: (name: string): boolean => {
 			return root !== null && (root as NavigatorLink).hasRoute(name);
 		},
@@ -177,6 +230,10 @@ function containerLink(initialState: NavigationState | null): ContainerSlot {
 		canBackLocal: (): boolean => false,
 		canPop: (): boolean => false,
 		popToTop: (): boolean => false,
+		popBy: (count: int32): boolean => false,
+		replaceTo: (name: string): boolean => false,
+		prevents: (action: NavigationAction): boolean => false,
+		focusedOptions: (): ScreenOptions | null => null,
 		handleBack: (): boolean => root !== null && (root as NavigatorLink).handleBack(),
 		drawerAction: (action: DrawerAction): boolean => false,
 		isFocused: accessor((): boolean => true),
@@ -270,6 +327,10 @@ export function NavigationContainer(props: {
 	const stateChange = props.onStateChange;
 	state.changed = (): void => {
 		changes.set(changes.peek() + 1);
+		const handle = props.ref;
+		if (handle !== null && state.ready) {
+			(handle as NavigationContainerRef).emitState(untrack((): NavigationState => link.state()));
+		}
 		if (stateChange !== null && state.ready) {
 			(stateChange as (state: NavigationState) => void)(untrack((): NavigationState => link.state()));
 		}

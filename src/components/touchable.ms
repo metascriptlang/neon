@@ -5,7 +5,8 @@ import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { NeonNode } from "../render/node";
-import { AccessibilityProps, Pressable, View } from "./primitives";
+import { Platform } from "../api/platform";
+import { AccessibilityProps, AndroidRipple, Pressable, View } from "./primitives";
 
 interface TouchableProps extends AccessibilityProps {
 	onPress?: ((e: NeonEvent) => void) | null;
@@ -26,6 +27,12 @@ interface TouchableOpacityProps extends TouchableProps {
 interface TouchableHighlightProps extends TouchableProps {
 	activeOpacity?: Accessor<number> | null;
 	underlayColor?: Accessor<string> | null;
+	style?: Accessor<Style> | null;
+}
+
+interface TouchableNativeFeedbackProps extends TouchableProps {
+	background?: Accessor<AndroidRipple> | null;
+	useForeground?: Accessor<boolean> | null;
 	style?: Accessor<Style> | null;
 }
 
@@ -66,9 +73,16 @@ class PressFeedback {
 	}
 }
 
-function touchable(props: TouchableProps, feedback: PressFeedback, style: Accessor<Style> | null, children: NeonNode | null): NeonNode {
+function touchable(
+	props: TouchableProps,
+	feedback: PressFeedback,
+	style: Accessor<Style> | null,
+	children: NeonNode | null,
+	ripple: Accessor<AndroidRipple> | null = null,
+): NeonNode {
 	return Pressable({
 		style,
+		android_ripple: ripple,
 		accessible: props.accessible,
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
@@ -126,4 +140,39 @@ export function TouchableHighlight(props: TouchableHighlightProps): NeonNode {
 export function TouchableWithoutFeedback(props: TouchableProps): NeonNode {
 	const feedback = new PressFeedback(props);
 	return touchable(props, feedback, null, props.children);
+}
+
+// TouchableNativeFeedback.js statics. RN hangs them on the component; a MetaScript function
+// carries no members, so they live on this class.
+export class NativeFeedback {
+	static SelectableBackground(rippleRadius: number | null = null): AndroidRipple {
+		return { attribute: "selectableItemBackground", radius: rippleRadius };
+	}
+
+	static SelectableBackgroundBorderless(rippleRadius: number | null = null): AndroidRipple {
+		return { attribute: "selectableItemBackgroundBorderless", radius: rippleRadius };
+	}
+
+	static Ripple(color: string, borderless: boolean, rippleRadius: number | null = null): AndroidRipple {
+		return { color, borderless, radius: rippleRadius };
+	}
+
+	static canUseNativeForeground(): boolean {
+		return Platform.OS === "android";
+	}
+}
+
+// TouchableNativeFeedback.js: the native drawable named by `background` (default
+// SelectableBackground) paints the feedback, in the foreground when useForeground is set. RN
+// clones its single child; here the child sits in a Pressable, which Android alone gives a
+// drawable, so other hosts press without feedback as RN's does.
+export function TouchableNativeFeedback(props: TouchableNativeFeedbackProps): NeonNode {
+	const feedback = new PressFeedback(props);
+	const background = props.background;
+	const foreground = props.useForeground;
+	const ripple = accessor((): AndroidRipple => {
+		const chosen: AndroidRipple = background === null ? NativeFeedback.SelectableBackground() : (background as Accessor<AndroidRipple>)();
+		return { ...chosen, foreground: foreground !== null && (foreground as Accessor<boolean>)() };
+	});
+	return touchable(props, feedback, props.style, props.children, ripple);
 }

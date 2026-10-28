@@ -1,5 +1,5 @@
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followLinks, followPreloads } from "../../src/platform/browser/routingHistory";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { sleepAsync } from "std/core/promise";
@@ -14,6 +14,7 @@ import {
 	RoutingRegistry,
 	RoutingSession,
 	ScreenProps,
+	useRoute,
 	createDrawerNavigator,
 	createNavigationContainerRef,
 	createRoutingSession,
@@ -22,6 +23,8 @@ import {
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
+import { PreloadArgs } from "../../src/navigation/route";
+import { A, NavigateOptions, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
 import { createRoutingDemo, RoutingDemo } from "../../examples/components/routing";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
@@ -91,7 +94,12 @@ interface ItemParams {
 	id: string;
 }
 
-const Store = createStackNavigator<ItemParams>();
+interface StoreParams {
+	Catalog: null;
+	Product: ItemParams;
+}
+
+const Store = createStackNavigator<StoreParams>();
 
 const storeLinking: LinkingOptions = {
 	prefixes: [],
@@ -104,14 +112,14 @@ const storeLinking: LinkingOptions = {
 	},
 };
 
-function Catalog(props: ScreenProps<ItemParams>): NeonNode {
+function Catalog(props: ScreenProps<StoreParams>): NeonNode {
 	return <Text>Catalog page</Text>;
 }
 
 let guarded = false;
 
-function Product(props: ScreenProps<ItemParams>): NeonNode {
-	const params = props.route.params;
+function Product(props: ScreenProps<StoreParams>): NeonNode {
+	const params = useRoute<StoreParams, "Product">().params;
 	if (guarded) {
 		props.navigation.addListener("beforeRemove", (e: NavigationEventArg): void => {
 			e.preventDefault();
@@ -130,6 +138,8 @@ function stringifyItem(params: ItemParams): Map<string, string> {
 	return values;
 }
 
+const storeItem = Store.params.of("Product", { parse: parseItem, stringify: stringifyItem });
+
 test "a built-in stack follows browser back and forward through the routing registry" {
 	const history = createBrowserRoutingHistory();
 	const original = history.read();
@@ -144,8 +154,7 @@ test "a built-in stack follows browser back and forward through the routing regi
 		const app = NavigationContainer({
 			children: <Store.Navigator>
 				<Store.Screen name="Catalog" component={Catalog} />
-				<Store.Screen name="Product" component={Product}
-					parseParams={parseItem} stringifyParams={stringifyItem} />
+				<Store.Screen name="Product" component={Product} params={storeItem} />
 			</Store.Navigator>,
 			linking: storeLinking,
 			ref,
@@ -202,8 +211,7 @@ test "a built-in stack on browser history records in-app navigation and follows 
 		const app = NavigationContainer({
 			children: <Store.Navigator>
 				<Store.Screen name="Catalog" component={Catalog} />
-				<Store.Screen name="Product" component={Product}
-					parseParams={parseItem} stringifyParams={stringifyItem} />
+				<Store.Screen name="Product" component={Product} params={storeItem} />
 			</Store.Navigator>,
 			linking: storeLinking,
 			ref,
@@ -303,8 +311,7 @@ test "browser back stays on a stack screen whose beforeRemove prevents it" {
 	guarded = true;
 	const app = mountOnBrowser(<Store.Navigator>
 		<Store.Screen name="Catalog" component={Catalog} />
-		<Store.Screen name="Product" component={Product}
-			parseParams={parseItem} stringifyParams={stringifyItem} />
+		<Store.Screen name="Product" component={Product} params={storeItem} />
 	</Store.Navigator>, storeLinking, ref, mount);
 	try {
 		assert ref.linkTo("/store/product/42");
@@ -323,7 +330,12 @@ test "browser back stays on a stack screen whose beforeRemove prevents it" {
 	}
 }
 
-const Side = createDrawerNavigator<string>();
+interface SideParams {
+	One: null;
+	Two: null;
+}
+
+const Side = createDrawerNavigator<SideParams>();
 
 const sideLinking: LinkingOptions = {
 	prefixes: [],
@@ -331,7 +343,7 @@ const sideLinking: LinkingOptions = {
 	config: { screens: [{ name: "One", path: "one" }, { name: "Two", path: "two" }] },
 };
 
-function Page(props: ScreenProps<string>): NeonNode {
+function Page(props: ScreenProps<SideParams>): NeonNode {
 	return <Text>{"Page " + props.route.name}</Text>;
 }
 
@@ -374,6 +386,119 @@ test "opening a drawer adds a browser entry that browser back closes" {
 		assert app.errors.length === 0, app.errors.length.toString();
 	} finally {
 		unmount(app, mount);
+		history.replace(original);
+	}
+}
+
+const preloads: string[] = [];
+
+function PreloadedPage(): NeonNode {
+	preloads.push("render");
+	return <p>page</p>;
+}
+
+function Links(props: { children: NeonNode }): NeonNode {
+	return <nav><A href="/docs/b">B</A>{props.children}</nav>;
+}
+
+function noteDoc(args: PreloadArgs<Map<string, string>>): void {
+	preloads.push((args.params.get("slug") ?? "") + " " + args.intent);
+}
+
+test "a router in Chrome preloads as initial at open, navigate on a link click and native on browser back" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/docs/a", state: "" });
+	const routes = createRoutes([
+		{ layout: Links, children: [{ path: "/docs/:slug", component: PreloadedPage, preload: noteDoc }] },
+	]);
+	const created = createRouter(routes, history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	preloads.length = 0;
+	const dispose = render(<RouterProvider router={router} />, domHost(), mount as unknown as HostNode);
+	const stop = followLinks((url: string, options: NavigateOptions): boolean => router.navigate(url, options));
+	try {
+		assert preloads.join(" | ") === "a initial | render", preloads.join(" | ");
+		preloads.length = 0;
+		js("document.querySelector('a[href=\"/docs/b\"]').click()");
+		flush();
+		assert history.read().url === "/docs/b", history.read().url;
+		assert preloads.join(" | ") === "b navigate | render", preloads.join(" | ");
+		preloads.length = 0;
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/docs/a", history.read().url;
+		assert preloads.join(" | ") === "a native | render", preloads.join(" | ");
+	} finally {
+		stop();
+		dispose();
+		router.dispose();
+		mount.remove();
+		history.replace(original);
+	}
+}
+
+function Hovered(): NeonNode {
+	return <nav><A href="/docs/b">B</A><A href="/docs/c">C</A><a href="/docs/d" preload="false">D</a></nav>;
+}
+
+test "followPreloads preloads a link once on hover, on focus, never with preload false, and stops on dispose" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/docs/a", state: "" });
+	const routes = createRoutes([
+		{ path: "/docs/a", component: Hovered },
+		{ path: "/docs/:slug", component: PreloadedPage, preload: noteDoc },
+	]);
+	const created = createRouter(routes, history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	const dispose = render(<RouterProvider router={router} />, domHost(), mount as unknown as HostNode);
+	const stop = followPreloads((url: string): void => router.preload(url));
+	preloads.length = 0;
+	const fire = (type: string, href: string): void => {
+		js("(() => { const a = document.querySelector('a[href=\"" + href + "\"]'); a.dispatchEvent(new MouseEvent('" + type + "', { bubbles: true, composed: true })); return 1; })()");
+	};
+	const focus = (href: string): void => {
+		js("(() => { document.querySelector('a[href=\"" + href + "\"]').dispatchEvent(new FocusEvent('focusin', { bubbles: true, composed: true })); return 1; })()");
+	};
+	try {
+		fire("mousemove", "/docs/b");
+		assert preloads.length === 0, "the hover waits 20 ms: " + preloads.join(" | ");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload", preloads.join(" | ");
+		assert history.read().url === "/docs/a", history.read().url;
+		fire("mousemove", "/docs/b");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload", "same link again: " + preloads.join(" | ");
+		fire("mousemove", "/docs/c");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload | c preload", preloads.join(" | ");
+		preloads.length = 0;
+		focus("/docs/b");
+		assert preloads.join(" | ") === "b preload", "focusin: " + preloads.join(" | ");
+		preloads.length = 0;
+		fire("mousemove", "/docs/d");
+		focus("/docs/d");
+		await sleepAsync(60);
+		assert preloads.length === 0, "preload=false: " + preloads.join(" | ");
+		stop();
+		fire("mousemove", "/docs/b");
+		focus("/docs/c");
+		await sleepAsync(60);
+		assert preloads.length === 0, "after dispose: " + preloads.join(" | ");
+	} finally {
+		stop();
+		dispose();
+		router.dispose();
+		mount.remove();
 		history.replace(original);
 	}
 }

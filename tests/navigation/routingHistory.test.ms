@@ -5,6 +5,7 @@ import {
 	RoutingRegistry,
 } from "../../src/navigation/routing";
 import {
+	RoutingHistory,
 	RoutingHistoryEntry,
 	createMemoryRoutingHistory,
 	createRoutingSession,
@@ -128,4 +129,83 @@ test "request histories isolate SSR requests and refuse client navigation" {
 	}
 	if (b.ok) { b.value.dispose(); }
 	assert request.read().url === "/left";
+}
+
+function deferredHistory(initial: RoutingHistoryEntry): { history: RoutingHistory; fire: () => void } {
+	const inner = createMemoryRoutingHistory(initial);
+	let deltas: int32[] = [];
+	const history: RoutingHistory = {
+		writable: true,
+		read: inner.read,
+		index: inner.index,
+		push: inner.push,
+		replace: inner.replace,
+		go: (delta: int32): boolean => {
+			if (inner.index() + delta < 0) { return false; }
+			deltas.push(delta);
+			return true;
+		},
+		listen: inner.listen,
+	};
+	const fire = (): void => {
+		const due = deltas;
+		deltas = [];
+		for (const delta of due) { inner.go(delta); }
+	};
+	return { history, fire };
+}
+
+test "a navigation issued while a go is in flight writes after the go lands" {
+	let active = "";
+	let errors: int32 = 0;
+	const registry = new RoutingRegistry("main");
+	registry.register(participant(
+		(): string => active, (value: string): void => { active = value; },
+	));
+	const deferred = deferredHistory({ url: "/a", state: "" });
+	const connected = createRoutingSession(
+		registry, deferred.history, (error: RoutingError): void => { errors += 1; },
+	);
+	assert connected.ok;
+	if (!connected.ok) { return; }
+	const session = connected.value;
+	assert session.navigate("/b", false).ok;
+	const order: string[] = [];
+	assert session.go(-1, (): void => { order.push("landed:" + deferred.history.read().url); });
+	assert session.navigate("/c", false).ok;
+	assert active === "/c";
+	order.push("navigated");
+	deferred.fire();
+	assert order.join(",") === "navigated,landed:/a", order.join(",");
+	assert deferred.history.read().url === "/c", deferred.history.read().url;
+	assert deferred.history.index() === 1, deferred.history.index().toString();
+	assert session.canGoBack();
+	assert errors === 0;
+	session.dispose();
+}
+
+test "a go issued while another is in flight runs after it lands, in order" {
+	const registry = new RoutingRegistry("main");
+	let active = "";
+	registry.register(participant(
+		(): string => active, (value: string): void => { active = value; },
+	));
+	const deferred = deferredHistory({ url: "/a", state: "" });
+	const connected = createRoutingSession(
+		registry, deferred.history, (error: RoutingError): void => {},
+	);
+	assert connected.ok;
+	if (!connected.ok) { return; }
+	const session = connected.value;
+	assert session.navigate("/b", false).ok;
+	assert session.navigate("/c", false).ok;
+	const landed: string[] = [];
+	assert session.go(-1, (): void => { landed.push(deferred.history.read().url); });
+	assert session.go(-1, (): void => { landed.push(deferred.history.read().url); });
+	deferred.fire();
+	assert landed.join(",") === "/b", landed.join(",");
+	deferred.fire();
+	assert landed.join(",") === "/b,/a", landed.join(",");
+	assert deferred.history.read().url === "/a", deferred.history.read().url;
+	session.dispose();
 }

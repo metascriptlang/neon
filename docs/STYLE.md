@@ -91,8 +91,39 @@ btn: { padding: 8, when: { web: { padding: 10 }, ios: { padding: 12 } } }
   exists. Unistyles resolves only its web block at build time (`_web`) and hands ios/android to
   RN's **runtime** `Platform.select`; a macro has no such limit.
 
+Breakpoints sit in the same `when` map, named by a bracketed key into a table, StyleX's
+`defineConsts` form (decided 2026-10-15):
+
+```ts
+export const screen = createBreakpoints({ wide: 900, xl: 1200 });
+sidebar: { width: "100%", when: { [screen.wide]: { width: 280 }, [screen.xl]: { width: 400 } } }
+```
+
+- **min-width, mobile first.** A block applies at or above its width; blocks are ordered by width at
+  expansion, so a wider block wins whatever the source order.
+- **the checker sees the key.** `screen.huge` is *"Property 'huge' does not exist … Available: wide,
+  xl"*, and `screen.wide` is the number 900 for code that compares widths itself. The macro follows
+  `screen` to its `createBreakpoints` call and reads the number; a width or a block field it cannot
+  read at compile time is an error naming it.
+- **one IR, two resolutions.** The entry carries its blocks as `media`. On a host with a stylesheet
+  the class rule holds them as `@media (min-width:900px)`, so server markup lays out at every width
+  before any script runs. Everywhere else (native, Void, terminal, an inline web style) the apply
+  site binds the style to the window width and applies every block the width reaches
+  (`resolveMedia`); on the server that is the window the render published, else width 0, the base.
+- **layering keeps the blocks.** In `[sheet.sidebar, over]` every field `over` sets masks the
+  sidebar's blocks, and `over`'s own blocks follow, so the later layer wins at every width. A merged
+  layer has no class, so on the web it resolves inline against the window: server markup carries
+  the published width's result, not a media query, and hydrate corrects it at the real width. A
+  page that must not shift uses the sheet entry directly, whose class rule holds the `@media`.
+- **cost where unused.** A block is a `StyleBlock` (the table's fields plus `fromWidth`, a field
+  `Style` lacks, so `Style` stays acyclic). Resolving, layering and the window binding live in
+  `src/render/breakpoints.ms`, which installs them into `style.ms` and `bind.ms` when imported, the
+  way `svg.jms` installs its writer; an app that never calls `createBreakpoints` links none of it
+  and no window signal. Until it is installed, a style carrying `media` throws naming the missing
+  table.
+
 **Naming rule — the grouping follows who decides.** `when` holds every override the ENVIRONMENT
-selects (build target today; `hover`, `focus`, `pressed`, dark mode, breakpoints as they land) and
+selects (build target and breakpoints today; `hover`, `focus`, `pressed`, dark mode as they land) and
 the caller passes nothing for; `variants` holds what the CALLER selects at the use site, so it stays
 a bare data key. That a platform is resolved at build time while `hover` is continuous is an
 implementation fact, not a spelling difference — which is why both live under one key.
@@ -212,9 +243,38 @@ must leave Yoga frames and scroll content offsets logical; UIKit's transformed v
 bounds size plus centre, preserving `bounds.origin`. Browser `onLayout` likewise reports
 logical coordinates instead of the transformed bounding rectangle.
 
-Native mock geometry and real browser consumers were exercised; rebuilt phone/simulator
-acceptance is blocked by Ion's generator migration recorded in its inbox. Do not substitute
-an old installed phone binary for the changed adapters.
+Native transform/layout contracts are pinned in `tests/platform/nativeHost.test.ms`;
+the measurement consumer below has a rebuilt UIKit fixture. An old installed phone
+binary cannot certify changes to these adapters.
+
+**Layout and window measurements.** Public primitive refs use `ElementHandle`
+(`src/render/measure.ms`); intrinsic lowercase JSX refs stay platform-native.
+The coordinate policy follows RN `ReactCommon/react/renderer/dom/DOM.cpp`
+`measure` / `measureInWindow` / `measureLayout` at `693e9628e8c18cbb37e587a568e948a55f3180e3`:
+window bounds include scroll and transforms; ancestor layout excludes both; `measure`
+answers the layout origin in the parent beside the window frame.
+`onLayout` remains parent-local layout, not a movement notification. Geometry is
+an unclipped axis-aligned bounding box, not visibility or a pixel readback.
+
+Queries answer before the call returns, as Fabric's do. Receiving a ref does not
+establish layout readiness: a node not laid out, unsupported by its host or unmounted
+answers zeros (`measureLayout` calls `onFail`), with a debug-build warning naming the
+call. The host capabilities underneath (`Host.measureInWindow` / `measureLayout`) keep
+the distinct `MeasureError`, which pressability relies on. Disposal does not retarget
+stale handles to replacement elements. Native window queries read current view
+geometry, not an animation presentation layer. See `tests/render/measure.test.ms`,
+`tests/components/measurement.test.ms` and `tests/platform/nativeMeasurement.test.ms`.
+
+Browser ancestor layout currently has CSSOM integer precision (`offsetLeft` /
+`offsetWidth`); window bounds retain DOM rectangle fractions. Native layout uses
+Yoga's precision. This is not exact subpixel parity: applications needing it
+require a different, independently proven DOM layout-coordinate strategy.
+Subtracting transformed viewport rectangles is not that strategy: ancestor
+scale doubles the local offset. Border/static-wrapper/scroll/scale controls and
+the rounding ceiling are pinned in `tests/browser/measurement.test.ms`; real
+UIKit conversion is exercised by `tests/ios/measurement/app.ms` and its driver.
+Relative-only rectangle comparisons would cancel a missing window origin, so the
+driver also compares public window coordinates with `XCUIElement.frame`.
 
 **Sticky-list reference boundary.** RN `VirtualizedList.js`
 `_ensureClosestStickyHeader` retains the nearest preceding header outside the
@@ -320,7 +380,7 @@ Each stage ends green. TDD: red test first.
 | **S4** | ✅ reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); ✅ platform blocks (§2); ✅ theme tokens, static half — `createTheme` bakes one `:root` rule and `createStyles(theme => …)` spells each token `var(--name)`. Runtime theme switching still open. | S3 |
 
 Deferred, in rough priority order: token categories so a token can be unitless (a bare number is
-always `px` today, so `opacity`/`flex` tokens cannot be expressed), breakpoints/media queries,
+always `px` today, so `opacity`/`flex` tokens cannot be expressed),
 runtime object (`rt`), pseudo-states beyond variants, animation (Nim had `AnimationDemo`).
 
 > **variants LANDED 2026-09-02.** An entry carrying `variants` expands to an arrow taking a selector

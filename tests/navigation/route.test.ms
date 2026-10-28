@@ -159,13 +159,13 @@ test "a route whose codec refuses the params falls through to the next one" {
 	]);
 	const numeric = matched(tree, "/users/42");
 	assert numeric.chain[1].node === byId.node;
-	const typed = paramsOf<UserParams>(byId, numeric);
+	const typed = paramsOf<UserParams, void>(byId, numeric);
 	assert typed.ok;
 	if (typed.ok) { assert typed.value.id === 42; }
 	const named = matched(tree, "/users/ada");
 	assert named.chain[1].node === bySlug.node;
 	assert text(named.chain[1].params) === "slug=ada";
-	const absent = paramsOf<UserParams>(byId, named);
+	const absent = paramsOf<UserParams, void>(byId, named);
 	assert !absent.ok;
 	if (!absent.ok) { assert absent.error === RoutingError.NoMatch; }
 	const onlyTyped = route<UserParams>("users/:id", { params: userCodec });
@@ -305,16 +305,16 @@ test "typed and untyped hrefs round-trip through the tree" {
 		leaf(blog),
 		leaf(files),
 	]);
-	const typed = hrefOf<UserParams>(tree, user, { id: 42 }, pairs(["tab", "a b"]));
+	const typed = hrefOf<UserParams, void>(tree, user, { id: 42 }, pairs(["tab", "a b"]));
 	assert typed.ok;
 	if (typed.ok) {
 		assert typed.value === "/users/42?tab=a%20b";
-		const back = paramsOf<UserParams>(user, matched(tree, typed.value));
+		const back = paramsOf<UserParams, void>(user, matched(tree, typed.value));
 		assert back.ok;
 		if (back.ok) { assert back.value.id === 42; }
 		assert matched(tree, typed.value).search.get("tab") === "a b";
 	}
-	const untyped = hrefOf<Map<string, string>>(
+	const untyped = hrefOf<Map<string, string>, void>(
 		tree,
 		slug,
 		pairs(["slug", "ada lovelace/1"]),
@@ -325,22 +325,22 @@ test "typed and untyped hrefs round-trip through the tree" {
 		assert untyped.value === "/users/ada%20lovelace%2F1";
 		assert text(matched(tree, untyped.value).chain[1].params) === "slug=ada lovelace/1";
 	}
-	const first = hrefOf<Map<string, string>>(tree, blog, pairs([]), pairs([]));
+	const first = hrefOf<Map<string, string>, void>(tree, blog, pairs([]), pairs([]));
 	assert first.ok;
 	if (first.ok) { assert first.value === "/blog"; }
-	const second = hrefOf<Map<string, string>>(tree, blog, pairs(["page", "2"]), pairs([]));
+	const second = hrefOf<Map<string, string>, void>(tree, blog, pairs(["page", "2"]), pairs([]));
 	assert second.ok;
 	if (second.ok) { assert chainOf(tree, second.value) === "/blog/2{page=2}"; }
-	const nested = hrefOf<Map<string, string>>(tree, files, pairs(["path", "a b/c"]), pairs([]));
+	const nested = hrefOf<Map<string, string>, void>(tree, files, pairs(["path", "a b/c"]), pairs([]));
 	assert nested.ok;
 	if (nested.ok) {
 		assert nested.value === "/files/a%20b/c";
 		assert chainOf(tree, nested.value) === "/files{path=a b/c}";
 	}
-	const missing = hrefOf<Map<string, string>>(tree, slug, pairs([]), pairs([]));
+	const missing = hrefOf<Map<string, string>, void>(tree, slug, pairs([]), pairs([]));
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error === RoutingError.InvalidParams; }
-	const outside = hrefOf<Map<string, string>>(tree, path("x"), pairs([]), pairs([]));
+	const outside = hrefOf<Map<string, string>, void>(tree, path("x"), pairs([]), pairs([]));
 	assert !outside.ok;
 	if (!outside.ok) { assert outside.error === RoutingError.NoMatch; }
 }
@@ -356,7 +356,7 @@ test "search parses the way URLSearchParams does and the hash is kept" {
 	assert text(mixed.search) === "q=a b;x=+1;flag=;=empty";
 	assert mixed.hash === "top?x=1";
 	assert chainOf(tree, "/search#a") === "/search";
-	assert chainOf(tree, "/search?x=%ZZ") === "InvalidAddress";
+	assert text(matched(tree, "/search?x=%ZZ").search) === "x=%ZZ";
 	assert chainOf(tree, "/search/%E0") === "InvalidAddress";
 }
 

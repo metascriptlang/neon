@@ -144,10 +144,10 @@ expect_warnings tests/apps/navWarnApp.ms '^(The action|Do you have|Is there|Is y
 expect_bundle bundlePlainApp "platform/browser/dom" "void2d/types gpu/door render/spanHost platform/browser/media animation/layoutAnimation platform/browser/layoutAnimation platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene platform/browser/notifications api/notifications platform/browser/geolocation api/geolocation platform/browser/netInfo api/netInfo platform/browser/asyncStorage api/asyncStorage platform/browser/haptics api/haptics platform/browser/deviceInfo api/deviceInfo platform/browser/localization api/localization platform/browser/permissions api/permissions platform/browser/clipboard api/clipboard platform/browser/linking api/linking platform/browser/vibration api/vibration platform/browser/accessibilityInfo api/accessibilityInfo"
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 expect_native_modules bundleTerminalApp "platform/terminal/host" "render/spanHost components/svg/scene platform/native/host platform/browser/dom"
-expect_size bundlePlainApp js 739224
-expect_size bundleTerminalApp native 586896
+expect_size bundlePlainApp js 767386
+expect_size bundleTerminalApp native 630972
 if [ "$(uname)" = Darwin ]; then
 	expect_macos_app bundleMacosApp "NeonSwitch NeonSwitchControl NeonIndicator NeonModal NeonWebView NeonWebKitView NeonScriptProxy NeonVideo NeonCamera NeonPhotoCapture NeonSvgView NeonSvgCanvas" "niSwitchCreate niIndicatorCreate niModalCreate niWebViewCreate niVideoCreate niCameraCreate niSvgCreate" "AVKit CoreMedia"
-	expect_size bundleMacosApp native 2052708
+	expect_size bundleMacosApp native 2111356
 fi
 exit $fail

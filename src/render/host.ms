@@ -7,15 +7,16 @@ import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
-import { flush } from "../core/runtime";
-import { beginClaim, endClaim } from "./claim";
+import { flush, resetErrorHalt } from "../core/runtime";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
 
 export { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
 
+// @solidjs/web client.ts:395: a fresh mount in a debug build revives scheduling after an earlier uncaught error; a release build stays halted
 export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
+	when (debug) { resetErrorHalt(); }
 	const dispose = createRoot((dispose) => {
 		try {
 			node(host, parent, null);
@@ -27,24 +28,6 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 	}, id);
 	try {
 		flush();
-	} catch (error) {
-		dispose();
-		throw error;
-	}
-	return dispose;
-}
-
-export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
-	beginClaim(host, container);
-	let dispose: Dispose;
-	try {
-		dispose = render(node, host, container, "");
-	} catch (error) {
-		endClaim(host, false);
-		throw error;
-	}
-	try {
-		endClaim(host, true);
 	} catch (error) {
 		dispose();
 		throw error;

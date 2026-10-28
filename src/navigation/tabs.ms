@@ -1,11 +1,10 @@
 import { Accessor, accessor, untrack } from "../core/signal";
 import { createMemo } from "../core/memo";
 import { NeonNode } from "../render/hostTypes";
-import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
-import { View, Text, Pressable } from "../components/primitives";
-import { For, Show } from "../macros/ui/flow";
-import { Platform } from "../api/platform";
+import { View } from "../components/primitives";
+import { For } from "../macros/ui/flow";
+import { mapArray } from "../core/array";
 import { NavigationChild } from "./children";
 import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
 import {
@@ -19,12 +18,17 @@ import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
+	NavigatorLink,
+	NavigationHistoryItem,
 	NavigatorModel,
 	RouteSeed,
 	RouteWebMap,
 	ScreenOptions,
+	ParamSlot,
+	ScreenParams,
+	ScreenParamsBuilder,
 	ScreenProps,
-	TabBarIconProps,
+	Theme,
 	createCore,
 	currentScope,
 	mergeOptions,
@@ -32,45 +36,27 @@ import {
 	noAction,
 	seedKey,
 } from "./core";
-import { Slot, screenView, shown } from "./header";
+import { screenView, shown } from "./header";
+import { TabTrigger, tabHairline, tabRow } from "./tabBar";
 import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
 } from "./screenCollection";
 
+export type TabBackBehavior = BackBehavior | "order" | "fullHistory";
+
 export type TabBarPosition = "top" | "bottom";
-
-export const TAB_INACTIVE = "#8e8e93";
-
-const TAB_ITEM: Style = {
-	flex: 1,
-	position: "relative",
-	flexDirection: "column",
-	alignItems: "center",
-	justifyContent: "center",
-	paddingTop: 6,
-	paddingBottom: 6,
-};
-
-const BADGE: Style = {
-	borderRadius: 9,
-	paddingLeft: 5,
-	paddingRight: 5,
-	height: 18,
-	alignItems: "center",
-	justifyContent: "center",
-};
 
 function withoutHeader(options: Accessor<ScreenOptions>): Accessor<ScreenOptions> {
 	return accessor((): ScreenOptions => mergeOptions({ headerShown: false }, options()));
 }
 
-export function readBehavior(behavior: Accessor<BackBehavior> | null, fallback: string): string {
+export function readBehavior(behavior: Accessor<TabBackBehavior> | null, fallback: string): string {
 	if (behavior === null) { return fallback; }
-	const read = behavior as Accessor<BackBehavior>;
+	const read = behavior as Accessor<TabBackBehavior>;
 	return untrack((): string => {
-		const value: BackBehavior = read();
+		const value: TabBackBehavior = read();
 		return value;
 	});
 }
@@ -87,12 +73,12 @@ function withKey(seen: string[] | null, key: string): string[] {
 	return holds(seen, key) ? seen : [...seen, key];
 }
 
-export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P>[]> {
+export function mountedEntries<PL>(core: NavigatorCore<PL>): Accessor<Navigation<PL>[]> {
 	const visited = createMemo<string[]>(
 		(seen: string[] | null): string[] => withKey(seen, core.currentKey()),
 	);
-	return accessor((): Navigation<P>[] => {
-		const kept: Navigation<P>[] = [];
+	return accessor((): Navigation<PL>[] => {
+		const kept: Navigation<PL>[] = [];
 		const focused = core.currentKey();
 		const seen = visited();
 		for (const entry of core.entries()) {
@@ -104,90 +90,35 @@ export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P
 	});
 }
 
-export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
+export function labelOf<PL>(entry: Navigation<PL>, own: string | null): string {
 	if (own !== null) { return own as string; }
 	const title = entry.options().title;
 	return title === null ? entry.route.name : title as string;
 }
 
-export function tabAccessibilityLabel(label: string, at: int32, count: int32, os: string): string {
-	if (os !== "ios") { return label; }
-	return label + ", tab, " + (at + 1).toString() + " of " + count.toString();
-}
-
-export function tabItem<P>(
-	core: NavigatorCore<P>,
-	entry: Navigation<P>,
-	top: Accessor<boolean>,
-): NeonNode {
+function triggerOf<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): TabTrigger {
 	const key = entry.route.key;
-	const focused = accessor((): boolean => core.currentKey() === key);
 	const options = accessor((): ScreenOptions => entry.options());
-	const label = accessor((): string => labelOf<P>(entry, options().tabBarLabel));
-	const color = accessor((): string => {
-		const own = focused() ? options().tabBarActiveTintColor : options().tabBarInactiveTintColor;
-		if (own !== null) { return own as string; }
-		return focused() ? core.container.theme().colors.primary : TAB_INACTIVE;
-	});
-	const a11y = accessor((): string => {
-		const own = options().tabBarAccessibilityLabel;
-		if (own !== null) { return own as string; }
-		const all = core.entries();
-		let at: int32 = 0;
-		for (let i = 0; i < all.length; i += 1) {
-			if (all[i].route.key === key) { at = i as int32; }
-		}
-		return tabAccessibilityLabel(label(), at, all.length as int32, Platform.OS);
-	});
-	const badge = accessor((): string => {
-		const value = options().tabBarBadge;
-		return value === null ? "" : value as string;
-	});
-	const icon = accessor((): NeonNode | null => {
-		const render = options().tabBarIcon;
-		if (render === null) { return null; }
-		const props: TabBarIconProps = { focused: focused(), color: color(), size: 24 };
-		return (render as (props: TabBarIconProps) => NeonNode)(props);
-	});
-	const indicator = accessor((): Style => ({
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		height: 2,
-		backgroundColor: focused() ? color() : core.container.theme().colors.card,
-	}));
-	const badgeBox = accessor((): Style => ({
-		...BADGE,
-		backgroundColor: core.container.theme().colors.notification,
-	}));
-	const press = (e: NeonEvent): void => {
-		if (entry.emit("tabPress", new NavigationAction("TAB_PRESS", noAction))) { return; }
-		if (untrack((): boolean => focused())) {
-			core.repressFocused();
-			return;
-		}
-		core.navigateLocal(entry.route.name, null);
+	const focused = accessor((): boolean => core.currentKey() === key);
+	return {
+		key,
+		label: accessor((): string => labelOf<PL>(entry, options().tabBarLabel)),
+		options,
+		focused,
+		href: accessor((): string | null => null),
+		press: (): void => {
+			if (entry.emit("tabPress", new NavigationAction("TAB_PRESS", noAction))) { return; }
+			if (untrack((): boolean => focused())) {
+				core.repressFocused();
+				return;
+			}
+			core.navigateLocal(entry.route.name, untrack((): ParamSlot | null => entry.route.slot()));
+		},
 	};
-	return <Pressable style={TAB_ITEM} accessibilityRole={Platform.OS === "ios" ? "button" : "tab"}
-		accessibilityLabel={a11y()} accessibilityState={{ selected: focused() }} onPress={press}>
-		<Slot node={icon} />
-		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
-			<Show when={badge() !== ""}>
-				<View style={badgeBox}>
-					<Text style={{ color: "#ffffff", fontSize: 11 }}>{badge()}</Text>
-				</View>
-			</Show>
-		</View>
-		<Show when={top()}>
-			<View style={indicator} />
-		</Show>
-	</Pressable>;
 }
 
-function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
-	const items: RouteSeed<P>[] = [];
+function startPages<PL>(core: NavigatorCore<PL>): Pages<RouteSeed<PL>> {
+	const items: RouteSeed<PL>[] = [];
 	let selectedIndex: int32 = 0;
 	for (let i = 0; i < core.screens.length; i += 1) {
 		const name = core.screens[i].name;
@@ -197,63 +128,95 @@ function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
 	return { items, selectedIndex };
 }
 
-function resetPages<P>(
-	core: NavigatorCore<P>,
-	list: RouteSeed<P>[],
+function resetPages<PL>(
+	core: NavigatorCore<PL>,
+	list: RouteSeed<PL>[],
 	at: int32,
-): Pages<RouteSeed<P>> {
-	const items: RouteSeed<P>[] = [];
+): Pages<RouteSeed<PL>> {
+	const items: RouteSeed<PL>[] = [];
 	let selectedIndex: int32 = 0;
 	for (let i = 0; i < core.screens.length; i += 1) {
 		const name = core.screens[i].name;
-		let entry: RouteSeed<P> | null = null;
+		let entry: RouteSeed<PL> | null = null;
 		for (const given of list) {
 			if (given.name === name) { entry = given; }
 		}
 		if (entry === null) { entry = core.seed(name, null); }
 		if (name === list[at].name) { selectedIndex = i as int32; }
-		items.push(entry as RouteSeed<P>);
+		items.push(entry as RouteSeed<PL>);
 	}
 	return { items, selectedIndex };
 }
 
-export function pagesModel<P>(
-	core: NavigatorCore<P>,
+interface Visit {
+	key: string;
+	slot: ParamSlot | null;
+}
+
+export function pagesModel<PL>(
+	core: NavigatorCore<PL>,
 	behavior: string,
-	restored: RouteSeed<P>[] | null,
+	restored: RouteSeed<PL>[] | null,
 	at: int32,
-): NavigatorModel<P> {
+): NavigatorModel<PL> {
 	const initial = restored === null
-		? startPages<P>(core)
-		: resetPages<P>(core, restored as RouteSeed<P>[], at);
-	const pages = createChildPages<RouteSeed<P>, Navigation<P>>(
+		? startPages<PL>(core)
+		: resetPages<PL>(core, restored as RouteSeed<PL>[], at);
+	const pages = createChildPages<RouteSeed<PL>, Navigation<PL>>(
 		initial,
 		seedKey,
-		(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+		(seed: Accessor<RouteSeed<PL>>, active: Accessor<boolean>): Navigation<PL> => {
 			return core.child(seed, active);
 		},
 	);
 	const entries = pages.instances;
-	let history: string[] = [initial.items[initial.selectedIndex].key];
-	const visit = (key: string): void => {
-		const kept: string[] = [];
-		for (const visited of history) {
-			if (visited !== key) { kept.push(visited); }
+	const seen = initial.items[initial.selectedIndex];
+	let history: Visit[] = [{ key: seen.key, slot: seen.params }];
+	const slotOf = (key: string): ParamSlot | null => {
+		for (const entry of core.snapshot()) {
+			if (entry.route.key === key) { return untrack((): ParamSlot | null => entry.route.slot()); }
 		}
-		kept.push(key);
+		return null;
+	};
+	const visit = (key: string, slot: ParamSlot | null): void => {
+		if (behavior === "fullHistory") {
+			const last = history[history.length - 1];
+			if (last.key === key) {
+				last.slot = slot;
+				return;
+			}
+			last.slot = slotOf(last.key);
+			history.push({ key, slot });
+			return;
+		}
+		const kept: Visit[] = [];
+		for (const visited of history) {
+			if (visited.key !== key) { kept.push(visited); }
+		}
+		kept.push({ key, slot });
 		history = kept;
 	};
-	const focus = (at: int32): void => {
-		visit(core.snapshot()[at].route.key);
+	const leave = (left: Navigation<PL> | null): void => {
+		if (left === null) { return; }
+		const gone = left as Navigation<PL>;
+		if (!untrack((): boolean => shown(gone.options().popToTopOnBlur, false)) || gone.isFocused()) { return; }
+		const nested = core.nestedLink(gone.route.key);
+		if (nested !== null) { (nested as NavigatorLink).popToTop(); }
+	};
+	const focus = (at: int32, slot: ParamSlot | null): void => {
+		const left = untrack((): Navigation<PL> | null => core.current());
+		visit(core.snapshot()[at].route.key, slot);
 		core.apply((): void => { pages.select(at); });
+		leave(left);
 	};
 	const backTarget = (): int32 => {
 		const list = core.snapshot();
 		const at = untrack((): int32 => pages.selectedIndex());
 		if (behavior === "none") { return -1; }
-		if (behavior === "history") {
+		if (behavior === "order") { return at > 0 ? (at - 1) as int32 : -1; }
+		if (behavior === "history" || behavior === "fullHistory") {
 			if (history.length < 2) { return -1; }
-			const previous = history[history.length - 2];
+			const previous = history[history.length - 2].key;
 			for (let i = 0; i < list.length; i += 1) {
 				if (list[i].route.key === previous) { return i as int32; }
 			}
@@ -265,15 +228,22 @@ export function pagesModel<P>(
 	};
 	const backPath = (): int32[] => {
 		const at = pages.selectedIndex();
-		if (behavior !== "history") {
+		if (behavior === "order") {
+			const ordered: int32[] = [];
+			for (let i = 0; i <= at; i += 1) { ordered.push(i as int32); }
+			return ordered;
+		}
+		if (behavior !== "history" && behavior !== "fullHistory") {
 			const goal = untrack((): int32 => backTarget());
 			return goal < 0 ? [at] : [goal, at];
 		}
 		const list = core.snapshot();
 		const path: int32[] = [];
-		for (const key of history) {
+		for (let v = 0; v < history.length - 1; v += 1) {
 			for (let i = 0; i < list.length; i += 1) {
-				if (i !== at && list[i].route.key === key) { path.push(i as int32); }
+				if (i !== at || behavior === "fullHistory") {
+					if (list[i].route.key === history[v].key) { path.push(i as int32); }
+				}
 			}
 		}
 		path.push(at);
@@ -282,95 +252,137 @@ export function pagesModel<P>(
 	const back = (): boolean => {
 		const goal = backTarget();
 		if (goal < 0) { return false; }
-		if (behavior === "history") {
+		if (behavior === "history" || behavior === "fullHistory") {
+			const left = untrack((): Navigation<PL> | null => core.current());
 			history.pop();
+			if (behavior === "fullHistory") {
+				core.snapshot()[goal].writeParams(history[history.length - 1].slot);
+			}
 			core.apply((): void => { pages.select(goal); });
+			leave(left);
 			return true;
 		}
-		focus(goal);
+		focus(goal, slotOf(core.snapshot()[goal].route.key));
 		return true;
 	};
 	return {
 		entries,
 		index: accessor((): int32 => pages.selectedIndex()),
-		arrange: (kept: Navigation<P>[], focused: Navigation<P> | null): void => {
-			const items: RouteSeed<P>[] = [];
+		arrange: (kept: Navigation<PL>[], focused: Navigation<PL> | null): void => {
+			const items: RouteSeed<PL>[] = [];
 			for (const config of core.screens) {
-				let found: Navigation<P> | null = null;
+				let found: Navigation<PL> | null = null;
 				for (const entry of kept) {
 					if (entry.route.name === config.name) { found = entry; }
 				}
 				items.push(found === null
 					? core.seed(config.name, null)
-					: core.seedOf(found as Navigation<P>));
+					: core.seedOf(found as Navigation<PL>));
 			}
 			let selectedIndex: int32 = 0;
 			if (focused !== null) {
 				for (let i = 0; i < items.length; i += 1) {
-					if (items[i].name === (focused as Navigation<P>).route.name) {
+					if (items[i].name === (focused as Navigation<PL>).route.name) {
 						selectedIndex = i as int32;
 					}
 				}
 			}
-			const visited: string[] = [];
-			for (const key of history) {
+			const visited: Visit[] = [];
+			for (const kept of history) {
 				for (const seed of items) {
-					if (seed.key === key) { visited.push(key); }
+					if (seed.key === kept.key) { visited.push(kept); }
 				}
 			}
-			if (visited.length === 0) { visited.push(items[selectedIndex].key); }
+			if (visited.length === 0) {
+				visited.push({ key: items[selectedIndex].key, slot: items[selectedIndex].params });
+			}
 			history = visited;
 			core.apply((): void => {
-				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => {
+				pages.navigate((current: Pages<RouteSeed<PL>>): Pages<RouteSeed<PL>> => {
 					return { items, selectedIndex };
 				});
 			});
 		},
-		navigate: (name: string, params: P | null, pop: boolean): void => {
+		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const at = core.indexOfName(list, name);
-			if (params !== null) { list[at].writeParams(params); }
-			focus(at);
+			const next = params !== null ? params : list[at].config.initialParams;
+			if (untrack((): ParamSlot | null => list[at].route.slot()) !== next) { list[at].writeParams(next); }
+			focus(at, next);
 		},
-		push: (name: string, params: P | null): boolean => false,
-		replace: (key: string, name: string, params: P | null): void => {
+		push: (name: string, params: ParamSlot | null): boolean => false,
+		replace: (key: string, name: string, params: ParamSlot | null): void => {
 			core.navigate(name, params);
 		},
-		popTo: (at: int32): void => {},
-		popToRoute: (name: string, params: P | null, source: string | null): boolean => false,
-		reset: (list: RouteSeed<P>[], at: int32): void => {
-			const next = resetPages<P>(core, list, at);
-			history = [next.items[next.selectedIndex].key];
+		popTo: (at: int32, type: string): void => {
+			throw new Error("tabs popTo: '" + type + "' reached a navigator whose canPop is false");
+		},
+		popToRoute: (name: string, params: ParamSlot | null, source: string | null): boolean => false,
+		reset: (list: RouteSeed<PL>[], at: int32): void => {
+			const next = resetPages<PL>(core, list, at);
+			history = [{ key: next.items[next.selectedIndex].key, slot: next.items[next.selectedIndex].params }];
 			core.apply((): void => {
-				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => next);
+				pages.navigate((current: Pages<RouteSeed<PL>>): Pages<RouteSeed<PL>> => next);
 			});
 		},
 		goBackFrom: (key: string): boolean => back(),
 		canBack: (): boolean => backTarget() >= 0,
 		back,
 		canPop: (): boolean => false,
+		history: (): NavigationHistoryItem[] | null => {
+			const items: NavigationHistoryItem[] = [];
+			const list = core.snapshot();
+			if (behavior === "history" || behavior === "fullHistory") {
+				for (const visit of history) { items.push({ type: "route", key: visit.key }); }
+				return items;
+			}
+			for (const at of backPath()) { items.push({ type: "route", key: list[at].route.key }); }
+			return items;
+		},
+		defaultStatus: null,
+		restoreHistory: (items: NavigationHistoryItem[]): void => {
+			if (behavior !== "history" && behavior !== "fullHistory") { return; }
+			const list = core.snapshot();
+			const restored: Visit[] = [];
+			for (const item of items) {
+				if (item.type !== "route") { continue; }
+				for (const entry of list) {
+					if (entry.route.key === item.key) {
+						restored.push({ key: entry.route.key, slot: untrack((): ParamSlot | null => entry.route.slot()) });
+					}
+				}
+			}
+			const current = list[untrack((): int32 => pages.selectedIndex())];
+			if (restored.length === 0 || restored[restored.length - 1].key !== current.route.key) {
+				restored.push({ key: current.route.key, slot: untrack((): ParamSlot | null => current.route.slot()) });
+			}
+			history = restored;
+		},
 		drawer: (action: DrawerAction): boolean => false,
-		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
-			const web = childPagesWebNavigation<RouteSeed<P>, Navigation<P>>(pages, map.serializer, {
+		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
+			const web = childPagesWebNavigation<RouteSeed<PL>, Navigation<PL>>(pages, map.serializer, {
 				pathMapper: (
-					page: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					page: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): string | null => map.path(page.instance),
 				parametersMapper: (
-					page: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					page: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): Map<string, string> | null => map.parameters(page.instance),
 				childSelector: (
-					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): WebNavigationOwner | null => map.child(child.instance),
-				visited: (current: ChildPages<RouteSeed<P>, Navigation<P>>): int32[] => backPath(),
+				visited: (current: ChildPages<RouteSeed<PL>, Navigation<PL>>): int32[] => backPath(),
 			});
-			return webNavigationNode<Pages<RouteSeed<P>>>({
+			return webNavigationNode<Pages<RouteSeed<PL>>>({
 				serializer: web.serializer,
 				history: web.history,
 				onBeforeNavigate: web.onBeforeNavigate,
-				navigate: (keys: Pages<RouteSeed<P>>[]): void => {
-					const restored: string[] = [];
+				navigate: (keys: Pages<RouteSeed<PL>>[]): void => {
+					const restored: Visit[] = [];
 					for (const key of keys) {
-						if (key.selectedIndex >= 0) { restored.push(key.items[key.selectedIndex].key); }
+						if (key.selectedIndex >= 0) {
+							const shown = key.items[key.selectedIndex];
+							restored.push({ key: shown.key, slot: shown.params });
+						}
 					}
 					history = restored;
 					core.apply((): void => {
@@ -378,19 +390,24 @@ export function pagesModel<P>(
 						core.restoreParams(keys[keys.length - 1].items);
 					});
 					const current = core.current();
-					if (current !== null) { visit((current as Navigation<P>).route.key); }
+					if (current !== null) {
+						const shown = current as Navigation<PL>;
+						visit(shown.route.key, untrack((): ParamSlot | null => shown.route.slot()));
+					}
 				},
 			});
 		},
 	};
 }
 
-export interface TabNavigator<P> {
+export interface TabNavigator<PL> {
+	params: ScreenParamsBuilder<PL>;
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
+		id?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptions> | null;
-		backBehavior?: Accessor<BackBehavior> | null;
+		backBehavior?: Accessor<TabBackBehavior> | null;
 		tabBarStyle?: Accessor<Style> | null;
 		tabBarPosition?: Accessor<TabBarPosition> | null;
 	}) => NeonNode;
@@ -400,52 +417,53 @@ export interface TabNavigator<P> {
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
-		name: string;
-		component: (props: ScreenProps<P>) => NeonNode;
+		name: keyof PL;
+		component: (props: ScreenProps<PL>) => NeonNode;
 		options?: Accessor<ScreenOptions> | null;
-		initialParams?: P | null;
-		parseParams?: ((values: Map<string, string>) => P) | null;
-		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		params?: ScreenParams<PL> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
-export function createBottomTabNavigator<P>(): TabNavigator<P> {
-	return createTabs<P>(false);
+export function createBottomTabNavigator<PL>(): TabNavigator<PL> {
+	return createTabs<PL>(false);
 }
 
-export function createMaterialTopTabNavigator<P>(): TabNavigator<P> {
-	return createTabs<P>(true);
+export function createMaterialTopTabNavigator<PL>(): TabNavigator<PL> {
+	return createTabs<PL>(true);
 }
 
-function createTabs<P>(material: boolean): TabNavigator<P> {
+function createTabs<PL>(material: boolean): TabNavigator<PL> {
 	const collector = createScreenCollector();
 	return {
+		params: new ScreenParamsBuilder<PL>(),
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
+			id?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
-			backBehavior?: Accessor<BackBehavior> | null;
+			backBehavior?: Accessor<TabBackBehavior> | null;
 			tabBarStyle?: Accessor<Style> | null;
 			tabBarPosition?: Accessor<TabBarPosition> | null;
 		}): NeonNode => {
-			const collection = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<PL>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const declared = readOptions(props.screenOptions);
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
-			const core = createCore<P>({
+			const core = createCore<PL>({
 				kind: NavigatorKind.Tabs,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
+				navigatorId: readName(props.id),
 				screenOptions: material ? withoutHeader(declared) : declared,
 				scope: currentScope("Tab.Navigator"),
 				model: (
-					core: NavigatorCore<P>,
-					restored: RouteSeed<P>[] | null,
+					core: NavigatorCore<PL>,
+					restored: RouteSeed<PL>[] | null,
 					at: int32,
-				): NavigatorModel<P> => pagesModel<P>(core, behavior, restored, at),
+				): NavigatorModel<PL> => pagesModel<PL>(core, behavior, restored, at),
 			});
-			watchScreens<P>(collection, core);
+			watchScreens<PL>(collection, core);
 			const position = props.tabBarPosition;
 			const top = accessor((): boolean => {
 				if (position === null) { return material; }
@@ -465,30 +483,26 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 				if (background === null) { return base; }
 				return { ...base, backgroundColor: background };
 			});
-			const mounted = mountedEntries<P>(core);
-			const transitions = createNavigatorMotion<P>(core, false);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false, at);
+			const mounted = mountedEntries<PL>(core);
+			const transitions = createNavigatorMotion<PL>(core, false);
+			const screen = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
+				return screenView<PL>(core, transitions, entry, false, at);
 			};
-			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return tabItem<P>(core, entry, top);
-			};
+			const triggers = mapArray<Navigation<PL>, TabTrigger>(
+				(): Navigation<PL>[] => core.entries(),
+				(entry: Navigation<PL>, at: Accessor<number>): TabTrigger => triggerOf<PL>(core, entry),
+			);
+			const theme = accessor((): Theme => core.container.theme());
 			const frame = accessor((): Style => ({
 				flex: 1,
 				flexDirection: top() ? "column-reverse" : "column",
-			}));
-			const hairline = accessor((): Style => ({
-				height: 1,
-				backgroundColor: core.container.theme().colors.border,
 			}));
 			return <View style={frame}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
-				<View style={hairline} />
-				<View style={bar} accessibilityRole="tablist">
-					<For each={core.entries}>{item}</For>
-				</View>
+				{tabHairline(theme)}
+				{tabRow(triggers, theme, top, bar)}
 			</View>;
 		},
 		Group: (props: {
@@ -501,21 +515,17 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			);
 		},
 		Screen: (props: {
-			name: string;
-			component: (props: ScreenProps<P>) => NeonNode;
+			name: keyof PL;
+			component: (props: ScreenProps<PL>) => NeonNode;
 			options?: Accessor<ScreenOptions> | null;
-			initialParams?: P | null;
-			parseParams?: ((values: Map<string, string>) => P) | null;
-			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			params?: ScreenParams<PL> | null;
 			navigationKey?: Accessor<string> | null;
-		}): NeonNode => screenOf<P>(
+		}): NeonNode => screenOf<PL>(
 			collector,
-			props.name,
+			props.name as string,
 			props.component,
 			props.options,
-			props.initialParams,
-			props.parseParams,
-			props.stringifyParams,
+			props.params,
 			props.navigationKey,
 		),
 	};

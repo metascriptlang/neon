@@ -15,11 +15,16 @@ import {
 	createStackNavigator,
 } from "../../src/navigation/index";
 
-const Tab = createBottomTabNavigator<string>();
-const Drawer = createDrawerNavigator<string>();
-const Stack = createStackNavigator<string>();
+interface NavParams {
+	Home: null;
+	Settings: null;
+}
 
-function Plain(props: ScreenProps<string>): NeonNode {
+const Tab = createBottomTabNavigator<NavParams>();
+const Drawer = createDrawerNavigator<NavParams>();
+const Stack = createStackNavigator<NavParams>();
+
+function Plain(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>plain</Text>;
 }
 

@@ -61,7 +61,7 @@ test "Gltf keeps its wrapper and authored children while imported graphs replace
 		let message = "";
 		try { setBadGraph(true); flush(); } catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
-		assert message === "Gltf: addGltfNodes failed: InvalidData";
+		assert message === "Gltf: addGltfBoundNodes failed: InvalidData (BadNode)";
 		assert handle.scene.isLive(oldId) && handle.scene.isLive(authoredId);
 		assert handle.scene.nodes[wrapper.index].children.length === 2;
 		assert handle.scene.nodes[wrapper.index].children[1] === authoredId.index;
@@ -173,7 +173,7 @@ test "Gltf initial graph/setup failures and terminal disposal close renderer onc
 		} catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
 		const expected = badSetup ? "Gltf: addGltfAssets failed: BadSetup"
-			: badGraph ? "Gltf: addGltfNodes failed: InvalidData" : "";
+			: badGraph ? "Gltf: addGltfBoundNodes failed: InvalidData (BadNode)" : "";
 		assert message === expected;
 		assert handles.length === 1 && renderers.length === 1 && closes === 1;
 		assert renderers[0].closed && renderers[0].core.closed;

@@ -66,7 +66,9 @@ function ansiNameFor(css: string): string {
 }
 
 // docs/STYLE.md §5 — the terminal's projection of the portable Style IR.
-// A terminal has no flexbox, so the layout half is dropped on purpose.
+// A terminal has no flexbox, so the layout half is dropped on purpose; only
+// display: "none" is kept, because React Native lays out and paints neither
+// that view nor its descendants.
 terminalStyleCoverage(0);
 
 export function asTerminalStyle(this s: Style): TerminalStyle {
@@ -79,6 +81,7 @@ export function asTerminalStyle(this s: Style): TerminalStyle {
 		dim: s.opacity !== null && (s.opacity as number) < 1.0,
 		italic: s.fontStyle !== null && (s.fontStyle as string) === "italic",
 		underline: s.textDecorationLine !== null && (s.textDecorationLine as string) === "underline",
+		hidden: s.display !== null && (s.display as string) === "none",
 	};
 }
 
@@ -115,7 +118,7 @@ function applyAttr(node: TerminalNode, name: string, value: string): void {
 // terminal's box — a container in every case, text arrives as text-node
 // children. Native terminal tags (box/row/hr) pass unchanged.
 function termTag(tag: string): string {
-	if (tag === "view" || tag === "text" || tag === "textinput" || tag === "pressable") { return "box"; }
+	if (tag === "view" || tag === "holder" || tag === "text" || tag === "textinput" || tag === "pressable") { return "box"; }
 	return tag;
 }
 

@@ -2,6 +2,7 @@
 // drives this; here the host ops map to real document.* / Node APIs.
 
 import { Host, HostNode, TextMeasure } from "../../render/host";
+import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
@@ -15,6 +16,7 @@ import {
 	ControlAttr,
 	LINES_CLASS,
 	SCROLL_CLASS,
+	WebRule,
 	TEXT_CSS,
 	TEXT_RULES_ID,
 	controlAttr,
@@ -29,21 +31,31 @@ import {
 	webHtmlTag,
 	webRules,
 	domAttrName,
+	BLUR_PREFIX,
+	IMAGE_CLASS,
+	IMAGE_TAG,
+	TILE_PREFIX,
+	blurRule,
+	svgPrefix,
+	tileRule,
 	domAttrValue,
+	ariaGroupNames,
+	ariaGroupValues,
 } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { publishPageScroll } from "../../api/pageScroll";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
+import { CanvasRenderingContext2D, HTMLCanvasElement } from "../../render/htmlElements";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
-import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
+import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
-	extern add(name: cstring): void;
-	extern remove(name: cstring): void;
-	extern toggle(name: cstring): void;
-	extern contains(name: cstring): boolean;
+	extern add(name: string): void;
+	extern remove(name: string): void;
+	extern toggle(name: string): void;
+	extern contains(name: string): boolean;
 }
 
 extern class DomRect {
@@ -53,8 +65,10 @@ extern class DomRect {
 	height: number;
 }
 
+extern class DomRectList { length: int32; }
+
 extern class Reflect {
-	static extern has(target: Node, key: cstring): boolean;
+	static extern has(target: Node, key: string): boolean;
 }
 
 extern class ResizeObserver {
@@ -69,8 +83,8 @@ interface DomScrollOptions {
 }
 
 extern class Node {
-	textContent: cstring;
-	innerHTML: cstring;
+	textContent: string;
+	innerHTML: string;
 	scrollLeft: number;
 	scrollTop: number;
 	scrollWidth: number;
@@ -81,6 +95,8 @@ extern class Node {
 	offsetHeight: number;
 	offsetLeft: number;
 	offsetTop: number;
+	clientLeft: number;
+	clientTop: number;
 	offsetParent: Node | null;
 	parentNode: Node | null;
 	isConnected: boolean;
@@ -94,6 +110,7 @@ extern class Node {
 	extern contains(node: Node): boolean;
 	extern scroll(options: DomScrollOptions): void;
 	extern getBoundingClientRect(): DomRect;
+	extern getClientRects(): DomRectList;
 	style: CssStyle;
 	classList: ClassList;
 	nextSibling: Node;
@@ -105,19 +122,56 @@ extern class Node {
 	isConnected: boolean;
 	extern removeChild(child: Node): void;
 	extern replaceChild(node: Node, old: Node): void;
-	value: cstring;
+	value: string;
 	checked: boolean;
 	naturalWidth: number;
 	naturalHeight: number;
 	selectionStart: number;
 	selectionEnd: number;
 	extern setSelectionRange(start: number, end: number): void;
-	extern getAttribute(name: cstring): string | null;
-	extern setAttribute(name: cstring, value: cstring): void;
-	extern removeAttribute(name: cstring): void;
-	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
-	extern removeEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern getAttribute(name: string): string | null;
+	extern setAttribute(name: string, value: string): void;
+	extern removeAttribute(name: string): void;
+	extern addEventListener(name: string, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern removeEventListener(name: string, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern setPointerCapture(pointerId: number): void;
+}
+
+function cssomLayoutOrigin(node: Node): [float64, float64] {
+	let x = 0.0;
+	let y = 0.0;
+	let at: Node | null = node;
+	while (at !== null) {
+		const current = at as Node;
+		x += current.offsetLeft;
+		y += current.offsetTop;
+		const parent = current.offsetParent;
+		if (parent !== null) {
+			x += (parent as Node).clientLeft;
+			y += (parent as Node).clientTop;
+		}
+		at = parent;
+	}
+	return [x, y];
+}
+
+function measureDomWindow(node: HostNode): Result<MeasureRect, MeasureError> {
+	const el = node as unknown as Node;
+	if (!el.isConnected) { return Result.err(MeasureError.NotMounted); }
+	if (el.getClientRects().length === 0) { return Result.err(MeasureError.NotLaidOut); }
+	const rect = el.getBoundingClientRect();
+	return Result.ok({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+}
+
+function measureDomLayout(node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> {
+	const el = node as unknown as Node;
+	const parent = ancestor as unknown as Node;
+	if (!el.isConnected || !parent.isConnected) { return Result.err(MeasureError.NotMounted); }
+	if (!parent.contains(el)) { return Result.err(MeasureError.NotAncestor); }
+	if (el.getClientRects().length === 0 || parent.getClientRects().length === 0) { return Result.err(MeasureError.NotLaidOut); }
+	const [x, y] = cssomLayoutOrigin(el);
+	const [parentX, parentY] = cssomLayoutOrigin(parent);
+	return Result.ok({ x: x - parentX, y: y - parentY, width: el.offsetWidth, height: el.offsetHeight });
 }
 
 extern class DomTouch {
@@ -165,9 +219,12 @@ extern class DomEvent {
 	extern stopPropagation(): void;
 }
 
+extern function pointerOrigin(e: DomEvent): boolean from
+	"((e) => typeof e.pointerType === 'string' && e.pointerType.length > 0)(#)";
+
 extern class MediaQueryList {
 	matches: boolean;
-	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	extern addEventListener(name: string, handler: (e: DomEvent) => void): void;
 }
 
 extern class ComputedFont {
@@ -175,39 +232,24 @@ extern class ComputedFont {
 	fontSize: string;
 }
 
-extern class CanvasTextMetrics {
-	width: number;
-	fontBoundingBoxAscent: number;
-	fontBoundingBoxDescent: number;
-}
-
-extern class Canvas2D {
-	font: string;
-	extern measureText(text: cstring): CanvasTextMetrics;
-}
-
-extern class HTMLCanvasElement {
-	extern getContext(kind: cstring): Canvas2D;
-}
-
 extern class window {
 	static innerWidth: number;
 	static innerHeight: number;
 	static scrollX: number;
 	static scrollY: number;
-	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
-	static extern matchMedia(query: cstring): MediaQueryList;
-	static extern removeEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	static extern addEventListener(name: string, handler: (e: DomEvent) => void): void;
+	static extern matchMedia(query: string): MediaQueryList;
+	static extern removeEventListener(name: string, handler: (e: DomEvent) => void): void;
 	static extern getComputedStyle(node: Node): ComputedFont;
 }
 
-let measureCanvas: Canvas2D | null = null;
+let measureCanvas: CanvasRenderingContext2D | null = null;
 
 function measureDomText(text: string, style: Style): TextMeasure {
 	if (measureCanvas === null) {
 		measureCanvas = (document.createElement("canvas") as unknown as HTMLCanvasElement).getContext("2d");
 	}
-	const ctx = measureCanvas as Canvas2D;
+	const ctx = measureCanvas as CanvasRenderingContext2D;
 	const page = window.getComputedStyle(document.body);
 	const family = style.fontFamily !== null ? style.fontFamily as string : page.fontFamily;
 	const size = style.fontSize !== null ? `${style.fontSize as number}px` : page.fontSize;
@@ -574,15 +616,15 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 			return true;
 		}
 		if (name === "blurRadius") {
-			const radius = parseFloat(value);
-			swapClass(el, "neon-blur-", "");
-			if (radius > 0) {
-				const id = `neon-blur-${Math.round(radius * 10)}`;
-				if (!imageRules.has(id)) {
-					registerCss(id, `.${id}{filter:blur(${radius}px)}`);
-					imageRules.set(id, true);
+			swapClass(el, BLUR_PREFIX, "");
+			const rule = blurRule(value);
+			if (rule !== null) {
+				const blur = rule as WebRule;
+				if (!imageRules.has(blur.id)) {
+					registerCss(blur.id, blur.css);
+					imageRules.set(blur.id, true);
 				}
-				el.classList.add(id);
+				el.classList.add(blur.id);
 			}
 			return true;
 		}
@@ -596,20 +638,22 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 // background (one class per source, since setStyle rewrites inline style whole) and pushes its
 // own picture out of its box.
 const imageRules = new Map<string, boolean>();
-const tileClasses = new Map<string, string>();
+const tileSources = new Map<string, string>();
 
 function tileImage(el: Node): void {
-	swapClass(el, "neon-tile-", "");
+	swapClass(el, TILE_PREFIX, "");
 	if (el.getAttribute("data-resize") !== "repeat") { return; }
 	const attr = el.getAttribute("src");
 	if (attr === null || attr === "") { return; }
 	const src = attr as string;
-	if (!tileClasses.has(src)) {
-		const id = `neon-tile-${tileClasses.size}`;
-		tileClasses.set(src, id);
-		registerCss(id, `.${id}{background-image:url("${src}");background-repeat:repeat;object-position:-100000px 0}`);
+	const rule = tileRule(src);
+	if (tileSources.has(rule.id)) {
+		if (tileSources.get(rule.id) !== src) { throw new Error(`Image resizeMode repeat: "${src}" and "${tileSources.get(rule.id)}" hash to the class ${rule.id}`); }
+	} else {
+		tileSources.set(rule.id, src);
+		registerCss(rule.id, rule.css);
 	}
-	el.classList.add(tileClasses.get(src) as string);
+	el.classList.add(rule.id);
 }
 
 // RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to
@@ -667,26 +711,18 @@ function writeNewControlAttr(el: Node, kind: string, name: string, value: string
 	return false;
 }
 
-function hasStateToken(tokens: string[], token: string): boolean {
-	return tokens.indexOf(token) >= 0;
-}
-
-function writeAccessibilityState(el: Node, value: string): void {
-	const tokens = value === "" ? [] as string[] : value.split(",");
-	if (hasStateToken(tokens, "checked")) { el.setAttribute("aria-checked", "true"); }
-	else if (hasStateToken(tokens, "unchecked")) { el.setAttribute("aria-checked", "false"); }
-	else if (hasStateToken(tokens, "mixed")) { el.setAttribute("aria-checked", "mixed"); }
-	else { el.removeAttribute("aria-checked"); }
-	if (hasStateToken(tokens, "selected")) { el.setAttribute("aria-selected", "true"); } else { el.removeAttribute("aria-selected"); }
-	if (hasStateToken(tokens, "disabled")) { el.setAttribute("aria-disabled", "true"); } else { el.removeAttribute("aria-disabled"); }
-	if (hasStateToken(tokens, "busy")) { el.setAttribute("aria-busy", "true"); } else { el.removeAttribute("aria-busy"); }
-	if (hasStateToken(tokens, "expanded")) { el.setAttribute("aria-expanded", "true"); }
-	else if (hasStateToken(tokens, "collapsed")) { el.setAttribute("aria-expanded", "false"); }
-	else { el.removeAttribute("aria-expanded"); }
+function writeAriaGroup(el: Node, name: string, value: string): void {
+	const names = ariaGroupNames(name);
+	const values = ariaGroupValues(name, value);
+	for (let i = 0; i < names.length; i += 1) {
+		const v = values[i];
+		if (v === null) { el.removeAttribute(names[i]); }
+		else { el.setAttribute(names[i], v as string); }
+	}
 }
 
 function writeDomAttr(el: Node, name: string, value: string): void {
-	if (name === "accessibilityState") { writeAccessibilityState(el, value); return; }
+	if (ariaGroupNames(name).length > 0) { writeAriaGroup(el, name, value); return; }
 	if (controlKinds.has(el) && writeNewControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (writeTextAttr(el, name, value)) { return; }
@@ -730,9 +766,9 @@ extern class document {
 	static documentElement: Node;
 	static head: Node;
 	static activeElement: Node;
-	static extern createElement(tag: cstring): Node;
-	static extern createTextNode(s: cstring): Node;
-	static extern createElementNS(ns: cstring, tag: cstring): Node;
+	static extern createElement(tag: string): Node;
+	static extern createTextNode(s: string): Node;
+	static extern createElementNS(ns: string, tag: string): Node;
 }
 
 // One <style> element owns every rule the program registered. Rewriting its
@@ -792,6 +828,7 @@ function fireTouchRoutes(el: Node, type: string, de: DomEvent): void {
 	for (const route of (touchRoutes.get(el) as DomTouchRoute[]).slice(0)) {
 		if (route.type !== type) { continue; }
 		const ev = neonEvent(type);
+		ev.pointerOrigin = pointerOrigin(de);
 		ev.timeStamp = de.timeStamp;
 		ev.x = de.clientX;
 		ev.y = de.clientY;
@@ -825,7 +862,7 @@ extern function enterHead(node: Node): void from
 	"(n => { if (n.nodeType !== 1 || n.neonKey !== undefined) return; const t = n.localName; if (t !== 'title' && t !== 'meta') return; const a = k => n.getAttribute(k); const named = a('name') ?? a('property'); if (t === 'meta' && named === null && a('http-equiv') === null && a('charset') === null) return; const key = t === 'title' ? t : JSON.stringify([named, a('http-equiv'), a('content'), a('charset'), a('media')]); const all = document.head.neonCascade ??= new Map(); const list = all.get(key) ?? []; all.set(key, list); const prev = list[list.length - 1]; list.push(n); n.neonKey = key; if (prev !== undefined) { const held = document.createComment(''); prev.replaceWith(held); prev.neonHeld = held; held.neonFor = prev; } })(#)";
 extern function leaveHead(node: Node): Node from
 	"(n => { const key = n.neonKey; if (key === undefined) return n; const list = document.head.neonCascade.get(key); const i = list.indexOf(n); list.splice(i, 1); n.neonKey = undefined; const held = n.neonHeld; if (held !== undefined) { n.neonHeld = undefined; return held; } const prev = i === list.length ? list[i - 1] : undefined; if (prev !== undefined) { prev.neonHeld.replaceWith(prev); prev.neonHeld = undefined; } return n; })(#)";
-extern function swapSheetClass(node: Node, id: cstring): void from
+extern function swapSheetClass(node: Node, id: string): void from
 	"((n, id) => { const was = n.neonSheet; if (was !== undefined && was !== id) n.classList.remove(was); if (id !== '') n.classList.add(id); n.neonSheet = id === '' ? undefined : id; })(#, #)";
 extern function shownInHead(node: Node | null): Node | null from "(n => n !== null && n.neonHeld !== undefined ? n.neonHeld : n)(#)";
 extern function heldByHead(node: Node | null): Node | null from "(n => n !== null && n.neonFor !== undefined ? n.neonFor : n)(#)";
@@ -841,10 +878,6 @@ function dropServedHead(): void {
 		node = cur.nextSibling as Node | null;
 		if (cur.nodeType === 1 && cur.getAttribute(SERVED_HEAD) !== null) { document.head.removeChild(cur); }
 	}
-}
-
-function createsMoreThanAnElement(tag: string): boolean {
-	return tag === "modal" || isMediaTag(tag) || tag === "svg" || tag === "image";
 }
 
 export function domHost(): Host {
@@ -1044,6 +1077,26 @@ export function domHost(): Host {
 		controlKinds.set(el, tag);
 		return el as unknown as HostNode;
 	}
+	function adoptImage(el: Node): HostNode {
+		registerOnce(CONTROL_RULES_ID, CONTROL_CSS);
+		el.classList.add(IMAGE_CLASS);
+		controlKinds.set(el, "image");
+		return el as unknown as HostNode;
+	}
+	function adoptSvg(el: Node): HostNode {
+		el.classList.add(VIEW_CLASS);
+		const served = el.getAttribute("data-neon-svg");
+		const rest = served !== null && (served as string).startsWith("neon-svg") ? (served as string).slice(8) : "";
+		const at = rest === "" ? 0 : parseInt(rest) as int32;
+		if (at <= 0 || at.toString() !== rest) {
+			svgCount += 1;
+			el.setAttribute("data-neon-svg", svgPrefix(svgCount));
+		} else if (at > svgCount) {
+			svgCount = at;
+		}
+		controlKinds.set(el, "svg");
+		return el as unknown as HostNode;
+	}
 	function adoptScroll(el: Node): HostNode {
 		el.classList.add(VIEW_CLASS);
 		el.classList.add(SCROLL_CLASS);
@@ -1075,7 +1128,7 @@ export function domHost(): Host {
 				const vector = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 				vector.classList.add(VIEW_CLASS);
 				svgCount += 1;
-				vector.setAttribute("data-neon-svg", `neon-svg${svgCount}`);
+				vector.setAttribute("data-neon-svg", svgPrefix(svgCount));
 				controlKinds.set(vector, tag);
 				return vector as unknown as HostNode;
 			}
@@ -1084,12 +1137,16 @@ export function domHost(): Host {
 			}
 			if (tag === "image") {
 				registerOnce(CONTROL_RULES_ID, CONTROL_CSS);
-				const control = document.createElement("img");
-				control.classList.add("neon-image");
+				const control = document.createElement(IMAGE_TAG);
+				control.classList.add(IMAGE_CLASS);
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
 			const el = document.createElement(webHtmlTag(tag));
+			if (tag === "pressable") {
+				presses.set(el, true);
+				keep(el, (): void => { presses.delete(el); });
+			}
 			const base = webBaseClass(tag);
 			if (base !== "") { el.classList.add(base); }
 			return el as unknown as HostNode;
@@ -1100,11 +1157,14 @@ export function domHost(): Host {
 			(node as unknown as Node).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			if (name === "cellWidth") { throw new Error("cellWidth: the browser host has no cell grid; it is a Void-host Text prop"); }
+			if (name === "cellWidth" || name === "cellWidths") { throw new Error(`${name}: the browser host has no cell grid; it is a Void-host Text prop`); }
 			prepareVisibleContent();
 			if (writeMediaAttr(node, name, value)) { return; }
 			const el = node as unknown as Node;
 			const base = name === "class" ? baseClassOf(el) : "";
+			if (name === "class" && value === "neon-screen-overlay") {
+				registerOnce("neon-screen-overlay", ".neon-screen-overlay{position:fixed!important}");
+			}
 			writeDomAttr(el, name, value);
 			if (base !== "") { el.classList.add(base); }
 			if (name === "value" || name === "defaultValue") { return; }
@@ -1120,7 +1180,8 @@ export function domHost(): Host {
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			const base = name === "class" ? baseClassOf(el) : "";
-			el.removeAttribute(domAttrName(name));
+			if (ariaGroupNames(name).length > 0) { writeAriaGroup(el, name, ""); }
+			else { el.removeAttribute(domAttrName(name)); }
 			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
@@ -1205,7 +1266,13 @@ export function domHost(): Host {
 			}
 			listen(el, domType, (de: DomEvent): void => {
 				if (type === "submitediting" && (de.key !== "Enter" || de.isComposing)) { return; }
+				if (type === "press") {
+					let owner: Node | null = de.target;
+					while (owner !== null && !presses.has(owner as Node)) { owner = (owner as Node).parentNode; }
+					if (owner !== el) { return; }
+				}
 				const ev = neonEvent(type);
+				ev.pointerOrigin = pointerOrigin(de);
 				ev.timeStamp = de.timeStamp;
 				if (type === "valuechange") {
 					ev.value = el.checked ? "true" : "false";
@@ -1242,7 +1309,9 @@ export function domHost(): Host {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
 				}
-				if (type === "press" && lastPointerUp >= 0) { ev.timeStamp = lastPointerUp; }
+				if (type === "press" && ev.pointerOrigin && lastPointerUp >= 0) {
+					ev.timeStamp = lastPointerUp;
+				}
 				handler(ev);
 			}, false);
 		},
@@ -1293,6 +1362,8 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		measureInWindow: measureDomWindow,
+		measureLayout: measureDomLayout,
 		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
 		headRoot: (node: HostNode): HostNode => {
 			dropServedHead();
@@ -1315,11 +1386,15 @@ export function domHost(): Host {
 				el.replaceChild(blank, found);
 				return blank as unknown as HostNode;
 			}
-			if (createsMoreThanAnElement(tag)) {
-				throw "hydrate: the DOM host cannot take over a <" + tag + "> yet";
+			if (found.nodeType !== 1 || found.localName !== (tag === "image" ? IMAGE_TAG : webHtmlTag(tag))) { return null; }
+			if (tag === "pressable") {
+				presses.set(found, true);
+				keep(found, (): void => { presses.delete(found); });
 			}
-			if (found.nodeType !== 1 || found.localName !== webHtmlTag(tag)) { return null; }
 			registerRules(tag);
+			if (isMediaTag(tag)) { return adoptMedia(found as unknown as HostNode, tag); }
+			if (tag === "image") { return adoptImage(found); }
+			if (tag === "svg") { return adoptSvg(found); }
 			if (tag === "scrollview") { return adoptScroll(found); }
 			if (tag === "switch" || tag === "activityindicator") { return adoptControl(tag, found); }
 			if (tag === "multilinetextinput") {

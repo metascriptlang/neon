@@ -9,6 +9,14 @@ import { Host, HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockTo
 import { Text, View } from "../../src/components/primitives";
 import { Modal } from "../../src/components/modal";
 import { Portal } from "../../src/render/portal";
+import { Dialog } from "../../src/components/dialog";
+
+function firstTag(parent: MockNode, tag: string): MockNode {
+	for (const c of parent.children) {
+		if (c.tag === tag) { return c; }
+	}
+	throw "no <" + tag + "> under <" + parent.tag + ">";
+}
 
 function overlayOf(host: Host): MockNode {
 	return (host.overlayRoot as (n: HostNode) => HostNode)(mockNode("any") as unknown as HostNode) as unknown as MockNode;
@@ -62,4 +70,65 @@ test "a Portal keeps its owner's context and mounts into a named node" {
 	render(element(<T value={{ name: "dark" }}><View><Portal mount={target as unknown as HostNode}><Text>{useContext(T).name}</Text></Portal></View></T>), mockHost(), root as unknown as HostNode);
 	assert mockToString(target) === "<target><view><text>dark</text></view></target>", "portal: " + mockToString(target);
 	assert mockToString(root) === "<root><view></view></root>", "the app tree keeps no node: " + mockToString(root);
+}
+
+test "Portal styles its physical container reactively and releases it with its owner" {
+	const [width, setWidth] = createSignal<float64>(100);
+	const host = mockHost();
+	const root = mockNode("root");
+	const dispose = render(element(<View style={{ width: 20, height: 20, overflow: "hidden" }}>
+		<Portal style={{ position: "absolute", top: 0, left: 0, width: width(), height: 50 }}><Text>floating</Text></Portal>
+	</View>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	assert mockToString(root).indexOf("floating") < 0;
+	const box = overlay.children[0];
+	assert box.style !== null;
+	assert (box.style as Style).position === "absolute" && (box.style as Style).width === 100;
+	setWidth(200);
+	flush();
+	assert (box.style as Style).width === 200;
+	dispose();
+	assert overlay.children.length === 0;
+	setWidth(300);
+	flush();
+	assert overlay.children.length === 0;
+}
+
+test "Modal hides exactly once when its physical overlay root is also the logical render parent" {
+	const [open, setOpen] = createSignal(true);
+	const host = mockHost();
+	const root = mockNode("root");
+	host.overlayRoot = (node: HostNode): HostNode => root as unknown as HostNode;
+	const dispose = render(element(<Modal visible={open()}><Text>same root</Text></Modal>), host, root as unknown as HostNode);
+	assert mockToString(root).indexOf("same root") >= 0;
+	setOpen(false);
+	flush();
+	assert mockToString(root) === "<root></root>";
+	setOpen(true);
+	flush();
+	assert mockToString(root).indexOf("same root") >= 0;
+	dispose();
+	assert mockToString(root) === "<root></root>";
+}
+
+test "a Dialog inside a Modal mounts in the modal node, so no empty modal node stacks above it" {
+	const host = mockHost();
+	const root: MockNode = mockNode("root");
+	render(element(<Modal visible={true}><Dialog visible={true} title="Pick"><Text>body</Text></Dialog></Modal>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	assert overlay.children.length === 1 && overlay.children[0].tag === "modal", "the overlay holds only the modal: " + mockToString(overlay);
+	assert mockToString(overlay.children[0]).indexOf("body") > 0, "the dialog is inside it: " + mockToString(overlay);
+}
+
+test "a Portal with no mount inside a Modal mounts in the modal node, and one beside it still reaches the overlay root" {
+	const host = mockHost();
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Modal visible={true}><Text>sheet</Text><Portal><Text>inner</Text></Portal></Modal>
+		<Portal><Text>outer</Text></Portal>
+	</View>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	const modal = firstTag(overlay, "modal");
+	assert mockToString(modal).indexOf("inner") > 0, "inner is in the modal: " + mockToString(overlay);
+	assert mockToString(modal).indexOf("outer") < 0 && mockToString(overlay).indexOf("outer") > 0, "outer stays in the overlay: " + mockToString(overlay);
 }

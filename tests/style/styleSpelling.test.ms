@@ -1,7 +1,7 @@
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
-import { STYLE_TABLE } from "../../src/macros/style/fields";
+import { styleTable } from "../../src/macros/style/fields";
 
 const sheet = createStyles({
 	every: {
@@ -17,7 +17,7 @@ const sheet = createStyles({
 		textAlign: "left", overflow: "hidden", zIndex: 3, fontFamily: "serif", transform: "rotate(1deg)",
 		cursor: "pointer", boxShadow: "none", clipPath: "none", transition: "none", filter: "none",
 		pointerEvents: "none", fontStyle: "italic", textDecorationLine: "underline", textDecorationStyle: "wavy",
-		textDecorationColor: "#444",
+		textDecorationColor: "#444", direction: "rtl", writingDirection: "auto",
 	},
 	lengthsAsText: { flexBasis: "auto", width: "50%", margin: "auto", top: "10%" },
 	emptyValues: { color: "", width: "", opacity: 0.5 },
@@ -57,7 +57,7 @@ function sameDeclarations(s: Style): string {
 }
 
 test "the sweep entry sets every row of the style table" {
-	assert declarations(styleToCss(sheet.every)).length === STYLE_TABLE.length, styleToCss(sheet.every);
+	assert declarations(styleToCss(sheet.every)).length === styleTable().length, styleToCss(sheet.every);
 }
 
 test "the baked rule spells every table field as the runtime does" {

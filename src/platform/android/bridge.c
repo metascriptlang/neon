@@ -59,12 +59,12 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment, picture;
+	jclass scroll, input, props, environment, picture, measurement;
 	jobject loader;
-	jmethodID loadClass;
+	jmethodID loadClass, measurementInWindow;
 	jmethodID inputInit, inputSetTag, inputSetFocused, inputRemoving, propsSet, propsSetTag, environmentInstall, environmentScheme;
 	jmethodID pictureInit;
-	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
+	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable, viewSendAccessibilityEvent;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewSetRotation, viewBringToFront;
@@ -159,6 +159,9 @@ static jobject staticObject(JNIEnv *e, const char *cls, const char *name, const 
 
 static void cacheJni(JNIEnv *e) {
 	J.view = globalClass(e, "android/view/View");
+	J.measurement = globalClass(e, "dev/metascript/neon/Measurement");
+	J.measurementInWindow = (*e)->GetStaticMethodID(e, J.measurement, "inWindow", "(Landroid/view/View;)[F");
+	check(e, "Measurement.inWindow");
 	J.viewGroup = globalClass(e, "android/view/ViewGroup");
 	J.frameLayout = globalClass(e, "android/widget/FrameLayout");
 	J.layoutParams = globalClass(e, "android/widget/FrameLayout$LayoutParams");
@@ -178,6 +181,7 @@ static void cacheJni(JNIEnv *e) {
 	J.scrollAddContent = method(e, J.scroll, "addContent", "(Landroid/view/View;)V");
 	J.scrollDispose = method(e, J.scroll, "dispose", "()V");
 	J.viewSetClickable = method(e, J.view, "setClickable", "(Z)V");
+	J.viewSendAccessibilityEvent = method(e, J.view, "sendAccessibilityEvent", "(I)V");
 	J.input = globalClass(e, "dev/metascript/neon/Input");
 	J.inputInit = method(e, J.input, "<init>", "(Landroid/content/Context;)V");
 	J.inputSetTag = method(e, J.input, "setNeonTag", "(I)V");
@@ -675,6 +679,23 @@ jclass niAndroidClass(const char *name) {
 	return global;
 }
 
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *e, jclass cls, jobject intent) {
+	(void)cls;
+	if (!J.loader) {
+		__android_log_print(ANDROID_LOG_FATAL, "Neon", "NativeApp.newIntent arrived before NativeApp.start");
+		abort();
+	}
+	static jclass app;
+	static jmethodID newIntent;
+	if (!app) {
+		app = niAndroidClass("dev.metascript.neon.App");
+		newIntent = (*e)->GetStaticMethodID(e, app, "newIntent", "(Landroid/content/Intent;)V");
+		check(e, "App.newIntent");
+	}
+	(*e)->CallStaticVoidMethod(e, app, newIntent, intent);
+	check(e, "App.newIntent");
+}
+
 typedef struct {
 	const char *name;
 	jclass cls;
@@ -731,6 +752,12 @@ void niSetFocused(void *control, int focused) {
 	JNIEnv *e = env();
 	(*e)->CallVoidMethod(e, (jobject)control, J.inputSetFocused, focused ? JNI_TRUE : JNI_FALSE);
 	check(e, "setFocused");
+}
+
+void niAccessibilityFocus(void *view) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSendAccessibilityEvent, 8); // AccessibilityEvent.TYPE_VIEW_FOCUSED
+	check(e, "sendAccessibilityEvent");
 }
 
 void niViewSetPressable(void *view) {
@@ -904,6 +931,23 @@ void niMeasureText(void *label, float maxWidth) {
 
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
+
+static jfloat g_measurement[4];
+int32_t niMeasureInWindow(void *view) {
+	memset(g_measurement, 0, sizeof g_measurement);
+	JNIEnv *e = env();
+	jfloatArray rect = (*e)->CallStaticObjectMethod(e, J.measurement, J.measurementInWindow, (jobject)view);
+	check(e, "Measurement.inWindow");
+	if (!rect) return 0;
+	(*e)->GetFloatArrayRegion(e, rect, 0, 4, g_measurement);
+	check(e, "Measurement rectangle");
+	(*e)->DeleteLocalRef(e, rect);
+	return 1;
+}
+double niMeasurementX(void) { return g_measurement[0] / g_density; }
+double niMeasurementY(void) { return g_measurement[1] / g_density; }
+double niMeasurementW(void) { return g_measurement[2] / g_density; }
+double niMeasurementH(void) { return g_measurement[3] / g_density; }
 
 JNIEnv *niAndroidEnv(void) { return env(); }
 jobject niAndroidContext(void) { return g_context; }

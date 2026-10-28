@@ -26,6 +26,40 @@ export const TEXTAREA_CSS = `.${TEXTAREA_CLASS}{field-sizing:content;resize:none
 
 export const CONTROL_RULES_ID = "neon-controls";
 
+export const VIDEO_CLASS = "neon-video";
+export const WEBVIEW_CLASS = "neon-webview";
+export const CAMERA_CLASS = "neon-camera";
+export const VIDEO_COVER_CLASS = "neon-video-cover";
+export const VIDEO_STRETCH_CLASS = "neon-video-stretch";
+export const CAMERA_MIRROR_CLASS = "neon-camera-mirror";
+export const MEDIA_RULES_ID = "neon-media";
+export const CAMERA_RULES_ID = "neon-camera";
+
+export const MEDIA_CSS = `.${WEBVIEW_CLASS}{border:0;display:block;background:#ffffff}` +
+	`.${VIDEO_CLASS}{display:block;background:#000000;object-fit:contain}` +
+	`.${VIDEO_COVER_CLASS}{object-fit:cover}.${VIDEO_STRETCH_CLASS}{object-fit:fill}`;
+
+export const CAMERA_CSS = `.${CAMERA_CLASS}{display:block;background:#000000;object-fit:cover}.${CAMERA_MIRROR_CLASS}{transform:scaleX(-1)}`;
+
+export const FRAME_SANDBOX = "allow-same-origin allow-forms allow-popups";
+
+// react-native-webview's page bridge: `window.ReactNativeWebView.postMessage(data)` reaches
+// onMessage, and with `intercept` a link click asks onShouldStartLoadWithRequest first.
+export function bridgeScript(intercept: boolean): string {
+	let script = "(function(){window.ReactNativeWebView={postMessage:function(d){parent.postMessage(String(d),'*');}};";
+	if (intercept) {
+		script += "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;" +
+			"if(!a||(a.target&&a.target!=='_self'))return;var h=a.href;if(!h||h.indexOf('javascript:')===0)return;" +
+			"if(a.getAttribute('href').charAt(0)==='#')return;e.preventDefault();parent.postMessage({__neonLoad:h},'*');},true);";
+	}
+	return script + "})();";
+}
+
+export function frameDocument(html: string, baseUrl: string, intercept: boolean): string {
+	const base = baseUrl !== "" ? `<base href="${baseUrl}">` : "";
+	return `${base}<script>${bridgeScript(intercept).split("</").join("<\\/")}</script>${html}`;
+}
+
 export const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
 
 export const LINES_CLASS = "neon-lines";
@@ -55,6 +89,8 @@ export function webHtmlTag(tag: string): string {
 		"scrollview" | "activityindicator" => "div",
 		"switch" => "input",
 		"multilinetextinput" => "textarea",
+		"webview" => "iframe",
+		"camera" => "video",
 		_ => htmlTagFor(tag),
 	};
 }
@@ -64,13 +100,18 @@ export function webControlClass(tag: string): string {
 		"scrollview" => SCROLL_CLASS,
 		"activityindicator" => ACTIVITY_CLASS,
 		"multilinetextinput" => TEXTAREA_CLASS,
+		"video" => VIDEO_CLASS,
+		"webview" => WEBVIEW_CLASS,
+		"camera" => CAMERA_CLASS,
 		_ => "",
 	};
 }
 
 export function webFixedAttrs(tag: string): VAttr[] {
-	if (tag !== "switch") { return []; }
-	return [attr("type", "checkbox"), attr("role", "switch")];
+	if (tag === "video") { return [attr("playsinline", "")]; }
+	if (tag === "camera") { return [attr("playsinline", ""), attr("muted", ""), attr("autoplay", "")]; }
+	if (tag === "switch") { return [attr("type", "checkbox"), attr("role", "switch")]; }
+	return [];
 }
 
 export struct ControlAttr {
@@ -107,6 +148,25 @@ export function controlAttr(tag: string, name: string, value: string): ControlAt
 	if (tag === "multilinetextinput" && (name === "value" || name === "defaultValue")) {
 		return droppedAttribute();
 	}
+	if (tag === "video") {
+		return match (name) {
+			"source" => ({ name: "src", value: value, color: "" }),
+			"repeat" => flagAttribute("loop", value),
+			"controls" => flagAttribute("controls", value),
+			"paused" | "muted" | "volume" | "rate" | "progressUpdateInterval" | "resizeMode" | "command" => droppedAttribute(),
+			_ => null,
+		};
+	}
+	if (tag === "webview") {
+		return match (name) {
+			"javaScriptEnabled" => ({ name: "sandbox", value: value === "false" ? FRAME_SANDBOX : null, color: "" }),
+			"source" | "interceptLoads" | "loadDecision" | "command" => droppedAttribute(),
+			_ => null,
+		};
+	}
+	if (tag === "camera" && (name === "facing" || name === "flash" || name === "active" || name === "mirror" || name === "command")) {
+		return droppedAttribute();
+	}
 	return null;
 }
 
@@ -117,6 +177,8 @@ export function webRules(tag: string): WebRule[] {
 		"scrollview" => { rules.push({ id: SCROLL_CLASS, css: SCROLL_CSS }); },
 		"multilinetextinput" => { rules.push({ id: TEXTAREA_CLASS, css: TEXTAREA_CSS }); },
 		"switch" | "activityindicator" => { rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); },
+		"video" | "webview" => { rules.push({ id: MEDIA_RULES_ID, css: MEDIA_CSS }); },
+		"camera" => { rules.push({ id: CAMERA_RULES_ID, css: CAMERA_CSS }); },
 		_ => {},
 	}
 	return rules;
@@ -163,7 +225,7 @@ export function scrollLookCss(look: ScrollLook): string {
 
 export function webBaseClass(tag: string): string {
 	return match (tag) {
-		"view" | "pressable" | "scrollview" | "svg" => VIEW_CLASS,
+		"view" | "holder" | "pressable" | "scrollview" | "svg" => VIEW_CLASS,
 		"text" => TEXT_CLASS,
 		_ => "",
 	};
@@ -192,9 +254,58 @@ function inputMode(keyboardType: string): string {
 	};
 }
 
+export const ARIA_STATE_NAMES: string[] = ["aria-checked", "aria-selected", "aria-disabled", "aria-busy", "aria-expanded"];
+
+export function ariaStateValues(state: string): (string | null)[] {
+	const tokens: string[] = state === "" ? [] : state.split(",");
+	const has = (token: string): boolean => tokens.indexOf(token) >= 0;
+	return [
+		has("checked") ? "true" : has("unchecked") ? "false" : has("mixed") ? "mixed" : null,
+		has("selected") ? "true" : null,
+		has("disabled") ? "true" : null,
+		has("busy") ? "true" : null,
+		has("expanded") ? "true" : has("collapsed") ? "false" : null,
+	];
+}
+
+export const ARIA_VALUE_NAMES: string[] = ["aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext"];
+
+// "min,max,now,text": the three numbers may be empty and the text, last, may hold commas.
+export function ariaValueValues(value: string): (string | null)[] {
+	const out: (string | null)[] = [];
+	let rest = value;
+	for (let i = 0; i < 3; i += 1) {
+		const cut = rest.indexOf(",");
+		const field = cut < 0 ? rest : rest.slice(0, cut);
+		rest = cut < 0 ? "" : rest.slice(cut + 1);
+		out.push(field === "" ? null : field);
+	}
+	out.push(rest === "" ? null : rest);
+	return out;
+}
+
+// RN props that write several aria attributes at once; the other names write one.
+export function ariaGroupNames(name: string): string[] {
+	return match (name) {
+		"accessibilityState" => ARIA_STATE_NAMES,
+		"accessibilityValue" => ARIA_VALUE_NAMES,
+		_ => [],
+	};
+}
+
+export function ariaGroupValues(name: string, value: string): (string | null)[] {
+	return name === "accessibilityValue" ? ariaValueValues(value) : ariaStateValues(value);
+}
+
 export function domAttrValue(name: string, value: string): string | null {
 	return match (name) {
-		"accessibilityRole" => ariaRole(value),
+		"accessibilityRole" | "role" => ariaRole(value),
+		"accessibilityLiveRegion" => value === "none" ? "off" : value,
+		"accessibilityLabelledBy" => value.split(",").join(" "),
+		"accessibilityElementsHidden" => value === "true" ? "true" : null,
+		"importantForAccessibility" => value === "no-hide-descendants" ? "true" : null,
+		"focusable" => value === "true" ? "0" : "-1",
+		"accessibilityActions" => null,
 		"editable" => value === "false" ? "" : null,
 		"autoFocus" => value === "true" ? "" : null,
 		"secureTextEntry" => value === "true" ? "password" : "text",
@@ -210,6 +321,12 @@ export function domAttrName(name: string): string {
 		"accessibilityLabel" => "aria-label",
 		"accessibilityHint" => "aria-description",
 		"accessibilityRole" => "role",
+		"accessibilityLiveRegion" => "aria-live",
+		"accessibilityLabelledBy" => "aria-labelledby",
+		"accessibilityElementsHidden" | "importantForAccessibility" => "aria-hidden",
+		"accessibilityViewIsModal" => "aria-modal",
+		"focusable" => "tabindex",
+		"nativeID" => "id",
 		"editable" => "readonly",
 		"keyboardType" => "inputmode",
 		"returnKeyType" => "enterkeyhint",
@@ -220,4 +337,38 @@ export function domAttrName(name: string): string {
 		"secureTextEntry" => "type",
 		_ => name,
 	};
+}
+
+export const IMAGE_TAG = "img";
+export const IMAGE_CLASS = "neon-image";
+export const BLUR_PREFIX = "neon-blur-";
+export const TILE_PREFIX = "neon-tile-";
+
+export function svgPrefix(count: int32): string {
+	return `neon-svg${count}`;
+}
+
+export function blurRule(radius: string): WebRule | null {
+	const px = parseFloat(radius);
+	if (!(px > 0)) { return null; }
+	const id = `${BLUR_PREFIX}${Math.round(px * 10)}`;
+	return { id: id, css: `.${id}{filter:blur(${px}px)}` };
+}
+
+function cssString(text: string): string {
+	return text.split("\\").join("\\\\").split("\"").join("\\\"").split("\n").join("\\a ").split("<").join("\\3c ");
+}
+
+// A tile's class comes from its source, so the page and the browser name the same picture alike
+// and a class on a served image never means another source. Two sources that hash alike share a
+// class: the browser host refuses that at the second one.
+function sourceKey(src: string): string {
+	let h: int64 = 5381;
+	for (let i = 0; i < src.length; i += 1) { h = (h * 33 + src.charCodeAt(i)) % 4294967296; }
+	return h.toString();
+}
+
+export function tileRule(src: string): WebRule {
+	const id = `${TILE_PREFIX}${sourceKey(src)}`;
+	return { id: id, css: `.${id}{background-image:url("${cssString(src)}");background-repeat:repeat;object-position:-100000px 0}` };
 }

@@ -129,3 +129,26 @@ test "Keyboard.dismiss blurs the focused input; announcements go to a live regio
 	assert js("document.querySelector('[aria-live]').textContent") === "Saved";
 	assert !(await AccessibilityInfo.isScreenReaderEnabled());
 }
+
+test "AccessibilityInfo answers the extended queries with RNW's constant false and keeps the host's timeout" {
+	assert !(await AccessibilityInfo.isBoldTextEnabled());
+	assert !(await AccessibilityInfo.isGrayscaleEnabled());
+	assert !(await AccessibilityInfo.isInvertColorsEnabled());
+	assert !(await AccessibilityInfo.isReduceTransparencyEnabled());
+	assert !(await AccessibilityInfo.isHighTextContrastEnabled());
+	assert !(await AccessibilityInfo.isDarkerSystemColorsEnabled());
+	assert !(await AccessibilityInfo.prefersCrossFadeTransitions());
+	assert await AccessibilityInfo.getRecommendedTimeoutMillis(4000) === 4000;
+	let message = "";
+	try {
+		await AccessibilityInfo.isAccessibilityServiceEnabled();
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "isAccessibilityServiceEnabled is only available on Android", message;
+}
+
+test "a queued announcement lands in the live region" {
+	AccessibilityInfo.announceForAccessibilityWithOptions("Queued note", { queue: true });
+	assert js("document.querySelector('[aria-live]').textContent") === "Queued note";
+}

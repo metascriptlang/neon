@@ -7,9 +7,9 @@ import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
 import { Accessor, accessor, createSignal, untrack } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { NeonNode, RefFn, VAttr, VEvent, evt, hostElement } from "../../src/render/node";
+import { NeonNode, VAttr, VEvent, evt, hostElement } from "../../src/render/node";
 import { defaultRole, layered } from "../../src/components/drawn";
-import { AccessibilityProps, View, accessibilityAttrs } from "../../src/components/primitives";
+import { AccessibilityProps, View, ViewHandle, accessibilityAttrs, viewGrab, viewMount, viewRef } from "../../src/components/primitives";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 import { MATERIAL_DISABLED, MATERIAL_PRIMARY, colorOr, flagOn, stateAttr, stateTokens } from "../../src/components/material";
 
@@ -27,7 +27,7 @@ interface SliderProps extends AccessibilityProps {
 	onSlidingStart?: ((value: float64) => void) | null;
 	onSlidingComplete?: ((value: float64) => void) | null;
 	style?: Accessor<Style> | null;
-	ref?: RefFn | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
@@ -136,5 +136,6 @@ export function Slider(props: SliderProps): NeonNode {
 		<View style={fill} />
 		<View style={thumb} />
 	</View>);
-	return hostElement("view", attrs, evts, kids, layered(() => ROOT, props.style), props.ref);
+	const handle = viewRef(props.ref);
+	return viewMount(handle, hostElement("view", attrs, evts, kids, layered(() => ROOT, props.style), viewGrab(handle)));
 }

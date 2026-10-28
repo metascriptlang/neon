@@ -11,6 +11,7 @@ import {
 	NavigationContainerRef,
 	ScreenProps,
 	TabBarIconProps,
+	HeaderItemProps,
 	createBottomTabNavigator,
 	createDrawerNavigator,
 	createNavigationContainerRef,
@@ -79,11 +80,30 @@ function Counter(props: { name: string; label: Accessor<string> }): NeonNode {
 	</View>;
 }
 
-const HomeStack = createStackNavigator<ItemParams>();
-const Tab = createBottomTabNavigator<string>();
-const Drawer = createDrawerNavigator<string>();
+interface HomeParams {
+	List: null;
+	Detail: ItemParams;
+	Edit: ItemParams;
+	Settings: null;
+}
 
-function ItemList(props: ScreenProps<ItemParams>): NeonNode {
+interface TabParams {
+	Home: null;
+	Search: null;
+	Profile: null;
+}
+
+interface DrawerParams {
+	Main: null;
+	Settings: null;
+	About: null;
+}
+
+const HomeStack = createStackNavigator<HomeParams>();
+const Tab = createBottomTabNavigator<TabParams>();
+const Drawer = createDrawerNavigator<DrawerParams>();
+
+function ItemList(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
 	const row = (item: Item, at: Accessor<number>): NeonNode => <Pressable style={styles.row} accessibilityRole="button"
 		accessibilityLabel={"Open " + item.name()} onPress={(e: NeonEvent): void => { navigation.navigate("Detail", { id: item.id }); }}>
@@ -98,9 +118,9 @@ function ItemList(props: ScreenProps<ItemParams>): NeonNode {
 	</ScrollView>;
 }
 
-function ItemDetail(props: ScreenProps<ItemParams>): NeonNode {
+function ItemDetail(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
-	const route = useRoute<ItemParams>();
+	const route = useRoute<HomeParams, "Detail">();
 	const item = (): Item => {
 		const params = route.params();
 		return itemOf(params === null ? 1 : (params as ItemParams).id);
@@ -119,9 +139,10 @@ function ItemDetail(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function ItemEdit(props: ScreenProps<ItemParams>): NeonNode {
+function ItemEdit(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
-	const params = untrack((): ItemParams | null => props.route.params());
+	const route = useRoute<HomeParams, "Edit">();
+	const params = untrack((): ItemParams | null => route.params());
 	const item = itemOf(params === null ? 1 : (params as ItemParams).id);
 	const [draft, setDraft] = createSignal<string>(untrack((): string => item.name()));
 	const save = (): void => {
@@ -129,7 +150,7 @@ function ItemEdit(props: ScreenProps<ItemParams>): NeonNode {
 		navigation.goBack();
 	};
 	navigation.setOptions({
-		headerRight: <Pressable style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Save"
+		headerRight: (p: HeaderItemProps): NeonNode => <Pressable style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Save"
 			onPress={(e: NeonEvent): void => { save(); }}>
 			<Text style={styles.headerButtonText}>Save</Text>
 		</Pressable>,
@@ -141,17 +162,19 @@ function ItemEdit(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function HomeTab(props: ScreenProps<string>): NeonNode {
+function HomeTab(props: ScreenProps<TabParams>): NeonNode {
 	return <HomeStack.Navigator>
-		<HomeStack.Screen name="List" component={ItemList} options={{ title: "Items", headerLeft: <DrawerToggleButton /> }} />
+		<HomeStack.Screen name="List" component={ItemList} options={{ title: "Items", headerLeft: (p: HeaderItemProps): NeonNode => <DrawerToggleButton /> }} />
 		<HomeStack.Screen name="Detail" component={ItemDetail} options={{ title: "Item" }}
-			parseParams={(values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "1") as int32 })} />
+			params={HomeStack.params.of("Detail", {
+				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "1") as int32 }),
+			})} />
 		<HomeStack.Screen name="Edit" component={ItemEdit} options={{ title: "Edit item" }} />
 	</HomeStack.Navigator>;
 }
 
-function SearchTab(props: ScreenProps<string>): NeonNode {
-	const navigation = useNavigation<string>();
+function SearchTab(props: ScreenProps<TabParams>): NeonNode {
+	const navigation = useNavigation<TabParams>();
 	const focused = useIsFocused();
 	const [unread, setUnread] = createSignal<int32>(0);
 	const notify = (e: NeonEvent): void => {
@@ -169,7 +192,7 @@ function SearchTab(props: ScreenProps<string>): NeonNode {
 	</View>;
 }
 
-function ProfileTab(props: ScreenProps<string>): NeonNode {
+function ProfileTab(props: ScreenProps<TabParams>): NeonNode {
 	return <View style={styles.screen}>
 		<Text style={styles.title}>Profile</Text>
 		<Counter name="profile" label="Profile taps" />
@@ -180,7 +203,7 @@ function glyph(text: string, icon: TabBarIconProps): NeonNode {
 	return <Text style={{ color: icon.color, fontSize: icon.focused ? 22 : 20 }}>{text}</Text>;
 }
 
-function MainTabs(props: ScreenProps<string>): NeonNode {
+function MainTabs(props: ScreenProps<DrawerParams>): NeonNode {
 	return <Tab.Navigator>
 		<Tab.Screen name="Home" component={HomeTab} options={{ headerShown: false, tabBarIcon: (icon: TabBarIconProps): NeonNode => glyph("⌂", icon) }} />
 		<Tab.Screen name="Search" component={SearchTab} options={{ tabBarIcon: (icon: TabBarIconProps): NeonNode => glyph("⚲", icon) }} />
@@ -190,7 +213,7 @@ function MainTabs(props: ScreenProps<string>): NeonNode {
 
 const [darkTheme, setDarkTheme] = createSignal(false);
 
-function SettingsScreen(props: ScreenProps<string>): NeonNode {
+function SettingsScreen(props: ScreenProps<DrawerParams>): NeonNode {
 	const navigation = props.navigation;
 	const theme = useTheme();
 	return <View style={{ flex: 1, flexDirection: "column", gap: 12, padding: 16, backgroundColor: theme().colors.background }}>
@@ -207,7 +230,7 @@ function SettingsScreen(props: ScreenProps<string>): NeonNode {
 	</View>;
 }
 
-function AboutScreen(props: ScreenProps<string>): NeonNode {
+function AboutScreen(props: ScreenProps<DrawerParams>): NeonNode {
 	return <View style={styles.screen}>
 		<Text style={styles.title}>Neon navigation</Text>
 		<Text style={styles.body}>Stack, tabs and drawer in React Navigation's shape.</Text>

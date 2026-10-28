@@ -1,5 +1,5 @@
 import { Host, HostNode, VoidArea } from "../../render/host";
-import { NeonEvent, neonEvent } from "../../render/event";
+import { NeonEvent, neonEvent, DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../render/event";
 import {
 	AreaHub,
 	AreaLayer,
@@ -21,7 +21,11 @@ import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";
-import { DevNode, setDevDriver } from "../../devtools/driver";
+when (hcr || testBuild) {
+	import { DevNode, setDevDriver } from "../../devtools/driver";
+}
+import { accessor } from "../../core/signal";
+import { AreaFace, getAreaFaceContext } from "./areaScope";
 
 export interface WindowArea {
 	vh: VoidHost;
@@ -32,6 +36,7 @@ export interface WindowArea {
 	held: int32;
 	composing: boolean;
 	textInput: boolean;
+	painted: NodeRef[];
 }
 
 export interface AreaWindow {
@@ -112,6 +117,13 @@ export function windowHost(w: AreaWindow): Host {
 			initialPixelHeight: w.pixelHeight(),
 			requestFrame: w.requestFrame,
 			setImeRect: w.setImeRect,
+			enter: (mount: () => void): void => {
+				const face: AreaFace = { font: w.font, family: w.family };
+				getAreaFaceContext().provider({
+					value: accessor((): AreaFace => face),
+					children: (host: Host, parent: HostNode, before: HostNode | null): void => { mount(); },
+				})(vh.host, vh.root, null);
+			},
 		});
 		const area: WindowArea = {
 			vh,
@@ -122,36 +134,46 @@ export function windowHost(w: AreaWindow): Host {
 			held: 0 as int32,
 			composing: false,
 			textInput: false,
+			painted: [],
 		};
 		current = area;
 		w.opened(area);
-		setDevDriver({
-			host: w.name,
-			tree: (): DevNode => vh.snapshot(),
-			pressAt: (x: float32, y: float32): void => {
-				const px = (x * area.scale) as float64;
-				const py = (y * area.scale) as float64;
-				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
-				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
-				w.requestFrame();
-			},
-			type: (text: string): void => {
-				deliverText(area, text);
-				w.requestFrame();
-			},
-		});
+		when (hcr || testBuild) {
+			setDevDriver({
+				host: w.name,
+				tree: (): DevNode => vh.snapshot(),
+				pressAt: (x: float32, y: float32): void => {
+					const px = (x * area.scale) as float64;
+					const py = (y * area.scale) as float64;
+					deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
+					deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
+					w.requestFrame();
+				},
+				type: (text: string): void => {
+					deliverText(area, text);
+					w.requestFrame();
+				},
+			});
+		}
 		if (pendingStyle !== null) {
 			applyAreaStyle(vh, pendingStyle as Style);
 			w.requestFrame();
 		}
 		vh.onDirty(w.dirty);
+		vh.setLayers((): AreaLayer[] => {
+			const order: AreaLayer[] = [];
+			for (const d of layersInPaintOrder(vh, hub.layers(), area.painted)) { order.push(d.layer); }
+			return order;
+		});
 		return {
 			host: vh.host,
 			root: vh.root as unknown as HostNode,
 			hub,
 			release: (): void => {
 				current = null;
-				setDevDriver(null);
+				when (hcr || testBuild) {
+					setDevDriver(null);
+				}
 				vh.scene.close();
 				w.released(area);
 			},
@@ -248,14 +270,21 @@ export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 	if (e.kind === AreaPointerKind.Motion) {
 		a.vh.pointerMove(x, y, a.held, a.held > (0 as int32), mods);
 	} else if (e.kind === AreaPointerKind.Wheel) {
-		a.vh.wheel(x, y, e.dx as float32, e.dy as float32, mods);
+		if (e.deltaMode === DOM_DELTA_PIXEL) {
+			a.vh.wheel(x, y, (e.dx as float32) / a.scale, (e.dy as float32) / a.scale, DOM_DELTA_PIXEL, mods);
+		} else if (e.deltaMode === DOM_DELTA_LINE) {
+			a.vh.wheel(x, y, e.dx as float32, e.dy as float32, DOM_DELTA_LINE, mods);
+		} else {
+			throw new Error(`a wheel event reached the area with deltaMode ${e.deltaMode}, which is neither pixels nor lines`);
+		}
 	} else if (e.kind === AreaPointerKind.Button && e.pressed) {
 		a.held = e.button;
 		a.vh.pointerDown(x, y, e.button, mods);
-		a.vh.clickAt(x, y);
 	} else if (e.kind === AreaPointerKind.Button) {
 		if (a.held === e.button) { a.held = 0 as int32; }
 		a.vh.pointerUp(x, y, e.button, mods);
+	} else if (e.kind === AreaPointerKind.Leave) {
+		a.vh.pointerLeave();
 	}
 }
 
@@ -365,7 +394,8 @@ export function drawArea(a: WindowArea): boolean {
 	if (scene.isClosed()) { return false; }
 	for (const layer of a.hub.layers()) { a.vh.layerSlot(layer.anchor); }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
-	const due = layersInPaintOrder(a.vh, a.hub.layers(), scene.paintedSlots());
+	a.painted = scene.paintedSlots();
+	const due = layersInPaintOrder(a.vh, a.hub.layers(), a.painted);
 	const order: AreaLayer[] = [];
 	for (const d of due) { order.push(d.layer); }
 	a.hub.prepareLayers(order, width, height);

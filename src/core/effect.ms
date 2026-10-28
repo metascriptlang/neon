@@ -2,6 +2,7 @@ import { Computation, Cleanup, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED, STATUS
 import { createEffectNode, startEffect, isDisposed, onServer, getOwner, createOwner, carriesId, getNextChildId } from "./runtime";
 import { runWithOwner } from "./owner";
 import { Cell } from "./signal";
+when (debug) { import { swapStrictLabel } from "./runtime"; }
 
 export interface EffectOptions {
 	defer?: boolean;
@@ -69,8 +70,13 @@ function effectPhase<T>(
 
 function serverEffect<T>(compute: (prev: T | null) => T, effect: ((value: T, prev: T | null) => Cleanup | null) | null, defer: boolean): void {
 	const owner = createOwner();
-	const value = runWithOwner(owner, (): T => compute(null));
-	if (effect !== null && !defer) { effect(value, null); }
+	when (debug) { const prevLabel = swapStrictLabel(null); }
+	try {
+		const value = runWithOwner(owner, (): T => compute(null));
+		if (effect !== null && !defer) { effect(value, null); }
+	} finally {
+		when (debug) { swapStrictLabel(prevLabel); }
+	}
 }
 
 export function createEffect<T>(

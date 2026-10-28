@@ -77,11 +77,70 @@ test "a wildcard catches what no other pattern matches, ranked below every liter
 	assert describe(targetFromPath("shop/product/1", config)) === "Shop>Product(id=1)";
 }
 
-test "the longest matching prefix wins and a foreign URL is not a link" {
+test "the first matching prefix wins and a foreign URL is not a link" {
 	const options: LinkingOptions = { prefixes: ["app://", "https://example.com", "https://example.com/app"], config };
-	assert pathOf("https://example.com/app/shop", options.prefixes) === "/shop";
+	assert pathOf("https://example.com/app/shop", options.prefixes) === "/app/shop";
+	assert pathOf("https://example.com/app/shop", ["https://example.com/app", "https://example.com"]) === "/shop";
 	assert describe(targetFromURL("app://shop/product/5", options)) === "Shop>Product(id=5)";
 	assert targetFromURL("other://shop", options) === null;
+}
+
+test "a prefix matches only at a host boundary" {
+	const prefixes = ["https://x.com"];
+	assert pathOf("https://x.com.evil.com/shop", prefixes) === null;
+	assert pathOf("https://x.comevil/shop", prefixes) === null;
+	assert pathOf("https://x.com/a", prefixes) === "/a";
+	assert pathOf("https://x.com?q=1", prefixes) === "/?q=1";
+	assert pathOf("https://x.com#top", prefixes) === "/#top";
+	assert pathOf("https://x.com", prefixes) === "";
+	assert pathOf("https://x.com//a//b", prefixes) === "/a/b";
+	assert pathOf("https://x.com/", ["https://x.com/"]) === "";
+	assert pathOf("https://x.com/app/a", ["https://x.com/app"]) === "/a";
+	assert pathOf("https://x.com/apple", ["https://x.com/app"]) === null;
+}
+
+test "a wildcard label in a prefix stands for one or more host characters" {
+	const prefixes = ["https://*.example.com"];
+	assert pathOf("https://a.example.com/shop", prefixes) === "/shop";
+	assert pathOf("https://a.b.example.com/shop", prefixes) === "/shop";
+	assert pathOf("https://example.com/shop", prefixes) === null;
+	assert pathOf("https://.example.com/shop", prefixes) === null;
+	assert pathOf("https://a.example.com.evil.com/shop", prefixes) === null;
+	assert pathOf("https://a/b.example.com/shop", prefixes) === null;
+	assert pathOf("https://aXexample.com/shop", prefixes) === null;
+	assert pathOf("https://a.example.com?x=1", prefixes) === "/?x=1";
+}
+
+test "a plus in the query is a space and a plus in the path stays a plus" {
+	assert describe(targetFromPath("user/ana?tab=a+b&c+d=e", config)) === "Profile(c d=e,name=ana,tab=a b)";
+	assert describe(targetFromPath("user/a+b?tab=a%2Bb", config)) === "Profile(name=a+b,tab=a+b)";
+}
+
+test "a query value keeps the raw text of every escape that is not valid UTF-8" {
+	assert describe(targetFromPath("user/ana?q=caf%C3%A9%zz", config)) === "Profile(name=ana,q=café%zz)";
+	assert describe(targetFromPath("user/ana?q=%e4%bd%a0", config)) === "Profile(name=ana,q=\u4f60)";
+	assert describe(targetFromPath("user/ana?q=%41%FF", config)) === "Profile(name=ana,q=A%FF)";
+	assert describe(targetFromPath("user/ana?q=%E4%BD", config)) === "Profile(name=ana,q=%E4%BD)";
+	assert describe(targetFromPath("user/ana?q=%C0%80", config)) === "Profile(name=ana,q=%C0%80)";
+	assert describe(targetFromPath("user/ana?q=%ED%A0%80", config)) === "Profile(name=ana,q=%ED%A0%80)";
+	assert describe(targetFromPath("user/ana?q=%F4%90%80%80", config)) === "Profile(name=ana,q=%F4%90%80%80)";
+	assert describe(targetFromPath("user/ana?q=%F0%9F%98%80%", config)) === "Profile(name=ana,q=\u{1F600}%)";
+	assert describe(targetFromPath("user/ana?q=100%", config)) === "Profile(name=ana,q=100%)";
+}
+
+test "one leading query mark is dropped and surrounding blanks are trimmed" {
+	assert describe(targetFromPath("user/ana??q=1", config)) === "Profile(name=ana,q=1)";
+	assert describe(targetFromPath("user/ana?q=1 ", config)) === "Profile(name=ana,q=1)";
+}
+
+test "a path param that fails to decode rejects its route and the next candidate is tried" {
+	assert describe(targetFromPath("shop/product/%zz", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%E4%BD", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%FF", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/100%", config)) === "Missing";
+	assert describe(targetFromPath("user/a%C0%80", config)) === "Missing";
+	assert describe(targetFromPath("shop/product/%e4%bd%a0", config)) === "Shop>Product(id=\u4f60)";
+	assert targetFromPath("shop/product/%zz", { screens: [{ name: "Product", path: "shop/product/:id" }] }) === null;
 }
 
 test "a fragment after the query is dropped, not read into the last value" {
@@ -186,14 +245,19 @@ interface OrderParams {
 	order: string;
 }
 
-const Orders = createStackNavigator<OrderParams>();
+interface OrdersParams {
+	OrderList: null;
+	Order: OrderParams;
+}
 
-function OrderList(props: ScreenProps<OrderParams>): NeonNode {
+const Orders = createStackNavigator<OrdersParams>();
+
+function OrderList(props: ScreenProps<OrdersParams>): NeonNode {
 	return <Text>orders</Text>;
 }
 
-function Order(props: ScreenProps<OrderParams>): NeonNode {
-	const route = useRoute<OrderParams>();
+function Order(props: ScreenProps<OrdersParams>): NeonNode {
+	const route = useRoute<OrdersParams, "Order">();
 	return <Text>{"order " + (route.params() === null ? "-" : (route.params() as OrderParams).order)}</Text>;
 }
 
@@ -211,7 +275,9 @@ test "the initial URL from the host opens its screen once the container mounts" 
 		<Orders.Navigator>
 			<Orders.Screen name="OrderList" component={OrderList} />
 			<Orders.Screen name="Order" component={Order}
-				parseParams={(values: Map<string, string>): OrderParams => ({ order: values.get("order") ?? "" })} />
+				params={Orders.params.of("Order", {
+					parse: (values: Map<string, string>): OrderParams => ({ order: values.get("order") ?? "" }),
+				})} />
 		</Orders.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	const seen = await Linking.getInitialURL();

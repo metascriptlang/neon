@@ -1,11 +1,21 @@
 when (windows) {
+	@compile("./activityIndicator.cpp");
+	@compile("./automation.cpp");
 	@compile("./bridge.cpp");
 	@compile("./dcompComposition.cpp");
 	@compile("./dwriteText.cpp");
+	@compile("./image.cpp");
+	@compile("./modal.cpp");
 	@compile("./scrollView.cpp");
+	@compile("./switch.cpp");
 	@compile("./textInput.cpp");
 	@passL("-luser32");
 	@passL("-luuid");
 	@passL("-ldwrite");
 	@passL("-loleaut32");
+	@passL("-lole32");
+	@passL("-lwindowscodecs");
+	@passL("-lurlmon");
+	@passL("-ldxguid");
+	@passL("-luiautomationcore");
 }

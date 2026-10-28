@@ -122,6 +122,16 @@ Neon keeps the owner because `StatusBar` and `WebView` register their `createEff
 names the case, because its `onCleanup` would never run. `<Void>` runs its ref last, after its
 children mount, with the `VoidAreaHandle` rather than the host node.
 
+**Host component refs.** `View`, `Text`, `Pressable`, `Image`, `Switch`, `Svg` and the neon-ui
+controls hand their ref one `ViewHandle`, as React Native types all of them as its host instance
+(`HostInstance.js:111`, `Pressable.js:167`); `TextInput` and `ScrollView` keep their own handles,
+which extend the same `ElementHandle`. The handle measures the way RN's element does
+(`ReactNativeElement.js:84-200`, `ReadOnlyElement.js:192-249`): `getBoundingClientRect`,
+`measure`, `measureInWindow` and `measureLayout` answer synchronously, so a callback runs before
+the call returns. An unmounted View, or a host that lays nothing out (terminal, SSR, the mock),
+answers zeros, `measureLayout` calls `onFail` when given, and `focus`/`blur` do nothing; a debug
+build prints one warning per such call naming the case, and none of them throws.
+
 Building the node (evaluating the JSX expression) allocates a closure and performs no
 host op and no signal read; there is no separate BUILD phase producing data.
 
@@ -345,7 +355,7 @@ build (`tests/render/errorBoundaryServer.test.ms`).
 
 ## Hydration — a served page's nodes become the live tree
 
-`hydrate` (`src/render/host.ms`) runs the same mount as `render`, on a host that hands out the
+`hydrate` (`src/render/hydrate.ms`) runs the same mount as `render`, on a host that hands out the
 nodes a parsed page already holds instead of creating them (`src/render/claim.ms`, the `claim`
 capability of `Host`). Nothing else in the mount path knows: the element macro, templates and
 the hand-written builders are unchanged.
@@ -374,6 +384,18 @@ it in the document must do the same, or hydrate reads the wrong node; "regions t
 empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
 A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
 
+**A write during the pass waits for the pass to end.** `render` flushes while the claim is
+open, so a write from a `createEffect` or `onSettled` of the hydrating tree would otherwise
+switch a branch in claim mode against nodes the server never wrote. `hydrate` marks the
+mount's root as a snapshot scope and turns capture on for the pass, as Solid 2.0 does since
+#3504 (`~/projects/solid-next` at `3b6f839ec`, `packages/signals/src/core/core.ts:241-306`,
+`packages/solid/src/client/hydration.ts:423-429`): a computation created under that root reads the value a
+written signal held before its first write, and the pass's end releases the scope and clears
+the snapshots on every exit, so the write lands as an ordinary client update
+(`src/core/snapshotScope.ms`, `tests/core/snapshotScope.test.ms`,
+`tests/render/hydrateWrites.test.ms`). Neon has no streamed resume window: a `Loading` still
+pending when `hydrate` returns mounts its content fresh, outside capture.
+
 **What the server writes so a parse keeps the node list** (`src/render/ssr.ms`): `<!---->`
 where the tree holds an empty text, which an HTML parser would drop, and `<!--!-->` between two
 adjacent texts, which it would merge. The DOM host's `claim` turns the first back into a text
@@ -382,19 +404,28 @@ node and removes the second. Solid's counterparts are
 (`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
 a region's end.
 
-A tree that differs from the page throws, naming the missing node by tag, child index and
-path. Limits, each one loud or measured:
+A tree that differs from the page gets a message naming the missing node by tag, child index
+and path. A debug build throws it. A release build logs it with `console.error` and rebuilds the
+page: the mount goes on creating fresh nodes after the first difference, then `hydrate` disposes
+it, empties the container and mounts the tree again, still reading the page's records
+(`REFERENCE RD-12`). Limits, each one loud or measured:
 
 - An element the tree leaves without children is not checked for extra ones, so a node that
   holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
-- A wire tag whose DOM `createElement` does more than create an element and that `claim` does
-  not take over yet (`image`, `modal`, `slider`, `picker`, `datetimepicker`, `svg`, the media
-  tags; `createsMoreThanAnElement` in `src/platform/browser/dom.jms`) refuses to hydrate.
-  `scrollview`, `switch`, `activityindicator` and `multilinetextinput` hydrate: the server
-  writes the element, classes and fixed attributes of `webHtmlTag`, `webControlClass` and
-  `webFixedAttrs` in `src/render/web.ms`, the rules of `webRules` reach `renderToMarkup(...).css`,
-  and `claim` leaves the host in the state `createElement` would have. A served switch carries
-  `checked` and a served textarea its text, which `claim` turns back into the property.
+- `claim` refuses no tag the server writes. A wire tag whose DOM `createElement` does more than
+  create an element (`scrollview`, `switch`, `activityindicator`, `multilinetextinput`, `image`,
+  `svg`, `video`, `webview`, `camera`) is served as the element, classes and fixed attributes of
+  `webHtmlTag`, `webControlClass` and `webFixedAttrs` in `src/render/web.ms`, the rules of
+  `webRules` reach `renderToMarkup(...).css`, and `claim` leaves the host in the state
+  `createElement` would have. A served switch carries `checked` and a served textarea its text,
+  which `claim` turns back into the property. A served `video` or `webview` is not reloaded: the
+  host skips a `src` or `srcdoc` the element already holds, as dom-expressions skips attribute
+  writes while hydrating (`setAttribute`, `packages/dom-expressions/src/client.js:122`). A frame
+  whose page loaded before `hydrate` counts that page as its first history entry and is not
+  reported loaded; a served `camera` is kept and its stream starts in it, because a stream exists
+  only in the browser. A `Modal` writes nothing into the page (its layer goes through a Portal
+  into the overlay root, which `hydrate` mounts unclaimed); `Slider`, `Picker` and
+  `DateTimePicker` are drawn from `view` and `pressable` and have no tag of their own.
   A `ScrollView` with `onRefresh` was not measured: the DOM host appends its refresh indicator
   itself, and the server writes none.
 - Text content and attribute values are not compared; static attributes are written again.
@@ -497,6 +528,44 @@ layout without a request. The debug bundles, not minified: `site.js` (server) 78
 gzipped; `siteClient.js` 1 270 KB, 155 KB gzipped. The site before the shorthand (`56102ef`),
 built by the same msc: 655 KB, 79 KB gzipped, and 1 145 KB, 141 KB gzipped, so the shorthand,
 its matcher and its outlet cost about 14 KB gzipped in each bundle.
+
+### The request handler — `src/render/serve.ms`
+
+`serve(app, url)` opens the router on the request address, renders `RouterProvider` through
+`renderToStream`, and answers `{ status, location, body }`: the router's redirect is a status
+and a location with no body, a route's own status serves its page, and an address no route takes
+is 404 (400 for any other routing error) through `app.notFound`. `app.document` is a component
+`({ assets, scripts, children }) => NeonNode`, as SolidStart's `StartServer.tsx` hands its
+`document`; `htmlDocument` is the default when it is null. The page renders first, so its
+hydration ids are the client's; the document then renders around it with `children` holding the
+page markup and `scripts` the records followed by `app.client`'s module script, and the page's
+`Head` content and css land before the document's `</head>` as dom-expressions `injectAssets`
+puts them (`server.js`). A document with no `</head>` is an error, where `injectAssets` would
+drop them. `assets` renders nothing: SolidStart fills it with `HydrationScript`, the event
+replay Neon does not have. On `--target=js`, `fetchPage(app, request)` maps a Fetch `Request` to
+a `Response` (GET and HEAD; any other method is 405 with `allow`), the one call a Worker's
+`fetch` makes for a page. Shape from SolidStart `server/handler.ts` (`createBaseHandler`: render,
+then redirect by the response's `Location`) and Astro's Worker entry that maps `Request` to
+`Response`.
+
+`serve(app, url, headers)` takes the request headers as a `Map` (optional); `fetchPage` passes the
+Fetch request's. A component of the served tree reads them with `getRequestEvent()`:
+`event.request.url` is the address `serve` received and `event.request.headers.get(name)`
+matches the name in any case, names differing only in case joined with `, ` as Fetch joins them.
+It is `null` outside a served render and on the client. The event is set on the render's root
+owner with `setContext` and read through the caller's owner, Solid's `getRequestEvent` fallback
+(`packages/web/src/server.ts:6448-6470`), never a module global, so two requests in flight in
+one isolate each read their own. Neon has no `AsyncLocalStorage` on C, so a read with no current
+owner is `null`; read the event in a component body or a reactive spot.
+
+The window size of a served page follows the same path. In a `-d:server` build,
+`publishWindow(width, height)` called under an owner sets the size on that render's owner with
+`setContext`, and `useWindowDimensions()` under it reads that size; with no size published in its
+render it reads the module's size, which a `publishWindow` outside any owner writes. A root
+component that picks the size from its request (`getRequestEvent()`, say the user agent) calls
+`publishWindow` first, and two requests in flight render with their own size. On the client, and
+outside an owner on the server, `publishWindow` writes the module's size as before; a write under
+an owner there is the owned-write error of any signal.
 
 ## Emission — mechanics
 
@@ -1376,6 +1445,8 @@ count * 2` at the top of a component body reads once; read it in JSX or
 - `src/render/hostTypes.ms` — the `NeonNode` type and the Host contract
 - `src/render/host.ms` — `render`, `mockHost` (the reference implementation of the
   contract)
+- `src/render/hydrate.ms` — `hydrate`: claims a served page, after the lazy modules it lists
+- `src/render/lazy.ms` — `lazyModule` and the module registry `hydrate` preloads
 - `src/render/node.ms` — the hand-written builders, `mountChild`, `regionNode`
 - `src/render/bind.ms` — one effect per dynamic spot
 - `src/render/template.ms` — template instantiation and the walk steps

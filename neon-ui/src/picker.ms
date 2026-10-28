@@ -7,9 +7,9 @@ import { Style } from "../../src/render/style";
 import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { For } from "../../src/macros/ui/flow";
-import { NeonNode, RefFn, VAttr, VEvent, dynAttr, evt, hostElement } from "../../src/render/node";
+import { NeonNode, VAttr, VEvent, dynAttr, evt, hostElement } from "../../src/render/node";
 import { defaultRole, layered } from "../../src/components/drawn";
-import { AccessibilityProps, ScrollView, Text, accessibilityAttrs } from "../../src/components/primitives";
+import { AccessibilityProps, ScrollView, Text, ViewHandle, accessibilityAttrs, viewGrab, viewMount, viewRef } from "../../src/components/primitives";
 import { Modal } from "../../src/components/modal";
 import { MATERIAL_DISABLED, MATERIAL_ON_SURFACE, MATERIAL_PRIMARY, colorOr, stateAttr, stateTokens } from "../../src/components/material";
 import { Dialog } from "../../src/components/dialog";
@@ -30,7 +30,7 @@ interface PickerProps extends AccessibilityProps {
 	prompt?: Accessor<string> | null;
 	color?: Accessor<string> | null;
 	style?: Accessor<Style> | null;
-	ref?: RefFn | null;
+	ref?: ((handle: ViewHandle) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
@@ -90,9 +90,10 @@ export function Picker(props: PickerProps): NeonNode {
 	stateAttr(attrs, (): string => stateTokens("", false, !isEnabled()));
 	const evts: VEvent[] = [evt("onPress", (e: NeonEvent): void => { if (isEnabled()) { setOpen(true); } })];
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
-	const field = hostElement("pressable", attrs, evts, element(<>
+	const handle = viewRef(props.ref);
+	const field = viewMount(handle, hostElement("pressable", attrs, evts, element(<>
 		<Text style={ink}>{selectedLabel()}</Text>
 		<Text style={ink}>▾</Text>
-	</>), layered(() => FIELD, props.style), props.ref);
+	</>), layered(() => FIELD, props.style), viewGrab(handle)));
 	return element(<>{field}{sheet}</>);
 }

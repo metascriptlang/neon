@@ -9,7 +9,7 @@ import { createMemo } from "../core/memo";
 import { Accessor, Setter, Signal, untrack } from "../core/signal";
 import { refreshTypeKey } from "../macros/refresh";
 import { onCleanup } from "../core/cleanup";
-import { Unsubscribe, listeners } from "./voidAreaHandle";
+import { Listeners, Unsubscribe, listeners } from "./voidAreaHandle";
 
 export type SigFn = () => string;
 
@@ -204,7 +204,7 @@ function stashed(key: string): SavedState[] {
 
 function failure(message: string): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const box = host.createElement("view");
+		const box = host.createElement("holder");
 		host.setStyle(box, { backgroundColor: "#900000", padding: 8 });
 		const label = host.createElement("text");
 		host.setStyle(label, { color: "#ffff00" });
@@ -254,7 +254,8 @@ function instanceRows(instances: Map<string, Instance[]>, h: Host, home: RowHome
 		mounting = outer;
 		if (!rebuilding || e instanceof NotReadyError) { throw e; }
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
-		failures.emit({ component: inst.key, message: e.message });
+		const failureList = failures;
+		if (failureList !== null) { failureList.emit({ component: inst.key, message: e.message }); }
 		disposeChildren(inst.owner, false);
 		track(instances, inst);
 		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
@@ -503,19 +504,24 @@ export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): 
 	refreshKeep<T>(key, (): T => get(), (value: T): void => { set(value); });
 }
 
-const done = listeners<RefreshDone>();
-const failures = listeners<RefreshFailure>();
+let done: Listeners<RefreshDone> | null = null;
+let failures: Listeners<RefreshFailure> | null = null;
 
 export function onRefreshDone(fn: (r: RefreshDone) => void): Unsubscribe {
-	return done.add(fn);
+	const list = done ?? listeners<RefreshDone>();
+	done = list;
+	return list.add(fn);
 }
 
 export function onRefreshFailed(fn: (f: RefreshFailure) => void): Unsubscribe {
-	return failures.add(fn);
+	const list = failures ?? listeners<RefreshFailure>();
+	failures = list;
+	return list.add(fn);
 }
 
 function reported(scope: string, name: string, started: number, summary: RefreshSummary): RefreshSummary {
-	if (summary.rebuilt + summary.remounted > 0) { done.emit({ scope, name, summary, ms: performance.now() - started }); }
+	const list = done;
+	if (list !== null && summary.rebuilt + summary.remounted > 0) { list.emit({ scope, name, summary, ms: performance.now() - started }); }
 	return summary;
 }
 

@@ -6,6 +6,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/device.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 } else when (android) {
 	androidLibrary("../android/device");
 }

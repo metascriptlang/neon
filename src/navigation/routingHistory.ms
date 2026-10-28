@@ -101,6 +101,8 @@ export class RoutingSession {
 	private previous: RoutingHistoryEntry;
 	private position: Signal<int32>;
 	private landing: (() => void) | null = null;
+	private deferred: (() => void)[] = [];
+	private written: ((url: string, replace: boolean) => void) | null = null;
 
 	constructor(
 		registry: RoutingRegistry,
@@ -118,6 +120,7 @@ export class RoutingSession {
 				this.previous = entry;
 				this.position.set(this.history.index());
 				landing();
+				this.drain();
 				return;
 			}
 			const restored = restoreEntry(this.registry, entry);
@@ -158,15 +161,40 @@ export class RoutingSession {
 			url,
 			state: JSON.stringify(this.registry.capture()),
 		};
+		if (this.landing !== null) {
+			this.deferred.push((): void => this.write(entry, replace));
+			return Result.ok(null);
+		}
+		this.write(entry, replace);
+		return Result.ok(null);
+	}
+
+	observeWrites(written: (url: string, replace: boolean) => void): void {
+		this.written = written;
+	}
+
+	private write(entry: RoutingHistoryEntry, replace: boolean): void {
 		if (replace) { this.history.replace(entry); }
 		else { this.history.push(entry); }
 		this.previous = entry;
 		this.position.set(this.history.index());
-		return Result.ok(null);
+		const written = this.written;
+		if (written !== null) { (written as (url: string, replace: boolean) => void)(entry.url, replace); }
+	}
+
+	private drain(): void {
+		while (this.landing === null && this.deferred.length > 0) {
+			const next = this.deferred.shift();
+			next();
+		}
 	}
 
 	index(): int32 {
 		return this.history.index();
+	}
+
+	traversal(): int32 {
+		return this.history.index() - this.position.peek();
 	}
 
 	canGoBack(): boolean {
@@ -175,6 +203,18 @@ export class RoutingSession {
 
 	go(delta: int32, landed: () => void): boolean {
 		this.checkWritable();
+		if (this.landing !== null) {
+			this.deferred.push((): void => {
+				if (!this.start(delta, landed)) {
+					throw new Error("routing: the history cannot go " + delta.toString() + " entries after the go before it landed");
+				}
+			});
+			return true;
+		}
+		return this.start(delta, landed);
+	}
+
+	private start(delta: int32, landed: () => void): boolean {
 		this.landing = landed;
 		if (this.history.go(delta)) { return true; }
 		this.landing = null;
@@ -184,6 +224,7 @@ export class RoutingSession {
 	dispose(): void {
 		if (this.disposed) { return; }
 		this.disposed = true;
+		this.deferred = [];
 		this.unsubscribe();
 	}
 

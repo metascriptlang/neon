@@ -1,7 +1,9 @@
 #include <stdint.h>
+void nmMeasurementRect(double x, double y, double width, double height, int32_t ready);
 int32_t nmViewsCreated(void);
 int32_t nmReleaseCalls(void);
 void nmTouch(int32_t tag, int32_t phase);
+void nmTap(int32_t tag);
 void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time);
 int32_t nmResponderTag(void);
 int32_t nmResponderBlocks(void);
@@ -27,7 +29,7 @@ float nmRotation(int32_t tag);
 float nmOpacity(int32_t tag);
 float nmTranslateX(int32_t tag);
 float nmLayoutHeight(int32_t tag);
-void nmTouchAt(float x, float y, int32_t phase);
+void nmTapAt(float x, float y);
 int32_t nmLastPressableTag(void);
 float nmLayoutX(int32_t tag);
 float nmLayoutY(int32_t tag);
@@ -41,6 +43,7 @@ void nmControlSized(int32_t tag, int32_t phase, const char *value, float width, 
 void nmEnvironment(float keyboardHeight, int32_t dark);
 int32_t nmLastInputTag(void);
 int32_t nmFocused(int32_t tag);
+int32_t nmAccessibilityFocusCalls(void);
 const char *nmProp(int32_t tag, const char *name);
 int32_t nmLastControlTag(int32_t kind);
 float nmTextWidth(const char *text);

@@ -17,12 +17,14 @@ a compiler card.
 one by ID (`REFERENCE RD-2`). IDs are permanent: a new entry takes the next free number of its
 section, an entry whose verdict changes keeps its ID, a removed entry leaves its number unused.
 
-**Entry fields.** Verdict · Solid / React / RN (file:line and symbol, at the commits above) · MS
+**Entry fields.** Verdict · Solid / React / RN / R3F (file:line and symbol, at the commits above) · MS
 (symbol and path) · Why · Don't (a wrong turn already taken) · Pin (tests that go red) · Checked
 (date; read or measured).
 
 **Verdicts.** `DIVERGE-INTENTIONAL`: Neon has its own mechanism or surface where Solid has one.
-`FOLLOWS-RN`: Solid's surface is replaced by React Native's.
+`FOLLOWS-RN`: Solid's surface is replaced by React Native's. `FOLLOWS-R3F`: inside a Void area, where Solid
+and React Native have no 3D surface, Neon takes React Three Fiber's (`~/projects/react-three-fiber`
+at `d604b18`); an entry there names it in an **R3F** field.
 
 | Section | IDs | Scope |
 |---|---|---|
@@ -71,6 +73,15 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Don't:** collect the branches at run time; a stray `<Case>` would then fail only when it renders.
 - **Pin:** `tests/render/match.test.ms`, `tests/render/matchServer.test.ms`, `tests/browser/match.test.ms`, the `Match`/`Case` programs in `tests/macros/`
 - **Checked:** 2026-10-16, read and measured on C, JS, the server build and Chrome.
+
+### SF-5 · `Settings.watchKeys` fires when a watched value's JSON changes, not when a fresh object arrives
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** `_sendObservations` compares `this._settings[key] !== newValue` on the dictionary every `settingsUpdated` carries (`packages/react-native/Libraries/Settings/Settings.ios.js:58-73`), so a watched object or array value fires on every outside write to any key, changed or not
+- **MS:** `Settings.watchKeys` in `src/api/settings.ms` keeps each watched key's JSON text and fires when that text changes
+- **Why:** the callback means "this setting changed"; a firing for an equal object is noise RN produces only because its values are fresh JS objects. For strings, numbers and booleans both fire on the same writes (the person, 2026-10-27).
+- **Pin:** `tests/api/iosApis.test.ms` "Settings.watchKeys fires per changed watched key for outside writes only, until clearWatch"
+- **Checked:** 2026-10-27, read.
 
 ## Props
 
@@ -198,7 +209,7 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 
 - **Verdict:** DIVERGE-INTENTIONAL
 - **Solid:** the server serializes each async value with seroval into the `_$HY.r` global, keyed by owner id (`packages/web/serialization/src/serializer.ts:144, 182-209`), and the client evaluates the JS that seroval wrote.
-- **MS:** `renderToStream` (`src/render/ssr.ms`) writes `<script>(self._$HY||(self._$HY={r:{},e:{}})).r["<id>"]="<json>"</script>`, where `<json>` is `JSON.stringify<T>` derived from the memo's `T` at compile time and escaped by `scriptLiteral` (`src/render/hydrationRecords.ms`). A rejected memo writes its sanitized message into `.e["<id>"]`. The client decodes with `JSON.parse<T>` (`src/render/hydrateMemo.ms`), and a decode failure names the id and the decoder's error.
+- **MS:** `renderToStream` (`src/render/ssr.ms`) writes `<script>(self._$HY||(self._$HY={r:{},e:{},m:{}})).r["<id>"]="<json>"</script>`, where `<json>` is `JSON.stringify<T>` derived from the memo's `T` at compile time and escaped by `scriptLiteral` (`src/render/hydrationRecords.ms`). A rejected memo writes its sanitized message into `.e["<id>"]`. The client decodes with `JSON.parse<T>` (`src/render/hydrateMemo.ms`), and a decode failure names the id and the decoder's error.
 - **Why:** seroval walks a value by reflection, which C does not have. A typed JSON codec gives the same bytes on C and JS. A `T` that JSON cannot encode is refused at compile time, not when the page is served. Rejections get their own `.e` map because the JSON codec refuses a generic value-or-error wrapper.
 - **Pin:** `tests/render/renderToStreamServer.test.ms` (record bytes and escaping), `tests/browser/hydrateAsync.test.ms` (hydrate reads the record, zero requests)
 - **Checked:** 2026-10-16, read and measured on C, JS and Chrome.
@@ -211,3 +222,64 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Why:** C has no global `fetch` to swap. Solid's run already leaks a request after a non-fake `await` (the RFC's documented limit), and on C every adopted compute behaves like that case. What the page shows is the same on both backends; only the discarded request differs.
 - **Pin:** `tests/render/hydrateAsync.test.ms` (zero requests on JS, one discarded run on C)
 - **Checked:** 2026-10-16, measured on C and JS.
+
+### RD-9 · A 3D pointer event reaches the nearest hit, not every intersection
+
+- **Verdict:** FOLLOWS-RN
+- **R3F:** `intersect` lists every object the ray hits, nearest first, with each hit's handler-bearing ancestors as entries of their own (`packages/fiber/src/core/events.ts:205-277`), and `handleIntersects` calls the handler of every entry until `stopPropagation` (`:281-393`); `stopPropagation` also stops delivery to farther objects (`:355-375`). The docs state it: "The `intersections` array in the event includes all objects intersecting the ray, not just the nearest" (`docs/API/events.mdx:61-64`).
+- **RN:** one topmost target, found by walking children from the top of the z-order: Android `findTouchTargetView` (`packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/TouchTargetHelper.kt:219`), iOS `hitTest:withEvent:` over `reverseObjectEnumerator` (`packages/react-native/React/Views/RCTView.m:200`). Babylon's `scene.pick` agrees: it keeps the closest hit (`~/projects/_babylon/Babylon.js` `449e8a7`, `packages/dev/core/src/Culling/ray.core.ts:851`).
+- **MS:** the 2D half is built: the Void host presses only the topmost pressable under the pointer and bubbles through its ancestors until `stopPropagation` (`src/render/event.ms` `stopPropagation`, `src/platform/void/host.ms`), and gives what no 2D handler takes to the area's layers, top paint order first, through `AreaLayer.hit` (`src/render/voidAreaHandle.ms`). The 3D half follows the same rule on that hook (`src/components/scene3d/pointer.ms`): Void's `rayFromScreen` and `pickNearestOn` find the nearest hit, `pointerdown` walks its 3D ancestors until `stopPropagation`, only the innermost node with a press handler presses, the pressed node captures the pointer until release, and `Scene3D onPressMissed` hears a still click that hits nothing. A scene with no pointer handler never picks.
+- **Why:** one target per press is what a View inside the same area already gets, so 2D and 3D handlers see one rule; what lies behind the nearest hit is occluded on screen, and an author who wants it asks Void for the ray's hits.
+- **Don't:** deliver to farther objects and expect `stopPropagation` to undo it, as R3F does; a handler behind the hit would then run before the nearer one can stop it.
+- **Pin:** 2D: `tests/platform/voidPointer.test.ms` ("a pressable drawn over another takes the press alone", "stopPropagation stops a pointer event at the node that calls it", "a layer hears what no 2D handler takes, top layer first"), `tests/render/scene2dEvents.test.ms`. 3D: `tests/render/scene3dPointer.test.ms` (nesting cases mirror `scene2dEvents.test.ms` "a gesture around a plain press"), `tests/device/scene3dPointer.ms` (mesh, HUD View on top, miss, through the real window host).
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D2).
+
+### RD-10 · `<Node id>` attaches a node it does not own
+
+- **Verdict:** FOLLOWS-R3F
+- **R3F:** `<primitive object>` places an existing object and never disposes it: "Primitives will not dispose of the object they carry on unmount" (`docs/API/objects.mdx:166`); `removeChild` skips dispose for `type === 'primitive'` (`packages/fiber/src/core/reconciler.tsx:347`, `:417`).
+- **MS:** `Node` in `src/components/scene3d/node.ms`, exported beside `useScene3D()` and `useSceneNode()`: it places an existing `NodeId3D` under the current scene parent, binds `NodeProps` onto it and refuses a changed `id`. On unmount it frees only what Neon mounted under it and gives the node back under its former parent before its former next sibling; when that parent is gone it parks the node in a hidden, detached group of the scene, because Void exports no detach (`.inbox/void/2026-10-22-export-detach-for-3d-nodes.md`). It never calls `remove`.
+- **Why:** a node made outside Neon belongs to whoever made it; disposing it on unmount would free what the caller still holds. This is R3F's rule, not a departure from it; the entry exists because every other Scene3D component owns and removes its node (`src/components/scene3d/core.ms` `ownNode`).
+- **Don't:** expect an unmounted `<Node>` to free its node; the caller closes it.
+- **Pin:** `tests/render/scene3dHost.test.ms` ("Node places an app-made node, mounts its children under it, and gives it back without freeing it")
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D5).
+
+### RD-11 · Scene3D's default tone curve is Linear without `hdr`, Filmic with it
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **R3F:** `gl.toneMapping` is `ACESFilmicToneMapping` unless the Canvas is `flat` (`packages/fiber/src/core/configuration.ts:308`), with or without an HDR target.
+- **MS:** `Scene3D` in `src/components/scene3d/scene.ms` leaves Void's default `ToneMode.Linear` (`void/src/void3d/renderer.ms` `Renderer`, after Heaps `h3d.scene.pbr.Renderer`) on an LDR scene and sets `ToneMode.Filmic`, Void's ACES fit (`void/src/void3d/toneMap.ms` `filmic`), when `hdr` is on. `toneMapping` overrides either default; LDR scene programs apply the chosen curve too (`void/src/void3d/shader3d.ms` `toneMapped`).
+- **Why:** an LDR scene holds colours in [0,1], and Linear shows them as authored at exposure 1; the ACES fit maps 1.0 to about 0.80, so every authored white would dim. With `hdr` the scene holds values above 1 that need a curve, and there Neon takes R3F's ACES default.
+- **Don't:** expect R3F's look from an LDR Scene3D without setting `toneMapping={ToneMode.Filmic}`.
+- **Pin:** `tests/render/scene3dLook.test.ms` ("an LDR Scene3D keeps Void's linear curve at exposure 1 and reserves no tone map", "hdr reserves the tone map at mount, defaults to the ACES curve and refuses a change")
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D8).
+
+### RD-12 · A page that differs from the tree throws in a debug build and is rebuilt in a release build
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** dom-expressions throws `Hydration Mismatch` in development only; in production `getNextElement` creates the one node whose `_hk` key it did not find and hydration goes on (`~/projects/dom-expressions` at `27a88be`, `packages/dom-expressions/src/client.js:277-283`).
+- **React:** the cursor is positional, as Neon's; a mismatch throws `HydrationMismatchException` and queues an error saying "this tree will be regenerated on the client" (`packages/react-reconciler/src/ReactFiberHydrationContext.js:388-415`), reported through `onRecoverableError` (default `reportGlobalError`, `ReactFiberErrorLogger.js:123`). Svelte does the same for a whole root: `hydrate` catches, clears the target and mounts (`~/projects/svelte` at `6eb720a`, `packages/svelte/src/internal/client/render.js:131-146`).
+- **MS:** `refuse` in `src/render/claim.ms` throws the message in a debug build. In a release build it records the first message on the claim and turns every later host op into a plain create or insert; `hydrate` (`src/render/hydrate.ms`) then disposes that tree, removes the container's children, mounts the tree again with `render` while the claim still serves the page's records, and logs the message with `console.error`. A page that matches pays one `null` check.
+- **Why:** a claim finds a node by position, not by key, so after the first difference nothing says which served node belongs to which later tree node; only the whole root can be rebuilt, as React rebuilds. The claim never throws in a release build, because a throw from inside a region happens during a flush and halts reactivity, which a release build never revives.
+- **Pin:** `tests/render/hydrateRefusal.test.ms` (debug and `--release`, C and JS: a missing node at the top level and in a region, extra children in an element, in a region's element and in the container, a record kept through the rebuild)
+- **Checked:** 2026-10-24, read; measured on C and JS.
+
+### RD-13 · `getRequestEvent` reads only the render's owner, and the event is `{ request: { url, headers } }`
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `getRequestEvent` reads the AsyncLocalStorage store that `provideRequestEvent` fills, and only when that store is empty falls back to the caller's render context found through its owner (`~/projects/solid-next` at `84dada77`, `packages/web/src/server.ts:6448-6470`, `renderContextOf` :6662). The event is `{ request: Request; locals }` (`client.ts:120`), `undefined` outside a request.
+- **MS:** `serve` (`src/render/serve.ms`) sets the event on the served render's root owner with `setContext`; `getRequestEvent()` reads it through the owner and is `null` outside a request and on the client. `RequestEvent { request: { url, headers } }`, `headers.get(name)` by any case of the name.
+- **Why:** C has no AsyncLocalStorage, so the owner path is the only one both targets have; one record type works on both targets, and C has no Fetch `Request`.
+- **Don't:** keep a module-global current request: two requests in one workerd isolate would read each other's.
+- **Pin:** `tests/render/serveServer.test.ms`
+- **Checked:** 2026-10-24, measured on C and JS; decided under the person's delegation ("tự trả lời").
+
+### RD-14 · Disposing a hydrate that still waits for a lazy module cancels it
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `hydrate` defers the root's render behind `loadModuleAssets` and returns `() => disposer && disposer()`. `disposer` is assigned only when the preload settles, so a dispose before then does nothing and the tree mounts later anyway, fresh when the preload failed (`~/projects/solid-next` at `84dada77`, `packages/web/src/client.ts:2428-2484`). A Loading boundary waiting for its own assets does check: a disposed owner drops its resume (`packages/solid/src/client/hydration.ts:2147`). Vue hydrates an async component after its load only `!instance.isUnmounted` (`~/projects/vue-core` at `bf5f0dd`, `packages/runtime-core/src/apiAsyncComponent.ts:156`).
+- **MS:** the `Dispose` that `hydrate` (`src/render/hydrate.ms`) returns while the page's modules load marks the wait cancelled: when they load nothing is claimed, and when one fails the failure is logged and nothing is rendered. A dispose after the claim disposes the mounted tree. The module still loads and stays registered, so a later mount does not fetch it again.
+- **Why:** a caller that disposes has given the container up, usually to another mount (hot reload, a test, a host that unmounts and mounts again). Measured with Solid's timeline in Neon, C and JS: the late claim meets the new mount's nodes; a debug build throws "hydrate: the page has no <p>" from a promise and halts reactivity for the whole app, and a release build removes the new mount's nodes and mounts a second live tree that no handle disposes. Cancelling is the rule Solid already applies to its boundaries, taken to the root.
+- **Don't:** dispose a pending hydrate and expect the page to come alive later; call `hydrate` again for that.
+- **Pin:** `tests/render/lazyHydrate.test.ms` ("a hydrate disposed before its lazy module loads never claims the page", "… leaves a later mount into the same container alone", "… fails to load renders nothing"), C and JS, debug and `--release`; on C each goes red when the dispose does nothing before the load.
+- **Checked:** 2026-10-25, read and measured on C and JS; approved by the person ("nếu vẫn muốn làm thì ghi vào REFERENCE").

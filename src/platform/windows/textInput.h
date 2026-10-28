@@ -34,6 +34,7 @@ public:
 	void SetFont(float size, bool bold);
 	void SetFamily(const char *utf8);
 	void SetAlignment(const char *value);
+	void SetWritingDirection(const char *value);
 	void SetBackground(Color color);
 	void SetScale(float scale);
 	void Measure(float maxWidth, float scale, float *width, float *height);
@@ -128,6 +129,7 @@ private:
 	bool bold = false;
 	std::wstring family = L"Segoe UI";
 	WORD alignment = PFA_LEFT;
+	bool rightToLeft = false;
 	float insetLeft = 0, insetTop = 0, insetRight = 0, insetBottom = 0;
 	CHARFORMAT2W charFormat;
 	PARAFORMAT2 paraFormat;

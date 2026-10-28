@@ -13,6 +13,7 @@ import { NavigationChild } from "../../src/navigation/children";
 import { createChildStack } from "../../src/navigation/childStack";
 import { createChildPages } from "../../src/navigation/childPages";
 import { renderPages, renderStack } from "../../src/navigation/childView";
+import { Style } from "../../src/render/style";
 import { visibleText } from "./navHarness";
 
 let mounts = "";
@@ -60,6 +61,27 @@ test "a covered stack screen is hidden and keeps its state until it is uncovered
 	flush();
 	assert visibleText(root) === "list 1", visibleText(root);
 	assert mounts === "list;detail;", mounts;
+	stack.dispose();
+	flush();
+}
+
+test "a screen stays visible under a transparent one, which overlays it, as Expo's web stack does" {
+	const stack = createChildStack<string, string>(["grid"], named, instance);
+	const overlays = (child: NavigationChild<string, string>): boolean => child.key.startsWith("photo");
+	const root = mounted(renderStack<string, string>(stack, screen, overlays));
+	stack.push("photo 1");
+	flush();
+	assert visibleText(root) === "grid 0|photo 1 0", visibleText(root);
+	const frames = root.children.filter((child: MockNode): boolean => child.style !== null);
+	assert (frames[1].style as Style).position === "absolute", "the transparent screen overlays";
+	assert (frames[0].style as Style).position !== "absolute", "the screen below stays in flow";
+	stack.push("detail");
+	flush();
+	assert visibleText(root) === "detail 0", visibleText(root);
+	stack.pop();
+	stack.pop();
+	flush();
+	assert visibleText(root) === "grid 0", visibleText(root);
 	stack.dispose();
 	flush();
 }

@@ -4,6 +4,7 @@
 // outermost Text once per update.
 
 import { Host, HostNode, NeonNode, TextSpan } from "./hostTypes";
+import { VEvent } from "./node";
 import { Style, mergeStyle } from "./style";
 import { NeonEvent } from "./event";
 import { Accessor, createSignal, untrack } from "../core/signal";
@@ -34,6 +35,8 @@ class SpanNode {
 	parent: SpanNode | null = null;
 	paragraph: Paragraph | null = null;
 	press: ((e: NeonEvent) => void) | null = null;
+	touches: VEvent[] = [];
+	touch: ((name: string, e: NeonEvent) => void) | null = null;
 	// The tag of an element that is not a Text: a region's detached holder, or an inline view, which is refused
 	// when it is placed in a paragraph.
 	inline: string | null = null;
@@ -103,6 +106,8 @@ function refuseInline(n: SpanNode): void {
 
 const SPAN_ATTRS = ["class", "accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole"];
 
+const SPAN_TOUCHES = ["onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel"];
+
 export const SPAN_HOST: Host = {
 	createElement: (tag: string): HostNode => {
 		const n = new SpanNode(false);
@@ -133,9 +138,19 @@ export const SPAN_HOST: Host = {
 	setStyleProp: null,
 	setStyleClass: null,
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-		if (spanOf(node).inline !== null) { return; }
-		if (name !== "onPress") { throw new Error(`${name} on a Text inside a Text: a span takes onPress only`); }
-		spanOf(node).press = handler;
+		const n = spanOf(node);
+		if (n.inline !== null) { return; }
+		if (SPAN_TOUCHES.indexOf(name) >= 0) {
+			n.touches.push({ name, handler });
+			n.touch = (touch: string, e: NeonEvent): void => {
+				for (const route of n.touches) {
+					if (route.name === touch) { route.handler(e); }
+				}
+			};
+			return;
+		}
+		if (name !== "onPress") { throw new Error(`${name} on a Text inside a Text: a span takes onPress and touches only`); }
+		n.press = handler;
 	},
 	append: (parent: HostNode, child: HostNode): void => {
 		const p = spanOf(parent);
@@ -186,14 +201,16 @@ export const SPAN_HOST: Host = {
 };
 
 // The spans in order, each with the styles of the Texts around it merged; a run with no own style keeps null.
-function flatten(n: SpanNode, style: Style | null, press: ((e: NeonEvent) => void) | null, out: TextSpan[]): void {
+function flatten(n: SpanNode, style: Style | null, press: ((e: NeonEvent) => void) | null,
+	touch: ((name: string, e: NeonEvent) => void) | null, out: TextSpan[]): void {
 	for (const c of n.children) {
 		if (c.isString) {
-			if (c.text !== "") { out.push({ text: c.text, style, onPress: press }); }
+			if (c.text !== "") { out.push({ text: c.text, style, onPress: press, onTouch: touch }); }
 		} else {
 			const own = c.style;
 			const merged: Style | null = own === null ? style : style === null ? own : mergeStyle(style as Style, own as Style);
-			flatten(c, merged, c.press !== null ? c.press : press, out);
+			const owns = c.press !== null || c.touch !== null;
+			flatten(c, merged, owns ? c.press : press, owns ? c.touch : touch, out);
 		}
 	}
 }
@@ -220,7 +237,7 @@ export function spanParagraph(deliver: (node: HostNode, spans: TextSpan[]) => vo
 	if (kids !== null) { (kids as NeonNode)(SPAN_HOST, root, null); }
 	const flush = (): void => {
 		const out: TextSpan[] = [];
-		flatten(root, null, null, out);
+		flatten(root, null, null, null, out);
 		para.delivered = para.version;
 		para.single = root.children.length === 1 && root.children[0].isString ? root.children[0] : null;
 		deliver(node, out);

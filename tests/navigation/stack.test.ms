@@ -26,12 +26,21 @@ interface ItemParams {
 	title: string;
 }
 
-const Stack = createStackNavigator<ItemParams>();
+interface StackParams {
+	Home: null;
+	Detail: ItemParams;
+	Edit: ItemParams;
+	Sheet: null;
+	Draft: null;
+	Nowhere: null;
+}
+
+const Stack = createStackNavigator<StackParams>();
 
 let homeBodies = 0;
-let homeNavigation: Navigation<ItemParams> | null = null;
+let homeNavigation: Navigation<StackParams> | null = null;
 
-function Home(props: ScreenProps<ItemParams>): NeonNode {
+function Home(props: ScreenProps<StackParams>): NeonNode {
 	homeBodies += 1;
 	homeNavigation = props.navigation;
 	const [count, setCount] = createSignal<int32>(0);
@@ -45,9 +54,9 @@ function Home(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function Detail(props: ScreenProps<ItemParams>): NeonNode {
-	const route = useRoute<ItemParams>();
-	const navigation = useNavigation<ItemParams>();
+function Detail(props: ScreenProps<StackParams>): NeonNode {
+	const route = useRoute<StackParams, "Detail">();
+	const navigation = useNavigation<StackParams>();
 	const label = (): string => {
 		const params = route.params();
 		return params === null ? "detail none" : "detail " + params.id.toString() + " " + params.title;
@@ -56,18 +65,18 @@ function Detail(props: ScreenProps<ItemParams>): NeonNode {
 		<Text>{label()}</Text>
 		<Pressable accessibilityLabel="edit" onPress={(e: NeonEvent): void => {
 			const params = route.params();
-			navigation.push("Edit", params);
+			if (params !== null) { navigation.push("Edit", params); }
 		}}><Text>edit</Text></Pressable>
 		<Pressable accessibilityLabel="rename" onPress={(e: NeonEvent): void => {
-			navigation.setParams({ id: 7, title: "Renamed" });
+			route.setParams({ id: 7, title: "Renamed" });
 			navigation.setOptions({ title: "Item 7" });
 		}}><Text>rename</Text></Pressable>
 	</View>;
 }
 
-let editNavigation: Navigation<ItemParams> | null = null;
+let editNavigation: Navigation<StackParams> | null = null;
 
-function Edit(props: ScreenProps<ItemParams>): NeonNode {
+function Edit(props: ScreenProps<StackParams>): NeonNode {
 	const navigation = props.navigation;
 	editNavigation = navigation;
 	return <View>
@@ -79,7 +88,7 @@ function Edit(props: ScreenProps<ItemParams>): NeonNode {
 
 let unmount: Dispose | null = null;
 
-function Sheet(props: ScreenProps<ItemParams>): NeonNode {
+function Sheet(props: ScreenProps<StackParams>): NeonNode {
 	const navigation = props.navigation;
 	return <View>
 		<Text>sheet</Text>
@@ -89,7 +98,7 @@ function Sheet(props: ScreenProps<ItemParams>): NeonNode {
 
 let pending: NavigationAction | null = null;
 
-function Draft(props: ScreenProps<ItemParams>): NeonNode {
+function Draft(props: ScreenProps<StackParams>): NeonNode {
 	const navigation = props.navigation;
 	const [dirty, setDirty] = createSignal(true);
 	const stop = navigation.addListener("beforeRemove", (e: NavigationEventArg): void => {
@@ -171,7 +180,7 @@ test "navigate to a screen below the top pushes it again, and goes back to it on
 	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	assert ref.getRootState().routes.length === 4, ref.getRootState().routes.length.toString();
-	(homeNavigation as Navigation<ItemParams>).navigate("Detail", { id: 8, title: "Eight" }, { pop: true });
+	(homeNavigation as Navigation<StackParams>).navigate("Detail", { id: 8, title: "Eight" }, { pop: true });
 	flush();
 	assert ref.getRootState().routes.length === 2, ref.getRootState().routes.length.toString();
 	assert visibleText(root) === "‹ Items|Detail|detail 8 Eight|edit|rename", visibleText(root);
@@ -182,12 +191,12 @@ test "popTo goes back to the named screen below the caller, or replaces the call
 	const root = mountStack(ref);
 	press(root, "open 7");
 	press(root, "edit");
-	(editNavigation as Navigation<ItemParams>).popTo("Detail", { id: 5, title: "Five" });
+	(editNavigation as Navigation<StackParams>).popTo("Detail", { id: 5, title: "Five" });
 	flush();
 	assert ref.getRootState().routes.length === 2, ref.getRootState().routes.length.toString();
 	assert visibleText(root) === "‹ Items|Detail|detail 5 Five|edit|rename", visibleText(root);
 	press(root, "edit");
-	(editNavigation as Navigation<ItemParams>).popTo("Sheet");
+	(editNavigation as Navigation<StackParams>).popTo("Sheet");
 	flush();
 	assert ref.currentPath() === "Sheet", ref.currentPath();
 	assert ref.getRootState().routes.length === 3, ref.getRootState().routes.length.toString();
@@ -196,9 +205,10 @@ test "popTo goes back to the named screen below the caller, or replaces the call
 test "a reset whose index is below its last route keeps every route and focuses the last" {
 	const ref = createNavigationContainerRef();
 	mountStack(ref);
-	(homeNavigation as Navigation<ItemParams>).reset({
+	const home = homeNavigation as Navigation<StackParams>;
+	home.reset({
 		index: 0,
-		routes: [{ name: "Home" }, { name: "Detail", params: { id: 3, title: "Three" } }],
+		routes: [home.routeOf("Home"), home.routeOf("Detail", { id: 3, title: "Three" })],
 	});
 	assert ref.currentPath() === "Detail", ref.currentPath();
 	const state = ref.getRootState();
@@ -225,7 +235,7 @@ test "hardware back pops the stack, then is left to the system at the root" {
 test "an action no navigator handles leaves the state as it was" {
 	const ref = createNavigationContainerRef();
 	mountStack(ref);
-	const home = homeNavigation as Navigation<ItemParams>;
+	const home = homeNavigation as Navigation<StackParams>;
 	ref.navigate("Nowhere");
 	ref.goBack();
 	ref.openDrawer();

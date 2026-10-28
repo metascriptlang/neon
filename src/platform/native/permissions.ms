@@ -5,6 +5,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/permissions.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
 	@passL("-framework AVFoundation");
 	@passL("-framework CoreLocation");

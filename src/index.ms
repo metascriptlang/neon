@@ -11,15 +11,19 @@ export { createErrorBoundary, createLoadingBoundary } from "./core/boundary";
 export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
 export { Dispose, Cleanup, NotReadyError } from "./core/types";
+export { createStore, createProjection, snapshot, reconcile, Store, Draft, SetStoreFunction } from "./core/store";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
-export { render, hydrate } from "./render/host";
+export { ElementHandle, DOMRect, MeasureRect, MeasureError } from "./render/measure";
+export { render } from "./render/host";
+export { hydrate } from "./render/hydrate";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
+export { App, DocumentProps, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";
 export { Context, ContextNotFoundError, NoOwnerError, createContext, useContext } from "./render/context";
-export { NeonEvent, neonEvent } from "./render/event";
+export { NeonEvent, neonEvent, stopPropagation } from "./render/event";
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 
 export {
@@ -40,6 +44,23 @@ export {
 	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToItemOptions, ScrollToOffsetOptions, ScrollToEndOptions,
 	ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken,
 } from "./components/flatList";
+export { TextInputHandle } from "./components/primitives";
+export { Image, ImageProps, ImageSource, ImageResizeMode, ImageLoader } from "./components/image";
+export { Modal, ModalAnimationType } from "./components/modal";
+export { InputAccessoryView } from "./components/inputAccessoryView";
+export { SafeAreaView } from "./components/safeAreaView";
+export { KeyboardAvoidingView, KeyboardAvoidingBehavior } from "./components/keyboardAvoidingView";
+export { RefreshControl } from "./components/refreshControl";
+export { Switch } from "./components/switch";
+export { ActivityIndicator, IndicatorSize } from "./components/activityIndicator";
+export { Portal } from "./render/portal";
+export {
+	TouchableOpacity,
+	TouchableHighlight,
+	TouchableWithoutFeedback,
+	TouchableNativeFeedback,
+	NativeFeedback,
+} from "./components/touchable";
 export { VirtualizedList } from "./components/virtualizedList";
 export {
 	SectionBase, SectionInfo, SectionList, SectionListHandle, SectionListRenderItemInfo,
@@ -59,9 +80,11 @@ export { BackHandler } from "./api/backHandler";
 export { Alert, AlertButton, AlertButtonStyle, AlertOptions } from "./api/alert";
 export { Linking, LinkingUrlEvent } from "./api/linking";
 export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
+export { ActionSheetIOS, ActionSheetIOSOptions } from "./api/actionSheetIOS";
+export { Settings } from "./api/settings";
 export { Vibration } from "./api/vibration";
 export { Clipboard } from "./api/clipboard";
-export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
+export { AccessibilityInfo, AccessibilityAnnouncementFinishedEvent, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
 export { AsyncStorage, AsyncStorageHook, KeyValuePair, StringPair, useAsyncStorage } from "./api/asyncStorage";
 export {
 	NetInfo, NetInfoChangeHandler, NetInfoDetails, NetInfoState, NetInfoStateType, NetInfoUnsubscribe, useNetInfo,
@@ -81,6 +104,7 @@ export {
 	Calendar, Locale, LocalizeLocale, NumberFormatSettings, getCalendars, getCountry, getCurrencies, getLocales,
 	getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit, getTimeZone, uses24HourClock, usesMetricSystem,
 } from "./api/localization";
+export { I18nManager, I18nManagerConstants } from "./api/i18nManager";
 when (js) {
 	export { ScrollPosition, useWindowScrollPosition, useWindowScrollRange } from "./api/pageScroll";
 }
@@ -96,3 +120,5 @@ export {
 } from "./animation/index";
 
 export * from "./navigation/index";
+export { lazy } from "./macros/lazy";
+export { lazyModule, preloadLazy, preloadServedLazy } from "./render/lazy";

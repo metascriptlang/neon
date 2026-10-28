@@ -4,15 +4,21 @@ import { renderToMarkup, renderToStream, SsrMarkup } from "../../src/render/ssr"
 import { sleepAsync } from "std/core/promise";
 import { asyncPage, Note } from "./asyncPage";
 import {
+	breakpointsApp,
 	clampedApp,
 	docsAtStart,
+	lazyCounterPage,
 	headPageAtStart,
+	imagesAtStart,
 	linesApp,
 	marksApp,
+	mediaAtStart,
+	modalAtStart,
 	plainTextareaApp,
 	primitivesApp,
 	scrollApp,
 	scrollViewApp,
+	svgAtStart,
 	switchAppOn,
 	switchesApp,
 	textareaApp,
@@ -30,6 +36,7 @@ async function fromServer(n: int32): Promise<Note> {
 
 async function main(): Promise<void> {
 	const streamed: SsrMarkup = await renderToStream(asyncPage(fromServer));
+	const lazyServed: SsrMarkup = await renderToStream(lazyCounterPage());
 	const pages: string[] = [
 		served("docs", docsAtStart()),
 		served("scroll", scrollApp((e: NeonEvent): void => {})),
@@ -44,7 +51,13 @@ async function main(): Promise<void> {
 		served("lines", linesApp()),
 		served("switches", switchesApp()),
 		served("textareas", textareasApp()),
+		served("images", imagesAtStart()),
+		served("svg", svgAtStart()),
+		served("modal", modalAtStart()),
+		served("media", mediaAtStart()),
+		served("breakpoints", breakpointsApp()),
 		JSON.stringify("async") + ":" + JSON.stringify(streamed),
+		JSON.stringify("lazyCounter") + ":" + JSON.stringify(lazyServed),
 	];
 	console.log("{" + pages.join(",") + "}");
 }

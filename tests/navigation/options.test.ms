@@ -25,15 +25,32 @@ import {
 	DefaultTheme,
 } from "../../src/navigation/index";
 import { backAccessibilityLabel } from "../../src/navigation/header";
-import { tabAccessibilityLabel } from "../../src/navigation/tabs";
+import { tabAccessibilityLabel } from "../../src/navigation/tabBar";
 import { Platform } from "../../src/api/platform";
 import { attrOf, findLabel, press, visibleText } from "./navHarness";
 
-const Tab = createBottomTabNavigator<string>();
-const Stack = createStackNavigator<string>();
-const Drawer = createDrawerNavigator<string>();
+interface NavParams {
+	Kept: null;
+	Fresh: null;
+	Depth: null;
+	One: null;
+	Two: null;
+	Themed: null;
+	Base: null;
+	Overlay: null;
+	Titled: null;
+	Chats: null;
+	Calls: null;
+	Landing: null;
+	Second: null;
+	First: null;
+}
 
-function Counted(props: ScreenProps<string>): NeonNode {
+const Tab = createBottomTabNavigator<NavParams>();
+const Stack = createStackNavigator<NavParams>();
+const Drawer = createDrawerNavigator<NavParams>();
+
+function Counted(props: ScreenProps<NavParams>): NeonNode {
 	const [count, setCount] = createSignal<int32>(0);
 	const name = props.route.name;
 	return <View>
@@ -61,7 +78,7 @@ test "unmountOnBlur drops a tab's state when it loses focus; other tabs keep the
 	dispose();
 }
 
-function Depth(props: ScreenProps<string>): NeonNode {
+function Depth(props: ScreenProps<NavParams>): NeonNode {
 	const depth = useNavigationState<int32>((state: NavigationState): int32 => state.routes.length as int32);
 	const navigation = props.navigation;
 	return <View>
@@ -108,7 +125,7 @@ test "a right-hand drawer anchors its panel to the right edge" {
 	dispose();
 }
 
-function Themed(props: ScreenProps<string>): NeonNode {
+function Themed(props: ScreenProps<NavParams>): NeonNode {
 	const theme = useTheme();
 	return <Text>{theme().dark ? "dark screen" : "light screen"}</Text>;
 }
@@ -163,7 +180,7 @@ test "a Group hands its screenOptions to its screens, under their own options" {
 	dispose();
 }
 
-const TopTabs = createMaterialTopTabNavigator<string>();
+const TopTabs = createMaterialTopTabNavigator<NavParams>();
 
 test "material top tabs put the bar above the screens, without a header, with a focus indicator" {
 	const root: MockNode = mockNode("root");
@@ -195,7 +212,7 @@ test "material top tabs put the bar above the screens, without a header, with a 
 
 let blockTabs = false;
 
-function Landing(props: ScreenProps<string>): NeonNode {
+function Landing(props: ScreenProps<NavParams>): NeonNode {
 	const stop = props.navigation.addListener("tabPress", (e: NavigationEventArg): void => {
 		if (blockTabs) { e.preventDefault(); }
 	});

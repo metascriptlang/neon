@@ -345,6 +345,7 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot);
 @property(nonatomic) BOOL bold;
 @property(nonatomic, copy) NSString *family;
 @property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic) NSWritingDirection direction;
 @property(nonatomic) BOOL layoutStale;
 @property(nonatomic, strong) NSTextStorage *storage;
 @property(nonatomic, strong) NSLayoutManager *layoutManager;
@@ -417,6 +418,7 @@ static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic)
 - (void)rebuild {
 	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
 	paragraph.alignment = self.alignment;
+	paragraph.baseWritingDirection = self.direction;
 	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] initWithString:self.text];
 	for (NeonRun *run in [self effectiveRuns]) {
 		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
@@ -478,6 +480,272 @@ static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic)
 @end
 
 static BOOL isLabel(NeonView *view) { return [view isKindOfClass:NeonLabel.class]; }
+
+// --- accessibility: the stored props answer NSAccessibility, as RN macOS's RCTView and RCTTextView ---
+
+// RCTConvert.mm accessibilityRoleFromAriaRole: `role`; a role it lacks falls to the trait table.
+static NSAccessibilityRole ariaRole(NSString *role) {
+	static NSDictionary<NSString *, NSAccessibilityRole> *map;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		map = @{
+			@"alert": NSAccessibilityGroupRole, @"alertdialog": NSAccessibilityGroupRole, @"application": NSAccessibilityGroupRole,
+			@"article": NSAccessibilityGroupRole, @"banner": NSAccessibilityGroupRole, @"button": NSAccessibilityButtonRole,
+			@"cell": NSAccessibilityCellRole, @"checkbox": NSAccessibilityCheckBoxRole, @"columnheader": NSAccessibilityCellRole,
+			@"combobox": NSAccessibilityComboBoxRole, @"complementary": NSAccessibilityGroupRole, @"contentinfo": NSAccessibilityGroupRole,
+			@"definition": NSAccessibilityGroupRole, @"dialog": NSAccessibilityGroupRole, @"directory": NSAccessibilityListRole,
+			@"document": NSAccessibilityGroupRole, @"feed": NSAccessibilityGroupRole, @"figure": NSAccessibilityGroupRole,
+			@"form": NSAccessibilityGroupRole, @"grid": NSAccessibilityTableRole, @"gridcell": NSAccessibilityCellRole,
+			@"group": NSAccessibilityGroupRole, @"heading": NSAccessibilityStaticTextRole, @"image": NSAccessibilityImageRole,
+			@"img": NSAccessibilityImageRole, @"link": NSAccessibilityLinkRole, @"list": NSAccessibilityListRole,
+			@"listbox": NSAccessibilityListRole, @"listitem": NSAccessibilityGroupRole, @"log": NSAccessibilityGroupRole,
+			@"main": NSAccessibilityGroupRole, @"marquee": NSAccessibilityGroupRole, @"math": NSAccessibilityGroupRole,
+			@"menu": NSAccessibilityMenuRole, @"menubar": NSAccessibilityMenuBarRole, @"menuitem": NSAccessibilityMenuItemRole,
+			@"menuitemcheckbox": NSAccessibilityMenuItemRole, @"menuitemradio": NSAccessibilityMenuItemRole,
+			@"meter": NSAccessibilityLevelIndicatorRole, @"navigation": NSAccessibilityGroupRole, @"none": NSAccessibilityGroupRole,
+			@"note": NSAccessibilityGroupRole, @"option": NSAccessibilityStaticTextRole, @"presentation": NSAccessibilityGroupRole,
+			@"progressbar": NSAccessibilityProgressIndicatorRole, @"radio": NSAccessibilityRadioButtonRole,
+			@"radiogroup": NSAccessibilityRadioGroupRole, @"region": NSAccessibilityGroupRole, @"row": NSAccessibilityRowRole,
+			@"rowheader": NSAccessibilityCellRole, @"scrollbar": NSAccessibilityScrollBarRole, @"search": NSAccessibilityGroupRole,
+			@"searchbox": NSAccessibilityTextFieldRole, @"separator": NSAccessibilitySplitterRole, @"slider": NSAccessibilitySliderRole,
+			@"spinbutton": NSAccessibilityIncrementorRole, @"status": NSAccessibilityGroupRole, @"switch": NSAccessibilityCheckBoxRole,
+			@"tab": NSAccessibilityRadioButtonRole, @"table": NSAccessibilityTableRole, @"tablist": NSAccessibilityTabGroupRole,
+			@"tabpanel": NSAccessibilityGroupRole, @"term": NSAccessibilityGroupRole, @"textbox": NSAccessibilityTextFieldRole,
+			@"timer": NSAccessibilityGroupRole, @"toolbar": NSAccessibilityToolbarRole, @"tooltip": NSAccessibilityGroupRole,
+			@"tree": NSAccessibilityOutlineRole, @"treegrid": NSAccessibilityTableRole, @"treeitem": NSAccessibilityRowRole,
+		};
+	});
+	return map[role];
+}
+
+// RCTConvert.mm accessibilityRoleFromTrait: `accessibilityRole`.
+static NSAccessibilityRole traitRole(NSString *role) {
+	static NSDictionary<NSString *, NSAccessibilityRole> *map;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		map = @{
+			@"adjustable": NSAccessibilitySliderRole, @"alert": NSAccessibilityStaticTextRole, @"button": NSAccessibilityButtonRole,
+			@"checkbox": NSAccessibilityCheckBoxRole, @"combobox": NSAccessibilityComboBoxRole, @"header": NSAccessibilityStaticTextRole,
+			@"image": NSAccessibilityImageRole, @"imagebutton": NSAccessibilityButtonRole, @"keyboardkey": NSAccessibilityButtonRole,
+			@"link": NSAccessibilityLinkRole, @"menu": NSAccessibilityMenuRole, @"menubar": NSAccessibilityMenuBarRole,
+			@"menuitem": NSAccessibilityMenuItemRole, @"none": NSAccessibilityUnknownRole,
+			@"progressbar": NSAccessibilityProgressIndicatorRole, @"radio": NSAccessibilityRadioButtonRole,
+			@"radiogroup": NSAccessibilityRadioGroupRole, @"scrollbar": NSAccessibilityScrollBarRole,
+			@"search": NSAccessibilityTextFieldRole, @"spinbutton": NSAccessibilityIncrementorRole,
+			@"summary": NSAccessibilityStaticTextRole, @"switch": NSAccessibilityCheckBoxRole, @"tab": NSAccessibilityButtonRole,
+			@"tablist": NSAccessibilityTabGroupRole, @"text": NSAccessibilityStaticTextRole, @"timer": NSAccessibilityStaticTextRole,
+			@"toolbar": NSAccessibilityToolbarRole, @"disclosure": NSAccessibilityDisclosureTriangleRole,
+			@"group": NSAccessibilityGroupRole, @"list": NSAccessibilityListRole, @"popupbutton": NSAccessibilityPopUpButtonRole,
+			@"menubutton": NSAccessibilityMenuButtonRole, @"table": NSAccessibilityTableRole,
+		};
+	});
+	return map[role] ?: NSAccessibilityUnknownRole;
+}
+
+static NSString *recursiveLabel(NSView *view);
+
+// RCTView.m RCTRecursiveAccessibilityLabel: a Text answers its value, any other child its label or its own children's.
+static NSString *recursiveLabel(NSView *view) {
+	NSMutableString *out = nil;
+	for (NSView *sub in view.subviews) {
+		NSString *label = [sub isKindOfClass:NeonView.class] && isLabel((NeonView *)sub) ? sub.accessibilityValue : sub.accessibilityLabel;
+		if (!label) label = recursiveLabel(sub);
+		if (label.length == 0) continue;
+		if (!out) out = [NSMutableString string];
+		if (out.length) [out appendString:@" "];
+		[out appendString:label];
+	}
+	return out;
+}
+
+@interface NeonView (NeonAccessibility)
+- (NSString *)neonAXProp:(NSString *)name;
+- (BOOL)neonAXState:(NSString *)token;
+- (NSArray<NSArray<NSString *> *> *)neonAXActions;
+- (BOOL)neonPerformAction:(NSString *)name;
+@end
+
+static NSArray<NSView *> *axChildren(NSView *view);
+
+@implementation NeonView (NeonAccessibility)
+
+- (NSString *)neonAXProp:(NSString *)name {
+	NSString *value = self.accessibility[name];
+	return value.length ? value : nil;
+}
+
+- (BOOL)neonAXState:(NSString *)token {
+	return [[[self neonAXProp:@"accessibilityState"] componentsSeparatedByString:@","] containsObject:token];
+}
+
+- (BOOL)neonAXFlag:(NSString *)name { return [[self neonAXProp:name] isEqualToString:@"true"]; }
+
+// importantForAccessibility is Android's (BaseViewConfig.android.js:219); RN macOS has no handler, so "no" and
+// "no-hide-descendants" follow RN Android and iOS's accessibilityElementsHidden.
+- (BOOL)neonAXHidesSubtree {
+	return [self neonAXFlag:@"accessibilityElementsHidden"] || [[self neonAXProp:@"importantForAccessibility"] isEqualToString:@"no-hide-descendants"];
+}
+
+// RCTViewManager.m:313-345: `role` wins, then `accessibilityRole`, then the view's own role.
+- (NSAccessibilityRole)accessibilityRole {
+	NSString *role = [self neonAXProp:@"role"];
+	NSAccessibilityRole mapped = role && ![role isEqualToString:@"rowgroup"] ? (ariaRole(role) ?: traitRole(role)) : nil;
+	if (mapped) return mapped;
+	NSString *trait = [self neonAXProp:@"accessibilityRole"];
+	if (trait) return traitRole(trait);
+	return isLabel(self) ? NSAccessibilityStaticTextRole : NSAccessibilityUnknownRole;
+}
+
+// RCTViewManager.m:203-205 `accessible`; RCTTextView.mm:82 a Text is an element unless told otherwise.
+- (BOOL)isAccessibilityElement {
+	if ([self neonAXHidesSubtree]) return NO;
+	NSString *important = [self neonAXProp:@"importantForAccessibility"];
+	if ([important isEqualToString:@"no"]) return NO;
+	NSString *accessible = [self neonAXProp:@"accessible"];
+	if (accessible) return [accessible isEqualToString:@"true"];
+	return [important isEqualToString:@"yes"] || isLabel(self);
+}
+
+// RCTView.m:295-309; a Text keeps its words in the value, as RCTTextView.mm:339-357 does for VoiceOver.
+- (NSString *)accessibilityLabel {
+	if (isLabel(self)) return nil;
+	NSString *label = [self neonAXProp:@"accessibilityLabel"];
+	if (label) return label;
+	return self.isAccessibilityElement ? recursiveLabel(self) : nil;
+}
+
+- (NSString *)accessibilityHelp { return [self neonAXProp:@"accessibilityHint"]; }
+
+- (NSArray<NSString *> *)neonAXValueParts {
+	NSString *raw = [self neonAXProp:@"accessibilityValue"];
+	if (!raw) return nil;
+	NSMutableArray<NSString *> *parts = [NSMutableArray array];
+	NSString *rest = raw;
+	for (int i = 0; i < 3; i++) {
+		NSRange comma = [rest rangeOfString:@","];
+		if (comma.location == NSNotFound) break;
+		[parts addObject:[rest substringToIndex:comma.location]];
+		rest = [rest substringFromIndex:NSMaxRange(comma)];
+	}
+	[parts addObject:rest];
+	return parts.count == 4 ? parts : nil;
+}
+
+- (NSNumber *)neonAXNumber:(NSUInteger)index {
+	NSString *part = [self neonAXValueParts][index];
+	if (part.length == 0) return nil;
+	return @(part.doubleValue);
+}
+
+// RCTView.m:463-501.
+- (id)accessibilityValue {
+	id value = nil;
+	NSAccessibilityRole role = self.accessibilityRole;
+	if ([role isEqual:NSAccessibilityCheckBoxRole] || [role isEqual:NSAccessibilityRadioButtonRole] || [role isEqual:NSAccessibilityDisclosureTriangleRole]) {
+		if ([self neonAXState:@"mixed"]) value = @2;
+		else if ([self neonAXState:@"checked"] || [self neonAXState:@"selected"]) value = @1;
+		else if ([self neonAXState:@"unchecked"]) value = @0;
+	} else if ([role isEqual:NSAccessibilityStaticTextRole]) {
+		if (isLabel(self)) value = [self neonAXProp:@"accessibilityLabel"] ?: ((NeonLabel *)self).text;
+		else value = self.accessibilityLabel;
+	}
+	NSArray<NSString *> *parts = [self neonAXValueParts];
+	if (parts && parts[3].length) return parts[3];
+	if (parts && parts[2].length) return [self neonAXNumber:2];
+	return value;
+}
+
+- (id)accessibilityMinValue { return [self neonAXValueParts] ? [self neonAXNumber:0] : nil; }
+- (id)accessibilityMaxValue { return [self neonAXValueParts] ? [self neonAXNumber:1] : nil; }
+
+// RCTView.m:565-596: the state tokens answer the three flags.
+- (BOOL)isAccessibilityEnabled { return ![self neonAXState:@"disabled"]; }
+- (BOOL)isAccessibilitySelected { return [self neonAXState:@"selected"]; }
+- (BOOL)isAccessibilityExpanded { return [self neonAXState:@"expanded"]; }
+
+- (BOOL)isAccessibilityModal { return [self neonAXFlag:@"accessibilityViewIsModal"]; }
+
+// RCTView.m:312-335: a line is "name" or "name\tlabel"; a labelled one becomes an NSAccessibilityCustomAction.
+- (NSArray<NSArray<NSString *> *> *)neonAXActions {
+	NSString *raw = [self neonAXProp:@"accessibilityActions"];
+	if (!raw) return @[];
+	NSMutableArray<NSArray<NSString *> *> *out = [NSMutableArray array];
+	for (NSString *line in [raw componentsSeparatedByString:@"\n"]) {
+		NSArray<NSString *> *fields = [line componentsSeparatedByString:@"\t"];
+		[out addObject:@[fields[0], fields.count > 1 ? fields[1] : @""]];
+	}
+	return out;
+}
+
+- (BOOL)neonHasAction:(NSString *)name {
+	for (NSArray<NSString *> *action in [self neonAXActions]) {
+		if ([action[0] isEqualToString:name]) return YES;
+	}
+	return NO;
+}
+
+- (NSArray<NSAccessibilityCustomAction *> *)accessibilityCustomActions {
+	NSMutableArray<NSAccessibilityCustomAction *> *out = [NSMutableArray array];
+	for (NSArray<NSString *> *action in [self neonAXActions]) {
+		if (action[1].length == 0) continue;
+		NSString *name = action[0];
+		[out addObject:[[NSAccessibilityCustomAction alloc] initWithName:action[1] handler:^BOOL {
+			return [self neonPerformAction:name];
+		}]];
+	}
+	return out.count ? out : nil;
+}
+
+// RCTView.m:636-642: the action reaches onAccessibilityAction (control phase 15) only when the view declared it.
+- (BOOL)neonPerformAction:(NSString *)name {
+	if (self.neonTag == 0 || ![self neonHasAction:name]) return NO;
+	neonEmitControl(self.neonTag, 15, name, 0, 0);
+	return YES;
+}
+
+// RCTView.m:646-663: "activate", else the press the view already answers to a click.
+- (BOOL)accessibilityPerformPress {
+	if (![self isAccessibilityEnabled]) return NO;
+	if ([self neonPerformAction:@"activate"]) return YES;
+	if (!self.pressable || self.neonTag == 0) return NO;
+	NSPoint at = [self convertPoint:NSMakePoint(NSMidX(self.bounds), NSMidY(self.bounds)) toView:g_root];
+	double time = NSProcessInfo.processInfo.systemUptime * 1000.0;
+	reportTag(self.neonTag, 0, (float)at.x, (float)at.y, time);
+	reportTag(self.neonTag, 1, (float)at.x, (float)at.y, time);
+	reportTag(self.neonTag, 2, (float)at.x, (float)at.y, time);
+	requestHostFrame();
+	return YES;
+}
+
+- (BOOL)accessibilityPerformEscape { return [self neonPerformAction:@"escape"]; }
+- (BOOL)accessibilityPerformIncrement { return [self neonPerformAction:@"increment"]; }
+- (BOOL)accessibilityPerformDecrement { return [self neonPerformAction:@"decrement"]; }
+- (BOOL)accessibilityPerformShowMenu { return [self neonPerformAction:@"showMenu"]; }
+
+// RCTView.m:504-551: an action is offered to VoiceOver only when the view can perform it.
+- (BOOL)isAccessibilitySelectorAllowed:(SEL)selector {
+	if (selector == @selector(accessibilityPerformPress)) return [self neonHasAction:@"activate"] || self.pressable;
+	if (selector == @selector(accessibilityPerformIncrement)) return [self neonHasAction:@"increment"];
+	if (selector == @selector(accessibilityPerformDecrement)) return [self neonHasAction:@"decrement"];
+	if (selector == @selector(accessibilityPerformShowMenu)) return [self neonHasAction:@"showMenu"];
+	if (selector == @selector(accessibilityPerformEscape)) return [self neonHasAction:@"escape"];
+	return YES;
+}
+
+- (NSArray *)accessibilityChildren { return axChildren(self); }
+@end
+
+// The children VoiceOver walks: an element stands for itself, a plain view for what it holds, and a hidden subtree for nothing.
+static NSArray<NSView *> *axChildren(NSView *view) {
+	NSMutableArray<NSView *> *out = [NSMutableArray array];
+	if ([view isKindOfClass:NeonView.class] && [(NeonView *)view neonAXHidesSubtree]) return out;
+	for (NSView *sub in view.subviews) {
+		if ([sub isKindOfClass:NeonView.class] && [(NeonView *)sub neonAXHidesSubtree]) continue;
+		if (sub.isAccessibilityElement) [out addObject:sub];
+		else [out addObjectsFromArray:axChildren(sub)];
+	}
+	return out;
+}
 
 static int32_t spanTagAt(NeonView *view, float lx, float ly) {
 	return isLabel(view) ? [(NeonLabel *)view tagAt:NSMakePoint(lx, ly)] : 0;
@@ -549,6 +817,14 @@ static NSTextAlignment alignmentOf(const char *value) {
 	snprintf(message, sizeof message, "textAlign \"%s\"", value);
 	unimplemented(message);
 	return NSTextAlignmentNatural;
+}
+
+// RN macOS RCTTextPrimitivesConversions.h:30 (react-native-macos 8941740): auto is Natural, and RN falls back to Natural
+// for a value it does not know (conversions.h:630); RCTAttributedTextUtils.mm:224 puts it on the paragraph style.
+static NSWritingDirection writingDirectionOf(const char *value) {
+	if (!strcmp(value, "ltr")) return NSWritingDirectionLeftToRight;
+	if (!strcmp(value, "rtl")) return NSWritingDirectionRightToLeft;
+	return NSWritingDirectionNatural;
 }
 
 // --- ScrollView: an NSScrollView over a flipped document view, as RN macOS's RCTScrollViewComponentView ---
@@ -709,6 +985,29 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 
 @class NeonInput;
 
+@interface NeonFieldCell : NSTextFieldCell
+@property(nonatomic) BOOL autoCorrect;
+@end
+
+@implementation NeonFieldCell
+- (NSText *)setUpFieldEditorAttributes:(NSText *)text {
+	NSTextView *editor = (NSTextView *)[super setUpFieldEditorAttributes:text];
+	editor.automaticSpellingCorrectionEnabled = self.autoCorrect;
+	return editor;
+}
+@end
+
+@interface NeonSecureFieldCell : NSSecureTextFieldCell
+@end
+
+@implementation NeonSecureFieldCell
+- (NSText *)setUpFieldEditorAttributes:(NSText *)text {
+	NSTextView *editor = (NSTextView *)[super setUpFieldEditorAttributes:text];
+	editor.automaticSpellingCorrectionEnabled = NO;
+	return editor;
+}
+@end
+
 @interface NeonField : NSTextField
 @property(nonatomic, weak) NeonInput *owner;
 @end
@@ -724,6 +1023,7 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 
 @interface NeonInput : NeonView <NSTextViewDelegate>
 @property(nonatomic) BOOL multiline, blurOnSubmit, upper, autoFocus, editable;
+@property(nonatomic) BOOL autoCorrect, defaultAutoCorrect;
 @property(nonatomic) int writing;
 @property(nonatomic) NSInteger maxLength;
 @property(nonatomic) NSEdgeInsets insets;
@@ -732,6 +1032,7 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 @property(nonatomic) BOOL bold;
 @property(nonatomic, strong) NSColor *color, *placeholderColor;
 @property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic) NSWritingDirection direction;
 @property(nonatomic, strong) NSTextField *field;
 @property(nonatomic, strong) NSScrollView *scroll;
 @property(nonatomic, strong) NeonTextView *textView;
@@ -769,6 +1070,8 @@ static BOOL flagValue(const char *value, const char *name) {
 			_textView = [[NeonTextView alloc] initWithFrame:NSZeroRect];
 			_textView.owner = self;
 			_textView.delegate = self;
+			_defaultAutoCorrect = _textView.automaticSpellingCorrectionEnabled;
+			_autoCorrect = _defaultAutoCorrect;
 			_textView.drawsBackground = NO;
 			_textView.richText = NO;
 			_textView.verticallyResizable = YES;
@@ -779,6 +1082,8 @@ static BOOL flagValue(const char *value, const char *name) {
 			_scroll.documentView = _textView;
 			[self addSubview:_scroll];
 		} else {
+			_defaultAutoCorrect = [[NSTextView alloc] initWithFrame:NSZeroRect].automaticSpellingCorrectionEnabled;
+			_autoCorrect = _defaultAutoCorrect;
 			[self makeField:NO];
 		}
 		[self applyStyle];
@@ -807,6 +1112,7 @@ static BOOL flagValue(const char *value, const char *name) {
 	self.field.cell.wraps = NO;
 	self.field.stringValue = text;
 	[self addSubview:self.field];
+	[self applyAutoCorrect];
 	[self applyStyle];
 	[self layoutContent];
 }
@@ -822,6 +1128,17 @@ static BOOL flagValue(const char *value, const char *name) {
 
 - (NSView *)editingView { return self.multiline ? self.textView : self.field; }
 
+- (void)applyAutoCorrect {
+	if (self.multiline) {
+		self.textView.automaticSpellingCorrectionEnabled = self.autoCorrect;
+	} else {
+		BOOL secure = [self.field isKindOfClass:NeonSecureField.class];
+		if (!secure) ((NeonFieldCell *)self.field.cell).autoCorrect = self.autoCorrect;
+		NSTextView *editor = [self editor];
+		if (editor) editor.automaticSpellingCorrectionEnabled = secure ? NO : self.autoCorrect;
+	}
+}
+
 - (void)applyStyle {
 	NSFont *font = [self font];
 	self.writing += 1;
@@ -829,6 +1146,7 @@ static BOOL flagValue(const char *value, const char *name) {
 		self.textView.font = font;
 		self.textView.textColor = self.color;
 		self.textView.alignment = self.alignment;
+		self.textView.baseWritingDirection = self.direction;
 		self.textView.editable = self.editable;
 		self.textView.typingAttributes = @{NSFontAttributeName: font, NSForegroundColorAttributeName: self.color};
 		self.textView.needsDisplay = YES;
@@ -836,6 +1154,7 @@ static BOOL flagValue(const char *value, const char *name) {
 		self.field.font = font;
 		self.field.textColor = self.color;
 		self.field.alignment = self.alignment;
+		self.field.baseWritingDirection = self.direction;
 		self.field.editable = self.editable;
 		self.field.selectable = YES;
 		self.field.placeholderAttributedString = [[NSAttributedString alloc] initWithString:self.placeholder attributes:@{
@@ -1007,7 +1326,10 @@ static BOOL flagValue(const char *value, const char *name) {
 		}
 		self.upper = !strcmp(value, "characters");
 	} else if (!strcmp(name, "maxLength")) self.maxLength = value[0] ? atol(value) : -1;
-	else if (!strcmp(name, "autoCorrect") || !strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType")) {}
+	else if (!strcmp(name, "autoCorrect")) {
+		self.autoCorrect = value[0] == '\0' ? self.defaultAutoCorrect : flagValue(value, name);
+		[self applyAutoCorrect];
+	} else if (!strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType") || !strcmp(name, "inputAccessoryViewID")) {}
 	else if (!strcmp(name, "selection")) [self select:text];
 	else if (!strcmp(name, "textInsets")) {
 		float left = 0, top = 0, right = 0, bottom = 0;
@@ -1023,6 +1345,9 @@ static BOOL flagValue(const char *value, const char *name) {
 		[self applyStyle];
 	} else if (!strcmp(name, "textAlign")) {
 		self.alignment = alignmentOf(value);
+		[self applyStyle];
+	} else if (!strcmp(name, "writingDirection")) {
+		self.direction = writingDirectionOf(value);
 		[self applyStyle];
 	} else {
 		char what[128];
@@ -1063,10 +1388,12 @@ static BOOL flagValue(const char *value, const char *name) {
 	- (BOOL)textView:(NSTextView *)view doCommandBySelector:(SEL)selector { (void)view; return [self.owner command:selector]; }
 
 @implementation NeonField
++ (Class)cellClass { return NeonFieldCell.class; }
 NEON_FIELD_METHODS
 @end
 
 @implementation NeonSecureField
++ (Class)cellClass { return NeonSecureFieldCell.class; }
 NEON_FIELD_METHODS
 @end
 
@@ -1556,8 +1883,15 @@ float niLastControlWidth(void) { return g_controlW; }
 float niLastControlHeight(void) { return g_controlH; }
 
 static BOOL isAccessibilityProp(const char *name) {
-	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
-		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState");
+	static const char *names[] = {
+		"accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole", "accessibilityState", "role",
+		"accessibilityValue", "accessibilityLiveRegion", "importantForAccessibility", "accessibilityElementsHidden",
+		"accessibilityViewIsModal", "accessibilityLabelledBy", "accessibilityActions", "focusable", "nativeID",
+	};
+	for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
+		if (!strcmp(name, names[i])) return YES;
+	}
+	return NO;
 }
 
 void niSetProp(void *view, const char *name, const char *value) {
@@ -1589,6 +1923,12 @@ void niSetProp(void *view, const char *name, const char *value) {
 	if (isLabel(as(view)) && !strcmp(name, "textAlign")) {
 		NeonLabel *l = (NeonLabel *)as(view);
 		l.alignment = alignmentOf(text);
+		[l changed:YES];
+		return;
+	}
+	if (isLabel(as(view)) && !strcmp(name, "writingDirection")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.direction = writingDirectionOf(text);
 		[l changed:YES];
 		return;
 	}
@@ -1745,6 +2085,14 @@ void niControlSetTag(void *control, int32_t tag) {
 	else inputOf(control, "niControlSetTag").neonTag = tag;
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
+
+void niAccessibilityFocus(void *view) {
+	NeonView *v = as(view);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[v.window makeFirstResponder:v];
+		NSAccessibilityPostNotification(v, NSAccessibilityLayoutChangedNotification);
+	});
+}
 
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }

@@ -8,6 +8,8 @@ import { NeonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import { Scene2D, Anim, Label } from "../../src/components/scene2d";
 import { useManualFrames, setFrameDriver, framePending, requestFrame } from "../../src/animation/frame";
+import { useVoidClock } from "../../src/render/voidClock";
+import { Host } from "../../src/render/hostTypes";
 import { NodeRef, Scene2D as VoidScene2D, animFrames, frameIndex, content, isLive, setFrameDelays } from "../../../void/src/void2d/node";
 import { Tile, whiteTile, tile, rgba } from "../../../void/src/void2d/types";
 
@@ -575,5 +577,29 @@ test "Scene2D nontransparent prepare skips backdrop when onLayout disposes its o
 		layer.draw();
 		clock.advance(125);
 		assert layouts === 1 && !framePending();
+	} finally { dispose(); setFrameDriver(null); }
+}
+
+test "Anim and another area clock subscriber in one Void share one tick and one area frame" {
+	const clock = useManualFrames();
+	const nodes: NodeRef[] = [];
+	const dts: number[] = [];
+	const root = mockNode("root");
+	const framed: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const wake = useVoidClock((): boolean => true, (seconds: float64): void => { dts.push(seconds); });
+		wake();
+	};
+	const dispose = render(element(<Void>
+		<Scene2D><Anim frames={frames3()} fps={10.0} ref={(node: NodeRef): void => { nodes.push(node); }} /></Scene2D>
+		{framed}
+	</Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const outer = root.children[0];
+		const requested = (): int32 => outer.attrs.filter((a) => a.name === "frameRequested").length as int32;
+		const before = requested();
+		clock.advance(125);
+		assert nodes[0].animFrames().frameIndex() === 1 && dts.length === 1, "both advanced";
+		assert requested() === before + 1, "one area frame per tick: " + (requested() - before).toString();
+		assert clock.frames === 1;
 	} finally { dispose(); setFrameDriver(null); }
 }

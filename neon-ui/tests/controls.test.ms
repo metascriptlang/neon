@@ -4,7 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
-import { View } from "../../src/components/primitives";
+import { View, ViewHandle } from "../../src/components/primitives";
 import { Slider, snapSliderValue } from "../src/slider";
 import { Picker, PickerItem } from "../src/picker";
 import { DateTimePicker, daysInMonth, isoDate, isoTime, weekdayOf } from "../src/dateTimePicker";
@@ -157,6 +157,7 @@ test "DateTimePicker opens a calendar at the value's month, honours the bounds a
 	const overlay = overlayOf(host);
 	fireEvent(field, "onPress");
 	flush();
+	assert overlay.children.length === 1 && overlay.children[0].tag === "modal", "the dialog sits in the modal, not under it: " + mockToString(overlay);
 	assert mockToString(overlay).indexOf("October 2026") > 0, "month: " + mockToString(overlay);
 	assert attr(labelled(overlay, "October 7, 2026") as MockNode, "accessibilityState") === "selected", "the value is selected";
 	assert attr(labelled(overlay, "October 4, 2026") as MockNode, "accessibilityState") === "disabled", "before the minimum";
@@ -205,4 +206,16 @@ test "DateTimePicker in time mode picks hour and minute on wheels, and inline re
 	assert time() === "14:45", "time: " + time();
 	press(root, "October 9, 2026");
 	assert when() === "2026-10-09T18:30", "inline day: " + when();
+}
+
+test "Slider, Picker and DateTimePicker hand their ref a View's handle" {
+	const tags: string[] = [];
+	const keep = (h: ViewHandle): void => { tags.push((h.node as unknown as MockNode).tag); };
+	const root = mockNode("root");
+	render(element(<View>
+		<Slider ref={keep} />
+		<Picker ref={keep} items={[{ label: "One", value: "1" }]} />
+		<DateTimePicker ref={keep} value="2026-10-24" />
+	</View>), mockHost(), root as unknown as HostNode);
+	assert tags.join(",") === "view,pressable,pressable", tags.join(",");
 }

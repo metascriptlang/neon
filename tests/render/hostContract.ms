@@ -26,10 +26,10 @@ export function childOrder(h: Host, parent: HostNode, nodes: HostNode[], names: 
 }
 
 export function hostMoveContract(h: Host, styleOfB: Style | null = null): string {
-	const root = h.createElement("view");
-	const a = h.createElement("view");
-	const b = h.createElement("view");
-	const c = h.createElement("view");
+	const root = h.createElement("holder");
+	const a = h.createElement("holder");
+	const b = h.createElement("holder");
+	const c = h.createElement("holder");
 	if (styleOfB !== null) { h.setStyle(b, styleOfB as Style); }
 	const nodes: HostNode[] = [a, b, c];
 	const names: string[] = ["a", "b", "c"];
@@ -45,10 +45,10 @@ export function hostMoveContract(h: Host, styleOfB: Style | null = null): string
 	log = log + " " + childOrder(h, root, nodes, names);
 	h.insertBefore(root, a, c);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const stranger = h.createElement("view");
+	const stranger = h.createElement("holder");
 	let insertThrew = false;
 	try {
-		h.insertBefore(root, h.createElement("view"), stranger);
+		h.insertBefore(root, h.createElement("holder"), stranger);
 	} catch (e) {
 		insertThrew = true;
 	}
@@ -65,14 +65,14 @@ export function hostMoveContract(h: Host, styleOfB: Style | null = null): string
 }
 
 export function reconcileContract(h: Host): string {
-	const root = h.createElement("view");
+	const root = h.createElement("holder");
 	const anchor = h.createText("");
 	h.append(root, anchor);
-	const a = h.createElement("view");
-	const b = h.createElement("view");
-	const c = h.createElement("view");
-	const d = h.createElement("view");
-	const e = h.createElement("view");
+	const a = h.createElement("holder");
+	const b = h.createElement("holder");
+	const c = h.createElement("holder");
+	const d = h.createElement("holder");
+	const e = h.createElement("holder");
 	const nodes: HostNode[] = [a, b, c, d, e, anchor];
 	const names: string[] = ["a", "b", "c", "d", "e", "_"];
 	const ra = rowOf(a);
@@ -92,7 +92,7 @@ export function reconcileContract(h: Host): string {
 	const s4: Row[] = [rd, re, ra, rc];
 	reconcileArrays(h, root, s3, s4, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const b2 = h.createElement("view");
+	const b2 = h.createElement("holder");
 	nodes.push(b2);
 	names.push("b");
 	const s5: Row[] = [rowOf(b2)];
@@ -121,7 +121,7 @@ export function hostAttrContract(h: Host, read: (n: HostNode) => string): string
 
 export function hostParkContract(h: Host): string {
 	const root = h.createElement("view");
-	const holder = h.createElement("view");
+	const holder = h.createElement("holder");
 	const a = h.createElement("view");
 	const t = h.createText("x");
 	const z = h.createElement("view");

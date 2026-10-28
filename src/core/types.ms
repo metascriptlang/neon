@@ -13,6 +13,7 @@ export const REACTIVE_RECOMPUTING_DEPS: int32 = 1 << 2;
 export const REACTIVE_IN_HEAP: int32 = 1 << 3;
 export const REACTIVE_IN_HEAP_HEIGHT: int32 = 1 << 4;
 export const REACTIVE_DISPOSED: int32 = 1 << 6;
+export const REACTIVE_SNAPSHOT_STALE: int32 = 1 << 8;
 export const REACTIVE_LAZY: int32 = 1 << 9;
 export const REACTIVE_MISSED_WAKE: int32 = 1 << 12;
 export const REACTIVE_REASK: int32 = 1 << 13;
@@ -24,8 +25,12 @@ export const STATUS_UNINITIALIZED: int32 = 1 << 2;
 
 export const CONFIG_OWNED_WRITE: int32 = 1 << 0;
 export const CONFIG_TRANSPARENT: int32 = 1 << 2;
+export const CONFIG_IN_SNAPSHOT_SCOPE: int32 = 1 << 3;
 export const CONFIG_AUTO_DISPOSE: int32 = 1 << 5;
 export const CONFIG_STAGED: int32 = 1 << 7;
+export const CONFIG_HAS_SNAPSHOT: int32 = 1 << 9;
+export const CONFIG_NO_SNAPSHOT: int32 = 1 << 10;
+export const CONFIG_SNAPSHOT_SCOPE: int32 = 1 << 11;
 export const CONFIG_PROMOTED: int32 = 1 << 22;
 export const CONFIG_ROOT: int32 = 1 << 23;
 export const CONFIG_MODIFIED: int32 = 1 << 24;
@@ -40,6 +45,10 @@ export const EFFECT_USER: int32 = 2;
 export const RUN_UNCHANGED: int32 = 0;
 export const RUN_PUBLISHED: int32 = 1;
 export const RUN_STAGED: int32 = 2;
+
+export const READ_VALUE: int32 = 0;
+export const READ_STAGED: int32 = 1;
+export const READ_SNAPSHOT: int32 = 2;
 
 export interface Link {
 	dep: Source;

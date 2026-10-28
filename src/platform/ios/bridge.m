@@ -5,10 +5,13 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #import "component.h"
+#import "modules.h"
 #include "../native/loop.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void setInputAccessoryID(UIView *input, const char *value);
 
 static msClosure s_mount;
 static msClosure s_touch;
@@ -68,7 +71,20 @@ static void call0(msClosure c) {
 	loopArm(0);
 }
 
+static BOOL performNeonAccessibilityAction(UIView *view, NSString *name);
+
+// RN RCTView.m:414-467: activate, escape and magicTap route to the named action when the
+// view declares it; increment and decrement always try theirs.
+#define NEON_ACCESSIBILITY_ACTIONS \
+	- (BOOL)accessibilityActivate { return performNeonAccessibilityAction(self, @"activate"); } \
+	- (BOOL)accessibilityPerformMagicTap { return performNeonAccessibilityAction(self, @"magicTap"); } \
+	- (BOOL)accessibilityPerformEscape { return performNeonAccessibilityAction(self, @"escape"); } \
+	- (void)accessibilityIncrement { performNeonAccessibilityAction(self, @"increment"); } \
+	- (void)accessibilityDecrement { performNeonAccessibilityAction(self, @"decrement"); }
+
 @implementation NeonTouchView
+
+NEON_ACCESSIBILITY_ACTIONS
 
 // RN hitSlop: the touch target reaches past the bounds by the slop on each edge (within the
 // superview, which hit-tests first).
@@ -77,56 +93,6 @@ static void call0(msClosure c) {
 	if (UIEdgeInsetsEqualToEdgeInsets(slop, UIEdgeInsetsZero)) return [super pointInside:point withEvent:event];
 	CGRect area = UIEdgeInsetsInsetRect(self.bounds, UIEdgeInsetsMake(-slop.top, -slop.left, -slop.bottom, -slop.right));
 	return CGRectContainsPoint(area, point);
-}
-
-// UIKit hands an untagged view's touch on to its superviews, but a UIScrollView keeps it,
-// so a listener outside the scroll view (a pager around a vertical list) never hears it.
-// The view the touch hit reports it for the first listener past the scroll view instead
-// (WORKAROUND.md W9); inside it, forwarding still reaches the listeners.
-- (NSInteger)neonReportTag:(UITouch *)touch {
-	if (self.tag != 0) return self.tag;
-	if (touch.view != self) return 0;
-	BOOL crossed = NO;
-	for (UIView *at = self.superview; at; at = at.superview) {
-		if ([at isKindOfClass:UIScrollView.class]) { crossed = YES; continue; }
-		if ([at isKindOfClass:NeonTouchView.class] && at.tag != 0) return crossed ? at.tag : 0;
-	}
-	return 0;
-}
-
-- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
-	UITouch *touch = touches.anyObject;
-	CGPoint at = [touch locationInView:nil];
-	g_lastTag = (int)[self neonReportTag:touch];
-	g_lastPhase = phase;
-	g_touchX = (float)at.x;
-	g_touchY = (float)at.y;
-	g_touchTime = touch.timestamp * 1000.0;
-	call0(s_touch);
-}
-
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:0];
-	[super touchesBegan:touches withEvent:event];
-}
-
-- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:4];
-	[super touchesMoved:touches withEvent:event];
-}
-
-- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:1];
-	if (self.tag != 0) {
-		g_lastPhase = 2; // the press itself, after the up
-		call0(s_touch);
-	}
-	[super touchesEnded:touches withEvent:event];
-}
-
-- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:3];
-	[super touchesCancelled:touches withEvent:event];
 }
 
 // RN RCTViewComponentView: an accessible view without its own label speaks the
@@ -154,15 +120,15 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 
 @end
 
-// RN Text: a label whose text or span has onPress takes touches; a touch on a pressable
-// span reports with the span's tag, so the span's press fires and the label's bubbles.
 @interface NeonLabel : UILabel
 @property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
 @property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
-@property (nonatomic) int neonTouchTag;
+@property (nonatomic) NSWritingDirection neonWritingDirection;
 @end
 
 @implementation NeonLabel
+
+NEON_ACCESSIBILITY_ACTIONS
 
 - (int)neonTagAt:(CGPoint)point {
 	if (self.neonSpanTags.count == 0 || self.attributedText.length == 0) return (int)self.tag;
@@ -186,41 +152,101 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 	return (int)self.tag;
 }
 
-- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
-	UITouch *touch = touches.anyObject;
-	CGPoint at = [touch locationInView:nil];
-	g_lastTag = self.neonTouchTag;
+@end
+
+@interface NeonRootTouchHandler : UIGestureRecognizer <UIGestureRecognizerDelegate>
+@property (nonatomic, strong) UITouch *primaryTouch;
+@property (nonatomic) int primaryTag;
+@end
+
+@implementation NeonRootTouchHandler
+
+- (instancetype)init {
+	if ((self = [super initWithTarget:nil action:nil])) {
+		self.cancelsTouchesInView = NO;
+		self.delaysTouchesBegan = NO;
+		self.delaysTouchesEnded = NO;
+		self.delegate = self;
+	}
+	return self;
+}
+
+- (void)neonEmit:(int)phase {
+	CGPoint at = [self.primaryTouch locationInView:nil];
+	g_lastTag = self.primaryTag;
 	g_lastPhase = phase;
 	g_touchX = (float)at.x;
 	g_touchY = (float)at.y;
-	g_touchTime = touch.timestamp * 1000.0;
+	g_touchTime = self.primaryTouch.timestamp * 1000.0;
 	call0(s_touch);
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	self.neonTouchTag = [self neonTagAt:[touches.anyObject locationInView:self]];
-	[self neonReport:touches phase:0];
 	[super touchesBegan:touches withEvent:event];
+	for (UITouch *touch in touches) {
+		if (self.primaryTouch) { [self ignoreTouch:touch forEvent:event]; continue; }
+		self.primaryTouch = touch;
+		self.primaryTag = 0;
+		for (UIView *at = touch.view; at; at = at.superview) {
+			int tag = [at isKindOfClass:NeonLabel.class]
+				? [(NeonLabel *)at neonTagAt:[touch locationInView:at]] : (int)at.tag;
+			if (tag != 0) { self.primaryTag = tag; break; }
+			if (at == self.view) break;
+		}
+		[self neonEmit:0];
+	}
+	self.state = UIGestureRecognizerStateBegan;
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:4];
 	[super touchesMoved:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:4];
+	self.state = UIGestureRecognizerStateChanged;
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:1];
-	g_lastPhase = 2;
-	call0(s_touch);
 	[super touchesEnded:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:1];
+	[self neonEmit:2];
+	self.primaryTouch = nil;
+	self.state = UIGestureRecognizerStateEnded;
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:3];
 	[super touchesCancelled:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:3];
+	self.primaryTouch = nil;
+	self.state = UIGestureRecognizerStateCancelled;
+}
+
+- (void)reset {
+	[super reset];
+	if (self.primaryTouch) { [self neonEmit:3]; self.primaryTouch = nil; }
+}
+
+- (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)other { return NO; }
+
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)other {
+	return ![other.view isDescendantOfView:self.view];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
+	return [self canBePreventedByGestureRecognizer:other];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+	if ([self canBePreventedByGestureRecognizer:other]) { self.enabled = NO; self.enabled = YES; }
+	return NO;
 }
 
 @end
+
+void neonAttachTouchHandler(UIView *view) {
+	[view addGestureRecognizer:[[NeonRootTouchHandler alloc] init]];
+}
 
 static void emitControl(int tag, int phase, NSString *value, float width, float height) {
 	if (tag == 0) return;
@@ -430,6 +456,30 @@ UIColor *neonCssColor(const char *css, UIColor *fallback) {
 	return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0 blue:(rgb & 0xff) / 255.0 alpha:1];
 }
 
+// RN RCTNSWritingDirectionFromWritingDirection (RCTTextPrimitivesConversions.h:30, react-native 693e9628e8c):
+// auto is Natural, and a value it does not know is Natural too (conversions.h:630).
+static NSWritingDirection neonWritingDirection(const char *value) {
+	if (strcmp(value, "ltr") == 0) return NSWritingDirectionLeftToRight;
+	if (strcmp(value, "rtl") == 0) return NSWritingDirectionRightToLeft;
+	return NSWritingDirectionNatural;
+}
+
+// RN RCTAttributedTextUtils.mm:207 sets paragraphStyle.baseWritingDirection on the text's paragraph style.
+static void setParagraphDirection(NSMutableDictionary<NSAttributedStringKey, id> *attributes, NSWritingDirection direction) {
+	NSMutableParagraphStyle *paragraph = [attributes[NSParagraphStyleAttributeName] mutableCopy] ?: [[NSMutableParagraphStyle alloc] init];
+	paragraph.baseWritingDirection = direction;
+	attributes[NSParagraphStyleAttributeName] = paragraph;
+}
+
+static void setTextDirection(NSMutableAttributedString *text, NSWritingDirection direction) {
+	[text enumerateAttribute:NSParagraphStyleAttributeName inRange:NSMakeRange(0, text.length) options:0 usingBlock:^(id style, NSRange range, BOOL *stop) {
+		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+		if (style) attributes[NSParagraphStyleAttributeName] = style;
+		setParagraphDirection(attributes, direction);
+		[text addAttribute:NSParagraphStyleAttributeName value:attributes[NSParagraphStyleAttributeName] range:range];
+	}];
+}
+
 // textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic,
 // underline, line-through, press tag.
 static void setLabelSpans(NeonLabel *label, const char *text) {
@@ -438,6 +488,7 @@ static void setLabelSpans(NeonLabel *label, const char *text) {
 	NSMutableArray<NSNumber *> *tags = [NSMutableArray array];
 	NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
 	paragraph.alignment = label.textAlignment;
+	paragraph.baseWritingDirection = label.neonWritingDirection;
 	for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
 		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
 		if (f.count < 8) continue;
@@ -471,8 +522,10 @@ static void setLabelSpans(NeonLabel *label, const char *text) {
 static UIAccessibilityTraits roleTraits(const char *role) {
 	if (strcmp(role, "button") == 0) return UIAccessibilityTraitButton;
 	if (strcmp(role, "link") == 0) return UIAccessibilityTraitLink;
-	if (strcmp(role, "header") == 0) return UIAccessibilityTraitHeader;
-	if (strcmp(role, "image") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "header") == 0 || strcmp(role, "heading") == 0) return UIAccessibilityTraitHeader;
+	if (strcmp(role, "image") == 0 || strcmp(role, "img") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "imagebutton") == 0) return UIAccessibilityTraitImage | UIAccessibilityTraitButton;
+	if (strcmp(role, "key") == 0 || strcmp(role, "keyboardkey") == 0) return UIAccessibilityTraitKeyboardKey;
 	if (strcmp(role, "search") == 0) return UIAccessibilityTraitSearchField;
 	if (strcmp(role, "adjustable") == 0) return UIAccessibilityTraitAdjustable;
 	if (strcmp(role, "text") == 0 || strcmp(role, "summary") == 0) return UIAccessibilityTraitStaticText;
@@ -485,6 +538,13 @@ static UIAccessibilityTraits roleTraits(const char *role) {
 static char kNeonRoleTraits;
 static char kNeonStateTraits;
 static char kNeonGroup;
+static char kNeonRoleProp;
+static char kNeonAccessibilityRole;
+static char kNeonStateValue;
+static char kNeonValueProp;
+static char kNeonActions;
+// RN UIView+React.m nativeID: the id is stored on the view and nothing reads it for accessibility.
+static char kNeonNativeID;
 
 static BOOL groupRole(const char *role) {
 	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0 || strcmp(role, "alert") == 0;
@@ -498,6 +558,83 @@ static void applyTraits(UIView *v) {
 	v.accessibilityTraits = (UIAccessibilityTraits)(role.unsignedLongLongValue | state.unsignedLongLongValue);
 }
 
+// RN RCTViewManager.m:222-258: role wins over accessibilityRole.
+static void applyRole(UIView *v) {
+	NSString *role = objc_getAssociatedObject(v, &kNeonRoleProp);
+	if (role.length == 0) role = objc_getAssociatedObject(v, &kNeonAccessibilityRole);
+	const char *text = role ? role.UTF8String : "";
+	objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	applyTraits(v);
+	BOOL group = groupRole(text);
+	objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	if (group) {
+		v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
+		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
+	}
+}
+
+// RN RCTView.m:288-397: the state words and the accessibilityValue text (else now as a percentage
+// of the range) join with ", ".
+static void refreshAccessibilityValue(UIView *v) {
+	NSString *state = objc_getAssociatedObject(v, &kNeonStateValue);
+	NSString *value = objc_getAssociatedObject(v, &kNeonValueProp);
+	NSMutableArray<NSString *> *parts = [NSMutableArray array];
+	if (state) [parts addObject:state];
+	if (value) [parts addObject:value];
+	v.accessibilityValue = parts.count ? [parts componentsJoinedByString:@", "] : nil;
+}
+
+// text is "min,max,now,text"; the text field is last and may hold commas.
+static void setAccessibilityValue(UIView *v, const char *text) {
+	NSString *value = nil;
+	NSString *rest = neonText(text);
+	NSMutableArray<NSString *> *fields = [NSMutableArray array];
+	for (int i = 0; i < 3; i++) {
+		NSRange comma = [rest rangeOfString:@","];
+		if (comma.location == NSNotFound) break;
+		[fields addObject:[rest substringToIndex:comma.location]];
+		rest = [rest substringFromIndex:comma.location + 1];
+	}
+	if (fields.count == 3) {
+		if (rest.length > 0) value = rest;
+		else if (fields[0].length && fields[1].length && fields[2].length) {
+			int min = fields[0].intValue, max = fields[1].intValue, now = fields[2].intValue;
+			if (min < max && min <= now && now <= max) value = [NSString stringWithFormat:@"%d percent", (now * 100) / (max - min)];
+		}
+	}
+	objc_setAssociatedObject(v, &kNeonValueProp, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	refreshAccessibilityValue(v);
+}
+
+// RN RCTView.m:249-286: only a labelled action is a VoiceOver custom action; the label maps back
+// to the action name that reaches onAccessibilityAction.
+static BOOL performNeonAccessibilityAction(UIView *view, NSString *name) {
+	NSDictionary<NSString *, NSString *> *actions = objc_getAssociatedObject(view, &kNeonActions);
+	if (!actions[name]) return NO;
+	neonEmitControl((int)view.tag, 15, name, 0, 0);
+	return YES;
+}
+
+static void setAccessibilityActions(UIView *v, const char *text) {
+	NSMutableDictionary<NSString *, NSString *> *byName = [NSMutableDictionary dictionary];
+	NSMutableArray<UIAccessibilityCustomAction *> *custom = [NSMutableArray array];
+	__weak UIView *weak = v;
+	for (NSString *line in text[0] ? [neonText(text) componentsSeparatedByString:@"\n"] : @[]) {
+		NSArray<NSString *> *fields = [line componentsSeparatedByString:@"\t"];
+		NSString *name = fields[0];
+		if (name.length == 0) continue;
+		NSString *label = fields.count > 1 ? fields[1] : @"";
+		byName[name] = label;
+		if (label.length == 0) continue;
+		[custom addObject:[[UIAccessibilityCustomAction alloc] initWithName:label actionHandler:^BOOL(UIAccessibilityCustomAction *action) {
+			UIView *view = weak;
+			return view ? performNeonAccessibilityAction(view, name) : NO;
+		}]];
+	}
+	objc_setAssociatedObject(v, &kNeonActions, byName.count ? byName : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	v.accessibilityCustomActions = custom.count ? custom : nil;
+}
+
 static BOOL hasToken(NSArray<NSString *> *tokens, NSString *token) { return [tokens containsObject:token]; }
 
 static void setAccessibilityState(UIView *v, const char *text) {
@@ -506,8 +643,10 @@ static void setAccessibilityState(UIView *v, const char *text) {
 	if (hasToken(tokens, @"selected")) traits |= UIAccessibilityTraitSelected;
 	if (hasToken(tokens, @"disabled")) traits |= UIAccessibilityTraitNotEnabled;
 	objc_setAssociatedObject(v, &kNeonStateTraits, @(traits), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-	v.accessibilityValue = hasToken(tokens, @"checked") ? @"checked" : hasToken(tokens, @"unchecked") ? @"unchecked" :
+	NSString *word = hasToken(tokens, @"checked") ? @"checked" : hasToken(tokens, @"unchecked") ? @"unchecked" :
 		hasToken(tokens, @"mixed") ? @"mixed" : hasToken(tokens, @"expanded") ? @"expanded" : hasToken(tokens, @"collapsed") ? @"collapsed" : nil;
+	objc_setAssociatedObject(v, &kNeonStateValue, word, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	refreshAccessibilityValue(v);
 	applyTraits(v);
 }
 
@@ -543,6 +682,7 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	else if (strcmp(name, "secureTextEntry") == 0) input.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) input.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) input.returnKeyType = returnKeyType(value);
+	else if (strcmp(name, "inputAccessoryViewID") == 0) setInputAccessoryID(input, value);
 	else if (strcmp(name, "autoCorrect") == 0) input.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		input.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
@@ -647,6 +787,7 @@ static void setTextAreaProp(NeonTextArea *area, const char *name, const char *va
 	else if (strcmp(name, "secureTextEntry") == 0) area.secureTextEntry = yes;
 	else if (strcmp(name, "keyboardType") == 0) area.keyboardType = keyboardType(value);
 	else if (strcmp(name, "returnKeyType") == 0) area.returnKeyType = value[0] ? returnKeyType(value) : UIReturnKeyDefault;
+	else if (strcmp(name, "inputAccessoryViewID") == 0) setInputAccessoryID(area, value);
 	else if (strcmp(name, "autoCorrect") == 0) area.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
 	else if (strcmp(name, "autoCapitalize") == 0) {
 		area.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
@@ -905,6 +1046,7 @@ static void setStatusBar(const char *name, const char *value) {
 	self.view.backgroundColor = [UIColor blackColor];
 	g_container = [[UIView alloc] initWithFrame:containerFrame(self.view)];
 	g_container.userInteractionEnabled = YES;
+	[g_container addGestureRecognizer:[[NeonRootTouchHandler alloc] init]];
 	[self.view addSubview:g_container];
 	call0(s_mount);
 }
@@ -944,9 +1086,22 @@ static void setStatusBar(const char *name, const char *value) {
 @implementation NeonAppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+	niLinkingLaunched(launchOptions);
 	self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
 	self.window.rootViewController = [[NeonVC alloc] init];
 	[self.window makeKeyAndVisible];
+	return YES;
+}
+
+- (void)applicationDidBecomeActive:(UIApplication *)application { niLinkingActive(); }
+
+- (BOOL)application:(UIApplication *)application openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options {
+	niLinkingOpened(url);
+	return YES;
+}
+
+- (BOOL)application:(UIApplication *)application continueUserActivity:(NSUserActivity *)userActivity restorationHandler:(void (^)(NSArray<id<UIUserActivityRestoring>> *))restorationHandler {
+	if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb] && userActivity.webpageURL != nil) niLinkingOpened(userActivity.webpageURL);
 	return YES;
 }
 
@@ -1056,17 +1211,21 @@ void niSetProp(void *view, const char *name, const char *value) {
 		v.isAccessibilityElement = strcmp(text, "true") == 0;
 		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
 	}
-	else if (strcmp(name, "accessibilityRole") == 0) {
-		objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-		applyTraits(v);
-		BOOL group = groupRole(text);
-		objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-		if (group) {
-			v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
-			if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
-		}
+	else if (strcmp(name, "accessibilityRole") == 0 || strcmp(name, "role") == 0) {
+		objc_setAssociatedObject(v, strcmp(name, "role") == 0 ? &kNeonRoleProp : &kNeonAccessibilityRole, [NSString stringWithUTF8String:text], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		applyRole(v);
 	}
+	else if (strcmp(name, "accessibilityValue") == 0) setAccessibilityValue(v, text);
+	else if (strcmp(name, "accessibilityElementsHidden") == 0) v.accessibilityElementsHidden = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessibilityViewIsModal") == 0) v.accessibilityViewIsModal = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessibilityActions") == 0) setAccessibilityActions(v, text);
+	else if (strcmp(name, "accessibilityLiveRegion") == 0 || strcmp(name, "importantForAccessibility") == 0 ||
+		strcmp(name, "accessibilityLabelledBy") == 0 || strcmp(name, "focusable") == 0) {}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
+	else if (strcmp(name, "nativeID") == 0) {
+		objc_setAssociatedObject(v, &kNeonNativeID, text[0] ? [NSString stringWithUTF8String:text] : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		if ([v conformsToProtocol:@protocol(NeonComponentView)]) [(id<NeonComponentView>)v neonSetProp:name value:text];
+	}
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
 	else if (strcmp(name, "hitSlop") == 0) {
 		float top = 0, left = 0, bottom = 0, right = 0;
@@ -1075,6 +1234,26 @@ void niSetProp(void *view, const char *name, const char *value) {
 		}
 	}
 	else if (strcmp(name, "androidRipple") == 0) {}
+	else if (strcmp(name, "writingDirection") == 0) {
+		NSWritingDirection direction = neonWritingDirection(text);
+		if ([v isKindOfClass:NeonLabel.class]) {
+			NeonLabel *label = (NeonLabel *)v;
+			label.neonWritingDirection = direction;
+			NSMutableAttributedString *spans = [label.attributedText mutableCopy];
+			if (spans.length) { setTextDirection(spans, direction); label.attributedText = spans; }
+		}
+		else if ([v isKindOfClass:UITextField.class]) {
+			NSMutableDictionary<NSAttributedStringKey, id> *attributes = [((UITextField *)v).defaultTextAttributes mutableCopy];
+			setParagraphDirection(attributes, direction);
+			((UITextField *)v).defaultTextAttributes = attributes;
+		} else if ([v isKindOfClass:UITextView.class]) {
+			UITextView *area = (UITextView *)v;
+			NSMutableDictionary<NSAttributedStringKey, id> *attributes = [area.typingAttributes mutableCopy];
+			setParagraphDirection(attributes, direction);
+			area.typingAttributes = attributes;
+			if (area.textStorage.length) setTextDirection(area.textStorage, direction);
+		}
+	}
 	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
 		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
 			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
@@ -1117,6 +1296,13 @@ void niSetFocused(void *control, int focused) {
 	else [v resignFirstResponder];
 }
 
+void niAccessibilityFocus(void *view) {
+	UIView *v = (__bridge UIView *)view;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, v);
+	});
+}
+
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
@@ -1156,6 +1342,26 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	bounds.size = CGSizeMake(w, h);
 	v.bounds = bounds;
 	v.center = CGPointMake(x + w * 0.5f, y + h * 0.5f);
+}
+
+static const void *kNeonAccessoryIDKey = &kNeonAccessoryIDKey;
+void (*neonApplyInputAccessory)(UIView *input);
+
+NSHashTable<UIView *> *neonAccessoryInputs(void) {
+	static NSHashTable *table;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+	return table;
+}
+
+NSString *neonInputAccessoryID(UIView *input) { return objc_getAssociatedObject(input, kNeonAccessoryIDKey); }
+
+static void setInputAccessoryID(UIView *input, const char *value) {
+	NSString *key = value[0] ? [NSString stringWithUTF8String:value] : nil;
+	objc_setAssociatedObject(input, kNeonAccessoryIDKey, key, OBJC_ASSOCIATION_COPY_NONATOMIC);
+	if (key) [neonAccessoryInputs() addObject:input];
+	else [neonAccessoryInputs() removeObject:input];
+	if (neonApplyInputAccessory) neonApplyInputAccessory(input);
 }
 
 static const void *kNeonRotationKey = &kNeonRotationKey;
@@ -1304,6 +1510,20 @@ void niMeasureText(void *label, float maxWidth) {
 
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
+
+static CGRect g_measurement;
+int32_t niMeasureInWindow(void *view) {
+	g_measurement = CGRectZero;
+	UIView *v = (__bridge UIView *)view;
+	if (!v.window) return -1;
+	if (v.hidden) return 0;
+	g_measurement = [v convertRect:v.bounds toView:v.window];
+	return 1;
+}
+double niMeasurementX(void) { return g_measurement.origin.x; }
+double niMeasurementY(void) { return g_measurement.origin.y; }
+double niMeasurementW(void) { return g_measurement.size.width; }
+double niMeasurementH(void) { return g_measurement.size.height; }
 
 // --- events ---
 

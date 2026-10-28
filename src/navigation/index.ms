@@ -2,18 +2,30 @@ export {
 	NavigatorKind,
 	DrawerAction,
 	TabBarIconProps,
+	DrawerType,
+	HeaderItemProps,
+	HeaderTitleProps,
 	ScreenOptions,
 	mergeOptions,
 	NavTarget,
 	NavigateActionOptions,
 	RouteKey,
 	NavigationState,
+	NavigationHistoryItem,
 	NavigationRoute,
 	NavigatorLink,
 	ScreenScope,
 	ContainerState,
 	ScopeContext,
 	Route,
+	RouteProp,
+	routeProp,
+	ParamSlot,
+	ScreenParams,
+	ScreenCodec,
+	ScreenParamsBuilder,
+	ParamsArgs,
+	NavigateArgs,
 	ScreenProps,
 	ScreenConfig,
 	ResetRoute,
@@ -29,9 +41,10 @@ export {
 	useRoute,
 	useIsFocused,
 	useFocusEffect,
+	usePreventRemove,
+	getFocusedRouteNameFromRoute,
 	useNavigationState,
 	StackAnimation,
-	StackPresentation,
 	HeaderTitleAlign,
 	useLinkTo,
 	useTheme,
@@ -68,11 +81,13 @@ export {
 	TabBarPosition,
 	createBottomTabNavigator,
 	createMaterialTopTabNavigator,
-	TAB_INACTIVE,
+	TabBackBehavior,
 } from "./tabs";
+export { TAB_INACTIVE, TabTrigger, TabBar, useTabs } from "./tabBar";
 export {
 	DrawerNavigator,
 	DrawerPosition,
+	DrawerStatus,
 	createDrawerNavigator,
 	DRAWER_WIDTH,
 	DRAWER_DURATION,
@@ -104,12 +119,17 @@ export {
 	ParamsCodec,
 	GuardAction,
 	GuardDecision,
+	Reply,
+	ReplyInit,
 	proceed,
 	redirect,
+	reload,
 	notFound,
 	RouteNode,
 	RouteDef,
 	RouteOptions,
+	RouteDataOptions,
+	RouteSectionProps,
 	PathOptions,
 	RouteEntry,
 	MatchedRoute,
@@ -120,6 +140,7 @@ export {
 	path,
 	hrefOf,
 	paramsOf,
+	sectionProps,
 	createRouteTree,
 } from "./route";
 export {
@@ -140,7 +161,7 @@ export { ChildStack, createChildStack } from "./childStack";
 export { BackBehavior, Pages, ChildPages, createChildPages } from "./childPages";
 export { ChildSlot, createChildSlot } from "./childSlot";
 export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
-export { renderStack, renderStackTop, renderPages } from "./childView";
+export { PanelsLayout, StackPresentation, renderStack, renderStackTop, renderPages, renderPanels } from "./childView";
 export {
 	LayoutProps,
 	RouteNavigator,
@@ -149,10 +170,15 @@ export {
 	RouteConfig,
 	RouteRef,
 	RouteView,
+	RouteComponent,
+	componentOf,
 	Routes,
 	RouterLocation,
+	PreloadArgs,
+	PreloadIntent,
 	RouterResponse,
 	NavigateOptions,
+	ToOptions,
 	Router,
 	createRoutes,
 	createRouter,
@@ -180,3 +206,5 @@ export {
 	childPanelsWebNavigation,
 } from "./webNavigation";
 export { WebHistory, createWebHistory } from "./webHistory";
+export { hashKey, queryKey, query, revalidate, createAsync } from "./data";
+export { Action, ActionOptions, FormData, Submission, action, formAction, submitForm, useAction, useSubmission, useSubmissions } from "./action";

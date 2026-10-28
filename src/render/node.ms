@@ -11,8 +11,7 @@ import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, BUILT_IN_PLACE, makeRow, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
 import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, unclaimed, claimMark, claimRewind, ClaimMark } from "./claim";
-import { getOwner } from "../core/runtime";
-import { isServer } from "./environment";
+import { getOwner, isServer } from "../core/runtime";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";
@@ -27,6 +26,7 @@ export interface VAttr {
 export interface VEvent {
 	name: string;          // raw JSX name, e.g. "onPress" (host maps to "click")
 	handler: (e: NeonEvent) => void;
+	lifecycle?: ((e: NeonEvent) => void) | null;
 }
 
 // Where a region's rows are built. A row is built when its rows memo makes it (Solid flow.ts:226, map.ts:362),
@@ -81,7 +81,21 @@ export function hostElement(
 			}
 		}
 		if (style !== null) { bindStyleAll(host, node, style as () => Style); }
-		for (const e of events) { host.addEvent(node, e.name, e.handler); }
+		for (const e of events) {
+			const lifecycle = e.lifecycle;
+			const listener = e.handler;
+			if (lifecycle === null) { host.addEvent(node, e.name, listener); }
+			else {
+				const addPhases = host.addEventPhases;
+				if (addPhases !== null) { addPhases(node, e.name, lifecycle, listener); }
+				else {
+					host.addEvent(node, e.name, (event: NeonEvent): void => {
+						lifecycle(event);
+						listener(event);
+					});
+				}
+			}
+		}
 		if (children !== null) { (children as NeonNode)(host, node, null); }
 		if (ref !== null) { applyRef(node, ref as RefFn); }
 		place(host, parent, node, before);
@@ -108,7 +122,7 @@ export function dynText(thunk: () => string): NeonNode {
 
 export function newHolder(host: Host): HostNode {
 	let holder: HostNode | null = null;
-	unclaimed(host, (): void => { holder = host.createElement("view"); });
+	unclaimed(host, (): void => { holder = host.createElement("holder"); });
 	return holder as HostNode;
 }
 
@@ -231,11 +245,12 @@ export function regionNode(fn: RegionFn): NeonNode {
 		const home = regionHome(host, parent, anchor);
 		let current: Row[] = [];
 		let mounted = false;
+		let mounting = true;
 		const rows = fn(host, home);
 		createRenderEffect<Row[]>(
 			(prev: Row[] | null): Row[] => rows(),
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
-				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
+				const at = mounted || !mounting ? regionParent(host, anchor, "regionNode") : parent;
 				reconcileArrays(host, at, current, next, anchor, "regionNode");
 				settleStaged(host, home);
 				mounted = true;
@@ -245,6 +260,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 		);
 		home.first = false;
 		sealRegion(host, parent, anchor);
+		mounting = false;
 	};
 }
 
@@ -253,7 +269,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 // the component vocabulary in src/components/primitives.ms; hosts receive the lowercase wire
 // tag and translate (browser: this table; terminal: its boxes; void ignores).
 export function htmlTagFor(tag: string): string {
-	if (tag === "view") { return "div"; }
+	if (tag === "view" || tag === "holder") { return "div"; }
 	if (tag === "text") { return "span"; }
 	if (tag === "textinput") { return "input"; }
 	if (tag === "pressable") { return "button"; }

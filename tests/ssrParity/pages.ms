@@ -12,7 +12,7 @@ import { Accessor, createSignal } from "../../src/core/signal";
 import { createList } from "../../src/core/list";
 import { createUniqueId } from "../../src/core/owner";
 import { page } from "../edge/pages";
-import { respond } from "../../examples/site/server";
+import { answer } from "../../examples/site/server";
 
 const styles = createStyles({ row: { padding: 8, flexDirection: "row" }, label: { color: "#334", fontSize: 14 } });
 
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
 		console.log("== edge " + path + "\n" + page(path));
 	}
 	for (const url of ["/", "/docs/start", "/docs/routing?x=1#top", "/docs/missing", "/nowhere", "/docs/start/"]) {
-		const r = await respond(url);
+		const r = await answer(url);
 		console.log("== site " + url + " " + r.status.toString() + " " + (r.location ?? "") + "\n" + r.body);
 	}
 	await dumpAwaited("async", asyncPage());

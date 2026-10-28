@@ -5,6 +5,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/location.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@passL("-framework CoreLocation");
 } else when (android) {
 	androidLibrary("../android/geolocation");

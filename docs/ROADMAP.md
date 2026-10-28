@@ -261,8 +261,14 @@ Pro simulator, iOS 26.5 (`ApisUITests`: UIAlertController choice, copy/paste, th
 Copy resolving `sharedAction`, keyboard dismiss, AppState `inactive>background>active` through
 Home and through `Linking.openSettings`). The Android build and install of the demo succeeded on
 the Seeker; the device lane `tests/android/apis.py` is pending because the phone stayed locked.
+`ActionSheetIOS` (`showActionSheetWithOptions`, `dismissActionSheet`) and `Settings` (`get`, `set`,
+`watchKeys`, `clearWatch`) are iOS only, ported from react-native `693e9628e8c`: off iOS `ActionSheetIOS`
+throws "not available on this host" (RN's "ActionSheetManager doesn't exist") and `Settings` warns and
+answers null or -1 (RN's `SettingsFallback`). `anchor` is accepted and the sheet is centered;
+`showShareActionSheetWithOptions` is not ported (`Share.share` lacks excluded activity types).
+Proven by `tests/api/iosApis.test.ms` (6, native and JS); the device cases are in `ApisUITests`, not yet run.
 Not verified: vibration on any device (the simulator has none), a screen reader, `tel:` on a
-real phone (the simulator cannot open it), url events (P7).
+real phone (the simulator cannot open it), url events on iOS (P7; Android passes on the emulator lane of 2026-10-22).
 
 Bundle 3 components, 2026-10-07 night (`wt/rn-ui-comps`, msc `0d83c4867`): `Modal` (over Solid's
 `Portal`), `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar`, `ImageBackground`,
@@ -331,12 +337,13 @@ and a merged JSON item survive terminate and relaunch, NetInfo reads wifi/connec
 location alert is answered and `getCurrentPosition` reads the simulated 10.7769,106.7009, a watch
 reports fixes, the notification alert is answered, a 2 s notification reaches the received listener
 and the handler, and a banner tapped from the home screen reaches the response listener. Android:
-the demo's APK builds (`tests/android/devicemodules.sh --build-only`); the lane
-`tests/android/devicemodules.py` is written but not run (the Seeker is locked). Provisional choices
-are rows D1–D8 of `WORKAROUND.md`. Not verified: any module on an Android device or emulator,
+`tests/android/devicemodules.sh` passes on a Pixel 9 Pro emulator, Android 16 (2026-10-22,
+`wt/android-new-intent`): storage survives a relaunch, a watch reports fixes, a notification
+launch is `getLastNotificationResponseAsync()`, a tap while the app is alive reaches the response
+listener in the same process, and a url intent reaches `Linking`'s listener. Provisional choices
+are rows D1–D8 of `WORKAROUND.md`. Not verified: any module on a physical Android device,
 haptics felt (the simulator has none), battery on a device, a network change event on a device,
-camera and microphone requests (only their refusal path is tested), notification taps while an
-Android app is alive (needs Ion's `onNewIntent`, P7).
+camera and microphone requests (only their refusal path is tested).
 
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
@@ -520,8 +527,9 @@ executes ready items in the approved scope; external blockers stay with their ow
 No repeated unchanged submission demos or inferred protected-contract permissions.
 
 - [x] ~~Inventory the Void baseline~~ — `docs/voidComponents.md`, 37 rows at Void d255ffb.
-- [ ] Consume compiler fixes and make the original sixteen Scene3D cases and authored
-  enum/spread/Result consumers run on the installed toolchain; preserve their expressions.
+- [ ] Consume compiler fixes and make the authored enum/spread/Result consumers run on the
+  installed toolchain; preserve their expressions. The original sixteen Scene3D cases run
+  (`docs/VISION.md` "Inside a Void area", 2026-10-22).
 - [x] ~~Route raw/UI through actual VoidNode parent/order/cleanup and existing wake~~ —
   scoped CPU pins; raw excluded Yoga/flowText, UI islands reuse Yoga. Runtime proof
   is not scene presentation; partial-mount follow-up remains in BUGS.md.
@@ -536,18 +544,32 @@ No repeated unchanged submission demos or inferred protected-contract permission
   (pins `tests/platform/voidLayerOrder.test.ms`, `tests/device/voidLayerOrder.ms`); a layer
   inside a clipping View is not clipped yet. Host/embed/window prerequisites
   consumed; raw kinds belong this arc, closed host arc owns no new work.
-- [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,
-  fresh bounds and observed output. Keep existing core/style/text/filter coverage.
+- [ ] Finish raw2D gaps: texture upload/replacement, fresh bounds and observed output.
+  Anim binders (2D-05) and borrowed textured Graphics fills (2D-06) are built. Keep
+  existing core/style/text/filter coverage.
 - [x] ~~Prove resource-bearing Gltf rollback/remount/terminal cleanup~~ — real textured
   five-mesh Metal consumer12 frames, CPU material/uniform rollback; no pixels/Ion claim.
-- [ ] Finish remaining 3D resource lifecycle: Material/Light binders and mesh/material/
-  texture replacement. Preserve owner APIs and borrowing/atomic replacement contracts.
-- [ ] Map transform/baked animation and particles. Decide Billboard ownership before
-  implementing its proposed owned15-float/coalesced-upload route.
-- [ ] Map renderer settings, pixel-art/palette, directional shadows and moving materials
-  through existing Void renderers, with internal clocks and resource recovery.
-- [ ] Integrate picking and composition: topmost-first dispatch in paint order, camera-scoped2D, and
+- [x] ~~Scene3D host and extension API~~ — Show/For order and moves, Errored parking,
+  `<Node id>`, `useScene3D`/`useSceneNode`; borrowed Gltf assets, `gltfScope`, shared Mesh
+  geometry; reactive Mesh material and Light color/radius/priority (`docs/voidComponents.md`
+  3D-02/03/04/09/15).
+- [ ] Finish remaining 3D resource lifecycle: declarative Material/Texture, light-kind
+  change (Void has no binder). Preserve owner APIs and borrowing/atomic replacement contracts.
+- [x] ~~Map transform/baked animation, glTF clips and particles~~ — ObjectAnimation,
+  MeshFrameAnimation, Clip (with skinned playback), Particles, Lod, Text3D
+  (3D-11/12/13/22/23/24/25).
+- [ ] Billboards (3D-14): waits on a Void-owned instance stream
+  (`~/metascript/.inbox/void/2026-10-22-owned-billboard-instance-stream.md`).
+- [ ] Map renderer settings: hdr/bloom/toneMapping/exposure, directional shadows and
+  moving-material time are built (3D-16/18/19); pixel-art/palette (3D-17) remains.
+- [ ] Integrate picking and composition: 2D topmost-first press/hover dispatch and layer
+  hits are built (2D-15); a Scene2D draws into a mesh texture through RenderTexture (3D-07).
+  Remaining: 3D pointer events and camera controls, camera-scoped 2D, and
   View/Text/Pressable in a mesh texture with UV-to-UI input.
+- [x] ~~Frame and failure plumbing~~ — `useFrame`, per-area `voidClock`, `<Void fallback>`,
+  layer errors routed to the owner's Errored (X-01, X-03).
+- [ ] Run Scene2D Anim, Particles and useFrame on the one per-area clock that already
+  drives ObjectAnimation, MeshFrameAnimation and Clip (X-03).
 - [ ] Observe the real Ion/Windows consumer: reactive pixels and idle sleep, not merely
   CPU checks or Metal submissions.
 - [ ] Gate and land verified slices: affected checks, full gate before source land and

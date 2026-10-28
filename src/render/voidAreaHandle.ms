@@ -1,4 +1,5 @@
 import { NeonEvent } from "./event";
+import { RaiseError, createErrorRoute } from "../core/boundary";
 
 export enum AreaKeyAction {
 	Release,
@@ -44,8 +45,7 @@ export struct AreaPointerEvent {
 	pressed: boolean;
 	dx: float64;
 	dy: float64;
-	pixelDx: float64;
-	pixelDy: float64;
+	deltaMode: number;
 	mods: BitSet<AreaKeyMod>;
 }
 
@@ -125,10 +125,12 @@ export interface AreaLayer {
 	layout: (pixelWidth: int32, pixelHeight: int32) => void;
 	prepare: (pixelWidth: int32, pixelHeight: int32) => void;
 	draw: () => void;
+	hit?: ((x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean) | null;
 }
 
 export interface AreaHub {
 	handle: VoidAreaHandle;
+	enter: (mount: () => void) => void;
 	addLayer: (layer: AreaLayer) => Unsubscribe;
 	layers: () => AreaLayer[];
 	layoutLayers: (pixelWidth: int32, pixelHeight: int32) => void;
@@ -148,6 +150,25 @@ export interface AreaOps {
 	initialPixelHeight: int32;
 	requestFrame: () => void;
 	setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32) => void;
+	enter?: ((mount: () => void) => void) | null;
+}
+
+class LayerGuard {
+	raise: RaiseError | null = null;
+	stopped: boolean = false;
+}
+
+function attempt(guard: LayerGuard, step: () => void): boolean {
+	try {
+		step();
+		return true;
+	} catch (e) {
+		const raise = guard.raise;
+		if (raise === null) { throw e; }
+		guard.stopped = true;
+		raise(e);
+		return false;
+	}
 }
 
 export function createAreaHub(ops: AreaOps): AreaHub {
@@ -161,6 +182,11 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 	let height = ops.initialPixelHeight;
 	let scale: float32 = 1.0;
 	let layers: AreaLayer[] = [];
+	let guards: LayerGuard[] = [];
+	const live = (layer: AreaLayer): LayerGuard | null => {
+		const i = layers.indexOf(layer);
+		return i < 0 || guards[i].stopped ? null : guards[i];
+	};
 	let prepared: AreaLayer[] = [];
 	return {
 		handle: {
@@ -176,11 +202,21 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			onFocus: focuses.add,
 			setImeRect: ops.setImeRect,
 		},
+		enter: ops.enter !== null ? ops.enter as (mount: () => void) => void : (mount: () => void): void => { mount(); },
 		addLayer: (layer: AreaLayer): Unsubscribe => {
+			const guard = new LayerGuard();
+			guard.raise = createErrorRoute((): void => {
+				guard.stopped = false;
+				ops.requestFrame();
+			});
 			layers.push(layer);
+			guards.push(guard);
 			return (): void => {
 				const i = layers.indexOf(layer);
-				if (i >= 0) { layers.splice(i, 1); }
+				if (i >= 0) {
+					layers.splice(i, 1);
+					guards.splice(i, 1);
+				}
 			};
 		},
 		layers: (): AreaLayer[] => layers,
@@ -192,18 +228,19 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 		prepareLayers: (due: AreaLayer[], pixelWidth: int32, pixelHeight: int32): void => {
 			prepared = [];
 			for (const layer of due) {
-				if (layers.indexOf(layer) < 0) { continue; }
-				layer.prepare(pixelWidth, pixelHeight);
-				prepared.push(layer);
+				const guard = live(layer);
+				if (guard === null) { continue; }
+				if (attempt(guard, (): void => { layer.prepare(pixelWidth, pixelHeight); })) { prepared.push(layer); }
 			}
 		},
 		drawLayers: (before: (layer: AreaLayer) => void): void => {
 			const due = prepared;
 			prepared = [];
 			for (const layer of due) {
-				if (layers.indexOf(layer) < 0) { continue; }
+				const guard = live(layer);
+				if (guard === null) { continue; }
 				before(layer);
-				layer.draw();
+				attempt(guard, (): void => { layer.draw(); });
 			}
 		},
 		key: keys.emit,
@@ -225,6 +262,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			focuses.clear();
 			resizes.clear();
 			layers = [];
+			guards = [];
 			prepared = [];
 		},
 	};

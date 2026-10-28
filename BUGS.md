@@ -14,6 +14,10 @@ code, answers that.
 **Rule for this file:** every number is a measurement with the command that produced it. A row that
 cannot be reproduced is re-measured and rewritten, never corrected on top.
 
+Baseline compatibility findings and later scoped regression pointers are indexed in
+[the dated RN/Flutter primitive audit](docs/PRIMITIVE-COVERAGE.md).
+Historical risk labels are not automatically open runtime rows or whole-host parity claims.
+
 ---
 ## §3 — Neon-side and environment
 
@@ -33,7 +37,33 @@ and the invariants that outlived them were moved to the head of the test that pi
   worktree than in the main checkout. `msc build --target=js tests/apps/bundlePlainApp.ms` at Neon
   `c7230e4a`, msc `807d96ef7`: 806041 bytes in `/Users/le/metascript/neon`, 891932 bytes in an export
   under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
-  passes in another for no change in the code.
+  passes in another for no change in the code. Native sizes move too: main `ccfd0c15`, msc `38009de37`,
+  measures `bundleMacosApp` 2000484 bytes in `neon-wt-rn-navigation-prod` (8 over its budget 2000476) and
+  2000452 in `neon-wt-rn-navigation-prod-lane-c`.
+- **OPEN 2026-10-26 — the size budgets are red on msc 32b8ce353.** The compiler grew every bundle:
+  `bundleTerminalApp` 558428 → 831184, `bundleMacosApp` 2012336 → 2336432, `bundlePlainApp` 734277 →
+  768568 on web-train-3 between the msc before and 32b8ce353; main ea4a6977 measures terminal 831176,
+  8 bytes under web-train-3. 131072 bytes of it are the actor pid table in an app with no actor. The
+  budgets stay until the compiler card `2026-10-26-terminal-app-links-actor-pid-table-and-grew-200kb.md`
+  is answered, since terminal size is the deliverable.
+- **OPEN 2026-10-26 — `tests/ssrParity/run.sh` C server aborts.** `pages.server` built with `-d:server`
+  on C panics `load of value 112, which is not valid for type 'MS_BOOL'` in `msAsyncStepAs`
+  (`runtime/promise/dispatchFull.c:1299`), msc 32b8ce353, on main and on web-train-3 alike; the JS
+  server lane of the same pages passes. Reduced 2026-10-26: `serve()`'s `finally` resumed after an
+  `await` calls `Router.dispose()` through a temporary assigned only on the early-return path; card
+  `2026-10-19-c-async-finally-after-a-return-reads-a-wild-pointer.md` (second sighting).
+- **OPEN 2026-10-26 — `tests/core/store.test.ms` segfaults on C.** `msc test tests/core/store.test.ms`
+  ends `test binary terminated by signal 11` on msc 32b8ce353, on main ea4a6977 and on web-train-3
+  alike; it passed on the msc before. JS not affected. Reduced 2026-10-26: the cycle collector frees a live
+  `Computation` because a generic subclass built in a generic method traces its inherited fields twice; card
+  `2026-10-26-a-generic-subclass-built-in-a-generic-method-traces-its-inherited-fields-twice-and-orc-frees-live-objects.md`.
+
+- **OPEN 2026-10-27 — the iPhone booking form keeps its check-in date.** `ControlsUITests.testBookingForm`
+  (`IOS_DEVICE=<udid> tests/ios/iphone.sh ControlsUITests:controls`, iPhone 13 Pro, iOS 27.0.1) fails
+  after the date step's "OK": "expected check-in … to contain 2026-10-24; it reads check-in 2026-10-09 at
+  15:00". Red on an export of main a3cf1463 and on `wt/rn-components` alike, msc 32b8ce353; the form moved
+  onto neon-ui's controls in 4857e536. Not traced. The steps after it (the accessibility value, hidden and
+  adjustable checks of `wt/rn-components`) do not run until it is green.
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
@@ -107,20 +137,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   cell was red. The last frame of the animation is not guaranteed inside a wall-clock window,
   so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
   animation driver drops its final frame or the test should wait for the end event.
-
-- **OPEN 2026-10-13 — `renderToString` writes `image`, `modal`, `slider`, `picker`,
-  `datetimepicker`, `svg` and the media tags as unknown or attribute-heavy elements, and
-  `hydrate` refuses them.** `ScrollView`, `Text numberOfLines`, `Switch`, `ActivityIndicator` and
-  multiline `TextInput` were closed on this branch (`tests/browser/ssrMarkup.test.ms`,
-  `tests/browser/hydrate.test.ms`). Measured in Chrome with `renderToString` against `domHost()`:
-  `image` server `<image source resizeMode aria-label>` against `<img class="neon-image" src
-  data-resize alt aria-label>`; `modal` `<modal visible animationType>` against `<div
-  class="neon-modal" role="dialog" aria-modal="true">`; `slider` `<slider value minimumValue …>`
-  against `<input type="range" min max step>`; `picker` `<picker items selectedIndex>` against
-  `<select><option>…`; `datetimepicker` against `<input type="time">`; `svg` `<svg displayList>`
-  against `<svg class="neon-view" data-neon-svg>` with its markup; `video`, `webview`, `camera`
-  against `<video class="neon-video" playsinline src>`, `<iframe class="neon-webview">`,
-  `<video class="neon-camera" playsinline muted autoplay>`.
+  On 2026-10-25, msc v0.3.4 `00bcf1a39`, load 24–35: an export of main `b7ed4537` failed 2 of 5 runs
+  (`118`, `0`), `wt/rn-components` 0 of 5, and the full gate on `637c8879` red with `118`.
 
 - **OPEN 2026-10-13 — `ActivityIndicator color` never reaches the element.** `writeControlAttr`
   sets `el.style.color`, and the colour is gone after the mount (not traced to the write that
@@ -211,12 +229,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
-- **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
-  The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
-  back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose
-  swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
-  not traced yet.
-
 - **PARKED 2026-10-19 — the sokol canvas under `-d:voidGlCore` draws every frame.** Not Neon's: Void's
   `bridgeWin.c` `_frame` asks `sapp_skip_present()` for a frame that drew nothing, and sokol_app honours it only
   in `_sapp_d3d11_present` (`void/deps/sokol/sokol_app.h:9128`); the WGL swap presents regardless, so a skipped
@@ -239,6 +251,39 @@ and the invariants that outlived them were moved to the head of the test that pi
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
   `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
 
+- **PARKED 2026-10-20 — a function-valued store field reads back as a proxy.** Not Neon's: the store
+  wraps a field when `isObject<V>()`, which std/typetraits answers `true` for a function and a class,
+  and calling the resulting `Proxy` passes the checker. `tests/core/storeFunctionField.parked.ms` does
+  not compile. Cards `~/metascript/.inbox/compiler/2026-10-20-typetraits-cannot-tell-a-plain-record-from-a-function-or-a-class.md`
+  and `2026-10-20-calling-a-proxy-of-a-function-passes-the-checker.md`.
+- **PARKED 2026-10-20 — one array under two store keys is two stores.** Not Neon's: `StoreRoot.targets`
+  is a type-erased `Map<unknown, ChildBase>`, and `unknown` holds no array by design (LANG.md
+  §`unknown`), so `StoreTraps.child` finds a nested array by its position, not by the array itself as it
+  does a record. A typed `Map<V[], …>` keys an array by identity since msc `dcfd89f2b`, but neither a
+  generic static nor an `instanceof` of a generic instance can reach one per element type from the
+  root. `tests/core/storeArrayIdentity.parked.ms` fails (`seen: 1`, msc `e6f2ba041`). It waits on the
+  same erased lookup as the row below: design card
+  `~/metascript/.inbox/compiler/2026-10-20-design-a-weak-map-keyed-by-object-identity.md`.
+- **PARKED 2026-10-20 — a store keeps every record it has served until the store is dropped.** Not
+  Neon's: std has no `WeakMap`, so `StoreRoot.targets` is a strong `Map`. Design card
+  `~/metascript/.inbox/compiler/2026-10-20-design-a-weak-map-keyed-by-object-identity.md`.
+- **PARKED 2026-10-24 — a store setter's or a derive's returned value is dropped.** Not Neon's: Solid 2.0
+  types the callback `(draft: T) => T | void` (`packages/signals/src/store/types.ts:27`), and msc
+  `6b8655024` refuses `T | void` at the declaration, while `T | null` refuses a callback that only
+  writes the draft (`lacks an ending return statement`). The callback stays `(draft) => void`, so
+  `setStore(() => next)`, `createStore(() => next, seed)` and `createProjection(() => next, seed)`
+  compile and ignore `next`. `tests/core/storeDerivedReturn.parked.ms` fails `first` on C. Design card
+  `~/metascript/.inbox/compiler/2026-10-15-void-member-of-a-union-passes-the-checker-and-dies-at-clang.md`.
+- **PARKED 2026-10-24 — a callback array method on a draft or store of records does not compile.** Not
+  Neon's: std's trap steps type the element as the array's `E` (`ProxyGet<E, H>`,
+  `std/core/proxy/index.ms:97`), so a handler whose `get` returns the wrapped `Draft<E>` is refused at
+  `draft.findIndex(…)` (`Type 'Proxy<Todo, DraftTraps<Todo>>' is not assignable to type 'Todo'`, msc
+  `6b8655024`). `tests/core/storeDraftArrayCallback.parked.ms` does not compile. Card `~/metascript/.inbox/compiler/2026-10-24-proxy-array-callback-receives-the-raw-element-not-the-wrapped-one.md`.
+- **PARKED 2026-10-24 — `snapshot(state.user)` with `T` inferred does not build.** Not Neon's: a proxy
+  member access passed straight to a generic parameter never instantiates the handler's `get` (C:
+  `passing 'Doc' to parameter of incompatible type 'void *'`, msc `6b8655024`); a held local or
+  `snapshot<User>(…)` builds. `tests/core/storeSnapshotArgument.parked.ms` does not compile. Card
+  `~/metascript/.inbox/compiler/2026-10-24-generic-call-with-an-inferred-proxy-argument-never-instantiates-get.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
@@ -250,17 +295,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `bash tests/ios/run.sh` stops at `build-flatlist` on it (`examples/components/bigList.ms:117`, msc
   `807d96ef7`, 2026-10-20), after the counter and list apps generate and build.
   Parked at those two files.
-
-- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
-  form): `export const screen = createBreakpoints({ wide: 900 })`, and a sheet names it as a key,
-  `createStyles({ sidebar: { when: { [screen.wide]: { … } } } })`, so the checker sees `screen.wide`
-  and the macro reads 900 at expansion. Written on branch `park/breakpoints` (`89b2050`: web
-  `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
-  Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
-  `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
-  reaches a recursive one, so a provider tag stops compiling (`<Ctx.Provider>` when measured; the 2.0 tag `<Ctx value>` is not re-measured) (`tests/render/ssr.test.ms`, msc
-  `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
-  Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present

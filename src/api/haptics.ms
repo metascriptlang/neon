@@ -4,6 +4,8 @@ when (js && !server) {
 	import "../platform/browser/haptics";
 } else when (ios || android) {
 	import "../platform/native/haptics";
+} else when (macos || windows || linux) {
+	import "../platform/ion/haptics";
 }
 
 // Integer enums: MetaScript enums take integer initializers only, where expo's hold strings.

@@ -2,7 +2,7 @@ import { ClipboardServices, installClipboardServices } from "../../api/clipboard
 
 extern class BrowserClipboard {
 	extern readText(): Promise<string>;
-	extern writeText(text: cstring): Promise<void>;
+	extern writeText(text: string): Promise<void>;
 }
 
 extern class navigator {

@@ -65,7 +65,7 @@ function shows(root: MockNode, text: string): boolean {
 test "booking: every control feeds the summary, the dialog books with progress, the snackbar undoes into a toast" {
 	const root = mockNode("root");
 	const host = mockHost();
-	render(element(<BookingForm />), host, root as unknown as HostNode);
+	const dispose = render(element(<BookingForm />), host, root as unknown as HostNode);
 	const overlay = overlayOf(host);
 	assert shows(root, "status idle") && shows(root, "guests 2"), "initial: " + mockToString(root);
 	fireEvent(labelled(root, "Check-in date"), "onPress");
@@ -94,20 +94,24 @@ test "booking: every control feeds the summary, the dialog books with progress, 
 	assert shows(root, "extras breakfast") && shows(root, "payment cash"), "checkbox and radio: " + mockToString(root);
 	fireEvent(labelled(root, "Details"), "onPress");
 	flush();
-	assert shows(root, "details Suite for 5 guests from 2026-10-24 18:30"), "bottom sheet";
-	fireEvent(labelled(root, "Close"), "onPress");
+	assert shows(overlay, "details Suite for 5 guests from 2026-10-24 18:30"), "bottom sheet";
+	assert !shows(root, "details Suite"), "the sheet escapes the form";
+	fireEvent(labelled(overlay, "Close"), "onPress");
 	flush();
-	assert !shows(root, "details Suite"), "bottom sheet closed";
+	assert !shows(overlay, "details Suite"), "bottom sheet closed";
 	fireEvent(labelled(root, "Book"), "onPress");
 	flush();
-	assert shows(root, "Confirm booking"), "dialog open";
-	fireEvent(labelled(root, "Confirm"), "onPress");
+	assert shows(overlay, "Confirm booking") && !shows(root, "Confirm booking"), "dialog open outside the form";
+	fireEvent(labelled(overlay, "Confirm"), "onPress");
 	flush();
 	assert shows(root, "status booking") && byAttr(root, "accessibilityLabel", "Booking in progress") !== null, "progress shown: " + mockToString(root);
 	await sleepAsync(1800);
-	assert shows(root, "status booked") && shows(root, "Booked Suite for 5 guests"), "snackbar: " + mockToString(root);
+	assert shows(root, "status booked") && shows(overlay, "Booked Suite for 5 guests"), "snackbar: " + mockToString(overlay);
 	assert byAttr(root, "accessibilityLabel", "Booking in progress") === null, "progress gone";
-	fireEvent(labelled(root, "Undo"), "onPress");
+	fireEvent(labelled(overlay, "Undo"), "onPress");
 	flush();
-	assert shows(root, "status cancelled") && shows(root, "Booking cancelled"), "toast: " + mockToString(root);
+	assert shows(root, "status cancelled") && shows(overlay, "Booking cancelled"), "toast: " + mockToString(overlay);
+	dispose();
+	flush();
+	assert !shows(overlay, "Booking cancelled"), "owner cleanup removes the toast from its physical root";
 }

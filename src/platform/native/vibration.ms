@@ -4,6 +4,7 @@ import { niVibrationCommand } from "./commands.h";
 
 when (ios) {
 	@compile("../ios/vibration.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
 }
 

@@ -12,10 +12,11 @@ import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag, nmTextVisualX, nmLoop } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmTap, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag, nmTextVisualX, nmLoop } from "./nativeBridgeMock.h";
 import { ImageLoader } from "../../src/components/image";
 import { Dialog } from "../../src/components/dialog";
 import { Button } from "../../src/components/button";
+import { TouchableNativeFeedback, NativeFeedback } from "../../src/components/touchable";
 import { GalleryApp } from "../../examples/components/gallery";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
@@ -158,11 +159,11 @@ test "a native Text sends its fontFamily to its label, a span may not change the
 test "a native multiline TextInput without a height grows with its text up to maxHeight" {
 	const [notes, setNotes] = createSignal("");
 	const app = (): NeonNode => <View style={{ width: 200 }}>
-		<TextInput multiline={true} value={notes()} onChangeText={(t: string): void => { setNotes(t); }} style={{ maxHeight: 80 }} onLayout={(e: NeonEvent): void => {}} />
+		<TextInput multiline={true} value={notes()} accessibilityLabel="growing notes" onChangeText={(t: string): void => { setNotes(t); }} style={{ maxHeight: 80 }} onLayout={(e: NeonEvent): void => {}} />
 		<TextInput multiline={true} value={notes()} style={{ height: 40 }} />
 	</View>;
 	runApp(app);
-	const field = nmLastInputTag();
+	const field = nmTagWithProp("accessibilityLabel", "growing notes");
 	const empty = nmLayoutHeight(field);
 	nmControl(field, 0, "a line of text that wraps");
 	nmLoop();
@@ -231,7 +232,56 @@ test "a native Pressable writes hitSlop per edge and its Android ripple through 
 	const ripple = prop(button, "androidRipple");
 	nmTeardown();
 	assert first === "4,0,8,0" && second === "4,0,12,0", `per edge: ${first} ${second}`;
-	assert ripple === "#33000000,false,", "ripple: " + ripple;
+	assert ripple === "#33000000,false,,false,", "ripple: " + ripple;
+}
+
+test "a native TouchableNativeFeedback sends its background and foreground through the prop channel" {
+	const [foreground, setForeground] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<TouchableNativeFeedback useForeground={foreground()} onPress={(e: NeonEvent): void => {}}><Text>theme</Text></TouchableNativeFeedback>
+	</View>;
+	runApp(app);
+	const button = nmLastPressableTag();
+	const first = prop(button, "androidRipple");
+	setForeground(true);
+	flush();
+	const second = prop(button, "androidRipple");
+	nmTeardown();
+	runApp((): NeonNode => <View>
+		<TouchableNativeFeedback background={NativeFeedback.Ripple("#33112233", true, 20)} onPress={(e: NeonEvent): void => {}}><Text>ripple</Text></TouchableNativeFeedback>
+	</View>);
+	const ripple = prop(nmLastPressableTag(), "androidRipple");
+	nmTeardown();
+	assert first === ",false,,false,selectableItemBackground", "default is the theme selectable background: " + first;
+	assert second === ",false,,true,selectableItemBackground", "useForeground follows its signal: " + second;
+	assert ripple === "#33112233,true,20,false,", "Ripple: " + ripple;
+}
+
+test "a native Pressable writes the RN accessibility props and an accessibility action reaches onAccessibilityAction with its name" {
+	const [now, setNow] = createSignal(3);
+	let log = "";
+	const app = (): NeonNode => <View>
+		<Pressable role="slider" accessibilityValue={{ min: 0, max: 10, now: now(), text: "three, of ten" }}
+			accessibilityLiveRegion="assertive" importantForAccessibility="no-hide-descendants" accessibilityHint="Drag to change"
+			accessibilityActions={[{ name: "increment" }, { name: "magicTap", label: "Open it" }]} tabIndex={0}
+			onAccessibilityAction={(e: NeonEvent): void => { log += e.value + ";"; }}
+			onPress={(e: NeonEvent): void => {}}><Text>slide</Text></Pressable>
+	</View>;
+	runApp(app);
+	const slider = nmLastPressableTag();
+	const first = [prop(slider, "role"), prop(slider, "accessibilityValue"), prop(slider, "accessibilityLiveRegion"),
+		prop(slider, "importantForAccessibility"), prop(slider, "accessibilityHint"), prop(slider, "accessibilityActions"),
+		prop(slider, "focusable")].join("|");
+	setNow(4);
+	flush();
+	const second = prop(slider, "accessibilityValue");
+	nmControl(slider, 15, "increment");
+	nmControl(slider, 15, "magicTap");
+	nmLoop();
+	nmTeardown();
+	assert first === "slider|0,10,3,three, of ten|assertive|no-hide-descendants|Drag to change|increment\nmagicTap\tOpen it|true", first;
+	assert second === "0,10,4,three, of ten", second;
+	assert log === "increment;magicTap;", "the action name is the event value: " + log;
 }
 
 test "the native back press closes a shown Dialog through BackHandler" {
@@ -253,20 +303,20 @@ test "the native back press closes a shown Dialog through BackHandler" {
 test "the gallery's parity screen mounts natively and drives its rows" {
 	runApp(GalleryApp);
 	nmSystemInsets(59, 0, 34, 0);
-	nmTouch(nmTagWithProp("accessibilityLabel", "Open parity screen"), 2);
+	nmTap(nmTagWithProp("accessibilityLabel", "Open parity screen"));
 	nmLoop();
 	const opened = nmHasLabel("status: parity screen");
 	const joined = nmHasLabel("Terms apply to this gallery.");
-	nmTouch(nmTagWithProp("accessibilityLabel", "Edge to edge"), 2);
+	nmTap(nmTagWithProp("accessibilityLabel", "Edge to edge"));
 	nmLoop();
 	const edge = nmHasLabel("insets 59/34 · bar shown · image loading");
-	nmTouch(nmTagWithProp("accessibilityLabel", "Inside safe area"), 2);
+	nmTap(nmTagWithProp("accessibilityLabel", "Inside safe area"));
 	nmLoop();
 	const inside = nmHasLabel("insets 0/0 · bar shown · image loading");
-	nmTouch(nmTagWithProp("accessibilityLabel", "Slop target"), 2);
+	nmTap(nmTagWithProp("accessibilityLabel", "Slop target"));
 	nmLoop();
 	const slop = nmHasLabel("status: slop pressed");
-	nmTouch(nmTagWithProp("accessibilityLabel", "Open dialog"), 2);
+	nmTap(nmTagWithProp("accessibilityLabel", "Open dialog"));
 	nmLoop();
 	const back = nmAppEvent(1, "");
 	nmLoop();

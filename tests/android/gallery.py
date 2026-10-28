@@ -298,6 +298,11 @@ def parity(launched):
     sx1, sy1, sx2, sy2 = described_bounds("Slop target")
     adb("shell", "input", "tap", str(sx1 - (sx2 - sx1) // 2), str((sy1 + sy2) // 2))
     window, texts = wait_for("status: slop pressed")
+    for label, result in (("Foreground ripple", "foreground pressed"), ("Native feedback", "native feedback pressed")):
+        x1, y1, x2, y2 = described_bounds(label)
+        adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+        window, texts = wait_for("status: " + result)
+        print("NEON_ANDROID gallery-parity-ripple %s" % result)
     window, texts = press(texts, "OPEN DIALOG", "dialog open")
     window, texts = wait_for("Parity dialog")
     adb("shell", "input", "keyevent", "KEYCODE_BACK")

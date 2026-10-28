@@ -12,7 +12,7 @@ static NSString *call(NSString *name, NSString *arg) {
 		NSURL *url = [NSURL URLWithString:arg];
 		return url && [UIApplication.sharedApplication canOpenURL:url] ? @"1" : @"0";
 	}
-	if ([name isEqualToString:@"linking.initial"]) return @"";
+	if ([name isEqualToString:@"linking.initial"]) return niLinkingInitial();
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
 }

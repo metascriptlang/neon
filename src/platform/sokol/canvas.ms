@@ -1,8 +1,9 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
-import { AppEvent, onAppEvent, setTextInput, setImeRect } from "../../../../void/src/sokol/window";
-import { familyFont } from "../void/host";
+import { FontId } from "../../../../void/src/void2d/font";
+import { AppEvent, onAppEvent, setTextInput, setImeRect, safeArea, keyboardHeight } from "../../../../void/src/sokol/window";
+import { publishKeyboard, publishSafeArea } from "../../render/environment";
+import { canvasFont } from "./canvasFont";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { flush } from "../../core/runtime";
 import {
@@ -16,9 +17,18 @@ import {
 	syncTextInput,
 } from "../void/windowHost";
 import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
+import { androidLibrary } from "../../../../ion/src/android";
 
 @include("../../../../void/src/sokol/bridge.h");
+
+when (android) {
+	@compile("../../../../void/src/sokol/androidAppEntry.c");
+	@compile("../android/canvasApp.c");
+	androidLibrary("../../../../void/src/sokol/android/app");
+}
 
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function msRunOnce(timeoutMs: int32): boolean;
@@ -42,10 +52,12 @@ export interface CanvasOptions {
 	height: number;
 	font: string;
 	fontFamily: string | null;
+	fontBytes: uint8[] | null;
+	defaultFontBytes: uint8[] | null;
 }
 
 export function canvasOptions(width: number, height: number): CanvasOptions {
-	return { width, height, font: "assets/font.ttf", fontFamily: null };
+	return { width, height, font: "assets/font.ttf", fontFamily: null, fontBytes: null, defaultFontBytes: null };
 }
 
 interface Canvas {
@@ -129,6 +141,9 @@ function frameCanvas(): void {
 		deliverResize(area, width, height, scale as float64);
 		c.owed = true;
 	}
+	const inset = safeArea();
+	publishSafeArea(inset.top / scale, inset.right / scale, inset.bottom / scale, inset.left / scale);
+	publishKeyboard(keyboardHeight() / scale);
 	if ((!c.owed && skippedFrameKeepsPicture()) || width <= (0 as int32) || height <= (0 as int32)) { return; }
 	c.owed = false;
 	_drawn = _drawn + 1;
@@ -142,13 +157,12 @@ function frameCanvas(): void {
 
 export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
 	if (_canvas !== null) { throw new Error("runCanvas: this process already runs a canvas; sokol_app has one window"); }
-	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
-	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
-	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
+	const font = canvasFont(opts.font, opts.fontFamily, opts.fontBytes, opts.defaultFontBytes);
 	if (!font.ok) {
-		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
+		console.log(`neon: ${font.error}`);
 		return 3;
 	}
+	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
 	_canvas = { app, font: font.value, family, area: null, input: null, owed: true, dispose: null };
 	voidRun(opts.width as int32, opts.height as int32, initCanvas, frameCanvas);
 	const c = running();

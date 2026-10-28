@@ -221,6 +221,10 @@ the script fails on all four counts.
   `timerfd` on the main `ALooper` is armed for its next deadline after every JNI entry, and
   its callback runs one loop pass inside the host's layout batch (`src/platform/native/loop.c`).
   The reference instead woke an eventfd from a sleeping thread per timer.
+- **`nativeID` and `accessibilityLabelledBy`**: `nativeID` is kept per view (`A11y.NATIVE_IDS`) and
+  `accessibilityLabelledBy` resolves the first listed id to a view under the root when the node info is built, then
+  `setLabeledBy` (RN `BaseViewManager.java:310-330`, `ReactAccessibilityDelegate.kt:91-96`,
+  `ReactFindViewUtil.kt:findView`). Not checked on a device.
 
 ## 8. Sources — what was and was not verified
 

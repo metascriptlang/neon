@@ -7,9 +7,10 @@
 static msClosure s_app;
 static int g_event;
 static char *g_value;
-static char *g_reply;
 static int g_started;
 static NSString *g_state = @"active";
+static NSString *g_initialUrl = @"";
+static BOOL g_launched;
 
 static NSString *const FIELD = @"\x1f";
 static NSString *const RECORD = @"\x1e";
@@ -42,10 +43,21 @@ static UIWindow *keyWindow(void) {
 	return UIApplication.sharedApplication.windows.firstObject;
 }
 
-static UIViewController *presenter(void) {
+UIViewController *niPresenter(void) {
 	UIViewController *top = keyWindow().rootViewController;
 	while (top.presentedViewController) top = top.presentedViewController;
 	return top;
+}
+
+static NSString *flagText(BOOL on) {
+	return on ? @"1" : @"0";
+}
+
+// RCTAccessibilityManager.mm: one observer per status notification, the event carries the new state.
+static void observeFlag(NSString *name, NSNotificationName notification, BOOL (^state)(void)) {
+	[NSNotificationCenter.defaultCenter addObserverForName:notification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+		emit(NI_APP_ACCESSIBILITY, [@[name, flagText(state())] componentsJoinedByString:FIELD]);
+	}];
 }
 
 static void start(void) {
@@ -64,6 +76,16 @@ static void start(void) {
 	}];
 	[center addObserverForName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil queue:main usingBlock:^(NSNotification *n) {
 		emit(NI_APP_REDUCE_MOTION, UIAccessibilityIsReduceMotionEnabled() ? @"1" : @"0");
+	}];
+	observeFlag(@"boldTextChanged", UIAccessibilityBoldTextStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsBoldTextEnabled(); });
+	observeFlag(@"grayscaleChanged", UIAccessibilityGrayscaleStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsGrayscaleEnabled(); });
+	observeFlag(@"invertColorsChanged", UIAccessibilityInvertColorsStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsInvertColorsEnabled(); });
+	observeFlag(@"reduceTransparencyChanged", UIAccessibilityReduceTransparencyStatusDidChangeNotification, ^BOOL { return UIAccessibilityIsReduceTransparencyEnabled(); });
+	observeFlag(@"darkerSystemColorsChanged", UIAccessibilityDarkerSystemColorsStatusDidChangeNotification, ^BOOL { return UIAccessibilityDarkerSystemColorsEnabled(); });
+	[center addObserverForName:UIAccessibilityAnnouncementDidFinishNotification object:nil queue:main usingBlock:^(NSNotification *n) {
+		NSString *text = n.userInfo[UIAccessibilityAnnouncementKeyStringValue] ?: @"";
+		BOOL success = [n.userInfo[UIAccessibilityAnnouncementKeyWasSuccessful] boolValue];
+		emit(NI_APP_ACCESSIBILITY, [@[@"announcementFinished", text, flagText(success)] componentsJoinedByString:FIELD]);
 	}];
 }
 
@@ -102,7 +124,7 @@ static NSString *alert(NSString *arg) {
 			emit(NI_APP_ALERT, [@[alertId, index] componentsJoinedByString:FIELD]);
 		}]];
 	}
-	[presenter() presentViewController:controller animated:YES completion:nil];
+	[niPresenter() presentViewController:controller animated:YES completion:nil];
 	return @"";
 }
 
@@ -118,7 +140,7 @@ static NSString *share(NSString *arg) {
 		NSString *action = completed ? @"sharedAction" : @"dismissedAction";
 		emit(NI_APP_SHARE, [@[action, completed && type ? type : @""] componentsJoinedByString:FIELD]);
 	};
-	UIViewController *top = presenter();
+	UIViewController *top = niPresenter();
 	controller.popoverPresentationController.sourceView = top.view;
 	controller.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(top.view.bounds), CGRectGetMidY(top.view.bounds), 0, 0);
 	[top presentViewController:controller animated:YES completion:nil];
@@ -138,6 +160,28 @@ static NSString *imageSize(NSString *arg) {
 		emit(NI_APP_IMAGE_SIZE, [@[requestId, @(w).stringValue, @(h).stringValue, error ?: @""] componentsJoinedByString:FIELD]);
 	});
 	return @"";
+}
+
+NSString *niLinkingInitial(void) {
+	return g_initialUrl;
+}
+
+void niLinkingLaunched(NSDictionary *launchOptions) {
+	NSURL *url = launchOptions[UIApplicationLaunchOptionsURLKey];
+	if (url == nil) {
+		NSDictionary *activity = launchOptions[UIApplicationLaunchOptionsUserActivityDictionaryKey];
+		url = ((NSUserActivity *)activity[@"UIApplicationLaunchOptionsUserActivityKey"]).webpageURL;
+	}
+	g_initialUrl = url ? url.absoluteString : @"";
+}
+
+void niLinkingOpened(NSURL *url) {
+	if (!g_launched && [url.absoluteString isEqualToString:g_initialUrl]) return;
+	emit(NI_APP_URL, url.absoluteString);
+}
+
+void niLinkingActive(void) {
+	g_launched = YES;
 }
 
 static NSString *call(NSString *name, NSString *arg) {
@@ -163,12 +207,6 @@ static NSString *call(NSString *name, NSString *arg) {
 	}
 	if ([name isEqualToString:@"exitApp"]) return @"";
 	return niModuleCall(name, arg);
-}
-
-const char *niAppReply(NSString *reply) {
-	free(g_reply);
-	g_reply = strdup(reply.UTF8String ?: "");
-	return g_reply;
 }
 
 const char *niAppCall(const char *name, const char *arg) {

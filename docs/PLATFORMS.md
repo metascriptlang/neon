@@ -19,6 +19,7 @@ Two rules, the person's (2026-10-18/19):
 | Switch | yes | yes | yes | aborts | yes, colours ignored |
 | ActivityIndicator | yes | yes | yes | aborts | yes |
 | Modal | yes | yes | yes | aborts | yes, Escape closes |
+| InputAccessoryView | yes, above the keyboard | renders nothing | renders nothing | renders nothing | renders nothing |
 | WebView | yes | yes | yes, an iframe | aborts | yes |
 | Video | yes | yes | yes | aborts | yes |
 | CameraView | yes | yes | yes | aborts | yes; `facing` and `flash` not yet measured |
@@ -40,7 +41,18 @@ Where each cell is proved:
 Two hosts render a narrower set:
 - **The full-window `<Void>` host** (`src/platform/void/host.ms`) draws View, Text, TextInput and ScrollView, and renders
   any other tag as an empty group, without an error.
-- **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes.
+- **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes. It drops layout styles except `display: "none"`, which hides the view and its descendants as in React Native.
+
+## Device APIs on an Ion desktop host
+
+macOS and Windows install each of these when the app imports it (`src/platform/ion/`); any other device API throws `<API> is not available on this host`.
+
+| API | macOS and Windows | reference |
+|---|---|---|
+| Vibration | accepted, no effect | RN macOS `RCTVibration.mm:25` plays `kSystemSoundID_Vibrate`, which a Mac cannot do; react-native-web `Vibration/index.js` skips the call when `navigator.vibrate` is absent. RN macOS logs an error on `cancel` (`RCTVibration.mm:46`); Neon does not |
+| Haptics | accepted, no feedback | the browser host does the same where `navigator.vibrate` is absent; expo-haptics is not on disk, so its unsupported-platform behaviour is not read |
+| Notifications | an immediate one (`trigger: null`) posts through Ion's `notify`; a click is a response with the title, body and data posted under that id | a `trigger`, `content.badge`, cancel and dismiss throw naming the call; `subtitle` and `sound` are ignored; on macOS the process needs an app bundle (`~/metascript/.inbox/ion/2026-10-25-notify-aborts-a-process-outside-an-app-bundle.md`) |
+| NetInfo | throws | Ion has no network API; react-native-netinfo is not on disk |
 
 ## Accepted and ignored
 
@@ -48,6 +60,7 @@ Two hosts render a narrower set:
 |---|---|---|
 | macOS | Switch `thumbColor`, `trackColorOn`, `trackColorOff` | `NSSwitch` draws in the system accent colour and has no tint API; RN macOS's `RCTUISwitch : NSSwitch` cannot either |
 | macOS | ActivityIndicator `color` in an inactive window | the tint is a `CIColorPolynomial` filter and shows faintly while the window is inactive |
+| Android, Web, macOS, Windows | TextInput `inputAccessoryViewID` | only iOS has a keyboard accessory; RN's `InputAccessoryView.js:95-113` renders null elsewhere (and warns on Android, which Neon does not) |
 | macOS | dark mode, font scale | `niColorScheme` answers light and `fontScale` answers 1 (`docs/MACOS.md`, not measured) |
 
 Per-host differences that change behaviour rather than drop a prop are in `WORKAROUND.md`. M2 and M3 cover the pickers,

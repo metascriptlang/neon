@@ -4,14 +4,16 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
+import { useVoidClock } from "../render/voidClock";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
-import { AreaLayer } from "../render/voidAreaHandle";
+import { AreaLayer, AreaPointerKind } from "../render/voidAreaHandle";
+import { NeonEvent } from "../render/event";
+import { LONG_PRESS_DELAY_MS, pointerCancel, pressEvents } from "./pressability";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
-import { DEFAULT_FONT } from "../../../void/src/void2d/font";
+import { AreaTarget, getAreaFaceContext, getAreaTargetContext } from "../platform/void/areaScope";
 import { IconId } from "../../../void/src/void2d/icon";
 import {
 	Scene2D as VoidScene2D,
@@ -57,10 +59,12 @@ import {
 	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime, setTextDirection, setOutline,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode, tick, prepare, drawScreen, add } from "../../../void/src/void2d/scene";
+import { drawTarget } from "../../../void/src/void2d/scene";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
 import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayout";
+import { FontId } from "../../../void/src/void2d/font";
 import { TextDirection } from "../../../void/src/void2d/textDirection";
 import { labelTexts, NO_LABEL_TEXT, NO_CURSOR } from "../../../void/src/void2d/labelText";
 import { Mat4 } from "../../../void/src/math/math3d";
@@ -88,6 +92,12 @@ interface NodeProps {
 	filter?: Accessor<Filter> | null;
 	ref?: ((node: NodeRef) => void) | null;
 	children?: NeonNode | null;
+	onPress?: ((e: NeonEvent) => void) | null;
+	onPressIn?: ((e: NeonEvent) => void) | null;
+	onPressOut?: ((e: NeonEvent) => void) | null;
+	onLongPress?: ((e: NeonEvent) => void) | null;
+	onHoverIn?: ((e: NeonEvent) => void) | null;
+	onHoverOut?: ((e: NeonEvent) => void) | null;
 }
 
 interface GraphicsProps extends NodeProps {
@@ -208,12 +218,12 @@ interface LabelProps extends NodeProps {
 interface SceneClock {
 	watch: (node: NodeRef) => void;
 	wake: () => void;
-	stop: () => void;
 }
 
 interface SceneState {
 	host: VoidHost;
 	clock: SceneClock;
+	font: FontId;
 }
 
 interface ClockEntry { node: NodeRef; }
@@ -244,43 +254,17 @@ function clockActive(node: NodeRef): boolean {
 	};
 }
 
-function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
+function createSceneClock(vh: VoidHost): SceneClock {
 	const entries: ClockEntry[] = [];
-	let disposed = false;
-	let pending: int32 = 0;
-	let generation: int32 = 0;
-	let last: float64 = 0.0;
-	const active = (): boolean => {
-		for (const entry of entries) {
-			if (clockActive(entry.node)) { return true; }
-		}
-		return false;
-	};
-	const cancel = (): void => {
-		generation += 1;
-		if (pending !== 0) { cancelFrame(pending); pending = 0; }
-	};
-	const schedule = (): void => {
-		const token = generation;
-		pending = requestFrame((now: number): void => {
-			// cancelFrame cannot remove callbacks already copied into the due batch.
-			if (disposed || token !== generation) { return; }
-			pending = 0;
-			if (!active()) { return; }
-			const elapsed = Math.max(0.0, now - last);
-			last = now;
-			vh.scene.tick((elapsed / 1000.0) as float32);
-			invalidate();
-			if (active()) { schedule(); }
-		});
-	};
-	const wake = (): void => {
-		if (disposed) { return; }
-		if (!active()) { cancel(); return; }
-		if (pending !== 0) { return; }
-		last = frameNow();
-		schedule();
-	};
+	const wake = useVoidClock(
+		(): boolean => {
+			for (const entry of entries) {
+				if (clockActive(entry.node)) { return true; }
+			}
+			return false;
+		},
+		(seconds: float64): void => { vh.scene.tick(seconds as float32); },
+	);
 	return {
 		watch: (node: NodeRef): void => {
 			const entry: ClockEntry = { node };
@@ -288,7 +272,6 @@ function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
 			onCleanup((): void => { entries.splice(entries.indexOf(entry), 1); wake(); });
 		},
 		wake,
-		stop: (): void => { disposed = true; cancel(); },
 	};
 }
 
@@ -352,6 +335,32 @@ function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	}
 }
 
+function listen(vh: VoidHost, node: VoidNode, name: string, handler: ((e: NeonEvent) => void) | null): void {
+	if (handler !== null) { vh.host.addEvent(node, name, handler as (e: NeonEvent) => void); }
+}
+
+function bindPress(vh: VoidHost, node: VoidNode, props: NodeProps): void {
+	if (props.onPress === null && props.onPressIn === null && props.onPressOut === null &&
+		props.onLongPress === null && props.onHoverIn === null && props.onHoverOut === null) {
+		return;
+	}
+	const events = pressEvents({
+		onPress: props.onPress,
+		onPressIn: props.onPressIn,
+		onPressOut: props.onPressOut,
+		onLongPress: props.onLongPress,
+		onHoverIn: props.onHoverIn,
+		onHoverOut: props.onHoverOut,
+		delayLongPress: accessor((): number => LONG_PRESS_DELAY_MS),
+	}, pointerCancel);
+	listen(vh, node, "onPress", events.onPress);
+	listen(vh, node, "onPointerDown", events.onPointerDown);
+	listen(vh, node, "onPointerUp", events.onPointerUp);
+	listen(vh, node, "onPointerEnter", events.onPointerEnter);
+	listen(vh, node, "onPointerLeave", events.onPointerLeave);
+	listen(vh, node, "onPointerCancel", events.onPointerCancel);
+}
+
 function renderNode(
 	tag: string,
 	props: NodeProps,
@@ -368,6 +377,7 @@ function renderNode(
 					place(host, parent, wrapped, before);
 					bind(node);
 					bindNode(tag, node, props);
+					bindPress(vh, wrapped, props);
 					if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
 					const children = props.children;
 					if (children !== null) { children(host, wrapped, null); }
@@ -398,10 +408,11 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			const anchor = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-			const vh = createVoidHostWith(scene, DEFAULT_FONT, null, true);
+			const face = useContext(getAreaFaceContext());
+			const into = useContext(getAreaTargetContext());
+			const vh = createVoidHostWith(scene, face.font, face.family, true);
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			vh.onDirty(invalidate);
-			const clock = createSceneClock(vh, invalidate);
 			let backdrop: SceneBackdrop | null = null;
 			let prepared = false;
 			let backdropPrepared = false;
@@ -436,14 +447,37 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				draw: (): void => {
 					if (scene.closed || !prepared) { return; }
 					prepared = false;
-					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
-					scene.drawScreen();
+					if (into === null) {
+						if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
+						scene.drawScreen();
+					} else {
+						const target = (into as AreaTarget).target;
+						if (backdropPrepared && backdrop !== null) { backdrop.scene.drawTarget(target); }
+						scene.drawTarget(target);
+					}
+				},
+				hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => {
+					if (scene.closed) { return false; }
+					const button = e.button as int32;
+					return match (kind) {
+						AreaPointerKind.Button => e.pressed ? vh.pointerDown(x, y, button, e.mods) : vh.pointerUp(x, y, button, e.mods),
+						AreaPointerKind.Motion => vh.pointerMove(x, y, button, e.pressed, e.mods),
+						AreaPointerKind.Wheel => vh.wheel(x, y, e.deltaX as float32, e.deltaY as float32, e.deltaMode, e.mods),
+						AreaPointerKind.Leave => {
+							vh.pointerLeave();
+							return false;
+						},
+					};
 				},
 			};
 			const unregister = area.addLayer(layer);
+			if (into !== null) { (into as AreaTarget).drawers.push(layer); }
 			onCleanup((): void => {
-				clock.stop();
 				unregister();
+				if (into !== null) {
+					const drawers = (into as AreaTarget).drawers;
+					drawers.splice(drawers.indexOf(layer), 1);
+				}
 				if (backdrop !== null) { backdrop.scene.close(); }
 				invalidate();
 				const root = vh.root as VoidNode;
@@ -454,6 +488,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				root.disposed = true;
 				scene.close();
 			});
+			const clock = createSceneClock(vh);
 			if (props.clear !== null) {
 				const clear = props.clear as () => Color;
 				createRenderEffect<Color>(
@@ -504,7 +539,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				getVoidScopeContext().provider({
 					value: accessor(() => VoidSpace.Scene2D),
 					children: sceneScope.provider({
-						value: accessor((): SceneState => ({ host: vh, clock })), children: children,
+						value: accessor((): SceneState => ({ host: vh, clock, font: face.font })), children: children,
 					}),
 				})(vh.host, vh.root, null);
 			}
@@ -821,7 +856,7 @@ export function Label(props: LabelProps): NeonNode {
 			bindScene<[TextStyle | null, float32]>(
 				(): [TextStyle | null, float32] => [props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), props.size()],
 				(value: [TextStyle | null, float32]): void => {
-					const style = value[0] === null ? node.textStyle() : value[0] as TextStyle;
+					const style: TextStyle = value[0] === null ? { ...node.textStyle(), font: state.font } : value[0] as TextStyle;
 					node.setTextStyle({ ...style, size: value[1] });
 				},
 			);

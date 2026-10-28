@@ -1,4 +1,5 @@
-import { hydrate, HostNode } from "../../src/render/host";
+import { HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";

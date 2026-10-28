@@ -2,6 +2,10 @@ import { Accessor, accessor, createSignal } from "../core/signal";
 import { flush } from "../core/runtime";
 import { EventSubscription, onChange, Listeners } from "./subscription";
 
+when (macos || windows || linux) {
+	import "../platform/ion/appState";
+}
+
 export type AppStateStatus = "active" | "background" | "inactive" | "unknown" | "extension";
 export type AppStateEvent = "change" | "memoryWarning" | "focus" | "blur";
 

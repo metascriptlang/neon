@@ -19,6 +19,7 @@ import {
 	createStackNavigator,
 	useIsFocused,
 	useNavigation,
+	useRoute,
 } from "../../src/navigation/index";
 import { press, visibleText, findLabel } from "./navHarness";
 
@@ -26,9 +27,32 @@ interface ItemParams {
 	id: int32;
 }
 
-const Drawer = createDrawerNavigator<string>();
-const Tab = createBottomTabNavigator<string>();
-const HomeStack = createStackNavigator<ItemParams>();
+interface HomeParams {
+	List: null;
+	Detail: ItemParams;
+	Settings: null;
+	Search: null;
+}
+
+interface SearchParams {
+	query: string;
+}
+
+interface TabParams {
+	Home: null;
+	Search: SearchParams | null;
+	Profile: null;
+}
+
+interface DrawerParams {
+	Main: null;
+	Settings: null;
+	About: null;
+}
+
+const Drawer = createDrawerNavigator<DrawerParams>();
+const Tab = createBottomTabNavigator<TabParams>();
+const HomeStack = createStackNavigator<HomeParams>();
 
 let searchBodies = 0;
 let focusLog = "";
@@ -41,7 +65,7 @@ function counterScreen(name: string): NeonNode {
 	</View>;
 }
 
-function List(props: ScreenProps<ItemParams>): NeonNode {
+function List(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
 	const focused = useIsFocused();
 	const stopFocus = navigation.addListener("focus", (): void => { focusLog += "list+;"; });
@@ -56,9 +80,9 @@ function List(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function Detail(props: ScreenProps<ItemParams>): NeonNode {
+function Detail(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
-	const params = props.route.params;
+	const params = useRoute<HomeParams, "Detail">().params;
 	return <View>
 		<Text>{"detail " + (params() === null ? "-" : (params() as ItemParams).id.toString())}</Text>
 		<Pressable accessibilityLabel="to settings" onPress={(e: NeonEvent): void => { navigation.navigate("Settings"); }}><Text>s</Text></Pressable>
@@ -66,30 +90,33 @@ function Detail(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function Home(props: ScreenProps<string>): NeonNode {
+function Home(props: ScreenProps<TabParams>): NeonNode {
 	return <HomeStack.Navigator>
 		<HomeStack.Screen name="List" component={List} options={{ title: "Items" }} />
 		<HomeStack.Screen name="Detail" component={Detail}
-			parseParams={(values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 })} />
+			params={HomeStack.params.of("Detail", {
+				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
+			})} />
 	</HomeStack.Navigator>;
 }
 
-function Search(props: ScreenProps<string>): NeonNode {
+function Search(props: ScreenProps<TabParams>): NeonNode {
 	searchBodies += 1;
-	const navigation = useNavigation<string>();
+	const navigation = useNavigation<TabParams>();
+	const route = useRoute<TabParams, "Search">();
 	return <View>
 		{counterScreen("search")}
 		<Pressable accessibilityLabel="badge" onPress={(e: NeonEvent): void => { navigation.setOptions({ tabBarBadge: "5" }); }}><Text>b</Text></Pressable>
-		<Pressable accessibilityLabel="query" onPress={(e: NeonEvent): void => { navigation.setParams("neon"); }}><Text>q</Text></Pressable>
-		<Text>{"query " + (props.route.params() ?? "none")}</Text>
+		<Pressable accessibilityLabel="query" onPress={(e: NeonEvent): void => { route.replaceParams({ query: "neon" }); }}><Text>q</Text></Pressable>
+		<Text>{"query " + (route.params() === null ? "none" : (route.params() as SearchParams).query)}</Text>
 	</View>;
 }
 
-function Profile(props: ScreenProps<string>): NeonNode {
+function Profile(props: ScreenProps<TabParams>): NeonNode {
 	return counterScreen("profile");
 }
 
-function Main(props: ScreenProps<string>): NeonNode {
+function Main(props: ScreenProps<DrawerParams>): NeonNode {
 	return <Tab.Navigator>
 		<Tab.Screen name="Home" component={Home} options={{ headerShown: false }} />
 		<Tab.Screen name="Search" component={Search} />
@@ -97,11 +124,11 @@ function Main(props: ScreenProps<string>): NeonNode {
 	</Tab.Navigator>;
 }
 
-function Settings(props: ScreenProps<string>): NeonNode {
+function Settings(props: ScreenProps<DrawerParams>): NeonNode {
 	return counterScreen("settings");
 }
 
-function About(props: ScreenProps<string>): NeonNode {
+function About(props: ScreenProps<DrawerParams>): NeonNode {
 	return <Text>about</Text>;
 }
 
@@ -245,7 +272,7 @@ test "focus and blur reach a screen when its route, tab or drawer item changes" 
 	flush();
 	ref.navigate("Settings");
 	flush();
-	assert focusLog === "list-;list+;list-;list+;list-;", focusLog;
+	assert focusLog === "list+;list-;list+;list-;list+;list-;", focusLog;
 }
 
 test "a deep link reaches a nested screen with parsed params" {

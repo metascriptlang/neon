@@ -12,19 +12,25 @@ import {
 } from "../../src/navigation/index";
 import { settle } from "./navHarness";
 
-const Stack = createStackNavigator<string>();
+interface NavParams {
+	Home: null;
+	Detail: null;
+	Middle: null;
+}
+
+const Stack = createStackNavigator<NavParams>();
 
 let bodies: int32 = 0;
 
 let cleanups: int32 = 0;
 
-let counted: Navigation<string> | null = null;
+let counted: Navigation<NavParams> | null = null;
 
-function Plain(props: ScreenProps<string>): NeonNode {
+function Plain(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>plain</Text>;
 }
 
-function Counted(props: ScreenProps<string>): NeonNode {
+function Counted(props: ScreenProps<NavParams>): NeonNode {
 	bodies += 1;
 	counted = props.navigation;
 	onCleanup((): void => { cleanups += 1; });
@@ -92,7 +98,7 @@ test "a screen popped to the top with an exit animation is built once" {
 	ref.navigate("Detail");
 	flush();
 	settle();
-	(counted as Navigation<string>).popTo("Home");
+	(counted as Navigation<NavParams>).popTo("Home");
 	flush();
 	assert bodies === 1, "the leaving screen is not rebuilt: " + bodies.toString();
 	settle();

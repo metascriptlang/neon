@@ -16,7 +16,9 @@ import {
 	Navigation,
 	NavigationAction,
 	NavigationEventArg,
+	RouteProp,
 	ScreenProps,
+	useRoute,
 	createBottomTabNavigator,
 	createDrawerNavigator,
 	createMemoryRoutingHistory,
@@ -33,13 +35,32 @@ interface ItemParams {
 interface Log {
 	lines: string;
 	mounts: string;
-	product: Navigation<ItemParams> | null;
+	product: Navigation<ShopParams> | null;
+	route: RouteProp<ShopParams, "Product"> | null;
 }
 
-const Root = createStackNavigator<string>();
-const Shop = createStackNavigator<ItemParams>();
-const Tabs = createBottomTabNavigator<string>();
-const Menu = createDrawerNavigator<string>();
+interface RootParams {
+	Home: null;
+	Shop: null;
+	Main: null;
+	Details: null;
+}
+
+interface ShopParams {
+	Catalog: null;
+	Product: ItemParams;
+}
+
+interface LeafParams {
+	Feed: null;
+	Inbox: null;
+	Profile: null;
+}
+
+const Root = createStackNavigator<RootParams>();
+const Shop = createStackNavigator<ShopParams>();
+const Tabs = createBottomTabNavigator<LeafParams>();
+const Menu = createDrawerNavigator<LeafParams>();
 
 const linking: LinkingOptions = {
 	prefixes: [],
@@ -80,37 +101,41 @@ const drawerLinking: LinkingOptions = {
 	},
 };
 
-const log: Log = { lines: "", mounts: "", product: null };
+const log: Log = { lines: "", mounts: "", product: null, route: null };
 
-function Home(props: ScreenProps<string>): NeonNode {
+function Home(props: ScreenProps<RootParams>): NeonNode {
 	log.mounts += "home;";
 	return <Text>home</Text>;
 }
 
-function Catalog(props: ScreenProps<ItemParams>): NeonNode {
+function Catalog(props: ScreenProps<ShopParams>): NeonNode {
 	log.mounts += "catalog;";
 	return <Text>catalog</Text>;
 }
 
-function Product(props: ScreenProps<ItemParams>): NeonNode {
-	const params = props.route.params;
+function Product(props: ScreenProps<ShopParams>): NeonNode {
+	const route = useRoute<ShopParams, "Product">();
+	const params = route.params;
+	log.route = route;
 	log.mounts += "product;";
 	log.product = props.navigation;
 	return <Text>{"product " + (params() === null ? "-" : (params() as ItemParams).id)}</Text>;
 }
 
-function ShopScreen(props: ScreenProps<string>): NeonNode {
+function ShopScreen(props: ScreenProps<RootParams>): NeonNode {
 	return <Shop.Navigator>
 		<Shop.Screen name="Catalog" component={Catalog} />
 		<Shop.Screen name="Product" component={Product}
-			parseParams={(values: Map<string, string>): ItemParams => {
-				return { id: values.get("id") ?? "" };
-			}}
-			stringifyParams={(params: ItemParams): Map<string, string> => {
-				const values = new Map<string, string>();
-				values.set("id", params.id);
-				return values;
-			}} />
+			params={Shop.params.of("Product", {
+				parse: (values: Map<string, string>): ItemParams => {
+					return { id: values.get("id") ?? "" };
+				},
+				stringify: (params: ItemParams): Map<string, string> => {
+					const values = new Map<string, string>();
+					values.set("id", params.id);
+					return values;
+				},
+			})} />
 	</Shop.Navigator>;
 }
 
@@ -121,15 +146,15 @@ function shell(): NeonNode {
 	</Root.Navigator>;
 }
 
-function Feed(props: ScreenProps<string>): NeonNode {
+function Feed(props: ScreenProps<LeafParams>): NeonNode {
 	return <Text>feed</Text>;
 }
 
-function Inbox(props: ScreenProps<string>): NeonNode {
+function Inbox(props: ScreenProps<LeafParams>): NeonNode {
 	return <Text>inbox</Text>;
 }
 
-function Details(props: ScreenProps<string>): NeonNode {
+function Details(props: ScreenProps<RootParams>): NeonNode {
 	return <Text>details</Text>;
 }
 
@@ -140,7 +165,7 @@ function tabShell(): NeonNode {
 	</Tabs.Navigator>;
 }
 
-function Profile(props: ScreenProps<string>): NeonNode {
+function Profile(props: ScreenProps<LeafParams>): NeonNode {
 	return <Text>profile</Text>;
 }
 
@@ -164,7 +189,7 @@ function visitShell(): NeonNode {
 	</Tabs.Navigator>;
 }
 
-function MainScreen(props: ScreenProps<string>): NeonNode {
+function MainScreen(props: ScreenProps<RootParams>): NeonNode {
 	return <Menu.Navigator>
 		<Menu.Screen name="Feed" component={Feed} />
 		<Menu.Screen name="Inbox" component={Inbox} />
@@ -432,7 +457,7 @@ test "browser back stays on a screen whose beforeRemove prevents it" {
 	assert app.ref.linkTo("/shop/product/5");
 	take();
 	refused = null;
-	const product = log.product as Navigation<ItemParams>;
+	const product = log.product as Navigation<ShopParams>;
 	const stop = product.addListener("beforeRemove", (e: NavigationEventArg): void => {
 		e.preventDefault();
 		refused = e.data.action;
@@ -456,7 +481,7 @@ test "setParams replaces the entry it changes and keeps the ones below" {
 	const app = startApp({ url: "/", state: "" });
 	assert app.ref.linkTo("/shop/product/5");
 	take();
-	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
+	(log.route as RouteProp<ShopParams, "Product">).setParams({ id: "6" });
 	flush();
 	const replaced = take();
 	assert replaced === "replace /shop/product/6;", replaced;

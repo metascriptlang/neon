@@ -1,8 +1,9 @@
-import { RoutingError, encodeRouteComponent, decodeRouteComponent } from "./routing";
+import { RoutingError, encodeRouteComponent, decodeRouteComponent, decodeQueryComponent } from "./routing";
 import {
 	PathMatch,
 	joinPaths,
 	normalizePath,
+	hasScheme,
 	createMatcher,
 	scoreRoute,
 	expandOptionals,
@@ -15,28 +16,86 @@ export interface ParamsCodec<P> {
 	stringify: (params: P) => Map<string, string>;
 }
 
+export type PreloadIntent = "initial" | "navigate" | "native" | "preload";
+
+export interface RouterLocation {
+	pathname: string;
+	search: Map<string, string>;
+	hash: string;
+}
+
+export interface PreloadArgs<P> {
+	params: P;
+	location: RouterLocation;
+	intent: PreloadIntent;
+}
+
+export interface RouteSectionProps<P, D> {
+	params: P;
+	location: RouterLocation;
+	data: D;
+}
+
+class Preloaded<D> {
+	data: D;
+
+	constructor(data: D) {
+		this.data = data;
+	}
+}
+
 export enum GuardAction {
 	Continue,
 	Redirect,
 	NotFound,
 }
 
-export struct GuardDecision {
+export interface ReplyInit {
+	status?: int32 | null;
+	revalidate?: string[] | null;
+}
+
+export class Reply extends Error {
 	action: GuardAction;
 	address: string;
 	status: int32;
+	revalidate: string[] | null;
+
+	constructor(action: GuardAction, address: string, status: int32, revalidate: string[] | null) {
+		super(address);
+		this.action = action;
+		this.address = address;
+		this.status = status;
+		this.revalidate = revalidate;
+	}
 }
 
-export function proceed(): GuardDecision {
-	return { action: GuardAction.Continue, address: "", status: 0 };
+export type GuardDecision = Reply;
+
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-instanceof-of-a-generic-answer-union-fails-on-c.md: an action or query that returns a Reply, `json<T>(data)` with its typed body and `NarrowResponse<T>`; a thrown Reply is the form that runs on both backends.
+export function replyOf(failure: Error): Reply | null {
+	if (failure instanceof Reply) { return failure; }
+	return null;
 }
 
-export function redirect(address: string, status: int32 = 307): GuardDecision {
-	return { action: GuardAction.Redirect, address, status };
+export function proceed(): Reply {
+	return new Reply(GuardAction.Continue, "", 0, null);
 }
 
-export function notFound(): GuardDecision {
-	return { action: GuardAction.NotFound, address: "", status: 404 };
+export function redirect(address: string, status: int32 = 307): Reply {
+	return new Reply(GuardAction.Redirect, address, status, null);
+}
+
+export function redirect(address: string, init: ReplyInit): Reply {
+	return new Reply(GuardAction.Redirect, address, init.status ?? 307, init.revalidate ?? null);
+}
+
+export function reload(init: ReplyInit = {}): Reply {
+	return new Reply(GuardAction.Continue, "", init.status ?? 200, init.revalidate ?? null);
+}
+
+export function notFound(): Reply {
+	return new Reply(GuardAction.NotFound, "", 404, null);
 }
 
 export interface RouteNode {
@@ -46,9 +105,10 @@ export interface RouteNode {
 	accepts: (values: Map<string, string>) => boolean;
 	guard: ((values: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths: (() => Map<string, string>[]) | null;
+	preload: ((args: PreloadArgs<Map<string, string>>) => unknown) | null;
 }
 
-export interface RouteDef<P> {
+export interface RouteDef<P, D = void> {
 	node: RouteNode;
 	params: ParamsCodec<P>;
 }
@@ -58,12 +118,22 @@ export interface RouteOptions<P> {
 	guard?: ((params: P, found: RouteMatch) => GuardDecision) | null;
 	status?: int32 | null;
 	paths?: (() => P[]) | null;
+	preload?: ((args: PreloadArgs<P>) => void) | null;
+}
+
+export interface RouteDataOptions<P, D> {
+	params: ParamsCodec<P>;
+	guard?: ((params: P, found: RouteMatch) => GuardDecision) | null;
+	status?: int32 | null;
+	paths?: (() => P[]) | null;
+	preload: (args: PreloadArgs<P>) => D;
 }
 
 export interface PathOptions {
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	status?: int32 | null;
 	paths?: (() => Map<string, string>[]) | null;
+	preload?: ((args: PreloadArgs<Map<string, string>>) => void) | null;
 }
 
 export interface RouteEntry {
@@ -90,8 +160,9 @@ export interface RouteResolution {
 }
 
 export interface RouteTree {
+	base: string;
 	match: (address: string, through?: RouteNode | null) => Result<RouteMatch, RoutingError>;
-	resolve: (address: string) => Result<RouteResolution, RoutingError>;
+	resolve: (address: string, absent?: RouteNode[] | null) => Result<RouteResolution, RoutingError>;
 	href: (
 		node: RouteNode,
 		values: Map<string, string>,
@@ -121,27 +192,70 @@ function typedPaths<P>(codec: ParamsCodec<P>, paths: () => P[]): () => Map<strin
 	};
 }
 
+function parsedArgs<P>(
+	codec: ParamsCodec<P>,
+	args: PreloadArgs<Map<string, string>>,
+): PreloadArgs<P> {
+	const parsed = codec.parse(args.params);
+	if (!parsed.ok) {
+		throw new Error("routing: the params of a matched route no longer parse");
+	}
+	return { params: parsed.value, location: args.location, intent: args.intent };
+}
+
 function routeDef<P>(
 	pattern: string | null,
-	options: RouteOptions<P>,
+	codec: ParamsCodec<P>,
+	guard: ((params: P, found: RouteMatch) => GuardDecision) | null,
+	status: int32 | null,
+	paths: (() => P[]) | null,
+	preload: ((args: PreloadArgs<Map<string, string>>) => unknown) | null,
 	acceptsAll: boolean,
-): RouteDef<P> {
-	const codec = options.params;
-	const guard = options.guard;
-	const paths = options.paths;
-	const node: RouteNode = {
+): RouteNode {
+	return {
 		pattern,
-		status: options.status ?? 200,
+		status: status ?? 200,
 		acceptsAll,
 		accepts: (values: Map<string, string>): boolean => codec.parse(values).ok,
 		guard: guard === null ? null : typedGuard<P>(codec, guard),
 		paths: paths === null ? null : typedPaths<P>(codec, paths),
+		preload,
 	};
+}
+
+function voided<P>(
+	codec: ParamsCodec<P>,
+	preload: ((args: PreloadArgs<P>) => void) | null,
+): ((args: PreloadArgs<Map<string, string>>) => unknown) | null {
+	if (preload === null) { return null; }
+	return (args: PreloadArgs<Map<string, string>>): unknown => {
+		preload(parsedArgs<P>(codec, args));
+		return null;
+	};
+}
+
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-a-closure-capturing-a-generic-parameter-instantiated-as-void-emits-a-void-field.md (second case, a void generic field): one `route<P, D = void>` over a void preload.
+export function route<P>(pattern: string | null, options: RouteOptions<P>): RouteDef<P, void> {
+	const codec = options.params;
+	const node = routeDef<P>(pattern, codec, options.guard, options.status, options.paths, voided<P>(codec, options.preload), false);
 	return { node, params: codec };
 }
 
-export function route<P>(pattern: string | null, options: RouteOptions<P>): RouteDef<P> {
-	return routeDef<P>(pattern, options, false);
+export function route<P, D>(pattern: string | null, options: RouteDataOptions<P, D>): RouteDef<P, D> {
+	const codec = options.params;
+	const preload = options.preload;
+	const node = routeDef<P>(pattern, codec, options.guard, options.status, options.paths,
+		(args: PreloadArgs<Map<string, string>>): unknown => new Preloaded<D>(preload(parsedArgs<P>(codec, args))) as unknown,
+		false);
+	return { node, params: codec };
+}
+
+export function sectionProps<P, D>(target: RouteDef<P, D>, props: RouteSectionProps<Map<string, string>, unknown>): RouteSectionProps<P, D> {
+	const parsed = target.params.parse(props.params);
+	if (!parsed.ok) {
+		throw new Error("routing: the params of a matched route no longer parse");
+	}
+	return { params: parsed.value, location: props.location, data: (props.data as Preloaded<D>).data };
 }
 
 const identity: ParamsCodec<Map<string, string>> = {
@@ -154,25 +268,29 @@ const identity: ParamsCodec<Map<string, string>> = {
 export function path(
 	pattern: string | null,
 	options: PathOptions = {},
-): RouteDef<Map<string, string>> {
-	return routeDef<Map<string, string>>(pattern, {
-		params: identity,
-		guard: options.guard,
-		status: options.status,
-		paths: options.paths,
-	}, true);
+): RouteDef<Map<string, string>, void> {
+	const node = routeDef<Map<string, string>>(
+		pattern,
+		identity,
+		options.guard,
+		options.status,
+		options.paths,
+		voided<Map<string, string>>(identity, options.preload),
+		true,
+	);
+	return { node, params: identity };
 }
 
-export function hrefOf<P>(
+export function hrefOf<P, D>(
 	tree: RouteTree,
-	target: RouteDef<P>,
+	target: RouteDef<P, D>,
 	params: P,
 	search: Map<string, string>,
 ): Result<string, RoutingError> {
 	return tree.href(target.node, target.params.stringify(params), search);
 }
 
-export function paramsOf<P>(target: RouteDef<P>, found: RouteMatch): Result<P, RoutingError> {
+export function paramsOf<P, D>(target: RouteDef<P, D>, found: RouteMatch): Result<P, RoutingError> {
 	for (const level of found.chain) {
 		if (level.node === target.node) { return target.params.parse(level.params); }
 	}
@@ -418,20 +536,20 @@ function matchBranch(branch: Branch, pathname: string): MatchedRoute[] | null {
 	return chain;
 }
 
-function decodeSearch(text: string): Result<string, RoutingError> {
-	return decodeRouteComponent(text.replaceAll("+", " "));
+function decodeSearch(text: string): string {
+	return decodeQueryComponent(text.replaceAll("+", " "));
 }
 
-function parseSearch(query: string): Result<Map<string, string>, RoutingError> {
+function parseSearch(query: string): Map<string, string> {
 	const search = new Map<string, string>();
 	for (const pair of query.split("&")) {
 		if (pair === "") { continue; }
 		const equalAt = pair.indexOf("=");
-		const name = try decodeSearch(equalAt < 0 ? pair : pair.substring(0, equalAt));
-		const value = try decodeSearch(equalAt < 0 ? "" : pair.substring(equalAt + 1, pair.length));
+		const name = decodeSearch(equalAt < 0 ? pair : pair.substring(0, equalAt));
+		const value = decodeSearch(equalAt < 0 ? "" : pair.substring(equalAt + 1, pair.length));
 		if (!search.has(name)) { search.set(name, value); }
 	}
-	return Result.ok(search);
+	return search;
 }
 
 interface Address {
@@ -447,7 +565,7 @@ function splitAddress(address: string): Result<Address, RoutingError> {
 	const queryAt = rest.indexOf("?");
 	const pathname = queryAt < 0 ? rest : rest.substring(0, queryAt);
 	const _decoded = try decodeRouteComponent(pathname);
-	const search = try parseSearch(queryAt < 0 ? "" : rest.substring(queryAt + 1, rest.length));
+	const search = parseSearch(queryAt < 0 ? "" : rest.substring(queryAt + 1, rest.length));
 	return Result.ok({ pathname, search, hash });
 }
 
@@ -483,11 +601,12 @@ function decide(found: RouteMatch): GuardDecision {
 	return proceed();
 }
 
-function resolveAddress(ranked: Branch[], address: string): Result<RouteResolution, RoutingError> {
+function resolveAddress(ranked: Branch[], address: string, absent: RouteNode[] | null): Result<RouteResolution, RoutingError> {
 	const parts = try splitAddress(address);
 	for (const branch of ranked) {
 		const chain = matchBranch(branch, parts.pathname);
 		if (chain === null) { continue; }
+		if (absent !== null && absent.includes(chain[chain.length - 1].node)) { continue; }
 		const found: RouteMatch = { chain: chain as MatchedRoute[], search: parts.search, hash: parts.hash };
 		const decision = decide(found);
 		if (decision.action === GuardAction.NotFound) { continue; }
@@ -556,19 +675,23 @@ function staticPathsOf(places: Placed[]): Result<string[], RoutingError> {
 	return Result.ok(paths);
 }
 
-export function createRouteTree(entries: RouteEntry[]): RouteTree {
+export function createRouteTree(entries: RouteEntry[], base: string = ""): RouteTree {
+	if (hasScheme(base)) { throw new Error("routing: the base \"" + base + "\" is an absolute address, and a base is a path"); }
+	const normal = normalizePath(base);
+	const root = normal.endsWith("/") ? normal.substring(0, normal.length - 1) : normal;
 	const places: Placed[] = [];
-	declare(entries, "", [], places);
+	declare(entries, root, [], places);
 	const branches: Branch[] = [];
-	collect(entries, "", [], branches);
+	collect(entries, root, [], branches);
 	checkShapes(branches, places);
 	const ranked = rank(branches);
 	return {
+		base: root,
 		match: (address: string, through: RouteNode | null = null): Result<RouteMatch, RoutingError> => {
 			return matchAddress(ranked, address, through);
 		},
-		resolve: (address: string): Result<RouteResolution, RoutingError> => {
-			return resolveAddress(ranked, address);
+		resolve: (address: string, absent: RouteNode[] | null = null): Result<RouteResolution, RoutingError> => {
+			return resolveAddress(ranked, address, absent);
 		},
 		href: (
 			node: RouteNode,

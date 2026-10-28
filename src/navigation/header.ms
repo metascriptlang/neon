@@ -20,6 +20,8 @@ import {
 	DrawerAction,
 	NavigatorCore,
 	Navigation,
+	HeaderItemProps,
+	HeaderTitleProps,
 	NavigatorLink,
 	ScopeContext,
 	ScreenOptions,
@@ -130,10 +132,25 @@ export function Header(props: {
 		if (extra === null) { return base; }
 		return { ...base, backgroundColor: (extra as Style).backgroundColor };
 	});
-	const left = accessor((): NeonNode | null => options().headerLeft);
-	const right = accessor((): NeonNode | null => options().headerRight);
+	const item = (make: ((props: HeaderItemProps) => NeonNode) | null): NeonNode | null => {
+		if (make === null) { return null; }
+		return (make as (props: HeaderItemProps) => NeonNode)({
+			tintColor: tint(),
+			canGoBack: props.back(),
+		});
+	};
+	const left = accessor((): NeonNode | null => item(options().headerLeft));
+	const right = accessor((): NeonNode | null => item(options().headerRight));
+	const customTitle = accessor((): NeonNode | null => {
+		const make = options().headerTitle;
+		if (make === null || typeof make === "string") { return null; }
+		return (make as (props: HeaderTitleProps) => NeonNode)({
+			children: props.title(),
+			tintColor: tint(),
+		});
+	});
 	const hasLeft = accessor((): boolean => options().headerLeft !== null);
-	const showBack = accessor((): boolean => !hasLeft() && props.back());
+	const showBack = accessor((): boolean => props.back() && shown(options().headerBackVisible, !hasLeft()));
 	const showMenu = accessor((): boolean => !hasLeft() && !props.back() && props.menu());
 	const align = accessor((): TextAlign => {
 		const own = options().headerTitleAlign;
@@ -167,17 +184,20 @@ export function Header(props: {
 		</Show>
 		<Slot node={left} />
 		<View style={titleBox}>
-			<Text style={titleText}
-				accessibilityRole="header">{props.title()}</Text>
+			<Show when={customTitle() === null}>
+				<Text style={titleText}
+					accessibilityRole="header">{props.title()}</Text>
+			</Show>
+			<Slot node={customTitle} />
 		</View>
 		<Slot node={right} />
 	</View><View style={{ height: 1, backgroundColor: theme().colors.border }} /></View>;
 }
 
-export function titleOf<P>(entry: Navigation<P>): string {
+export function titleOf<PL>(entry: Navigation<PL>): string {
 	const options = entry.options();
 	const headerTitle = options.headerTitle;
-	if (headerTitle !== null) { return headerTitle as string; }
+	if (headerTitle !== null && typeof headerTitle === "string") { return headerTitle as string; }
 	const title = options.title;
 	return title === null ? entry.route.name : title as string;
 }
@@ -188,14 +208,14 @@ export function shown(value: boolean | null, fallback: boolean): boolean {
 
 export const EDGE_WIDTH = 24;
 
-function backGesture<P>(
-	core: NavigatorCore<P>,
-	motion: NavigatorMotion<P>,
-	entry: Navigation<P>,
+function backGesture<PL>(
+	core: NavigatorCore<PL>,
+	motion: NavigatorMotion<PL>,
+	entry: Navigation<PL>,
 ): GestureResponderHandlers {
 	const own = motion.of(entry);
 	const settle = (): void => {
-		if (contained<P>(core.snapshot(), entry)) { motion.settleIn(entry); }
+		if (contained<PL>(core.snapshot(), entry)) { motion.settleIn(entry); }
 	};
 	const pan = PanResponder.create({
 		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => {
@@ -223,27 +243,27 @@ function backGesture<P>(
 	return pan.panHandlers;
 }
 
-function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
+function contained<PL>(list: Navigation<PL>[], entry: Navigation<PL>): boolean {
 	for (const candidate of list) {
 		if (candidate === entry) { return true; }
 	}
 	return false;
 }
 
-export function screenView<P>(
-	core: NavigatorCore<P>,
-	motion: NavigatorMotion<P>,
-	entry: Navigation<P>,
+export function screenView<PL>(
+	core: NavigatorCore<PL>,
+	motion: NavigatorMotion<PL>,
+	entry: Navigation<PL>,
 	menu: boolean,
 	at: Accessor<number>,
 ): NeonNode {
-	const scope = screenScope<P>(core, entry);
+	const scope = screenScope<PL>(core, entry);
 	const key = entry.route.key;
 	const stacked = motion.stacked;
 	const options = accessor((): ScreenOptions => entry.options());
 	const position = accessor((): int32 => at() as int32);
 	const closing = createMemo<boolean>((prev: boolean | null): boolean => motion.isClosing(entry));
-	const transparent = accessor((): boolean => stacked && transparentOf<P>(entry));
+	const transparent = accessor((): boolean => stacked && transparentOf<PL>(entry));
 	const visible = createMemo<boolean>((prev: boolean | null): boolean => {
 		if (!stacked) { return core.currentKey() === key; }
 		return closing() || position() >= motion.lowestVisible();
@@ -282,10 +302,10 @@ export function screenView<P>(
 		if (!stacked || below < 0) { return "Back"; }
 		const own = options().headerBackTitle;
 		if (own !== null) { return own as string; }
-		return titleOf<P>(motion.rendered()[below]);
+		return titleOf<PL>(motion.rendered()[below]);
 	});
 	const showMenu = accessor((): boolean => menu);
-	const title = accessor((): string => titleOf<P>(entry));
+	const title = accessor((): string => titleOf<PL>(entry));
 	const swipeBack = accessor((): boolean => {
 		if (!stacked || position() <= 0 || closing()) { return false; }
 		if (motion.animationOf(entry) !== "slide_from_right") { return false; }
@@ -298,8 +318,13 @@ export function screenView<P>(
 		bottom: 0,
 		width: EDGE_WIDTH,
 	}));
-	const handlers = backGesture<P>(core, motion, entry);
-	const props: ScreenProps<P> = { navigation: entry, route: entry.route };
+	const content = accessor((): Style => {
+		const own = options().contentStyle;
+		const base: Style = { flex: 1, flexDirection: "column" };
+		return own === null ? base : { ...base, ...(own as Style) };
+	});
+	const handlers = backGesture<PL>(core, motion, entry);
+	const props: ScreenProps<PL> = { navigation: entry, route: entry.route };
 	const body = createComponent(entry.config.component, props);
 	const goBack = (): void => { entry.goBack(); };
 	return <ScopeContext value={scope as unknown}>
@@ -308,7 +333,7 @@ export function screenView<P>(
 				<Header title={title} options={options} back={back} backTitle={backTitle}
 					onBack={goBack} menu={showMenu} />
 			</Show>
-			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
+			<View style={content}>{body}</View>
 			<Show when={swipeBack()}>
 				<View {...handlers} style={edge} />
 			</Show>

@@ -40,9 +40,15 @@ int niwCaretPixelX(void);
 int niwCaretPixelY(void);
 int niwCaretPixelW(void);
 int niwCaretPixelH(void);
+// WM_GETOBJECT for the window the scene is attached to: returns 1 with the LRESULT in *result when Neon answers it
+// (a UI Automation root object), 0 to leave it to the window proc. niwDisconnectAutomation drops the provider when the window closes.
+int niwGetObject(void *hwnd, unsigned long long wParam, long long lParam, long long *result);
+void niwDisconnectAutomation(void *hwnd);
 int niwStoredAccessibility(const char *name, const char *value);
 // DirectWrite text layouts built since the process began, so a check can see that a colour change built none.
 int niwLayoutsBuilt(void);
+// Delivers the image downloads and sizes that finished since the last call; run it from Ion's onWake, on the loop thread.
+void niwDrainImages(void);
 void niwShutdown(void);
 
 #ifdef __cplusplus

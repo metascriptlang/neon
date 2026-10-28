@@ -94,6 +94,13 @@ export function cancelFrame(id: int32): void {
 	}
 }
 
+export function frameRequested(id: int32): boolean {
+	for (const request of pending) {
+		if (request.id === id) { return request.live; }
+	}
+	return false;
+}
+
 export function framePending(): boolean {
 	for (const request of pending) {
 		if (request.live) { return true; }

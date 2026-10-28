@@ -127,6 +127,7 @@ function getAttrNum(node: TerminalNode, name: string, fallback: number): number 
 
 // Paint a single node into a list of styled lines fitting within `width`.
 export function paintNode(node: TerminalNode, width: number): string[] {
+	if (node.style.hidden) { return []; }
 	if (node.isText) {
 		const lines = splitLines(node.text, width);
 		const result: string[] = [];
@@ -190,14 +191,18 @@ function paintColumn(node: TerminalNode, innerWidth: number, hasBorder: boolean,
 }
 
 function paintRow(node: TerminalNode, innerWidth: number, hasBorder: boolean, padding: number): string[] {
-	if (node.children.length === 0) {
+	const shown: TerminalNode[] = [];
+	for (const child of node.children) {
+		if (!child.style.hidden) { shown.push(child); }
+	}
+	if (shown.length === 0) {
 		return applyBoxDecoration([], node, innerWidth, hasBorder, padding);
 	}
 
-	const childWidth = (innerWidth / node.children.length) as int32;
+	const childWidth = (innerWidth / shown.length) as int32;
 	const blocks: string[][] = [];
 	let maxLines = 0;
-	for (const child of node.children) {
+	for (const child of shown) {
 		const childLines = paintNode(child, childWidth);
 		blocks.push(childLines);
 		if (childLines.length > maxLines) { maxLines = childLines.length; }

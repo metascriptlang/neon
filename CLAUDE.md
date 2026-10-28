@@ -22,7 +22,7 @@ Workspace rules (toolchain, compiler boundary, arcs and cards, code style) are i
 ## Layout
 
 - `src/core/` — the reactive runtime: signal, effect, memo, owner, cleanup, runtime, array.
-- `src/render/` — renderer-agnostic: `hostTypes.ms` (the `Host` contract and `NeonNode`), `node.ms` (hand-written builders), `bind.ms` (one effect per dynamic spot), `reconcile.ms`, `component.ms`, `context.ms`, `template.ms`, `style.ms` / `css.ms` / `sheet.ms`, `ssr.ms`, `host.ms` (render + the mock host).
+- `src/render/` — renderer-agnostic: `hostTypes.ms` (the `Host` contract and `NeonNode`), `node.ms` (hand-written builders), `bind.ms` (one effect per dynamic spot), `reconcile.ms`, `component.ms`, `context.ms`, `template.ms`, `style.ms` / `css.ms` / `sheet.ms`, `ssr.ms`, `host.ms` (render + the mock host), `hydrate.ms`, `lazy.ms`.
 - `src/macros/ui/` — `element.ms` (JSX → NeonNode), `flow.ms` (`Show` / `For`), `reactive.ms`, `style.ms` (`createStyles`), `theme.ms`. `src/converters.ms` is the JSX converter every consumer names in `globalImports`.
 - `src/components/primitives.ms` — `View`, `Text`, `TextInput`, `Pressable`.
 - `src/platform/` — `browser/dom.jms` (JS), `terminal/`, `void/host.ms` (Void scene graph + yoga). `deps/yoga` is a symlink into `~/metascript/yoga`. iOS and Android hosts are not written; nothing in the compiler blocks them.

@@ -19,6 +19,7 @@ final class Notifications {
 	static final int REPLY = 9;
 	static final int EVENT = 12;
 	static final String EXTRA = "dev.metascript.neon.notification";
+	private static final String RESPONSE_ACTION = "dev.metascript.neon.NOTIFICATION_RESPONSE";
 	private static final String FIELD = "\u001f";
 	private static final String CHANNEL = "neon-default";
 	private static final String SCHEDULED = "dev.metascript.neon.Notifications";
@@ -68,11 +69,19 @@ final class Notifications {
 
 	private static void install(Activity a) {
 		Intent intent = a.getIntent();
-		String opened = intent == null ? null : intent.getStringExtra(EXTRA);
-		if (opened != null) {
-			lastResponse = record("response", opened.split(FIELD, -1)) + FIELD + DEFAULT_ACTION;
-			intent.removeExtra(EXTRA);
-		}
+		if (intent != null) opened(intent);
+	}
+
+	static boolean opened(Intent intent) {
+		String opened = intent.getStringExtra(EXTRA);
+		if (opened == null) return false;
+		lastResponse = record("response", opened.split(FIELD, -1)) + FIELD + DEFAULT_ACTION;
+		intent.removeExtra(EXTRA);
+		return true;
+	}
+
+	static void newIntent(Intent intent) {
+		if (opened(intent)) App.event(EVENT, lastResponse);
 	}
 
 	private static String schedule(Context context, String[] spec) {
@@ -173,6 +182,8 @@ final class Notifications {
 		if (!"1".equals(spec[5])) builder.setDefaults(0);
 		Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
 		if (open != null) {
+			open.setAction(RESPONSE_ACTION);
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) open.setIdentifier(spec[0]);
 			open.putExtra(EXTRA, String.join(FIELD, spec));
 			builder.setContentIntent(PendingIntent.getActivity(context, spec[0].hashCode(), open,
 				PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));

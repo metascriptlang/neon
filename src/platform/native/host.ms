@@ -3,11 +3,14 @@ import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
 import { Accessor } from "../../core/signal";
 import { Dispose } from "../../core/types";
-import { NeonEvent } from "../../render/event";
-import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { MeasureRect, MeasureError } from "../../render/hostTypes";
+import { NeonEvent, neonEvent } from "../../render/event";
+import { extractResponderTerminal } from "../../render/responder";
+import { I18nManager } from "../../api/i18nManager";
+import { FlexStyle, YGNode, Direction, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
-import { NativeElementKind, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
+import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
@@ -15,8 +18,12 @@ import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
-import { DevNode, setDevDriver } from "../../devtools/driver";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
+when (hcr || testBuild) {
+	import { DevNode, setDevDriver } from "../../devtools/driver";
+}
 
 @passC("-I./");
 
@@ -41,13 +48,14 @@ import {
 	niViewCreate, niTextCreate, niAddChild, niBringChildToFront, niRemoveFromParent, niViewRelease, niSetFrame,
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform, niSetRotation,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
+	niMeasureInWindow, niMeasurementX, niMeasurementY, niMeasurementW, niMeasurementH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase, niLastTouchX, niLastTouchY, niLastTouchTime, niSetResponder, niClearResponder,
 	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
 	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
-	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niTextAreaCreate,
+	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niAccessibilityFocus, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
@@ -119,6 +127,7 @@ class NativeNode {
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	textAlign: string = "";
+	writingDirection: string = "";
 	fontFamily: string = "";
 	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
@@ -150,6 +159,7 @@ export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { 
 let layoutPlan: LayoutAnimationPlan | null = null;
 let nextTween: int32 = 1;
 let layoutPassId: int32 = 0;
+let rootDirection: Direction = "ltr";
 
 function showFrame(n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.shownX = x; n.shownY = y; n.shownW = w; n.shownH = h;
@@ -342,7 +352,14 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const align = s.textAlign !== null ? (s.textAlign as string) : "";
 		if (align !== n.textAlign) {
 			n.textAlign = align;
-			niSetProp(n.view, "textAlign", align === "" ? "auto" : align);
+			const shown = align === "" ? "auto" : align;
+			niSetProp(n.view, "textAlign", shown);
+		}
+		const writing = s.writingDirection !== null ? (s.writingDirection as string) : "";
+		if (writing !== n.writingDirection) {
+			n.writingDirection = writing;
+			const shownWriting = writing === "" ? "auto" : writing;
+			niSetProp(n.view, "writingDirection", shownWriting);
 		}
 	}
 }
@@ -557,6 +574,7 @@ function blurInputs(n: NativeNode): void {
 function releaseNativeTree(n: NativeNode): void {
 	for (const child of n.children) { releaseNativeTree(child); }
 	if (n.eventTag !== 0) {
+		retirePressTag(n.eventTag);
 		eventRegistry.remove(n.eventTag);
 		nodesByTag.delete(n.eventTag);
 		n.eventTag = 0;
@@ -660,12 +678,13 @@ function refreshLabel(n: NativeNode): void {
 	let rich = styledRun(base);
 	for (const span of spans) {
 		refuseLineStyle(span.style);
-		if (span.style !== null || span.onPress !== null) { rich = true; }
+		if (span.style !== null || span.onPress !== null || span.onTouch !== null) { rich = true; }
 	}
 	if (!rich) {
 		let text = "";
 		for (const span of spans) { text += span.text; }
-		niSetText(n.view, text);
+		const joined = text;
+		niSetText(n.view, joined);
 	} else {
 		let encoded = "";
 		for (let i = 0; i < spans.length; i += 1) {
@@ -673,7 +692,8 @@ function refreshLabel(n: NativeNode): void {
 			const own: Style | null = spans[i].style !== null ? spans[i].style as Style : null;
 			encoded += encodeSpan(spans[i].text, own, base, i < n.spanTags.length ? n.spanTags[i] : 0);
 		}
-		niSetProp(n.view, "textSpans", encoded);
+		const record = encoded;
+		niSetProp(n.view, "textSpans", record);
 	}
 	remeasureText(n);
 }
@@ -699,11 +719,18 @@ function refuseIntoText(p: NativeNode, op: string): void {
 }
 
 function dropSpanTag(tag: int32): void {
+	retirePressTag(tag);
 	eventRegistry.remove(tag);
 	spanTagOwner.delete(tag);
 }
 
-// A span with onPress keeps its own tag by position, so the label finds the span under the finger.
+const SPAN_TOUCHES = ["onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel"];
+
+function spanTouchRoute(touch: (name: string, e: NeonEvent) => void, name: string): (e: NeonEvent) => void {
+	return (e: NeonEvent): void => { touch(name, e); };
+}
+
+// A span with onPress or touches keeps its own tag by position, so the label finds the span under the finger.
 function deliverSpans(node: HostNode, spans: TextSpan[]): void {
 	const n = node as unknown as NativeNode;
 	if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }
@@ -717,7 +744,8 @@ function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 		if (i >= n.spanTags.length) { n.spanTags.push(0); }
 		const had = n.spanTags[i];
 		const press = spans[i].onPress;
-		if (press !== null) {
+		const touch = spans[i].onTouch;
+		if (press !== null || touch !== null) {
 			let tag = had;
 			if (tag === 0) {
 				tag = nextTag;
@@ -727,7 +755,12 @@ function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 			} else {
 				eventRegistry.remove(tag);
 			}
-			eventRegistry.add(tag, "onPress", press as (e: NeonEvent) => void);
+			if (press !== null) { eventRegistry.add(tag, "onPress", press as (e: NeonEvent) => void); }
+			if (touch !== null) {
+				for (const name of SPAN_TOUCHES) {
+					eventRegistry.addPhases(tag, name, spanTouchRoute(touch as (name: string, e: NeonEvent) => void, name), (e: NeonEvent): void => {});
+				}
+			}
 			pressable = true;
 		} else if (had !== 0) {
 			dropSpanTag(had);
@@ -858,39 +891,175 @@ function runLoop(): void {
 	batched((): void => { niLoopRun(); });
 }
 
+let pressSourceTag: int32 = 0;
+let pressOwnerTag: int32 = 0;
+let pressPhase: int32 = -1;
+let pressTime: float64 = -1;
+let pressX: float64 = 0;
+let pressY: float64 = 0;
+let releasedPressTag: int32 = 0;
+let releasedPressSourceTag: int32 = 0;
+let releasedPressTime: float64 = -1;
+let releasedPressX: float64 = 0;
+let releasedPressY: float64 = 0;
+let releasedPressDispatched = false;
+
+function resetPress(): void {
+	pressSourceTag = 0;
+	pressOwnerTag = 0;
+	pressPhase = -1;
+	pressTime = -1;
+	releasedPressTag = 0;
+	releasedPressSourceTag = 0;
+	releasedPressTime = -1;
+	releasedPressDispatched = false;
+	bubbledPhase = -1;
+	bubbledTime = -1;
+}
+
+function retirePressTag(tag: int32): void {
+	if (pressOwnerTag === tag) { pressOwnerTag = 0; }
+	if (releasedPressTag === tag) {
+		releasedPressTag = 0;
+		releasedPressDispatched = true;
+	}
+}
+
+function livePressTag(tag: int32): boolean {
+	return nodesByTag.has(tag) || spanTagOwner.has(tag);
+}
+
+function ownsPress(tag: int32): boolean {
+	if (spanTagOwner.has(tag)) { return true; }
+	return nodesByTag.has(tag) && (nodesByTag.get(tag) as NativeNode).pressable;
+}
+
+function nearestPress(tag: int32): int32 {
+	if (spanTagOwner.has(tag)) { return tag; }
+	let at: NativeNode | null = nodesByTag.has(tag) ? nodesByTag.get(tag) as NativeNode : null;
+	while (at !== null) {
+		const n = at as NativeNode;
+		if (n.pressable) { return n.eventTag; }
+		at = n.parent;
+	}
+	return 0;
+}
+
+function normalizePress(tag: int32, phase: int32, x: float64, y: float64, time: float64): int32 {
+	const released = time === releasedPressTime && x === releasedPressX && y === releasedPressY;
+	if (!livePressTag(tag) && tag !== pressSourceTag &&
+		!(phase === 2 && released && tag === releasedPressSourceTag)) { return 0; }
+	const repeated = phase === pressPhase && time === pressTime && x === pressX && y === pressY;
+	pressPhase = phase;
+	pressTime = time;
+	pressX = x;
+	pressY = y;
+	if (phase === 0) {
+		if (repeated || pressSourceTag !== 0) { return 0; }
+		pressSourceTag = tag;
+		pressOwnerTag = nearestPress(tag);
+		return pressOwnerTag;
+	}
+	if (phase === 4) { return repeated ? 0 : pressOwnerTag; }
+	if (phase === 2) {
+		if (!released) { return tag; }
+		if (releasedPressDispatched) { return 0; }
+		releasedPressDispatched = true;
+		return releasedPressTag;
+	}
+	if (phase === 1 || phase === 3) {
+		if (released && pressSourceTag === 0) { return 0; }
+		const owner = pressOwnerTag;
+		pressSourceTag = 0;
+		pressOwnerTag = 0;
+		releasedPressTag = phase === 1 ? owner : 0;
+		releasedPressSourceTag = tag;
+		releasedPressTime = time;
+		releasedPressX = x;
+		releasedPressY = y;
+		releasedPressDispatched = phase === 3;
+		return owner;
+	}
+	return 0;
+}
+
 let bubbledPhase: int32 = -1;
 let bubbledTime: number = -1;
 let bubbledX: number = 0;
 let bubbledY: number = 0;
 
 // iOS forwards a touch up the superview chain, so one native event can arrive once per tagged view.
-function bubbleTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): void {
+function touchTags(tag: int32, phase: int32, x: number, y: number, timeStamp: number): int32[] {
 	const owner: NativeNode | null = spanTagOwner.has(tag) ? spanTagOwner.get(tag) as NativeNode : null;
-	if (phase === 2 || (!nodesByTag.has(tag) && owner === null)) { return; }
-	if (phase === bubbledPhase && timeStamp === bubbledTime && x === bubbledX && y === bubbledY) { return; }
+	if (phase === 2 || (!nodesByTag.has(tag) && owner === null)) { return []; }
+	if (phase === bubbledPhase && timeStamp === bubbledTime && x === bubbledX && y === bubbledY) { return []; }
 	bubbledPhase = phase;
 	bubbledTime = timeStamp;
 	bubbledX = x;
 	bubbledY = y;
+	const tags: int32[] = [];
 	let at: NativeNode | null = owner;
-	if (owner !== null) { eventRegistry.touch(tag, phase, x, y, timeStamp); }
+	if (owner !== null) { tags.push(tag); }
 	else { at = nodesByTag.get(tag) as NativeNode; }
 	while (at !== null) {
 		const n = at as NativeNode;
-		if (n.eventTag !== 0) { eventRegistry.touch(n.eventTag, phase, x, y, timeStamp); }
+		if (n.eventTag !== 0) { tags.push(n.eventTag); }
 		at = n.parent;
 	}
+	return tags;
+}
+
+function appendPacket(target: NativeEventPacket, source: NativeEventPacket): void {
+	for (const delivery of source.lifecycle) { target.lifecycle.push(delivery); }
+	for (const delivery of source.listeners) { target.listeners.push(delivery); }
+}
+
+function deliverEvents(deliveries: NativeEventDelivery[]): void {
+	for (const delivery of deliveries) { delivery.handler(delivery.event); }
 }
 
 function onTouch(): void {
-	const tag = niLastTouchTag();
-	const phase = niLastTouchPhase();
-	const x = niLastTouchX() as number;
-	const y = niLastTouchY() as number;
-	const timeStamp = niLastTouchTime();
+	deliverTouch(niLastTouchTag(), niLastTouchPhase(), niLastTouchX() as number, niLastTouchY() as number, niLastTouchTime());
+}
+
+function deliverTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): void {
+	if (phase === 1 || phase === 3) {
+		if (!livePressTag(tag) && tag !== pressSourceTag) { return; }
+		if (timeStamp === releasedPressTime && x === releasedPressX && y === releasedPressY &&
+			(pressSourceTag === 0 || timeStamp < pressTime)) { return; }
+	}
+	const owner = normalizePress(tag, phase, x, y, timeStamp);
+	const raw = !ownsPress(tag);
 	batched((): void => {
-		bubbleTouch(tag, phase, x, y, timeStamp);
-		eventRegistry.dispatch(tag, phase, x, y, timeStamp);
+		const tags = touchTags(tag, phase, x, y, timeStamp);
+		const touches: NativeEventPacket = { lifecycle: [], listeners: [] };
+		for (const target of tags) {
+			appendPacket(touches, eventRegistry.capture(target, phase, x, y, timeStamp, true));
+		}
+		const pointers: NativeEventPacket = { lifecycle: [], listeners: [] };
+		if (raw && phase !== 2) {
+			appendPacket(pointers, eventRegistry.capture(tag, phase, x, y, timeStamp, false));
+		}
+		if (owner !== 0 && livePressTag(owner) &&
+			((phase !== 0 && phase !== 4) || pressOwnerTag === owner) &&
+			(phase !== 1 || releasedPressTag === owner)) {
+			appendPacket(pointers, eventRegistry.capture(owner, phase, x, y, timeStamp, false));
+		}
+		if (phase === 1 || phase === 3) {
+			const event = neonEvent(phase === 1 ? "touchend" : "touchcancel");
+			event.x = x; event.y = y; event.timeStamp = timeStamp; event.pointerOrigin = true;
+			const responderEvents = extractResponderTerminal(event, phase === 1);
+			deliverEvents(touches.lifecycle);
+			for (const delivery of responderEvents) { delivery.handler(delivery.event); }
+			deliverEvents(pointers.lifecycle);
+			deliverEvents(touches.listeners);
+			deliverEvents(pointers.listeners);
+		} else {
+			deliverEvents(touches.lifecycle);
+			deliverEvents(touches.listeners);
+			deliverEvents(pointers.lifecycle);
+			deliverEvents(pointers.listeners);
+		}
 	});
 }
 
@@ -901,8 +1070,11 @@ export interface NativeHost {
 }
 
 export function createNativeHost(): NativeHost {
+	resetPress();
 	const container = niContainerView();
 	root = nativeNode(container, false, false);
+	rootDirection = I18nManager.isRTL() ? "rtl" : "ltr";
+	const ownedRoot = root;
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
 	niSetScrollHandler(onScroll);
@@ -941,6 +1113,12 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niViewCreate(), false, false);
 			}
 			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
+			if (tag === "pressable" || kind === NativeElementKind.Input || tag === "switch" ||
+				tag === "webview" || tag === "video" || tag === "camera") {
+				n.pressable = true;
+				ensureTag(n);
+				if (tag === "pressable" && n.view !== null) { niViewSetPressable(n.view); }
+			}
 			n.flex = intrinsicFlex(n, nativeFlexStyle({} as Style, kind));
 			n.tag = tag;
 			return n as unknown as HostNode;
@@ -992,6 +1170,17 @@ export function createNativeHost(): NativeHost {
 			const n = node as unknown as NativeNode;
 			ensureTag(n);
 			eventRegistry.add(n.eventTag, name, handler);
+			if (name === "onPress" && n.view !== null) {
+				niViewSetPressable(n.view);
+				n.pressable = true;
+			}
+			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
+		},
+		addEventPhases: (node: HostNode, name: string, lifecycle: (e: NeonEvent) => void,
+			listener: (e: NeonEvent) => void): void => {
+			const n = node as unknown as NativeNode;
+			ensureTag(n);
+			eventRegistry.addPhases(n.eventTag, name, lifecycle, listener);
 			if (name === "onPress" && n.view !== null) {
 				niViewSetPressable(n.view);
 				n.pressable = true;
@@ -1091,12 +1280,15 @@ export function createNativeHost(): NativeHost {
 		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
 			spanParagraph(deliverSpans, node, kids, spans);
 		},
+		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => measureNativeWindow(node as unknown as NativeNode, ownedRoot),
+		measureLayout: (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => measureNativeLayout(node as unknown as NativeNode, ancestor as unknown as NativeNode, ownedRoot),
 		overlayRoot: (node: HostNode): HostNode => root as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isInput || n.view === null) { throw "native host: focus needs a mounted text input"; }
 			niSetFocused(n.view, focused ? 1 : 0);
 		},
+		accessibilityFocus: nativeAccessibilityFocus(),
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isScroll || n.view === null) { throw "native host: scrollTo needs a mounted scroll view"; }
@@ -1122,13 +1314,13 @@ export function createNativeHost(): NativeHost {
 
 function writeProp(n: NativeNode, name: string, value: string): void {
 	if (n.view === null) { return; }
-	if (name === "cellWidth") { throw new Error("cellWidth: the native host has no cell grid; it is a Void-host Text prop"); }
+	if (name === "cellWidth" || name === "cellWidths") { throw new Error(`${name}: the native host has no cell grid; it is a Void-host Text prop`); }
 	if (n.isScroll && name === "maintainVisibleContentPosition") {
 		n.visibleContent = parseVisibleContent(value);
 		return;
 	}
 	if (n.isScroll && name === "horizontal") { n.horizontal = value === "true"; }
-	if (n.isScroll && !name.startsWith("accessib")) {
+	if (n.isScroll && !name.startsWith("accessib") && name !== "role" && name !== "importantForAccessibility" && name !== "focusable" && name !== "nativeID") {
 		niScrollSetOption(n.view, name, value);
 		return;
 	}
@@ -1228,7 +1420,7 @@ function relayoutRoot(): void {
 	layoutDirty = false;
 	root.flex = { width, height };
 	prepareVisibleContent();
-	runLayoutPass(root, width, height);
+	runLayoutPass(root, width, height, rootDirection);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
 		for (const t of textNodes) {
@@ -1241,7 +1433,7 @@ function relayoutRoot(): void {
 			if (growInput(field)) { changed = true; }
 		}
 		if (!changed) { break; }
-		runLayoutPass(root, width, height);
+		runLayoutPass(root, width, height, rootDirection);
 	}
 	layoutPlan = null;
 	writeContentSizes();
@@ -1249,70 +1441,131 @@ function relayoutRoot(): void {
 	batched(fireLayouts);
 }
 
+function nativeMeasurementError(node: NativeNode, ownedRoot: NativeNode): MeasureError | null {
+	if (root !== ownedRoot) { return MeasureError.NotMounted; }
+	if (layoutDirty) { relayoutRoot(); }
+	if (!isMounted(node)) { return MeasureError.NotMounted; }
+	if (node.view === null || node.isString) { return MeasureError.Unsupported; }
+	if (node !== root && !node.framed) { return MeasureError.NotLaidOut; }
+	let at: NativeNode | null = node;
+	while (at !== null) {
+		const current = at as NativeNode;
+		const style = current.styleCache;
+		if (style !== null && (style as Style).display === "none") { return MeasureError.NotLaidOut; }
+		at = current.parent;
+	}
+	return null;
+}
+
+function nativeAccessibilityFocus(): ((node: HostNode) => void) | null {
+	when (windows) {
+		return null;
+	} else {
+		return (node: HostNode): void => {
+			const n = node as unknown as NativeNode;
+			if (n.view === null || n.isString || !isMounted(n)) { return; }
+			niAccessibilityFocus(n.view);
+		};
+	}
+}
+
+function measureNativeWindow(node: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, ownedRoot);
+	if (error !== null) { return Result.err(error as MeasureError); }
+	const ready = niMeasureInWindow(node.view);
+	if (ready < 0) { return Result.err(MeasureError.NotMounted); }
+	if (ready === 0) { return Result.err(MeasureError.NotLaidOut); }
+	return Result.ok({ x: niMeasurementX(), y: niMeasurementY(), width: niMeasurementW(), height: niMeasurementH() });
+}
+
+function measureNativeLayout(node: NativeNode, ancestor: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, ownedRoot);
+	if (error !== null) { return Result.err(error as MeasureError); }
+	const parentError = nativeMeasurementError(ancestor, ownedRoot);
+	if (parentError !== null) { return Result.err(parentError as MeasureError); }
+	let x = 0.0;
+	let y = 0.0;
+	let at: NativeNode | null = node;
+	while (at !== ancestor) {
+		if (at === null) { return Result.err(MeasureError.NotAncestor); }
+		const current = at as NativeNode;
+		x += current.x;
+		y += current.y;
+		at = current.parent;
+	}
+	return Result.ok({ x, y, width: node.w, height: node.h });
+}
+
 let mountedApp: (() => NeonNode) | null = null;
 let mounted: Dispose | null = null;
 
-function devNode(n: NativeNode, x: float32, y: float32): DevNode {
-	const children: DevNode[] = [];
-	for (const c of n.children) { children.push(devNode(c, x + c.x, y + c.y)); }
-	let text = n.isString ? n.text : "";
-	if (n.spanData !== null) { for (const span of n.spanData as TextSpan[]) { text += span.text; } }
-	return {
-		tag: n.tag,
-		text,
-		value: n.isInput ? n.inputValue : null,
-		focused: n === focusedInput,
-		pressable: n.pressable,
-		x, y, w: n.w, h: n.h,
-		children,
-	};
-}
-
-function touchTarget(n: NativeNode, x: float32, y: float32, ox: float32, oy: float32): NativeNode | null {
-	if (x < ox || y < oy || x >= ox + n.w || y >= oy + n.h) { return null; }
-	for (let i = n.children.length - 1; i >= 0; i -= 1) {
-		const c = n.children[i];
-		const hit = touchTarget(c, x, y, ox + c.x, oy + c.y);
-		if (hit !== null) { return hit; }
+when (hcr || testBuild) {
+	function devNode(n: NativeNode, x: float32, y: float32): DevNode {
+		const children: DevNode[] = [];
+		for (const c of n.children) { children.push(devNode(c, x + c.x, y + c.y)); }
+		let text = n.isString ? n.text : "";
+		if (n.spanData !== null) { for (const span of n.spanData as TextSpan[]) { text += span.text; } }
+		return {
+			tag: n.tag,
+			text,
+			value: n.isInput ? n.inputValue : null,
+			focused: n === focusedInput,
+			pressable: n.pressable,
+			x, y, w: n.w, h: n.h,
+			children,
+		};
 	}
-	return n.eventTag !== 0 ? n : null;
-}
 
-function nativeDriverPress(x: float32, y: float32): void {
-	const target = touchTarget(root, x, y, 0.0, 0.0);
-	if (target === null) { throw new Error(`native host: nothing at ${x},${y} takes a touch`); }
-	const tag = (target as NativeNode).eventTag;
-	const at = performance.now();
-	for (const phase of [0, 1, 2]) {
-		batched((): void => {
-			bubbleTouch(tag, phase as int32, x as number, y as number, at);
-			eventRegistry.dispatch(tag, phase as int32, x as number, y as number, at);
-		});
+	function touchTarget(n: NativeNode, x: float32, y: float32, ox: float32, oy: float32): NativeNode | null {
+		if (x < ox || y < oy || x >= ox + n.w || y >= oy + n.h) { return null; }
+		for (let i = n.children.length - 1; i >= 0; i -= 1) {
+			const c = n.children[i];
+			const hit = touchTarget(c, x, y, ox + c.x, oy + c.y);
+			if (hit !== null) { return hit; }
+		}
+		return n.eventTag !== 0 ? n : null;
+	}
+
+	function nativeDriverPress(x: float32, y: float32): void {
+		const target = touchTarget(root, x, y, 0.0, 0.0);
+		if (target === null) { throw new Error(`native host: nothing at ${x},${y} takes a touch`); }
+		const tag = (target as NativeNode).eventTag;
+		const at = performance.now();
+		for (const phase of [0, 1, 2]) {
+			deliverTouch(tag, phase as int32, x as number, y as number, at);
+		}
 	}
 }
 
 function mountApp(): void {
 	const native = createNativeHost();
 	batched((): void => {
-		mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
+		const app = mountedApp as () => NeonNode;
+		mounted = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, native.host, native.rootNode);
 	});
 	native.relayout();
-	setDevDriver({
-		host: "native",
-		tree: (): DevNode => devNode(root, 0.0, 0.0),
-		pressAt: nativeDriverPress,
-		type: (text: string): void => {
-			throw new Error("native host: type needs a bridge call that inserts text into the focused platform input; the bridges have none yet (docs/DEVTOOLS.md)");
-		},
-	});
+	when (hcr || testBuild) {
+		setDevDriver({
+			host: "native",
+			tree: (): DevNode => devNode(root, 0.0, 0.0),
+			pressAt: nativeDriverPress,
+			type: (text: string): void => {
+				throw new Error("native host: type needs a bridge call that inserts text into the focused platform input; the bridges have none yet (docs/DEVTOOLS.md)");
+			},
+		});
+	}
 }
 
 function teardownApp(): void {
-	setDevDriver(null);
+	when (hcr || testBuild) {
+		setDevDriver(null);
+	}
 	focusedInput = null;
+	resetPress();
 	if (mounted !== null) {
-		(mounted as Dispose)();
+		const dispose = mounted as Dispose;
 		mounted = null;
+		dispose();
 	}
 	freeLayoutTree(root);
 	for (const child of root.children) { releaseNativeTree(child); }

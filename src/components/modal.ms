@@ -8,7 +8,7 @@ import { NeonNode, VAttr, VEvent, dynAttr, evt } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
 import { portalNode } from "../render/portal";
 
-when (c && !server && (ios || android || (macos && !testBuild))) {
+when (c && !server && (ios || android || (macos && !testBuild) || (windows && !testBuild))) {
 	import "../platform/native/modal";
 }
 

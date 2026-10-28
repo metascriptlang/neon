@@ -139,8 +139,22 @@ never knows a URL, a pattern or a component.
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
 A renderer takes a model and a `render(child)` function; input events call model
-operations: edge swipe and hardware back today, while no renderer wires the mouse back
-button or keyboard shortcuts yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+operations: edge swipe and hardware back today. A desktop app wires back itself, as
+Decompose's Compose for Desktop recipe does (`docs/component/back-button.md:123-160`,
+`f48655a`): a focusable root `View` takes `onKeyUp` and calls `dispatchHardwareBackPress()` on
+`e.code === "Escape"`, and a focused `TextInput` that calls `e.stopPropagation()` on Escape keeps
+the screen, because key events bubble from the focused node. The framework maps no key by default;
+`examples/navigation/desktop.ms` is the recipe and `tests/platform/voidDesktopBack.test.ms` pins it.
+The mouse back button is not wired. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+`renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
+time in single mode, main beside details or extra in dual, three columns in triple,
+with weights and placeholders for an empty panel. The app picks the mode from its
+width and calls `setMode`, as Decompose's `ChildPanelsModeChangedEffect` example does;
+a mode change keeps every instance and writes no history, and choosing a detail
+replaces the panels' one entry (`PanelsWebNavigation`).
+`renderStack` takes an optional test for transparent children, as Expo's web
+`NativeStackView` treats `transparentModal`: a transparent child fills the stack over
+the ones below, which stay shown down to the first opaque child.
 
 **Binding** is the only module that imports two layers.
 
@@ -204,8 +218,30 @@ button or keyboard shortcuts yet. It never imports routing. `navigatorMotion.ms`
     does not parse resolves from its address the same way. With no address for the
     region, a malformed tree reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
-  false`); a presentation can resolve from the address on reload instead, which is
-  Next's hard navigation.
+  false`); a leaf route with `resolveOnReload: true` resolves from the address on a
+  reload instead, which is Next's hard navigation and TanStack's `unmaskOnReload`.
+  A reload is told apart as TanStack does (`tempLocationKey`): each router draws a
+  random document key and writes it into its entries, so an entry with another key
+  was written before the page loaded, while back and forward in the same page restore.
+  A back from a reload that resolved from the address does not know the stack under it: the
+  entries before the reload carry no structure Neon trusts, so a back onto a
+  `resolveOnReload` entry resolves its address as a link does and pushes it over the
+  reloaded page (`[post 2]` then back gives `[post 2, post 1]` at `/feed/1`). TanStack has
+  no stack to rebuild (`router.ts:1519`, a location is rendered whole) and Expo
+  navigates to the entry's path (`browserHistory.ts` `navigateToBrowserPath`), so neither
+  settles whether such a back pops; this stays as is until the person decides.
+- A stack retains every pushed page, so links that ping-pong grow it without bound
+  (40 pushes keep 41 mounted). Expo Router and React Navigation do the same on the web:
+  `NativeStackView.tsx:143` only sets `display: none` on a page that is not focused, and
+  `StackRouter.tsx` `NAVIGATE` pushes a route without a `getId` match; it moves an
+  existing route to the top only when `getId` (Expo `dangerouslySingular`) names the same
+  id, and pops to it only for `pop: true`, which Expo's `navigate` does not send
+  (`dismissTo` is the explicit pop). Neon matches this, with one difference: `NAVIGATE` to
+  the same route name with other params updates the top in place there
+  (`StackRouter.tsx` `route = currentRoute`), where Neon's key holds the params and pushes.
+- A tab root linked while its stack is retained pushes that root as its own entry:
+  the mirror compares the entries each item publishes, since an item that keeps its key
+  but whose nested stack shrank to its root still changes the entries.
 - Each rendered destination provides its own params to `useParams` (Expo local
   params); the whole address is `useLocation`. Multi-region apps keep
   `RoutingRegistry` scopes; a route tree is one participant.
@@ -232,7 +268,42 @@ const routes = createRoutes([
 ```
 
 `path` gives untyped routes whose params are strings; `route` gives typed ones.
-Solid Router's names are kept where the meaning is the same.
+Solid Router's names are kept where the meaning is the same. A component reads a typed
+route's params with `useParams({ from: thread })`, TanStack's `from`, with the route value
+standing where TanStack checks a registered id: the params come through that route's
+codec, from the component's own route or an ancestor, and a route off the component's
+path throws, as TanStack's strict `from` does. `router.navigate({ to: thread, params })`,
+TanStack's `navigate({ to, params })`, writes them through the same codec, with `search`
+and `replace` beside them; a route outside the router's tree throws. `useNavigate()`
+keeps Solid's string form: the value it returns would need a generic function type
+(`<P>(to: ToOptions<P>) => boolean`), which MetaScript does not parse.
+
+A route entry takes `preload`, Solid Router's `RoutePreloadFunc`
+(`~/projects/solid-router` `types.ts:77-84`, `routing.ts:696-705`): it is called with
+`{ params, location, intent }` before the route's component is created, once per mounted
+route and parent before child, so a search-only change does not run it again. A `route<P>`
+entry's `preload` takes `P` through the codec, as `useParams({ from })` does, and a `path`
+entry takes the string map. `intent` is `"initial"` for a route mounted at open or by a
+server render, `"navigate"` for one a link, `useNavigate` or `router.navigate` opened,
+`"native"` for one browser back, forward or `go` opened (`routing.ts:447-507`), and
+`"preload"` for `router.preload(href)`, which runs the preloads along an address and mounts
+nothing (`routing.ts:650-680`). A page a history move mounts again is preloaded again, as
+Solid's remounted route is. A route's component receives `{ params, location, data }`, Solid's
+`RouteSectionProps` (`types.ts:84-101`): `data` is what the same preload call returned, once per
+mount (`routing.ts:690-720`, `createRouteContext`). `route<P>` takes a void preload; `route<P, D>`
+takes one that returns `D`, and `componentOf(entry, (props: RouteSectionProps<P, D>) => ...)` gives
+the component `params` as the typed `P` through the codec and `data` as `D`, so a preload that
+returns a `query` promise hands it to `createAsync(() => props.data)` with no second fetch. A
+`path` entry's component gets `params` as the string map and no readable `data`, because its
+`preload` returns nothing. `children` stays on `LayoutProps`: Neon keeps a layout and a page
+apart, where Solid's one component renders an outlet through `props.children`. `location` is the
+address the route mounted with, not live; `useLocation()` is the live one. A generic instantiated
+as `void` does not build on C (a class field of type `D`), so `route` has a void and a data
+overload and a void preload keeps its place. `hrefOf` and `paramsOf` name `D` beside `P`.
+`followPreloads(router.preload)`
+in `src/platform/browser/routingHistory.ms` is `data/events.ts:83-146`: hover waits 20 ms and
+does not repeat on the same link, focus and touch preload at once, and `preload="false"` on the
+anchor skips it; `<A>` takes no `preload` prop, so that attribute is written on a plain `<a>`.
 
 `src/navigation/router.ms` compiles the tree into one `RouteTree`, and `createRouter`
 makes it one participant of scope `main`. A layout keeps its instance while the routes
@@ -244,8 +315,20 @@ before mount, at most 20, and the history entry ends on the last address, on a b
 forward as on a link (TanStack `followRedirect`, `load-client.ts`, replaces on any load). A path ending in `/` is redirected for good
 (308) to the one without it, as Next's default `trailingSlash: false` does
 (`load-custom-routes.ts`, the `/:path+/` redirect), so a page has one address on a
-server, in static output and in the browser. `Router.response()` gives a server the
-first redirect's status and final location, or the route's status. The React Navigation
+server, in static output and in the browser. A route in a Stack may name
+`presentation: "transparentModal"` to show over the screen below it (Expo's
+`presentation`); anywhere else the declaration throws. `Router.response()` gives a server the
+first redirect's status and final location, or the route's status. The query of an address is decoded as
+`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`): a malformed escape stays literal and an
+invalid byte becomes U+FFFD, while a malformed escape in the path is `InvalidAddress` and a 400 (Next
+`DecodeError`, `base-server.ts:1545`). A double slash inside a path matches no route (Solid `createMatcher`,
+`utils.ts:73-76`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
+`routing.ts:572-605`): `?q` keeps the current path, and `useNavigate` joins the target onto the calling route's
+path, while `router.navigate`, which has no route, joins it onto the root like Solid's base route; dot segments are
+removed as the URL parser does for Solid. A redirect whose target has a scheme or starts with `//` leaves the app:
+a server answers with that `Location` (Solid `data/response.ts:1-20`) and a client hands it to `router.leaveWith`,
+which `followExternalRedirects(router)` (`src/platform/browser/routingHistory.ms`) points at `window.location.href`
+(Solid `data/action.ts:195-200`); with no handler it throws. The React Navigation
 surface (`createStackNavigator`, `NavigationContainer` with `linking`) is a second
 shorthand over the same models. An author whose URL shape differs from the navigation
 shape skips the tree and composes the models and the binding directly.
@@ -306,13 +389,221 @@ routing, not a running Void world's resource policy. Transitions are a render-la
 choice, outside the navigation model; `createNativeStackNavigator` renders with the
 same JS-driven frames.
 
+## Route data
+
+`query(fn, name)`, `revalidate(key?)` and `createAsync(fn)` (`src/navigation/data.ms`) are
+the read side of Solid Router's route data (`~/projects/solid-router` `d0379e7`,
+`src/data/query.ts`, `src/data/createAsync.ts`); `createAsync` is the async memo of
+`hydrateMemo.ms` under that name, as Solid 2.0 has it. A query keys its calls by
+`name + hashKey(args)` (`query.ts:83`), shares one in-flight promise per key, serves a
+settled answer for 5 s or while a reader tracks it (`query.ts:105-111`), and
+`revalidate` zeroes the matching entries and bumps their readers (`query.ts:41-56`).
+On the server a query registers a slot under its key, so the writer emits it as a record
+beside the memo's; on the client a query whose key has a record adopts it once and drops
+it (`query.ts:132-135`, `:173`). A key always carries the JSON brackets of its arguments,
+so it never equals an owner id. A read takes the router's `intent` as Solid's `getIntent()`
+does (`query.ts:78`, `:104-142`): `"native"` reuses an entry whatever its age, any other
+intent reuses it while a reader holds it or within `PRELOAD_TIMEOUT`, an entry a preload
+made is refreshed when read and dropped after the timeout otherwise, and a `"navigate"`
+read of a refreshed entry bumps its readers. The intent is `Router.intent`, set around a
+route's `preload` and its component's mount (`mountLater`) from the stop's intent and
+around `Router.preload` as `"preload"`; `Router.preload` runs under the owner its `RouterProvider` mounts under (`routing.ts:663`, `runWithOwner`), so a DOM event sees the intent, and a query called in a preload function does not surface its rejection (`query.ts` `inPreloadFn`); a read outside a router has none. A query that
+throws a redirect while read navigates the router in place (`query.ts:177-195`, `replace`)
+and its promise never settles, where Solid resolves `undefined` into a typed slot; a
+preload read does not follow it; on a request history the router's `response()` carries it
+and the promise rejects with it. Diverges from Solid where Neon has no counterpart: intent
+is not a module global (a read after an `await` has no owner and so no intent), a returned
+`Reply` and `json` are parked (below), no `query.get` or `query.set`, an arity-0/1/2
+overload set in place of a rest tuple, `queryKey(name, …)` in place of `fn.keyFor` and
+`fn.key`, and the cache is swept on insert in place of an interval. A record adopts only
+for a struct or interface result (`hydrateMemo.ms`).
+
+A query that throws `notFound()` while read is the same path with the next route in place of a
+location. TanStack renders the nearest `notFoundComponent` and answers 404 for a loader's
+`notFound()` (`~/projects/tanstack-router` `6777b8b`, `router-core/src/load-server.ts:90`,
+`:547-585`); Neon's not-found unit is the route, as for a guard (above), so the router resolves
+the same address again with the failed leaf left out (`Router.missing`) and the catch-all route
+renders in its place, and `Router.response()` carries that route's own `status` (Next
+`not-found`, nearest boundary). `serve` renders again once when the answer changed the status,
+because a first pass has already mounted the failed route. Nothing matches once the failed leaf
+is out: the render throws, naming the address. Where the status can still change follows
+SolidStart (`~/projects/solid-start` `9b943dc`, `start/src/server/handler.ts:98-105`,
+`:199-220`): a status is written at `onCompleteShell`, and anything settling after the shell
+has flushed cannot change it (SolidStart's redirect becomes a client-side one,
+`:214`). A read outside `<Loading>` holds the shell, so its answer is the status at the first
+byte; a read under `<Loading>` answers after it. `serve` buffers the whole body, so the
+response it builds always carries the final status; a caller that pipes `renderToStream`
+sees the status of the first byte only for reads that hold the shell
+(`tests/render/routeStatusServer.test.ms`). A site that needs 404 for a deferred read puts
+the read outside `<Loading>`. Solid Router has no status API of its own; SolidStart's
+`<HttpStatusCode>` is not taken, since a thrown `notFound()` also picks the UI.
+
+`action(fn, name)`, `useAction`, `useSubmission` and `useSubmissions` (`src/navigation/action.ms`)
+are the mutation side (`src/data/action.ts`): a call records a `Submission` on the router
+(`router.submissions`, `routing.ts:519`; the hooks read `useRouter()` and fail loud outside a
+`RouterProvider`) under the action's url `https://action/<name>` (`action.ts:111-135`), settles
+it, then handles the response (`handleResponse`, `:179-215`): a `Location` navigates the
+router, `revalidate` keys invalidate and revalidate only the matching queries and no keys all
+of them, an error that is not a response returns before it. `onComplete` (`:75-79`, `:95-106`)
+takes `{ name, onComplete }` in place of `string | { name?, onComplete? }`; Neon requires the
+name. It receives a settled copy before the live submission settles, and a `retry()` called
+from it supplies the call's answer. A null answer or a redirect clears the submission and
+the call resolves null (Solid resolves `undefined`). `retry()` re-runs `fn` (`:128-133`) and
+an error also rejects the call (`:107`). Diverges: an action takes one input value in place
+of a rest tuple; the call is `useAction(a)(input)` because a function value cannot carry
+`url` or be an `unknown` key; `result`, `error` and `pending` are methods; `useSubmission` is
+an accessor of the latest submission or null in place of a stub proxy.
+
+A `<form action={a.url}>` submits through its action on the client: `followSubmits(submit)`
+(`src/platform/browser/routingHistory.ms`) is the submit half of `setupNativeEvents`
+(`data/events.ts:104-130`, listener `:140`): a handled submit is prevented, one already
+prevented or with no action is left alone, a submitter's `formaction` wins over the form's
+`action`, and a form of an `https://action/` url that is not `POST` throws. `formAction(fn, name)`
+makes the action whose input is `FormData` and registers it by url (`actions`, `action.ts:25`,
+`:27-33`, released with the owner it was made under); `submitForm(router, url, data)` runs the
+registered one, as `useAction` would, and answers whether there was one. A failure stays in the
+submission and rejects no one, since a form has no caller (`if (result.error && !form)`, `:107`).
+Diverges: `FormData` is Neon's own class of text fields (a file field throws), always the input
+where Solid hands `URLSearchParams` unless `multipart/form-data`; no `actionBase` branch, since a
+Neon action has only the `https://action/` url (no `.with`, no server url yet); `formAction` stands
+in for an `action` overload on `(input: FormData)`, parked on a compiler card.
+
+`redirect(address, status | init)`, `reload(init)` and `notFound()` build one `Reply`
+(`route.ms`, `response.ts:3-36`) that is also the guard decision, so a guard and an action
+return the same `redirect`. `Reply` extends `Error` because only an `Error` or a string
+can be thrown, and `catch` reads it with `instanceof` (a class has runtime identity, an
+interface has none). `redirect` keeps the guard's status 307 (TanStack `redirect.ts`) in
+place of Solid's 302. `revalidate` takes `string[]`, not `string | string[]`. What a
+`Reply` does is read where a failure is caught, so a redirect or reload is thrown
+(`throw redirect("/login")`) from an action or a query; one a function returns, `json(data)`
+with its typed body and `NarrowResponse<T>` (a conditional type with `infer` checks and runs
+on both backends in isolation) are parked on
+`2026-10-24-instanceof-of-a-generic-answer-union-fails-on-c.md`: on C `instanceof` of a
+union holding a generic subclass is false, of a type parameter instantiated with a type that
+has no object member emits invalid C, and a generic `Json<never>` emits a `void` field.
+An absolute `Location` is an error naming the case, because a router opens only the
+addresses of its own routes.
+
+`router.navigate("https://…")` throws `routing: "…" is not a routable path`, as Solid does (`routing.ts:606-607`); an
+external address reached through a redirect still goes to `leaveWith`.
+
+A route's `component` is `(props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode`, so
+`lazy<{}>(load)` and a component with no parameter fill it directly (Solid's
+`RouteSectionComponent`, whose `Component<{}>` member is the same case), under a layout that
+holds the `<Loading>` (the router adds none). Solid Router calls `component.preload` at
+`routing.ts:650-681` and `:690-704`, which Neon lacks until the `.preload()` card lands.
+`tests/render/lazyRoute.test.ms` pins it on the mock host and `tests/browser/lazy.test.ms`
+in Chrome: the module is not fetched until the first navigation to the route. Hydration
+claims the served node only when the module is already loaded
+(`tests/render/lazyHydrate.test.ms`); Solid hands the client a preloaded module per
+hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so a lazy
+component still pending at `hydrate` fails to claim. `<A preload={false}>` renders
+`preload="false"` on the anchor, where `followPreloads` reads it (`data/events.ts`).
+
+## Linking
+
+`src/navigation/linking.ms` follows React Navigation 7 (`@react-navigation/native@7.5.1`
+`extractPathFromURL.tsx`; `@react-navigation/core@7.24.0` `getStateFromPath.tsx` and
+`queryString.ts`). The first prefix that matches wins, not the longest. A prefix ends at a host
+boundary (`$`, `/`, `?`, `#`), so `https://x.com` never matches `https://x.com.evil.com`, and a
+`*` label matches one or more host characters (`https://*.example.com`). In the query, `+` is a
+space and a malformed escape keeps its raw text; in a path param, a malformed escape rejects
+that route and the next candidate is tried. Two things are left for the person: a repeated query
+key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
+`Map<string, string>` and keeps the last value and `""`.
+
+## Base path
+
+`createRoutes(configs, base)` mounts the whole tree under `base` (Solid `createBranches(routeDefs,
+base)`, `components.tsx:48`; `routing.ts:297-310` joins it into every pattern, and `:474` rejects an
+absolute base). Matching therefore sees only addresses under it: `createRouter` on `/docs/a`
+with base `/app` is `RoutingError.NoMatch`, which `serve` answers as 404. Addresses inside the
+router (`location().pathname`, history entries, `response().location`, typed `href`) carry the
+base, as Solid's `location` does. `router.navigate`, `useNavigate` and a guard's `redirect` take
+the address without it and add it once (`resolvePath(base, to, from)`, `routing.ts:547` and
+`utils.ts:22-35`); the typed `navigate({ to })` and a tab press already hold the full address and
+skip that step. `<A href="/x">` renders `href="/app/x"`; a relative or external href is left as
+written. `followLinks(navigate, router.base)` leaves a link outside the base to the browser and
+strips the base before `navigate` (`data/events.ts:56-62`). `followPreloads` passes the browser
+address through, which the base-carrying tree matches as it is; `followSubmits` keys on action
+URLs, which are registry keys and not addresses. References: Solid
+Router `d0379e7`. `tests/navigation/routerBase.test.ms`, `tests/render/routerBaseServer.test.ms`
+and `tests/browser/routerBase.test.ms` pin it.
+
+## Leaving a route
+
+`useBeforeLeave(listener)` (`router.ms`) ports Solid's `useBeforeLeave` (`routing.ts:281-287`,
+`lifecycle.ts:5-45`): the listener gets `from`, `to` (the resolved address, or the delta of a
+back or forward), `options`, `defaultPrevented` (live across listeners), `preventDefault()` and
+`retry(force)`. A forced retry skips the listeners once. The router asks before an in-app
+navigation lands (`routing.ts:620`; an unchanged address is not asked) and, as Solid's
+`notifyIfNotBlocked` does for popstate (`routers/Router.ts:49-57`), before a browser or
+`router.go` traversal commits: a prevented traversal returns `RoutingError.Refused`, which
+`RoutingSession` answers by going back to the entry it came from. `navigate` returns true for
+a prevented attempt, because the router took the address and `followLinks` must not let the
+browser load the page. Solid does not listen to `beforeunload`, so neither does Neon: closing the
+tab or leaving the origin is not asked. The navigator's `beforeRemove` (`core.ms`) is the other
+gate, on the same `Refused` path for a traversal, and the two share no state: a listener of
+either one blocks. Solid keys traversal by `_depth` in the history state; Neon's
+`__neonIndex` plays that part.
+`tests/navigation/routerBeforeLeave.test.ms` and `tests/browser/beforeLeave.test.ms` pin it.
+
+## Scroll
+
+`followScroll(router)` (`src/platform/browser/scroll.ms`) gives a web router its scroll
+behaviour; routing stays host-free and sees only `Scroller.arrived(address, replace, scroll)`
+(`src/navigation/scroll.ms`), which the router calls from each history write
+(`RoutingSession.observeWrites`). References: Solid Router `d0379e7`
+(`routers/createRouter.ts:55`, `routers/Router.ts:39-45`, `routers/scrollRestoration.ts`),
+TanStack Router `6777b8b` (`router-core/src/scroll-restoration.ts`), Next.js `648110d4`
+(`layout-router.tsx:145-270`).
+
+- A push or a replace scrolls to the `#hash` element, else to the top (`scrollToHash`,
+  `createRouter.ts:55-61`; TanStack `scroll-restoration.ts` `onRendered`, replace included).
+  A search-only change is an ordinary navigation, so it scrolls too; Solid's `useSearchParams`
+  defaults `scroll: false` (`routing.ts:246`), and Neon has no such setter yet.
+- `navigate(href, { scroll: false })` skips the scroll to the top and still scrolls to a hash
+  target that exists, as Solid (`createRouter.ts:55-61`) and TanStack's `resetScroll: false`
+  with a hash do. Next's `scroll={false}` leaves everything alone; Neon follows the two owners.
+  `<A noScroll>` renders the attribute and `followLinks` passes `{ scroll: false }` to its
+  callback, as Solid reads `noscroll` off the anchor (`data/events.ts` handleAnchorClick).
+- `followScroll` sets `history.scrollRestoration = "manual"` and puts it back on dispose
+  (`scrollRestoration.ts:33`). It records `scrollY` on every scroll event under the entry's
+  `__neonIndex` (Solid keys by `_depth`, `:48-50`), drops the offsets from a new entry on
+  (`onPush`, `:77-80`), saves them in `sessionStorage` on `pagehide` (`:51-57`) and restores
+  on `popstate`, after the router's own listener has rendered. An entry with no record goes to
+  its hash, else the top.
+- A document that loads as a reload or back_forward restores its entry's offset
+  (`:92-98`); `followScroll(router, type)` takes the navigation type for a test.
+- Late content: Solid restores once, after routing settles, and says a document still
+  growing is not chased (`scrollRestoration.ts:21-27`); TanStack restores after `onRendered`,
+  once its loaders resolved. Neon mounts a page under a `Loading` at once and has no routing
+  settle, so a restore whose offset the document cannot yet hold waits on a `ResizeObserver`
+  and scrolls only when the offset is reachable (never to a clamped value). A wheel, touch or
+  key event, the next navigation, or dispose cancels the wait. This hold has no reference;
+  it is a separate commit so it can be dropped.
+- Not built: nested scroll containers (TanStack `data-scroll-restoration-id`, needs an id on
+  `ScrollView`); smooth `scrollRestorationBehavior`.
+
+## Announcement
+
+`followAnnouncements(router)` (`src/platform/browser/announce.ms`) ports Next.js
+`app-router-announcer.tsx` (`648110d4`): a visually hidden `role="alert"` `aria-live="assertive"`
+region (`:10-30`) is set to `document.title`, else the first `h1`, after a route change, and
+not on the first load, where screen readers read the page themselves; an unchanged title is
+not repeated (`:55-69`). It follows the router's pathname, so push, replace and back and forward
+all announce. Solid Router `d0379e7`, TanStack Router `6777b8b` and Expo Router have no
+announcement and no focus move. Next's `layout-router.tsx:224-225` states that it leaves focus
+untouched and defers resetting it, so Neon moves no focus. Neon uses a plain element where Next
+uses a shadow root.
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
   `createChildren`: `createChildStack` (`childStack.ms`, Decompose `childStack`)
   under the stack, `createChildPages` (`childPages.ms`, Decompose `childPages`)
   under tabs and drawer. A route's key, seed (name and initial params) and active
-  flag are the child state; its `Navigation<P>` is the child instance
+  flag are the child state; its `Navigation<PL>` is the child instance
   (`NavigatorCore.child`). `NavigatorCore` keeps what every navigator shares
   (screens, route keys, `beforeRemove` guards, nested links, state and restore) and
   hands each operation to the `NavigatorModel` its navigator builds: `stackModel`,
@@ -332,6 +623,19 @@ same JS-driven frames.
 - A stack's focused route is its last: a reset or restored state keeps every route
   and focuses the last whatever its `index`, as React Navigation's
   `StackRouter.getRehydratedState` does for a state that is not `stale: false`.
+- Events and bubbling follow React Navigation 7 (`@react-navigation/core` 7.24.0,
+  `routers` 7.6.5). A screen mounted focused receives `focus` once after mount, after the
+  blur of the screen it replaces (`useFocusEvents.tsx:45-74`). Removing a route asks the
+  `beforeRemove` listeners of every nested screen, deepest first, before its own
+  (`useOnPreventRemove.tsx:55-83`). `pop`, `popToTop` and `replace` a navigator cannot
+  handle (a nested stack at its root, a name only a parent has) go to the parent
+  navigator (`StackRouter.tsx` `POP` and `REPLACE` return `null`); an action no navigator
+  handles is reported by name (`replace` throws). `popToTop` reports `POP_TO_TOP` to
+  `beforeRemove`. The `state` event carries the navigator state in `data.state`
+  (`useNavigationBuilder.tsx:929`). A tab or drawer `navigate` without params resets the
+  route's params and a tab or drawer item press keeps them (`SwitchRouter.tsx:375-465`);
+  the drawer closes when a `navigate` changes the focused route (`DrawerRouter.tsx:221-235`),
+  and a press on the focused item closes it.
 - Transitions belong to the render layer, as Decompose's
   `Children(animation = stackAnimation())`: `navigatorMotion.ms` diffs the route
   children, keeps a leaving screen rendered until its exit ends
@@ -381,8 +685,26 @@ same JS-driven frames.
   - With routing on, a nested screen whose linking path is `exact` is refused: each
     level's part joins its parent's.
 - Typed route bindings close over their decoder and typed model setter rather
-  than exposing an untyped global params getter. Legacy navigators retain one
-  `P`; heterogeneous ParamList compatibility is not claimed.
+  than exposing an untyped global params getter. The built-in navigators take
+  React Navigation's per-screen ParamList: `createStackNavigator<PL>()`,
+  `navigation.navigate(name, params?)` typed per screen (`params` required unless
+  `null` is in the screen's entry), `useRoute<PL, "Name">()` for `route.params`
+  and `route.setParams` (shallow merge) / `route.replaceParams`, `getParent<PL, Q>()` for the parent's list. Each route
+  keeps its params as a `ParamBox<PL[K]>` in one slot (`core.ms`), whose type
+  argument is the identity a read checks, so reading a route as another screen's
+  type stops with `invalid object conversion` instead of reinterpreting memory.
+  A screen's codec (`initial`, `parse`, `stringify`) is built with
+  `Navigator.params.of("Name", {...})` and passed as `params`, because `<Screen>`
+  cannot yet infer its name's type (`name` is `keyof PL`, the rest is not tied to
+  it; `~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md`). A navigate to a name of another navigator bubbles without params; naming it
+  in this navigator's list is what lets it be written (React Navigation's
+  composite navigation prop does that through its parent's list).
+  Tabs and drawer take the same lists as the stack, `reset` takes routes from
+  `navigation.routeOf(name, params?)` typed per screen on all three, and a screen
+  inside a nested navigator reaches its parent's screens with
+  `getParent<PL, Q>().navigate(name, params)` typed by `Q` (React Navigation's
+  `CompositeNavigationProp`, written by naming the parent's list). The container
+  ref's `navigate(name)` is not typed yet (`WORKAROUND.md` V3).
 - Secondary addresses reserve the `__nav.` query namespace. This makes region
   ownership explicit without imposing an editor/game hierarchy. Unknown scopes
   are errors rather than ignored links.
@@ -403,16 +725,42 @@ same JS-driven frames.
   tab level publishes the tabs its `backBehavior` walks back, as the container's tabs
   do: `firstRoute` by default, so browser back from the inbox returns to the feed tab as
   it was, or `history` or `none`; `initialRoute` throws, since Tabs take no initial
-  route. A traversal restores the visits from the entry's keys. Tabs are declared as a
+  route. A traversal restores the visits from the entry's keys. A Tabs level without a
+  layout draws React Navigation's bottom tab bar under its pages; a layout places
+  `<TabBar />` itself or draws its own from `useTabs()`, the triggers of Expo Router's
+  `TabTrigger` (label, options, focused, the tab's live address, press). Each route of
+  the level labels its tab through `options`, React Navigation's `ScreenOptions`, as an
+  object or a function read reactively; `options` under any other level throws. Pressing
+  another tab navigates to the address that tab was left on, so its stack, its guard and
+  a history entry come with it; pressing the shown tab pops its stack to the root when
+  the stack holds more than one screen (native stack's `tabPress` → `popToTop`). Not yet:
+  a web `<a href>` around a trigger, a preventable `tabPress`, and a hidden tab (Expo's
+  `href: null`). Tabs are declared as a
   `navigator` beside the `layout`: the layout is the frame the author draws, the
   navigator the model it drives, so any frame drives any model. A typed `route` takes its
   path, status, guard and paths from its definition, so a config naming them beside it throws.
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
+- React Navigation 7 options and helpers carried (core 7.24, routers 7.6.5, unpkg `@7`):
+  `headerLeft`, `headerRight` and `headerTitle` take the function form with
+  `HeaderItemProps` (`tintColor`, `canGoBack`) and `HeaderTitleProps`; `headerBackVisible`
+  and `contentStyle` as native-stack's; `popToTopOnBlur` (bottom-tabs); drawer
+  `defaultStatus`, `drawerType` (`front`, `slide`), `overlayColor` and `swipeEdgeWidth`;
+  tab and drawer `backBehavior` `order` and `fullHistory`; `getId` on a screen's
+  `params.of` codec (StackRouter PUSH and NAVIGATE reuse the screen with that id and move
+  it to the top); navigator `id` with `getParent(id)`; `usePreventRemove` and
+  `getFocusedRouteNameFromRoute`; the container ref's `resetRoot`, `addListener("state")`
+  and `getCurrentOptions`. The persisted state carries `history` (visited route keys, and
+  a `drawer` item when the status differs from `default`) as TabRouter and DrawerRouter
+  state does; a `fullHistory` visit's params snapshot is not persisted. Not carried:
+  options as `({ route, navigation }) => options` (parked on `~/metascript/.inbox/compiler/2026-10-08-jsx-inline-handler-local-owner.md`: a destructured arrow parameter is refused),
+  `navigation.dispatch` with `CommonActions`, `StackActions`, `TabActions` and
+  `DrawerActions` (their payload is an untyped `object`, and Neon types params by the
+  navigator's list), `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
+  bar are fixed-size, with no measured height or safe-area inset to report).
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
-- Not in the first version of the layers: data loading per route (Solid `preload`,
-  TanStack `loader`), scroll restoration on client navigation, focus and
-  announcement after a navigation, and guards that re-run by themselves when sign-in
+- Not in the first version of the layers: data loading per route (TanStack `loader`;
+  Solid's `preload` is in, without its `data` result), focus after a navigation, and guards that re-run by themselves when sign-in
   state changes (the first version offers an explicit revalidation, as TanStack
   `router.invalidate`).

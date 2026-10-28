@@ -36,6 +36,7 @@ public final class App {
 	static final int MEMORY_WARNING = 6;
 	static final int REDUCE_MOTION = 7;
 	static final int IMAGE_SIZE = 8;
+	static final int ACCESSIBILITY = 15;
 
 	private static final String FIELD = "\u001f";
 	private static final String RECORD = "\u001e";
@@ -46,6 +47,12 @@ public final class App {
 	private App() {}
 
 	static native int event(int kind, String value);
+
+	public static void newIntent(Intent intent) {
+		Notifications.newIntent(intent);
+		Uri data = intent.getData();
+		if (data != null) event(URL, data.toString());
+	}
 
 	static boolean foreground() {
 		return activity != null && "active".equals(state);
@@ -80,6 +87,9 @@ public final class App {
 			case "clipboard.set": clipboard(a).setPrimaryClip(ClipData.newPlainText("text", arg)); return "";
 			case "a11y.screenReader": return accessibility(a).isTouchExplorationEnabled() ? "1" : "0";
 			case "a11y.reduceMotion": return reduceMotion(a) ? "1" : "0";
+			case "a11y.invertColors": case "a11y.grayscale": case "a11y.highTextContrast":
+			case "a11y.accessibilityService": case "a11y.timeout": case "a11y.announceQueue":
+				return Accessibility.call(a, name, arg);
 			case "a11y.announce": a.getWindow().getDecorView().announceForAccessibility(arg); return "";
 			case "exitApp": a.onBackPressed(); return "";
 			case "image.size": {
@@ -104,6 +114,7 @@ public final class App {
 			@Override public void onLowMemory() { event(MEMORY_WARNING, ""); }
 		});
 		accessibility(a).addTouchExplorationStateChangeListener(enabled -> event(SCREEN_READER, enabled ? "1" : "0"));
+		Accessibility.observe(a);
 		interceptBack(a);
 	}
 
@@ -250,7 +261,7 @@ public final class App {
 		return (AccessibilityManager) a.getSystemService(Context.ACCESSIBILITY_SERVICE);
 	}
 
-	private static boolean reduceMotion(Activity a) {
+	static boolean reduceMotion(Activity a) {
 		float scale = Settings.Global.getFloat(a.getContentResolver(), Settings.Global.TRANSITION_ANIMATION_SCALE, 1f);
 		return scale == 0f;
 	}

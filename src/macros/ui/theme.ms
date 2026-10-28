@@ -8,10 +8,6 @@
 // The split matters: a rule mentioning `var(--sp2)` is correct for every theme
 // that will ever exist, so swapping a theme changes ONE variable and never
 // rewrites, re-hashes, or re-registers a single style rule.
-//
-// A macro cannot resolve a value across modules (std/meta has node access, not
-// symbol resolution), which is why the token's value is baked HERE, at the one
-// site where it is written as a literal, rather than at each use.
 
 import { Node, NodeKind, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
 import { registerCss } from "../../render/sheet";

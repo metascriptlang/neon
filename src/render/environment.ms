@@ -1,5 +1,5 @@
 import { Accessor, accessor, createSignal } from "../core/signal";
-import { onServer, getServerDepth, setServerDepth, flush } from "../core/runtime";
+import { flush } from "../core/runtime";
 
 export type ColorScheme = "light" | "dark";
 
@@ -18,8 +18,38 @@ const [windowHeight, setWindowHeight] = createSignal<number>(0);
 const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
 const [dark, setDark] = createSignal<boolean>(false);
 
+when (server) {
+	import { getOwner } from "../core/runtime";
+	import { createContext, setContext, useContext } from "./context";
+
+	const renderWindow = createContext<WindowDimensions | null>(null);
+}
+
 export function useWindowDimensions(): Accessor<WindowDimensions> {
+	when (server) {
+		const published = getOwner() === null ? null : useContext(renderWindow);
+		if (published !== null) {
+			const size = published as WindowDimensions;
+			return accessor((): WindowDimensions => size);
+		}
+		return accessor((): WindowDimensions => {
+			if (getOwner() !== null && useContext(renderWindow) !== null) {
+				throw new Error("useWindowDimensions() was called outside the render that published this request's window, so it reads the process-wide window; call it inside the component");
+			}
+			return { width: windowWidth(), height: windowHeight() };
+		});
+	}
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
+}
+
+when (server) {
+	export function mediaWidth(): number {
+		return useWindowDimensions()().width;
+	}
+} else {
+	export function mediaWidth(): number {
+		return windowWidth();
+	}
 }
 
 export function useColorScheme(): Accessor<ColorScheme> {
@@ -30,21 +60,15 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 	return accessor((): KeyboardMetrics => ({ visible: keyboardHeight() > 0, height: keyboardHeight() }));
 }
 
-export function isServer(): boolean {
-	return onServer();
-}
-
-export function asServer<T>(run: () => T): T {
-	const depth = getServerDepth();
-	setServerDepth(depth + 1);
-	try {
-		return run();
-	} finally {
-		setServerDepth(depth);
-	}
-}
+export { isServer, asServer } from "../core/runtime";
 
 export function publishWindow(width: number, height: number): void {
+	when (server) {
+		if (getOwner() !== null) {
+			setContext<WindowDimensions | null>(renderWindow, { width: width, height: height });
+			return;
+		}
+	}
 	flush((): void => {
 		if (windowWidth() !== width) { setWindowWidth(width); }
 		if (windowHeight() !== height) { setWindowHeight(height); }

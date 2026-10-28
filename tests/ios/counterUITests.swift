@@ -837,6 +837,29 @@ final class ApisUITests: XCTestCase {
         app.alerts["Neon alert"].buttons["Cancel"].tap()
         waitLabel("alert ", containing: "alert cancel")
 
+        tap("show sheet")
+        let sheet = app.sheets["Neon sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "UIAlertController action sheet is shown")
+        XCTAssertTrue(sheet.staticTexts["Pick one"].exists)
+        XCTAssertFalse(sheet.buttons["Locked"].isEnabled, "disabledButtonIndices disables the fourth button")
+        XCTAssertTrue(sheet.buttons["Remove"].exists && sheet.buttons["Dismiss"].exists)
+        report("sheet-shown")
+        sheet.buttons["Remove"].tap()
+        waitLabel("sheet ", containing: "sheet Remove")
+        tap("show sheet")
+        XCTAssertTrue(app.sheets["Neon sheet"].waitForExistence(timeout: 10))
+        app.sheets["Neon sheet"].buttons["Dismiss"].tap()
+        waitLabel("sheet ", containing: "sheet Dismiss")
+
+        tap("read setting")
+        let read = NSPredicate { [self] _, _ in label(startingWith: "setting ") != "setting none" }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: read, evaluatedWith: app)], timeout: 10), .completed, "Settings.get answers")
+        let storedBefore = Int(label(startingWith: "setting ").dropFirst("setting ".count)) ?? 0
+        tap("write setting")
+        tap("read setting")
+        waitLabel("setting ", containing: "setting \(storedBefore + 1)")
+        report("settings-roundtrip")
+
         tap("copy")
         tap("paste")
         waitLabel("pasted ", containing: "pasted neon-1")
@@ -855,8 +878,8 @@ final class ApisUITests: XCTestCase {
         tap("share")
         let copy = app.buttons["Copy"].firstMatch
         let cell = app.cells["Copy"].firstMatch
-        let sheet = NSPredicate { _, _ in copy.exists || cell.exists }
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: sheet, evaluatedWith: app)], timeout: 15), .completed, "the activity sheet offers Copy")
+        let shareSheet = NSPredicate { _, _ in copy.exists || cell.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: shareSheet, evaluatedWith: app)], timeout: 15), .completed, "the activity sheet offers Copy")
         report("share-sheet")
         if copy.exists { copy.tap() } else { cell.tap() }
         waitLabel("share ", containing: "share sharedAction")
@@ -1373,13 +1396,28 @@ final class ControlsUITests: XCTestCase {
         app.buttons["OK"].tap()
         waitLabel("check-in ", containing: "2026-10-24")
 
-        let slider = app.sliders["Guests"]
+        let slider = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType != %d", "Guests", XCUIElement.ElementType.staticText.rawValue)).firstMatch
         reveal(slider)
         let start = slider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let threeSteps = 3 * (slider.frame.width - 24) / 7
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: threeSteps, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         waitLabel("guests ", containing: "guests 5")
         report("slider")
+
+        let party = any("Party size")
+        reveal(party)
+        XCTAssertEqual(party.value as? String ?? "", "20 percent", "accessibilityValue now 2 of 0...10 reads as a percentage")
+        XCTAssertFalse(any("Hidden tip").exists, "accessibilityElementsHidden removes the subtree from the accessibility tree")
+        XCTAssertFalse(any("adjust party").exists, "an accessible view is one element; its text is not separate")
+        if party.elementType == .slider {
+            party.adjust(toNormalizedSliderPosition: 1.0)
+            waitLabel("party ", containing: "party 3 via increment")
+            XCTAssertEqual(party.value as? String ?? "", "30 percent", "the value follows the state")
+            party.adjust(toNormalizedSliderPosition: 0.0)
+            waitLabel("party ", containing: "party 2 via decrement")
+        } else {
+            print("NEON_IOS controls-party increment not driven: XCUITest types the adjustable view as \(party.elementType.rawValue), and adjust() takes only sliders")
+        }
 
         let tip = any("Guest limit")
         tip.press(forDuration: 1.0)
@@ -1486,6 +1524,28 @@ final class NavigationUITests: XCTestCase {
         let element = labelled(label)
         let absent = NSPredicate { _, _ in !element.exists || !element.isHittable }
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: absent, evaluatedWith: app)], timeout: 10), .completed, "\(label) is still shown")
+    }
+
+    private func confirmOpen() {
+        let prompt = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["Open"]
+        if prompt.waitForExistence(timeout: 3) { prompt.tap() }
+    }
+
+    @available(iOS 16.4, *)
+    func testLinkingUrlOpensNestedScreenWhileRunningAndFromLaunch() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        _ = any("Home taps 0", timeout: 20)
+        app.open(URL(string: "neonnav://items/2")!)
+        confirmOpen()
+        _ = any("Item number 2", timeout: 20)
+        report("url-running")
+
+        app.terminate()
+        app.open(URL(string: "neonnav://items/1")!)
+        confirmOpen()
+        _ = any("Item number 1", timeout: 30)
+        report("url-launch")
     }
 
     func testStackTabsDrawerAndBack() {
@@ -2175,5 +2235,50 @@ final class CaptureUITests: XCTestCase {
         tap("play recording")
         waitStatus("status recording finished", "the recorded file loads as a Sound and plays to its end", timeout: 20)
         report("recording-finished")
+    }
+}
+
+@MainActor
+final class InputAccessoryUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonInputAccessory")
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.terminate()
+        app.launch()
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ expected: String, prefix: String) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix) == expected }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "expected \(expected); it reads \(label(startingWith: prefix))")
+    }
+
+    func testAccessoryBarAboveTheKeyboard() {
+        let field = app.textFields["Message"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Accessory Send"].exists, "no accessory before an input has focus")
+        field.tap()
+        let send = app.buttons["Accessory Send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 10), "the accessory shows with the keyboard")
+        XCTAssertTrue(send.isHittable)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(send.frame.maxY, app.keyboards.firstMatch.frame.minY + 1, "the accessory sits above the keyboard")
+        field.typeText("hi")
+        waitLabel("typed: hi", prefix: "typed: ")
+        send.tap()
+        waitLabel("accessory taps: 1", prefix: "accessory taps: ")
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "a tap on the accessory leaves the input focused")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "input-accessory"
+        shot.lifetime = .keepAlways
+        add(shot)
+        print("NEON_IOS inputAccessory \(label(startingWith: "accessory taps: "))")
+        app.terminate()
     }
 }

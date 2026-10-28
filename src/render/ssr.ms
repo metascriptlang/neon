@@ -25,10 +25,12 @@ when (server) {
 	import { Host, HostNode, NeonNode } from "./hostTypes";
 	import { render } from "./host";
 	import { NeonEvent } from "./event";
-	import { collectCss, registerCss } from "./sheet";
+	import { collectCss, cssIds, registerCss } from "./sheet";
 	import { styleToCss } from "./css";
 	import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 	import {
+		CONTROL_CSS,
+		CONTROL_RULES_ID,
 		ControlAttr,
 		LINES_CLASS,
 		SERVED_HEAD,
@@ -47,11 +49,26 @@ when (server) {
 		webHtmlTag,
 		webRules,
 		WebRule,
+		CAMERA_MIRROR_CLASS,
+		VIDEO_CLASS,
+		VIDEO_COVER_CLASS,
+		VIDEO_STRETCH_CLASS,
+		frameDocument,
 		domAttrName,
+		BLUR_PREFIX,
+		IMAGE_CLASS,
+		IMAGE_TAG,
+		TILE_PREFIX,
+		blurRule,
+		svgPrefix,
+		tileRule,
 		domAttrValue,
+		ariaGroupNames,
+		ariaGroupValues,
 	} from "./web";
+	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
-	import { asServer } from "./environment";
+	import { asServer } from "../core/runtime";
 	import { Computation, Dispose, NotReadyError } from "../core/types";
 	import { ServerContext, Fragments, Hole, Rules, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
@@ -62,6 +79,7 @@ when (server) {
 	}
 
 	function baseClassOf(tag: string): string {
+		if (tag === "image") { return IMAGE_CLASS; }
 		const base = webBaseClass(tag);
 		const control = webControlClass(tag);
 		return base === "" || control === "" ? base + control : base + " " + control;
@@ -252,6 +270,14 @@ when (server) {
 			const outValues: string[] = [];
 			for (let i = 0; i < names.length; i += 1) {
 				const raw = values[i];
+				const group = ariaGroupNames(names[i]);
+				if (group.length > 0) {
+					const grouped = ariaGroupValues(names[i], raw);
+					for (let k = 0; k < group.length; k += 1) {
+						putAttribute(outNames, outValues, group[k], grouped[k]);
+					}
+					continue;
+				}
 				const control = controlAttr(wire, names[i], raw);
 				if (control !== null) {
 					const written = control as ControlAttr;
@@ -294,9 +320,10 @@ when (server) {
 		raw: string;
 
 		constructor(tag: string) {
-			this.html = webHtmlTag(tag);
+			this.html = tag === "image" ? IMAGE_TAG : webHtmlTag(tag);
 			this.baseClass = escapeAttribute(baseClassOf(tag));
 			this.rules = webRules(tag);
+			if (tag === "image") { this.rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); }
 			for (const fixed of webFixedAttrs(tag)) {
 				this.fixedNames.push(fixed.name);
 				this.fixedValues.push(fixed.value as string);
@@ -398,6 +425,7 @@ when (server) {
 		stitched: boolean = false;
 		headFront: SsrNode | null = null;
 		held: Rules | null = null;
+		svgs: int32 = 0;
 
 		constructor(register: (id: string, css: string) => void) {
 			this.register = register;
@@ -515,6 +543,76 @@ when (server) {
 		if (n.prev !== null) { (n.prev as SsrNode).next = null; }
 	}
 
+	function withoutClassPrefix(className: string, prefix: string): string {
+		const kept: string[] = [];
+		for (const c of className.split(" ")) {
+			if (!c.startsWith(prefix)) { kept.push(c); }
+		}
+		return kept.join(" ");
+	}
+
+	function retile(w: SsrWrite, n: SsrNode): void {
+		n.className = withoutClassPrefix(n.className, TILE_PREFIX);
+		const resize = attrValue(n.names, n.values, "data-resize");
+		const src = attrValue(n.names, n.values, "src");
+		if (resize !== "repeat" || src === null || src === "") { return; }
+		const rule = tileRule(src as string);
+		w.note(rule.id, rule.css);
+		n.className = joinClass(n.className, rule.id);
+	}
+
+	function writeImageAttr(w: SsrWrite, n: SsrNode, name: string, value: string): boolean {
+		if (name === "source") {
+			upsertAttr(n.names, n.values, "src", value);
+			retile(w, n);
+			return true;
+		}
+		if (name === "resizeMode") {
+			upsertAttr(n.names, n.values, "data-resize", value);
+			retile(w, n);
+			return true;
+		}
+		if (name === "blurRadius") {
+			n.className = withoutClassPrefix(n.className, BLUR_PREFIX);
+			const rule = blurRule(value);
+			if (rule !== null) {
+				const blur = rule as WebRule;
+				w.note(blur.id, blur.css);
+				n.className = joinClass(n.className, blur.id);
+			}
+			return true;
+		}
+		if (name === "accessibilityLabel") { upsertAttr(n.names, n.values, "alt", value); }
+		return false;
+	}
+
+	function writeSvgList(n: SsrNode, list: string): void {
+		const prefix = attrValue(n.names, n.values, "data-neon-svg");
+		const m = svgMarkup(list, prefix === null ? "neon-svg" : prefix as string);
+		putAttribute(n.names, n.values, "viewBox", m.viewBox === "" ? null : m.viewBox);
+		putAttribute(n.names, n.values, "preserveAspectRatio", m.preserveAspectRatio === "" ? null : m.preserveAspectRatio);
+		n.body = m.body;
+	}
+
+	function writeFrameSource(n: SsrNode, value: string): void {
+		const fields = value.split("\x1f");
+		if (fields[0] === "html") {
+			const html = fields.length > 1 ? fields[1] : "";
+			const base = fields.length > 2 ? fields[2] : "";
+			upsertAttr(n.names, n.values, "srcdoc", frameDocument(html, base, attrValue(n.names, n.values, "interceptLoads") === "true"));
+			return;
+		}
+		removeAttr(n.names, n.values, "srcdoc");
+		upsertAttr(n.names, n.values, "src", fields.length > 1 ? fields[1] : "");
+	}
+
+	function placeMirror(n: SsrNode): void {
+		n.className = withoutClassPrefix(n.className, CAMERA_MIRROR_CLASS);
+		if (attrValue(n.names, n.values, "facing") === "front" || attrValue(n.names, n.values, "mirror") === "true") {
+			n.className = joinClass(n.className, CAMERA_MIRROR_CLASS);
+		}
+	}
+
 	function writerHost(w: SsrWrite): Host {
 		return {
 			createElement: (tag: string): HostNode => {
@@ -525,6 +623,11 @@ when (server) {
 				for (let i = 0; i < info.fixedNames.length; i += 1) {
 					n.names.push(info.fixedNames[i]);
 					n.values.push(info.fixedValues[i]);
+				}
+				if (tag === "svg") {
+					w.svgs += 1;
+					n.names.push("data-neon-svg");
+					n.values.push(svgPrefix(w.svgs));
 				}
 				return n as unknown as HostNode;
 			},
@@ -538,7 +641,20 @@ when (server) {
 			},
 			setAttr: (node: HostNode, name: string, value: string): void => {
 				const n = writable(node as unknown as SsrNode);
-				if (name !== "numberOfLines") { upsertAttr(n.names, n.values, name, value); return; }
+				if (n.tag === "image" && writeImageAttr(w, n, name, value)) { return; }
+				if (n.tag === "svg" && name === "displayList") { writeSvgList(n, value); return; }
+				if (n.tag === "webview" && name === "source") { writeFrameSource(n, value); return; }
+				if (n.tag === "video" && name === "resizeMode") {
+					n.className = withoutClassPrefix(n.className, VIDEO_CLASS + "-");
+					if (value === "cover") { n.className = joinClass(n.className, VIDEO_COVER_CLASS); }
+					if (value === "stretch") { n.className = joinClass(n.className, VIDEO_STRETCH_CLASS); }
+					return;
+				}
+				if (name !== "numberOfLines") {
+					upsertAttr(n.names, n.values, name, value);
+					if (n.tag === "camera" && (name === "facing" || name === "mirror")) { placeMirror(n); }
+					return;
+				}
 				w.note(TEXT_RULES_ID, TEXT_CSS);
 				if (!clampedLines(value)) { return; }
 				const rule = linesRule(value);
@@ -654,8 +770,14 @@ when (server) {
 		return writeRender(n, new SsrWrite(registerCss)).html;
 	}
 
-	function markupOf(n: NeonNode): SsrMarkup {
+	function registered(): Map<string, boolean> {
 		const seen = new Map<string, boolean>();
+		for (const id of cssIds()) { seen.set(id, true); }
+		return seen;
+	}
+
+	function markupOf(n: NeonNode): SsrMarkup {
+		const seen = registered();
 		let css = collectCss();
 		const w = new SsrWrite((id: string, rule: string): void => {
 			if (seen.has(id)) { return; }
@@ -671,10 +793,10 @@ when (server) {
 	}
 
 	function recordScript(table: string, id: string, text: string): string {
-		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
+		return "<script>(self._$HY||(self._$HY={r:{},e:{},m:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
 	}
 
-	function recordScripts(ctx: ServerContext, written: Map<string, boolean> | null): string {
+	function recordScripts(ctx: ServerContext, written: Map<string, boolean> | null, listed: Map<string, boolean> | null): string {
 		let out = "";
 		for (const id of recordIds(ctx)) {
 			const slot = ctx.slots.get(id);
@@ -685,6 +807,13 @@ when (server) {
 			}
 			out += slot.failure === null ? recordScript("r", id, slot.json) : recordScript("e", id, (slot.failure as Error).message);
 		}
+		for (const [id, key] of ctx.modules) {
+			if (listed !== null) {
+				if (listed.has(id)) { continue; }
+				listed.set(id, true);
+			}
+			out += recordScript("m", id, key);
+		}
 		return out;
 	}
 
@@ -692,6 +821,12 @@ when (server) {
 		const n = new SsrNode("", PLAIN);
 		n.raw = markup;
 		return n as unknown as HostNode;
+	}
+
+	export function rawHtml(markup: string): NeonNode {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			if (markup !== "") { host.insertBefore(parent, rawNode(markup), before); }
+		};
 	}
 
 	function textOf(h: Hole): string {
@@ -797,7 +932,7 @@ when (server) {
 	}
 
 	class CssBook {
-		seen: Map<string, boolean> = new Map<string, boolean>();
+		seen: Map<string, boolean> = registered();
 		css: string = collectCss();
 
 		add(id: string, rule: string): void {
@@ -899,6 +1034,7 @@ when (server) {
 		sent: int32 = 0;
 		cssSent: int32 = 0;
 		recorded: Map<string, boolean> = new Map<string, boolean>();
+		listed: Map<string, boolean> = new Map<string, boolean>();
 		sink: StreamSink | null = null;
 		consumer: string = "";
 		scripted: boolean = false;
@@ -928,7 +1064,7 @@ when (server) {
 			const css = this.pass.book.css;
 			const fresh = css.slice(this.cssSent, css.length);
 			this.cssSent = css.length;
-			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded)));
+			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded, this.listed)));
 			this.flush();
 			for (let i = 0; i < this.waitingIds.length; i += 1) {
 				if (!this.placed(this.waitingIds[i])) { continue; }
@@ -1067,7 +1203,7 @@ when (server) {
 				pass.dispose();
 			}
 			if (ctx.failure !== null) { throw ctx.failure; }
-			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null) };
+			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null, null) };
 		} catch (e) {
 			r.failure = e;
 		}

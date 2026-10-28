@@ -4,6 +4,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { View, Text, Pressable, ScrollView } from "../../src/components/primitives";
 import { AsyncStorage } from "../../src/api/asyncStorage";
+import { Linking, LinkingUrlEvent } from "../../src/api/linking";
 import { NetInfoState, useNetInfo } from "../../src/api/netInfo";
 import { Permissions } from "../../src/api/permissions";
 import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/api/geolocation";
@@ -58,12 +59,14 @@ export function DeviceDemo(): NeonNode {
 	const [battery, setBattery] = createSignal("unknown");
 	const [notifications, setNotifications] = createSignal("unknown");
 	const [notified, setNotified] = createSignal("nothing");
+	const [opened, setOpened] = createSignal("none");
 	const net = useNetInfo();
 	let watchId: number = -1;
 	Notifications.setNotificationHandler(SHOW_IN_FOREGROUND);
 	const received = Notifications.addNotificationReceivedListener((notification: Notification): void => {
 		setNotified("received " + (notification.request.content.title ?? ""));
 	});
+	const urls = Linking.addEventListener("url", (event: LinkingUrlEvent): void => { setOpened(event.url); });
 	const responded = Notifications.addNotificationResponseReceivedListener((response: NotificationResponse): void => {
 		setNotified("response " + (response.notification.request.content.title ?? ""));
 	});
@@ -71,6 +74,7 @@ export function DeviceDemo(): NeonNode {
 		if (watchId >= 0) { Geolocation.clearWatch(watchId); }
 		received.remove();
 		responded.remove();
+		urls.remove();
 		Notifications.setNotificationHandler(null);
 	});
 
@@ -140,6 +144,7 @@ export function DeviceDemo(): NeonNode {
 			<Text style={styles.status}>{"battery " + battery()}</Text>
 			<Text style={styles.status}>{"notifications " + notifications()}</Text>
 			<Text style={styles.status}>{"notified " + notified()}</Text>
+			<Text style={styles.status}>{"url " + opened()}</Text>
 			<Text style={styles.status}>{"locale " + locale.languageTag + " tz " + (calendar.timeZone ?? "none") + " 24h " +
 				flag(calendar.uses24hourClock) + " rtl " + (locale.textDirection === "rtl" ? "yes" : "no")}</Text>
 			<View style={styles.buttons}>
@@ -173,6 +178,7 @@ export function DeviceDemo(): NeonNode {
 				<Pressable style={styles.button} onPress={() => { allowNotifications(); }}>allow notifications</Pressable>
 				<Pressable style={styles.button} onPress={() => { notify("Neon reminder", 2); }}>notify</Pressable>
 				<Pressable style={styles.button} onPress={() => { notify("Neon later", 15); }}>notify later</Pressable>
+				<Pressable style={styles.button} onPress={() => { Notifications.dismissAllNotificationsAsync(); }}>dismiss notifications</Pressable>
 			</View>
 		</View>
 	</ScrollView>;

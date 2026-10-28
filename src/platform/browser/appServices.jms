@@ -15,13 +15,13 @@ extern class BrowserScreen {
 }
 
 extern class BrowserElement {
-	textContent: cstring;
-	src: cstring;
+	textContent: string;
+	src: string;
 	naturalWidth: number;
 	naturalHeight: number;
-	extern addEventListener(name: cstring, handler: (e: BrowserEvent) => void): void;
+	extern addEventListener(name: string, handler: (e: BrowserEvent) => void): void;
 	extern blur(): void;
-	extern setAttribute(name: cstring, value: cstring): void;
+	extern setAttribute(name: string, value: string): void;
 	extern appendChild(child: BrowserElement): void;
 }
 
@@ -35,16 +35,16 @@ extern class navigator {
 extern class window {
 	static devicePixelRatio: number;
 	static screen: BrowserScreen;
-	static extern alert(text: cstring): void;
-	static extern confirm(text: cstring): boolean;
+	static extern alert(text: string): void;
+	static extern confirm(text: string): boolean;
 }
 
 extern class document {
 	static visibilityState: string;
 	static activeElement: BrowserElement | null;
 	static body: BrowserElement;
-	static extern createElement(tag: cstring): BrowserElement;
-	static extern addEventListener(name: cstring, handler: (e: BrowserEvent) => void): void;
+	static extern createElement(tag: string): BrowserElement;
+	static extern addEventListener(name: string, handler: (e: BrowserEvent) => void): void;
 }
 
 extern function canShare(unused: int32): boolean from "(#, typeof navigator.share === 'function')";

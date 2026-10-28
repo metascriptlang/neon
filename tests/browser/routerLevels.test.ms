@@ -118,3 +118,40 @@ test "back and forward walk each tab's stack in real browser history" {
 		history.replace(original);
 	}
 }
+
+test "a navigation issued right after a tab switch lands after the switch's go" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/feed", state: "" });
+	const created = createRouter(appRoutes(), history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router: Router = created.value;
+	const root: MockNode = mockNode("root");
+	render(element(<RouterProvider router={router} />), mockHost(), root as unknown as HostNode);
+	try {
+		assert router.navigate("/inbox/7");
+		flush();
+		await sleepAsync(100);
+		assert router.navigate("/inbox/8");
+		flush();
+		assert router.navigate("/feed/1");
+		flush();
+		assert router.navigate("/feed/2");
+		flush();
+		await sleepAsync(200);
+		assert history.read().url === "/feed/2", history.read().url;
+		assert visibleText(root) === "post 2", visibleText(root);
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/feed/1", history.read().url;
+		assert visibleText(root) === "post 1", visibleText(root);
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/feed", history.read().url;
+		assert visibleText(root) === "feed", visibleText(root);
+	} finally {
+		router.dispose();
+		history.replace(original);
+	}
+}

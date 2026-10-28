@@ -7,6 +7,20 @@ export type HostNode = unknown;
 
 export type RefFn = (node: HostNode) => void;
 
+export struct MeasureRect {
+	x: float64;
+	y: float64;
+	width: float64;
+	height: float64;
+}
+
+export enum MeasureError {
+	NotMounted,
+	NotLaidOut,
+	NotAncestor,
+	Unsupported,
+}
+
 // What a JSX expression becomes on every target: a function that puts the nodes
 // it owns into `parent`, in front of `before`.
 export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) => void;
@@ -16,6 +30,9 @@ export interface TextSpan {
 	text: string;
 	style?: Style | null;
 	onPress?: ((e: NeonEvent) => void) | null;
+	// RN virtual text: the run's own touches by host event name ("onTouchStart"…), so a pressable run
+	// holds the touch as a responder before the Text and views around it.
+	onTouch?: ((name: string, e: NeonEvent) => void) | null;
 }
 
 export interface TextMeasure {
@@ -51,6 +68,8 @@ export interface Host {
 	// holds one sheet class: a new id replaces the last, and "" removes it.
 	setStyleClass: ((node: HostNode, id: string, css: string) => void) | null;
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void) => void;
+	addEventPhases?: ((node: HostNode, name: string, lifecycle: (e: NeonEvent) => void,
+		listener: (e: NeonEvent) => void) => void) | null;
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;
 	removeChild: (parent: HostNode, node: HostNode) => void;
@@ -67,6 +86,9 @@ export interface Host {
 	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
 	measureText: ((text: string, style: Style) => TextMeasure) | null;
 	focus?: ((node: HostNode, focused: boolean) => void) | null;
+	accessibilityFocus?: ((node: HostNode) => void) | null;
+	measureInWindow?: ((node: HostNode) => Result<MeasureRect, MeasureError>) | null;
+	measureLayout?: ((node: HostNode, ancestor: HostNode) => Result<MeasureRect, MeasureError>) | null;
 	// Optional capability: the host's top layer, where a Portal that names no
 	// mount node puts its content (the DOM body, the native root). `node` is
 	// where the Portal sits in the tree.

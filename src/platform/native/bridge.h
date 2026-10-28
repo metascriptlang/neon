@@ -46,6 +46,11 @@ void  niSetFont(void *label, float size, int bold);
 void  niMeasureText(void *label, float maxWidth);
 float niMeasuredW(void);
 float niMeasuredH(void);
+int32_t niMeasureInWindow(void *view);
+double niMeasurementX(void);
+double niMeasurementY(void);
+double niMeasurementW(void);
+double niMeasurementH(void);
 
 void *niInputCreate(void);
 void *niTextAreaCreate(void); // the multiline TextInput: same props and control phases
@@ -53,9 +58,10 @@ void *niImageCreate(void);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);
+void  niAccessibilityFocus(void *view);
 void  niSetControlHandler(msClosure handler);
 int   niLastControlTag(void);
-int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end, 15 accessibility action (the value is the action name)
 const char *niLastControlValue(void);
 float niLastControlWidth(void);
 float niLastControlHeight(void);

@@ -16,12 +16,16 @@ export type PositionType = "static" | "relative" | "absolute" | "fixed";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
 export type Display = "flex" | "none";
 export type Overflow = "visible" | "hidden" | "scroll";
+export type Direction = "inherit" | "ltr" | "rtl";
+export type WritingDirection = "auto" | "ltr" | "rtl";
 export type TextAlign = "auto" | "left" | "center" | "right" | "justify";
 export type FontWeight = "normal" | "bold"
 	| "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";
 export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
+
+styleInterfaceBody("block");
 
 styleInterfaceBody(0);
 
@@ -59,3 +63,17 @@ export function layerStyles(layers: Style[]): Style {
 // falls through to `base`. Written field by field because unset is `null` rather
 // than absence, so a copy cannot distinguish the two without naming each field.
 mergeStyleBody(0);
+
+function noBreakpointTable(base: Style, over: Style): StyleBlock[] {
+	throw new Error("a style carries media blocks but no breakpoint table was loaded: build the table with createBreakpoints from src/render/breakpoints");
+}
+
+let layerMedia: (base: Style, over: Style) => StyleBlock[] = noBreakpointTable;
+
+export function installMediaLayering(layer: (base: Style, over: Style) => StyleBlock[]): void {
+	layerMedia = layer;
+}
+
+export function mergeMedia(base: Style, over: Style): StyleBlock[] | null {
+	return base.media === null ? over.media : layerMedia(base, over);
+}

@@ -94,6 +94,8 @@ static NSWindow *windowTitled(const char *title) {
 // The content's layers rendered by Core Animation into a bitmap at the backing scale: what the
 // views draw, not what the window server composited.
 static CGContextRef capture(NSWindow *window, CGFloat *scaleOut) {
+	[window displayIfNeeded];
+	[CATransaction flush];
 	NSView *content = window.contentView;
 	CGFloat scale = window.backingScaleFactor;
 	size_t width = (size_t)ceil(content.bounds.size.width * scale), height = (size_t)ceil(content.bounds.size.height * scale);
@@ -255,6 +257,19 @@ void harnessCommit(const char *title, const char *text) {
 
 int harnessFocusedText(const char *title) { return focusedText(windowTitled(title)) ? 1 : 0; }
 
+int harnessFocusedAutoCorrect(const char *title) {
+	return requireFocusedText(title).automaticSpellingCorrectionEnabled ? 1 : 0;
+}
+
+int harnessDefaultAutoCorrect(void) {
+	return [[NSTextView alloc] initWithFrame:NSZeroRect].automaticSpellingCorrectionEnabled ? 1 : 0;
+}
+
+int harnessFocusedFieldEditor(const char *title) {
+	NSWindow *window = windowTitled(title);
+	return requireFocusedText(title) == [window fieldEditor:NO forObject:nil] ? 1 : 0;
+}
+
 static void collectSwitches(NSView *view, NSMutableString *out) {
 	if ([view isKindOfClass:NSSwitch.class]) [out appendString:((NSSwitch *)view).state == NSControlStateValueOn ? @"1" : @"0"];
 	for (NSView *child in view.subviews) collectSwitches(child, out);
@@ -355,4 +370,45 @@ const char *harnessMeasureRoot(const char *title) {
 	if (niMeasureInWindow((__bridge void *)neonRoot(windowTitled(title).contentView)) != 1) return "failed";
 	snprintf(out, sizeof out, "%g,%g,%g,%g", niMeasurementX(), niMeasurementY(), niMeasurementW(), niMeasurementH());
 	return out;
+}
+
+static id accessibleWithLabel(id node, NSString *label) {
+	BOOL neon = [node isKindOfClass:NSClassFromString(@"NeonView")];
+	if (neon) {
+		NSString *own = [node accessibilityLabel];
+		id value = [node accessibilityValue];
+		if ([own isEqualToString:label] || (own == nil && [value isKindOfClass:NSString.class] && [value isEqualToString:label])) return node;
+	}
+	NSArray *children = neon ? [node accessibilityChildren] : [node subviews];
+	for (id child in children) {
+		id found = accessibleWithLabel(child, label);
+		if (found) return found;
+	}
+	return nil;
+}
+
+static NSString *shown(id value) { return value ? [NSString stringWithFormat:@"%@", value] : @"-"; }
+
+const char *harnessAccessibility(const char *title, const char *label) {
+	static char out[256];
+	id node = accessibleWithLabel(windowTitled(title).contentView, @(label));
+	if (!node) return "none";
+	NSString *line = [NSString stringWithFormat:@"%@|%@|%@|%@|%@|%d|%d|%d", [node accessibilityRole], shown([node accessibilityValue]),
+		shown([node accessibilityMinValue]), shown([node accessibilityMaxValue]), shown([node accessibilityHelp]),
+		[node isAccessibilityEnabled] ? 1 : 0, [node isAccessibilitySelected] ? 1 : 0, [node isAccessibilityExpanded] ? 1 : 0];
+	snprintf(out, sizeof out, "%s", line.UTF8String);
+	return out;
+}
+
+int harnessAccessibilityPress(const char *title, const char *label) {
+	id node = accessibleWithLabel(windowTitled(title).contentView, @(label));
+	return node && [node accessibilityPerformPress] ? 1 : 0;
+}
+
+int harnessAccessibilityAction(const char *title, const char *label, const char *actionLabel) {
+	id node = accessibleWithLabel(windowTitled(title).contentView, @(label));
+	for (NSAccessibilityCustomAction *action in [node accessibilityCustomActions]) {
+		if ([action.name isEqualToString:@(actionLabel)]) return action.handler() ? 1 : 0;
+	}
+	return 0;
 }

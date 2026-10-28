@@ -67,8 +67,11 @@ export function BookingForm(): NeonNode {
 	const [breakfast, setBreakfast] = createSignal(false);
 	const [parking, setParking] = createSignal(false);
 	const [payment, setPayment] = createSignal("card");
+	const [rating, setRating] = createSignal(3 as int32);
 	const [prefs, setPrefs] = createSignal([] as string[]);
 	const [status, setStatus] = createSignal("idle");
+	const [party, setParty] = createSignal(2 as int32);
+	const [partyAction, setPartyAction] = createSignal("none");
 	const [confirming, setConfirming] = createSignal(false);
 	const [details, setDetails] = createSignal(false);
 	const [booked, setBooked] = createSignal(false);
@@ -147,6 +150,19 @@ export function BookingForm(): NeonNode {
 				</View>
 				<Slider value={guests()} minimumValue={1} maximumValue={8} step={1} accessibilityLabel="Guests"
 					minimumTrackTintColor="#6750a4" onValueChange={(v: float64): void => { setGuests(v); }} />
+				<View accessible={true} accessibilityRole="adjustable" accessibilityLabel="Party size"
+					accessibilityValue={{ min: 0, max: 10, now: party() }}
+					accessibilityActions={[{ name: "increment" }, { name: "decrement" }, { name: "reset", label: "Reset party" }]}
+					onAccessibilityAction={(e: NeonEvent): void => {
+						setPartyAction(e.value);
+						if (e.value === "increment") { setParty(party() + 1); }
+						else if (e.value === "decrement") { setParty(party() - 1); }
+						else if (e.value === "reset") { setParty(2); }
+					}}>
+					<Text style={label}>adjust party</Text>
+				</View>
+				<Text style={value}>{`party ${party()} via ${partyAction()}`}</Text>
+				<View accessibilityElementsHidden={true}><Text style={label}>Hidden tip</Text></View>
 			</Field>
 			<Divider inset={true} />
 			<Field title="Room">
@@ -174,6 +190,15 @@ export function BookingForm(): NeonNode {
 				<RadioGroup options={PAYMENTS} value={payment()} accessibilityLabel="Payment"
 					onValueChange={(v: string): void => { setPayment(v); }} />
 				<Text style={value}>{`payment ${payment()}`}</Text>
+			</Field>
+			<Field title="Rating">
+				<View role="slider" accessibilityLabel="Rating" accessibilityHint="Swipe up or down to rate"
+					accessibilityValue={{ min: 0, max: 5, now: rating(), text: `${rating()} of 5` }}
+					accessibilityLiveRegion="polite" accessibilityLabelledBy="ratingCaption"
+					accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+					onAccessibilityAction={(e: NeonEvent): void => { setRating(Math.max(0, Math.min(5, rating() + (e.value === "increment" ? 1 : -1))) as int32); }}>
+					<Text style={value} nativeID="ratingCaption">{`rating ${rating()}`}</Text>
+				</View>
 			</Field>
 			<Field title="Preferences">
 				<View style={{ ...row, flexWrap: "wrap", gap: 8 }}>

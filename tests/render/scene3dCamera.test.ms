@@ -105,3 +105,37 @@ test "Camera3D rejects an inherited foreign scene scope and closes failed owners
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.closed && handle.context.closed && handle.scene.nodeCount() === 0;
 }
+
+test "Camera3D without active is the implicit camera until an explicit active one mounts" {
+	const refs: Scene3DHandle[] = [];
+	const [explicit, setExplicit] = createSignal(false);
+	const [first, setFirst] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			<Camera3D active={false} position={vec3(9.0, 0.0, 0.0)} />
+			<Show when={first()}><Camera3D position={vec3(1.0, 0.0, 0.0)} /></Show>
+			<Camera3D position={vec3(2.0, 0.0, 0.0)} />
+			<Show when={explicit()}><Camera3D active={true} position={vec3(3.0, 0.0, 0.0)} /></Show>
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+	assert resolved(handle).position.x === 1.0, "first mounted camera without active is used";
+	setExplicit(true); flush();
+	assert resolved(handle).position.x === 3.0, "an explicit active camera wins";
+	setExplicit(false); setFirst(false); flush();
+	assert resolved(handle).position.x === 2.0, "unmounting the implicit camera falls to the next";
+	dispose();
+	assert handle.camera === null && handle.scene.closed;
+}
+
+test "Camera3D active false opts out of the implicit default" {
+	const refs: Scene3DHandle[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Camera3D active={false} /></Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	assert refs.length === 1 && refs[0].camera === null;
+	dispose();
+}

@@ -1,3 +1,4 @@
+import { I18nState } from "./i18nServices";
 import { LocaleFields, LocaleSnapshot } from "./localizationServices";
 
 const FIELD = "\u001f";
@@ -36,3 +37,13 @@ export function decodeLocalization(value: string): LocaleSnapshot {
 	};
 }
 
+
+// The I18nManager reply: allowRTL, forceRTL, swapLeftAndRightInRTL, supportsRtl, deviceRTL (each 1/0), locale identifier.
+export function decodeI18n(value: string): I18nState {
+	const fields = value.split(FIELD);
+	if (fields.length !== 6) { throw new Error("I18nManager: the host sent a malformed state: " + value); }
+	return {
+		allowRTL: fields[0] === "1", forceRTL: fields[1] === "1", swapLeftAndRightInRTL: fields[2] === "1",
+		supportsRtl: fields[3] === "1", deviceRTL: fields[4] === "1", localeIdentifier: fields[5],
+	};
+}

@@ -1,11 +1,13 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Graphics } from "../../src/components/scene2d";
 import { GraphicsOp } from "../../src/render/graphics";
-import { Scene2D as VoidScene2D, NodeRef } from "../../../void/src/void2d/node";
-import { prepare, drawScreen } from "../../../void/src/void2d/scene";
+import { Scene2D as VoidScene2D, NodeRef, GraphicsMesh } from "../../../void/src/void2d/node";
+import { create, prepare, drawScreen } from "../../../void/src/void2d/scene";
+import { fillTriangle, fillRoundedRect } from "../../../void/src/void2d/graphics";
 import { rgba, vec2 } from "../../../void/src/void2d/types";
 import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
@@ -20,6 +22,23 @@ let cleanup: (() => void) | null = null;
 let frames: int32 = 0;
 const nodes: NodeRef[] = [];
 const [changed, setChanged] = createSignal(false);
+const reference: VoidScene2D = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+const triangle: GraphicsMesh = meshOf(reference.graphics().fillTriangle(vec2(20.0, 20.0),
+	vec2(44.0, 20.0), vec2(20.0, 44.0), rgba(1.0, 0.0, 0.0, 1.0)));
+const square: GraphicsMesh = meshOf(reference.graphics().fillRoundedRect(80.0, 20.0, 24.0, 24.0,
+	0.0, rgba(0.0, 1.0, 0.0, 1.0)));
+
+function meshOf(node: NodeRef): GraphicsMesh {
+	return node.scene.meshes[node.scene.payloads[node.id.index]];
+}
+
+function sameMesh(actual: GraphicsMesh, expected: GraphicsMesh): boolean {
+	if (actual.mesh.length !== expected.mesh.length) { return false; }
+	for (let i: int32 = 0; i < (expected.mesh.length as int32); i++) {
+		if (actual.mesh[i] !== expected.mesh[i]) { return false; }
+	}
+	return true;
+}
 
 function operations(): GraphicsOp[] {
 	if (changed()) {
@@ -48,16 +67,17 @@ function frame(): void {
 	const scene = subject;
 	if (scene === null || nodes.length !== 1) { fail("mount or identity"); return; }
 	if (frames === 5) { setChanged(true); }
-	const mesh = scene.meshes[scene.payloads[nodes[0].id.index]];
-	if (mesh.mesh.length !== (frames < 5 ? 24 : 48) ||
-		mesh.mesh[0] !== (frames < 5 ? 20.0 : 80.0)) {
+	flush();
+	const mesh = meshOf(nodes[0]);
+	const expected = frames < 5 ? triangle : square;
+	if (!sameMesh(mesh, expected)) {
 		fail("reactive geometry replacement"); return;
 	}
 	const dpi = dpiScale();
 	scene.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
 	beginScreenPass({ x: 0.0, y: 0.0, z: 0.2, w: 1.0 });
 	scene.drawScreen(); endPass(); commit();
-	if (mesh.stale || mesh.vertexCount !== (frames < 5 ? 3 : 6) ||
+	if (mesh.stale || mesh.vertexCount !== (expected.mesh.length as int32) / 8 ||
 		drawCallCount() !== 1 || vertexBufferBytes() <= 0) {
 		fail("prepared Graphics did not submit exactly one device draw"); return;
 	}

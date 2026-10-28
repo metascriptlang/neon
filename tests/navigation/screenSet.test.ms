@@ -13,18 +13,25 @@ import {
 	createStackNavigator,
 } from "../../src/navigation/index";
 
+interface NavParams {
+	Only: null;
+	First: null;
+	Second: null;
+	Help: null;
+}
+
 const EMPTY_AFTER_UPDATE = "a navigator needs at least one Screen after a conditional update";
 const EMPTY_AT_MOUNT = "a navigator needs at least one Screen child";
 
-function Page(props: ScreenProps<string>): NeonNode {
+function Page(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>page</Text>;
 }
 
-function First(props: ScreenProps<string>): NeonNode {
+function First(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>first</Text>;
 }
 
-function Second(props: ScreenProps<string>): NeonNode {
+function Second(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>second</Text>;
 }
 
@@ -39,7 +46,7 @@ function failureOf(run: () => void): string {
 
 test "a stack whose only screen goes away throws, naming the case" {
 	const [present, setPresent] = createSignal(true);
-	const Stack = createStackNavigator<string>();
+	const Stack = createStackNavigator<NavParams>();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer>
 		<Stack.Navigator>
@@ -55,7 +62,7 @@ test "a stack whose only screen goes away throws, naming the case" {
 
 test "a tab navigator whose only screen goes away throws, naming the case" {
 	const [present, setPresent] = createSignal(true);
-	const Tab = createBottomTabNavigator<string>();
+	const Tab = createBottomTabNavigator<NavParams>();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer>
 		<Tab.Navigator>
@@ -71,7 +78,7 @@ test "a tab navigator whose only screen goes away throws, naming the case" {
 
 test "a drawer navigator whose only screen goes away throws, naming the case" {
 	const [present, setPresent] = createSignal(true);
-	const Drawer = createDrawerNavigator<string>();
+	const Drawer = createDrawerNavigator<NavParams>();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer>
 		<Drawer.Navigator>
@@ -87,7 +94,7 @@ test "a drawer navigator whose only screen goes away throws, naming the case" {
 
 test "a navigator mounted with no screen throws, naming the case" {
 	const [present, setPresent] = createSignal(false);
-	const Stack = createStackNavigator<string>();
+	const Stack = createStackNavigator<NavParams>();
 	const root = mockNode("root");
 	const mount = (): void => {
 		render(<NavigationContainer>
@@ -103,7 +110,7 @@ test "a navigator mounted with no screen throws, naming the case" {
 
 test "a stack that swaps its only screen for another focuses the replacement" {
 	const [first, setFirst] = createSignal(true);
-	const Stack = createStackNavigator<string>();
+	const Stack = createStackNavigator<NavParams>();
 	const ref = createNavigationContainerRef();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer ref={ref}>
@@ -126,7 +133,7 @@ test "a stack that swaps its only screen for another focuses the replacement" {
 
 test "a tab navigator that swaps its focused screen for another keeps a screen focused" {
 	const [first, setFirst] = createSignal(true);
-	const Tab = createBottomTabNavigator<string>();
+	const Tab = createBottomTabNavigator<NavParams>();
 	const ref = createNavigationContainerRef();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer ref={ref}>
@@ -149,7 +156,7 @@ test "a tab navigator that swaps its focused screen for another keeps a screen f
 
 test "a drawer navigator that swaps its focused screen for another keeps a screen focused" {
 	const [first, setFirst] = createSignal(true);
-	const Drawer = createDrawerNavigator<string>();
+	const Drawer = createDrawerNavigator<NavParams>();
 	const ref = createNavigationContainerRef();
 	const root = mockNode("root");
 	const dispose = render(<NavigationContainer ref={ref}>
