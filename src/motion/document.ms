@@ -152,6 +152,19 @@ function indexOfClip(doc: MotionDocument, id: string): int32 {
 	return -1;
 }
 
+export function findClip(doc: MotionDocument, id: string): MotionClip {
+	const index = indexOfClip(doc, id);
+	if (index < 0) { fail("unknown clip " + id); }
+	return doc.clips[index];
+}
+
+function checkWindow(placement: MotionPlacement, child: MotionClip, parent: MotionClip): void {
+	const end = Math.round((placement.start + child.duration / placement.rate) * 1e8) / 1e8;
+	if (placement.start < 0 || end > parent.duration) {
+		fail("placement of clip " + child.id + " must lie inside the duration of clip " + parent.id);
+	}
+}
+
 function checkAcyclic(doc: MotionDocument, id: string, path: string[]): void {
 	if (path.includes(id)) { fail("placement cycle through clip " + id); }
 	path.push(id);
@@ -183,6 +196,7 @@ export function validate(doc: MotionDocument): void {
 		for (const placement of clip.placements) {
 			if (indexOfClip(doc, placement.clip) < 0) { fail("unknown clip " + placement.clip + " placed in " + where); }
 			checkPlacement(placement, where);
+			checkWindow(placement, findClip(doc, placement.clip), clip);
 		}
 	}
 	checkAcyclic(doc, doc.root, []);

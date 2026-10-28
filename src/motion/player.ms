@@ -1,5 +1,6 @@
 import { Clock } from "./clock";
-import { MotionClip, MotionDocument, MotionTrack, MotionValue, validate } from "./document";
+import { ComposedTrack, flatten, localTime, writerAt } from "./compose";
+import { MotionDocument, MotionValue, findClip, validate } from "./document";
 import { sampleTrack } from "./evaluate";
 
 const PLAYHEAD_EPSILON: float64 = 1e-8;
@@ -26,11 +27,10 @@ export function motionOptions(clock: Clock): MotionOptions {
 	return { delay: 0, repeat: 0, repeatDelay: 0, yoyo: false, timeScale: 1, paused: false, clock };
 }
 
-struct ActiveTrack {
-	track: MotionTrack;
+struct ActiveTarget {
 	binding: MotionBinding;
-	offset: float64;
-	rate: float64;
+	writers: ComposedTrack[];
+	reached: boolean[];
 }
 
 function fail(message: string): never {
@@ -51,35 +51,33 @@ function cycleIndex(totalTime: float64, cycle: float64): int32 {
 	return (ratio !== 0 && whole === ratio ? whole - 1 : whole) as int32;
 }
 
-function rootClip(doc: MotionDocument): MotionClip {
-	for (const clip of doc.clips) {
-		if (clip.id === doc.root) { return clip; }
-	}
-	return fail("unknown root clip " + doc.root);
-}
-
-function compile(doc: MotionDocument, bindings: MotionBinding[]): ActiveTrack[] {
+function compile(doc: MotionDocument, bindings: MotionBinding[]): ActiveTarget[] {
 	validate(doc);
-	const root = rootClip(doc);
-	if (root.placements.length > 0) { fail("composition is not supported yet"); }
 	const keys: string[] = [];
+	const targets: ActiveTarget[] = [];
 	for (const binding of bindings) {
 		const key = targetKey(binding.slot, binding.property);
 		if (keys.includes(key)) { fail("duplicate binding for " + binding.slot + "." + binding.property); }
 		keys.push(key);
+		targets.push({ binding, writers: [], reached: [] });
 	}
-	const used: boolean[] = bindings.map((binding: MotionBinding): boolean => false);
-	const active: ActiveTrack[] = [];
-	for (const track of root.tracks) {
-		const index = keys.indexOf(targetKey(track.slot, track.property));
-		if (index < 0) { fail("no binding for track " + track.slot + "." + track.property); }
-		used[index] = true;
-		active.push({ track, binding: bindings[index], offset: 0, rate: 1 });
+	for (const writer of flatten(doc)) {
+		const name = writer.slot + "." + writer.track.property;
+		const index = keys.indexOf(targetKey(writer.slot, writer.track.property));
+		if (index < 0) { fail("no binding for track " + name); }
+		const writers = targets[index].writers;
+		if (writers.length > 0 && writers[0].track.kind !== writer.track.kind) {
+			fail("tracks of different kinds write " + name);
+		}
+		writers.push(writer);
+		targets[index].reached.push(false);
 	}
-	for (let i: int32 = 0; i < bindings.length; i += 1) {
-		if (!used[i]) { fail("binding " + bindings[i].slot + "." + bindings[i].property + " has no track"); }
+	for (const target of targets) {
+		if (target.writers.length === 0) {
+			fail("binding " + target.binding.slot + "." + target.binding.property + " has no track");
+		}
 	}
-	return active;
+	return targets;
 }
 
 export class MotionPlayer {
@@ -89,7 +87,7 @@ export class MotionPlayer {
 	onComplete: (() => void) | null = null;
 	onReverseComplete: (() => void) | null = null;
 
-	private active: ActiveTrack[];
+	private targets: ActiveTarget[];
 	private clock: Clock;
 	private iterationDuration: float64;
 	private delayTime: float64;
@@ -111,14 +109,14 @@ export class MotionPlayer {
 	private lastFrameTime: float64 = 0;
 
 	constructor(doc: MotionDocument, bindings: MotionBinding[], options: MotionOptions) {
-		this.active = compile(doc, bindings);
+		this.targets = compile(doc, bindings);
 		if (!Number.isFinite(options.delay) || options.delay < 0) { fail("delay must be finite and not negative"); }
 		if (options.repeat < -1) { fail("repeat must be -1 or more"); }
 		if (!Number.isFinite(options.repeatDelay) || options.repeatDelay < 0) {
 			fail("repeatDelay must be finite and not negative");
 		}
 		this.clock = options.clock;
-		this.iterationDuration = rootClip(doc).duration;
+		this.iterationDuration = findClip(doc, doc.root).duration;
 		this.delayTime = options.delay;
 		this.repeatCount = options.repeat;
 		this.repeatGap = options.repeat === 0 ? 0 : options.repeatDelay;
@@ -273,21 +271,22 @@ export class MotionPlayer {
 
 	revert(): void {
 		this.live();
-		for (const entry of this.active) {
-			if (entry.binding.read === null) {
-				fail("cannot revert: binding " + entry.binding.slot + "." + entry.binding.property + " has no read");
+		for (const target of this.targets) {
+			if (target.binding.read === null) {
+				fail("cannot revert: binding " + target.binding.slot + "." + target.binding.property + " has no read");
 			}
 		}
 		this.isPaused = true;
 		this.isCancelled = true;
 		this.sync();
 		if (this.initted) {
-			for (let i: int32 = 0; i < this.active.length; i += 1) {
-				this.active[i].binding.write(this.initial[i]);
+			for (let i: int32 = 0; i < this.targets.length; i += 1) {
+				this.targets[i].binding.write(this.initial[i]);
 				if (this.isDisposed) { return; }
 			}
 		}
 		this.renderSerial += 1;
+		for (const target of this.targets) { target.reached.fill(false); }
 		this.initted = false;
 		this.initial = [];
 		this.playhead = -this.delayTime;
@@ -425,9 +424,14 @@ export class MotionPlayer {
 			if (listener !== null) { listener(); }
 			if (this.superseded(serial)) { return; }
 		}
-		for (const entry of this.active) {
-			const local = (time - entry.offset) * entry.rate;
-			entry.binding.write(sampleTrack(entry.track, local));
+		for (const target of this.targets) {
+			for (let i: int32 = 0; i < target.writers.length; i += 1) {
+				if (target.writers[i].start <= time) { target.reached[i] = true; }
+			}
+			const index = writerAt(target.writers, target.reached, time);
+			if (index < 0) { continue; }
+			const writer = target.writers[index];
+			target.binding.write(sampleTrack(writer.track, writer.localTime(time)));
 			if (this.superseded(serial)) { return; }
 		}
 		if (!suppressEvents) {
@@ -452,8 +456,8 @@ export class MotionPlayer {
 	private capture(): void {
 		this.initted = true;
 		this.initial = [];
-		for (const entry of this.active) {
-			const read = entry.binding.read;
+		for (const target of this.targets) {
+			const read = target.binding.read;
 			if (read !== null) { this.initial.push(read()); }
 		}
 	}

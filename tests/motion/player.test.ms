@@ -535,21 +535,25 @@ test "bindings are checked before any write or frame request" {
 	assert probe.writes.length === 0 && clock.pending() === 0;
 }
 
-test "an invalid document is refused by validation, and a composed root is refused for now" {
+test "an invalid document is refused by validation before a frame is requested" {
 	const clock = new ManualClock();
 	const invalid = { ...rampDocument(), version: 2 };
 	const invalidMessage = refusal((): void => {
 		new MotionPlayer(invalid, [new Probe().binding(true)], motionOptions(clock.clock));
 	});
 	assert invalidMessage === "motion: unsupported version 2";
+	assert clock.pending() === 0;
+}
+
+test "a composed root plays its own tracks beside an empty placed clip" {
+	const clock = new ManualClock();
 	const composed = rampDocument();
 	composed.clips.push({ id: "leaf", duration: 100, tracks: [], placements: [] });
 	composed.clips[0].placements.push({ clip: "leaf", start: 0, rate: 1, slots: [] });
-	const composedMessage = refusal((): void => {
-		new MotionPlayer(composed, [new Probe().binding(true)], motionOptions(clock.clock));
-	});
-	assert composedMessage === "motion: composition is not supported yet";
-	assert clock.pending() === 0;
+	const probe = new Probe();
+	new MotionPlayer(composed, [probe.binding(true)], motionOptions(clock.clock));
+	clock.advance(500);
+	assert near(probe.last(), 50);
 }
 
 test "isActive is true only while the playhead moves inside the clip" {
