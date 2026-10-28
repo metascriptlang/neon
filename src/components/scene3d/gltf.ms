@@ -78,7 +78,7 @@ function borrowedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, ass
 }
 
 function plainSetup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 export function Gltf(props: GltfProps): NeonNode {

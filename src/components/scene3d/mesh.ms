@@ -31,7 +31,7 @@ function shadowMaterialOf(state: SceneState, cast: boolean, receive: boolean): M
 	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
 	const block = reserved.value;
 	try {
-		const written = writeUniforms(context, block, [0.0, 0.0, 0.0, 0.0]);
+		const written = writeUniforms(context, block, [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
 		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
 		const plain = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 		const added = addMaterial(context, {
