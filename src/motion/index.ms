@@ -17,3 +17,4 @@ export {
 } from "./document";
 export { interpolate, sampleTrack } from "./evaluate";
 export { Clock, ManualClock } from "./clock";
+export { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "./player";
