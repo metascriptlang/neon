@@ -234,7 +234,7 @@ function defaultMaterialOf(state: SceneState): MaterialId {
 	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
 	const block = reserved.value;
 	try {
-		const values: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+		const values: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		const written = writeUniforms(context, block, values);
 		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
 		const added = addMaterial(context, {
