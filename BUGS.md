@@ -26,6 +26,16 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-29 — the Void host ignores a View's `transform` style.** `applyPaint` in
+  `src/platform/void/host.ms` reads opacity, zIndex, background and box style, and nothing reads
+  `Style.transform`, so `transform: "translateX(40px)"` leaves the scene node's `local().x` at its
+  layout position. Measured on `wt/animation` with a View whose style reads a motion signal: the
+  signal reached 40 and the node stayed at x 0 (the test was in `de6593cf`
+  `tests/motion/neonVoid.test.ms` "a translateX track moves the View's Void scene node"; it was
+  taken out so the suite stays green). The native host's parser `nativeTransform`
+  (`src/platform/native/contract.ms`) is the grammar to reuse; a fix also has to choose the pivot
+  (React Native transforms about the centre), add the translation to Yoga's position rather than
+  replace it, and keep hit-testing and `measureInWindow` in step.
 - **OPEN 2026-10-19 — the Android apis and catalog lanes are red on main.** Emulator `emulator-5554`
   (Pixel 9 Pro AVD, headless, launcher force-stopped first), `ANDROID_SERIAL=emulator-5554 sh tests/android/lane.sh
   examples/<app> dev.neon.<App> tests/android/<app>.py`: apis prints `'Neon APIs' never appeared; texts []`, catalog

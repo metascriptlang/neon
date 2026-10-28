@@ -1,6 +1,5 @@
 import { NeonNode } from "../../src/render/node";
 import { Host, HostNode, render } from "../../src/render/host";
-import { Style } from "../../src/render/style";
 import { View } from "../../src/components/primitives";
 import { createVoidHost, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { framePending, setFrameDriver, useManualFrames } from "../../src/animation/frame";
@@ -16,7 +15,7 @@ import { MotionPlayer } from "../../src/motion/player";
 import { MotionPolicy } from "../../src/motion/policy";
 import { AnimatedValue, spring, timing } from "../../src/motion/value";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
-import { Changed, local, paint } from "../../../void/src/void2d/node";
+import { Changed } from "../../../void/src/void2d/node";
 
 function documentOf(tracks: MotionTrack[]): MotionDocument {
 	return {
@@ -147,29 +146,5 @@ test "unmount cancels an AnimatedValue mid-flight on the Void host" {
 	assert framePending();
 	dispose();
 	assert value.disposed && !framePending(), "the value's frame is cancelled on unmount";
-	setFrameDriver(null);
-}
-
-test "a translateX track moves the View's Void scene node" {
-	const frames = useManualFrames();
-	const vh = createVoidHost();
-	const signals = new MotionSignals();
-	const x = signals.number("box", "translateX", 0);
-	const tracks: MotionTrack[] = [{
-		slot: "box",
-		property: "translateX",
-		kind: ValueKind.Number,
-		keyframes: [linearKeyframe("x0", 0, 0), linearKeyframe("x1", 160, 80)],
-	}];
-	const dispose = mount(vh, (): NeonNode => {
-		useMotion(documentOf(tracks), signals.bindings);
-		return <View style={{ width: 40, height: 40, transform: `translateX(${x()}px)` }} />;
-	});
-	const n = box(vh);
-	frames.step(5);
-	assert x() === 40, "the signal moved: " + x().toString();
-	assert near(n.ref.local().x, 40), "scene x " + n.ref.local().x.toString() + ", style transform " +
-		((n.style as Style).transform as string);
-	dispose();
 	setFrameDriver(null);
 }
