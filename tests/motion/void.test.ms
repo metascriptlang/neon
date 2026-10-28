@@ -17,6 +17,7 @@ import { interpolate } from "../../src/motion/evaluate";
 import { MotionPlayer, motionOptions } from "../../src/motion/player";
 import { MotionPolicy } from "../../src/motion/policy";
 import { springByStiffness } from "../../src/motion/spring";
+import { MotionTarget } from "../../src/motion/target";
 import { AnimatedValue, spring } from "../../src/motion/value";
 import { VoidBindings, VoidClock } from "../../src/motion/void";
 
@@ -182,4 +183,27 @@ test "a document drives a 3D object's position, rotation and scale, and revert r
 	const start = eulerQuat(0.0, 0.0, 0.25);
 	assert back.position.x === 0.0 && back.position.z === 0.0 && back.scale.x === 1.0;
 	assert near(back.rotation.y, start.y) && near(back.rotation.z, start.z) && near(back.rotation.w, start.w);
+}
+
+test "a second player on one node property replaces the first, and bindings share its target" {
+	const scene = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const node = box(scene);
+	const clock = new VoidClock();
+	const first = new VoidBindings();
+	first.node("box", node, ["x"]);
+	const second = new VoidBindings();
+	second.node("card", node, ["x"]);
+	assert first.bindings[0].target === second.bindings[0].target, "one node property has one target";
+	const older = new MotionPlayer(documentOf([ramp("box", "x", 0, 100)]), first.bindings, motionOptions(clock.clock));
+	clock.tick(0.05);
+	assert near(node.local().x, 20);
+	const newer = new MotionPlayer(documentOf([ramp("card", "x", 50, 0)]), second.bindings, motionOptions(clock.clock));
+	clock.tick(0.125);
+	assert near(node.local().x, 25), node.local().x.toString();
+	assert older.cancelled, "the older player holds nothing and is cancelled";
+	assert (first.bindings[0].target as MotionTarget).writers === 1;
+	clock.tick(0.125);
+	assert near(node.local().x, 0);
+	newer.dispose();
+	older.dispose();
 }

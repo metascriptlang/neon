@@ -18,6 +18,7 @@ import { Quat, eulerQuat } from "../../../void/src/math/math3d";
 import { Clock, ManualClock } from "./clock";
 import { MotionValue, ValueKind, colorValue, numberValue } from "./document";
 import { MotionBinding } from "./player";
+import { MotionTarget } from "./target";
 
 export class VoidClock {
 	private manual: ManualClock = new ManualClock();
@@ -235,16 +236,67 @@ function objectBinding(slot: string, scene: Scene3D, id: NodeId3D, property: str
 	}
 }
 
+struct NodeTarget {
+	node: NodeRef;
+	property: string;
+	target: MotionTarget;
+}
+
+struct ObjectTarget {
+	scene: Scene3D;
+	id: NodeId3D;
+	property: string;
+	target: MotionTarget;
+}
+
+let nodeTargets: NodeTarget[] = [];
+let objectTargets: ObjectTarget[] = [];
+
+function sameNode(a: NodeRef, b: NodeRef): boolean {
+	return a.scene === b.scene && a.id.index === b.id.index && a.id.generation === b.id.generation;
+}
+
+function nodeTarget(node: NodeRef, property: string, binding: MotionBinding): MotionTarget {
+	nodeTargets = nodeTargets.filter((entry: NodeTarget): boolean => entry.node.isLive());
+	for (const entry of nodeTargets) {
+		if (entry.property === property && sameNode(entry.node, node)) { return entry.target; }
+	}
+	const target = new MotionTarget(binding.read, binding.write);
+	nodeTargets.push({ node, property, target });
+	return target;
+}
+
+function objectTarget(scene: Scene3D, id: NodeId3D, property: string, binding: MotionBinding): MotionTarget {
+	objectTargets = objectTargets.filter((entry: ObjectTarget): boolean => entry.scene.isLive(entry.id));
+	for (const entry of objectTargets) {
+		if (
+			entry.property === property && entry.scene === scene &&
+			entry.id.index === id.index && entry.id.generation === id.generation
+		) {
+			return entry.target;
+		}
+	}
+	const target = new MotionTarget(binding.read, binding.write);
+	objectTargets.push({ scene, id, property, target });
+	return target;
+}
+
 export class VoidBindings {
 	bindings: MotionBinding[] = [];
 
 	node(slot: string, node: NodeRef, properties: string[]): void {
 		refuseScaleOverlap(slot, properties);
-		for (const property of properties) { this.bindings.push(nodeBinding(slot, node, property)); }
+		for (const property of properties) {
+			const binding = nodeBinding(slot, node, property);
+			this.bindings.push({ ...binding, target: nodeTarget(node, property, binding) });
+		}
 	}
 
 	object(slot: string, scene: Scene3D, id: NodeId3D, properties: string[]): void {
 		refuseScaleOverlap(slot, properties);
-		for (const property of properties) { this.bindings.push(objectBinding(slot, scene, id, property)); }
+		for (const property of properties) {
+			const binding = objectBinding(slot, scene, id, property);
+			this.bindings.push({ ...binding, target: objectTarget(scene, id, property, binding) });
+		}
 	}
 }
