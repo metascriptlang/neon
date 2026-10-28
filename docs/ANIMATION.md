@@ -1,7 +1,7 @@
 # Animation — one motion model for Neon, Void and the editor
 
-State: design agreed on 2026-10-11 and prototyped on 2026-10-12. Nothing of it is in `src/` yet.
-`src/animation/` is something else: React Native's `Animated` surface on Neon signals (ROADMAP
+State: design agreed on 2026-10-11, prototyped on 2026-10-12, built in `src/motion/` (entry
+`src/motion/index.ms`, tests `tests/motion/`) from 2026-10-29. `src/animation/` is something else: React Native's `Animated` surface on Neon signals (ROADMAP
 Bundle 5). The scene clocks in `src/components/scene2d.ms` (`Anim`) and `src/components/scene3d/animation.ms`
 (`ObjectAnimation`, `MeshFrameAnimation`) are also separate, and each plays Void's own frame data.
 How these three relate to the model below is an open decision (§Open).
@@ -64,10 +64,52 @@ never treated as one.
 | asset interchange | Lottie | versioned assets, markers | its whole graphics schema |
 | reactive integration | Solid 2.0 (`~/projects/solid-next`) | ownership and cleanup on the Neon side | making the core depend on signals |
 
-Every row except Solid was chosen from official documentation. No engine's source has been read
-yet, so no row carries a `file:line`. Tracing them is milestone A. Until it is done, whether any
-part is a **NEW MECHANISM** is "not traced yet": the 2026-10-11 proposal used the label before
-any source was read.
+The rows were chosen from documentation on 2026-10-11 and traced in source on 2026-10-29.
+Sources: `~/projects/refs-animation/` (tarballs; `COMMITS` there): Theatre `6ea82b93`, GSAP
+`13e2b790`, anime.js `01b81be1`, Reanimated `bd4d3fcf`; Flutter `~/projects/flutter` `f1019913`.
+
+| part | our file | followed |
+|---|---|---|
+| keyframe data | `document.ms` | Theatre `core/src/types/public.ts:496-506` (`BasicKeyframe`: handles `[leftX, leftY, rightX, rightY]`, `connectedRight`) |
+| sampling | `evaluate.ms` `sampleTrack` | Theatre `core/src/sequences/interpolationTripleAtPosition.ts:98-197` |
+| colour | `evaluate.ms` `interpolate` | Theatre `core/src/propTypes/index.ts:508-526`, `utils/src/color.ts:80-150` (Oklab) |
+| clock split | `clock.ms` | Flutter `scheduler/ticker.dart:24,291,313` |
+| playback | `player.ms` | GSAP `gsap-core.js` `class Animation` :1148-1470 |
+| cancel, revert | `player.ms` | anime `timer/timer.js`, `animation/animation.js` |
+| composition | `compose.ms` | GSAP `_parentToChildTotalTime` :245, `_addToTimeline` :287, `Timeline.render` :1537-1669, `_parsePosition` :390-412 |
+| stagger | `compose.ms` `stagger` | anime `utils/stagger.js` |
+| spring | `spring.ms` | Reanimated `animation/spring/springUtils.ts:162-395`, `springConfigs.ts:6-95`; Flutter `physics/spring_simulation.dart` (overdamped) |
+| decay | `decay.ms` | Flutter `physics/friction_simulation.dart`; Reanimated `decay/rubberBandDecay.ts:7-46` |
+| animated value | `value.ms` | Reanimated `valueSetter.ts:10-76`, `timing.ts:90-158`, `spring.ts:146-196`, `sequence.ts`, `delay.ts`, `repeat.ts` |
+| reduced motion | `policy.ms` | Reanimated `animation/utilCommon.ts:113-132,460-478` |
+
+Nothing traced so far needed a **NEW MECHANISM**: every part is a port of one of these.
+
+### Where we depart from a reference, and why
+
+- **Decay is a pure function of elapsed time.** Reanimated's rigid decay multiplies the
+  already-decayed velocity by `exp(total elapsed)` each frame (`decay/rigidDecay.ts:15-19`), so
+  the result depends on the frame rate. That breaks "the same result on every backend", so decay
+  follows Flutter's friction simulation.
+- **A true overdamped spring.** Reanimated uses the critical solution for every ratio ≥ 1
+  (`spring.ts:115-130`); `spring.ms` uses Flutter's overdamped solution above 1.
+- **Velocity crosses sequence, delay and repeat.** Reanimated hands 0 out of a wrapper; a spring
+  after a wrapped spring then jumps. Criterion 6 asks for continuous retargeting.
+- **Refusals instead of warnings or silent defaults.** An invalid spring config, an empty
+  `sequence()`, an unknown label, an unreadable or percent position, and a placement that ends
+  after its parent's duration all throw `motion: …`. The references warn, snap, or substitute 0.
+- **The root clip's duration is authoritative.** GSAP grows a timeline to fit its children
+  (`totalDuration` :1929); Theatre stores the length (`Sequence.ts:188-211`). The editor and the
+  runtime read one stored number.
+- **Contention is decided by position, not history.** GSAP's backward render pass can show a
+  later child's first value inside a gap (:1669). `compose.ms` takes the forward reading, so a
+  backward scrub shows what a forward one shows: among writers covering a time the later start
+  wins; else the writer that ended last holds.
+- **Reduced motion is an explicit `MotionPolicy`.** Reanimated's System mode reads a process
+  global (`ReducedMotion.ts:12-14`); Neon and a standalone Void scene in one process need their
+  own.
+- **`dispose` follows Flutter** (`animation_controller.dart:902-920`): it ends the running
+  animation with `finished = false`, notifies no listener, and refuses every later call.
 
 ## Where it runs
 
@@ -162,11 +204,13 @@ What it found:
 - **The existing surfaces.** Does RN's `Animated` in `src/animation/` become a surface over this
   core, stay beside it, or go? Do Void's `Anim` and `ObjectAnimation` play through it? The VISION
   question "one animation model for both worlds" (`docs/VISION.md`) is the same question.
-- **The code API for a single value.** `x.animate(withSpring(…))`, which returns a real
-  `Animation<T>`, against Reanimated's `x.set(withSpring(…))`. The 2026-10-08 proposal
-  recommended `.animate`, with `.set` meaning an immediate value. Not decided.
-- **The contention policy:** replace, blend or error. The prototype errors.
-- **NEW MECHANISM:** not traced yet (§Which reference).
+- **The code API for a single value.** Built as `value.animate(spring(…))` with `value.set(v)`
+  meaning an immediate value (`value.ms` `AnimatedValue`), the 2026-10-08 recommendation, because
+  in Reanimated's `x.value = withSpring(…)` an animation object poses as a number. The person has
+  not confirmed it.
+- **Contention between players.** Inside one document it is settled (§departures). Two players
+  or animated values writing one target is not yet: anime's `composition: replace | blend | none`
+  is the reference to port.
 
 The discussion is in a pi session:
 `~/.pi/agent/sessions/--Users-le-metascript-neon-wt-rn-components--/2026-10-08T14-31-21-954Z_01a11bed-0a61-73fa-bdc0-7cd6357809ac.jsonl`.
