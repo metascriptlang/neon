@@ -32,7 +32,7 @@ function model(name: string, bad: boolean): GltfData {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 test "a Gltf whose data is pending shows the fallback, mounts the model once it settles, and frees it on unmount" {

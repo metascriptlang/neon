@@ -49,7 +49,7 @@ function riggedAt(hipX: float32): GltfData {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 function localOf(handle: Scene3DHandle, name: string): Transform3D {

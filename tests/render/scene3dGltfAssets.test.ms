@@ -53,7 +53,7 @@ function callerAssets(context: DrawContext): GltfAssets {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 function mountError(node: NeonNode): string {

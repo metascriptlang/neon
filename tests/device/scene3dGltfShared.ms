@@ -45,7 +45,7 @@ function decoded(): GltfData {
 }
 
 const fixture = decoded();
-const setup: GltfMaterialSetup = { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0] };
+const setup: GltfMaterialSetup = { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 
 function mounted(value: Scene3DHandle): void {
 	handle = value;
