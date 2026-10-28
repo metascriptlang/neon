@@ -270,12 +270,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   Parked at `tests/platform/void.test.ms`, the "parseFlexStyle maps numeric + enum keys" cell; the file
   fails to compile on that cell alone, so `msc test tests/platform/void.test.ms` stays red until the card lands.
 
-- **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
-  msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
-  checker now answers `Argument 0: unknown is not assignable to <kind:Sink>`; it compiled and passed on
-  `a5e1bc69`. Card: `~/metascript/.inbox/compiler/2026-09-25-push-unknown-into-unknown-array-rejected.md`.
-  Parked at `span` in that file; the JS lane still runs it.
-
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
   address on the C backend, so the callee reads the union tag out of the double's bits. `msc run

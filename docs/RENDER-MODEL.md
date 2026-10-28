@@ -256,8 +256,7 @@ variable, or holds `@emit` text, still lands in the library's file and reloads t
 
 Rejected on the way: comparing imported bindings by identity to decide which setup to remount
 (Solid Refresh's granular `dependencies`) cannot be emitted, because an imported generic function
-(`createSignal`) cannot be passed as a value without type arguments, and C refuses closure
-equality (`~/metascript/.inbox/compiler/2026-10-02-function-value-equality-c.md`). Remounting
+(`createSignal`) cannot be passed as a value without type arguments. Remounting
 every setup that reads an import, the first version, reset Counter's count on every `words.ms`
 edit, because the setup reads `createSignal`.
 
