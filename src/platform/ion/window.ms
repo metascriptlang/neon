@@ -331,7 +331,6 @@ function ionWindowHost(win: Window): Host {
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
-	const frameWin: Window = win;
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
 	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
 	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
@@ -348,7 +347,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 		now: (): number => performance.now(),
 		schedule: (fire: () => void): void => {
 			_frameFires.push(fire);
-			requestFrame(frameWin);
+			requestFrame(win);
 		},
 	});
 	const host = ionWindowHost(win);
