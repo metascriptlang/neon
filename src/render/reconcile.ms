@@ -64,6 +64,17 @@ export function mountAt(host: Host, parent: HostNode, before: HostNode | null, r
 		if (r.start === null) { place(host, parent, host.createText(""), before); }
 	} finally {
 		activeRow = prev;
+		if (prev !== null) { spanInto(host, prev as Row, r, parent); }
+	}
+}
+
+function spanInto(host: Host, outer: Row, inner: Row, parent: HostNode): void {
+	if (outer.parent !== parent || inner.start === null) { return; }
+	if (outer.start === null) {
+		outer.start = inner.start;
+		outer.end = inner.end;
+	} else if (host.nextSibling(outer.end as HostNode) === inner.start) {
+		outer.end = inner.end;
 	}
 }
 
