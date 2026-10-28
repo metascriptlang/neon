@@ -2,6 +2,7 @@ import { Clock } from "./clock";
 import { ComposedTrack, flatten, localTime, writerAt } from "./compose";
 import { MotionDocument, MotionValue, findClip, validate } from "./document";
 import { sampleTrack } from "./evaluate";
+import { Composition, MotionTarget, TargetClaim } from "./target";
 
 const PLAYHEAD_EPSILON: float64 = 1e-8;
 const INFINITE_TOTAL_DURATION: float64 = 1e10;
@@ -11,6 +12,7 @@ export interface MotionBinding {
 	property: string;
 	write: (value: MotionValue) => void;
 	read: (() => MotionValue) | null;
+	target?: MotionTarget;
 }
 
 export struct MotionOptions {
@@ -21,16 +23,36 @@ export struct MotionOptions {
 	timeScale: float64;
 	paused: boolean;
 	clock: Clock;
+	composition: Composition;
 }
 
 export function motionOptions(clock: Clock): MotionOptions {
-	return { delay: 0, repeat: 0, repeatDelay: 0, yoyo: false, timeScale: 1, paused: false, clock };
+	return {
+		delay: 0,
+		repeat: 0,
+		repeatDelay: 0,
+		yoyo: false,
+		timeScale: 1,
+		paused: false,
+		clock,
+		composition: Composition.Replace,
+	};
 }
 
-struct ActiveTarget {
+class ActiveTarget {
 	binding: MotionBinding;
-	writers: ComposedTrack[];
-	reached: boolean[];
+	writers: ComposedTrack[] = [];
+	reached: boolean[] = [];
+	claim: TargetClaim | null = null;
+	lost: boolean = false;
+
+	constructor(binding: MotionBinding) {
+		this.binding = binding;
+	}
+
+	get label(): string {
+		return this.binding.slot + "." + this.binding.property;
+	}
 }
 
 function fail(message: string): never {
@@ -54,12 +76,21 @@ function cycleIndex(totalTime: float64, cycle: float64): int32 {
 function compile(doc: MotionDocument, bindings: MotionBinding[]): ActiveTarget[] {
 	validate(doc);
 	const keys: string[] = [];
+	const identities: MotionTarget[] = [];
 	const targets: ActiveTarget[] = [];
 	for (const binding of bindings) {
 		const key = targetKey(binding.slot, binding.property);
 		if (keys.includes(key)) { fail("duplicate binding for " + binding.slot + "." + binding.property); }
 		keys.push(key);
-		targets.push({ binding, writers: [], reached: [] });
+		const identity = binding.target;
+		if (identity !== null) {
+			if (identities.includes(identity)) {
+				const name = binding.slot + "." + binding.property;
+				fail("bindings " + name + " and another share one target");
+			}
+			identities.push(identity);
+		}
+		targets.push(new ActiveTarget(binding));
 	}
 	for (const writer of flatten(doc)) {
 		const name = writer.slot + "." + writer.track.property;
@@ -97,6 +128,7 @@ export class MotionPlayer {
 	private totalDur: float64;
 	private scale: float64;
 	private isPaused: boolean;
+	private composition: Composition;
 	private isCancelled: boolean = false;
 	private isDisposed: boolean = false;
 	private initted: boolean = false;
@@ -124,6 +156,7 @@ export class MotionPlayer {
 		this.totalDur = this.computeTotalDuration();
 		this.scale = this.checkedScale(options.timeScale);
 		this.isPaused = options.paused;
+		this.composition = options.composition;
 		this.playhead = -options.delay;
 		this.sync();
 	}
@@ -271,6 +304,7 @@ export class MotionPlayer {
 		this.live();
 		this.isPaused = true;
 		this.isCancelled = true;
+		this.releaseTargets();
 		this.sync();
 	}
 
@@ -283,6 +317,7 @@ export class MotionPlayer {
 		}
 		this.isPaused = true;
 		this.isCancelled = true;
+		this.releaseTargets();
 		this.sync();
 		if (this.initted) {
 			for (let i: int32 = 0; i < this.targets.length; i += 1) {
@@ -302,6 +337,7 @@ export class MotionPlayer {
 	dispose(): void {
 		this.live();
 		this.isDisposed = true;
+		this.releaseTargets();
 		this.sync();
 		this.onStart = null;
 		this.onUpdate = null;
@@ -434,11 +470,14 @@ export class MotionPlayer {
 				if (target.writers[i].start <= time) { target.reached[i] = true; }
 			}
 			const index = writerAt(target.writers, target.reached, time);
-			if (index < 0) { continue; }
+			if (index < 0 || target.lost) { continue; }
 			const writer = target.writers[index];
-			target.binding.write(sampleTrack(writer.track, writer.localTime(time)));
+			const value = this.held(target, sampleTrack(writer.track, writer.localTime(time)));
+			if (this.superseded(serial)) { return; }
+			target.binding.write(value);
 			if (this.superseded(serial)) { return; }
 		}
+		if (this.scale > 0 ? totalTime === total : totalTime === 0) { this.releaseTargets(); }
 		if (!suppressEvents) {
 			const listener = this.onUpdate;
 			if (listener !== null) { listener(); }
@@ -455,6 +494,50 @@ export class MotionPlayer {
 				const finished = atEnd ? this.onComplete : this.onReverseComplete;
 				if (finished !== null) { finished(); }
 			}
+		}
+	}
+
+	private held(target: ActiveTarget, value: MotionValue): MotionValue {
+		const identity = target.binding.target;
+		if (identity === null || this.composition === Composition.None) { return value; }
+		const blend = this.composition === Composition.Blend;
+		let claim = target.claim;
+		if (claim === null) {
+			const end = blend ? this.endValue(target) : value;
+			claim = identity.claim(
+				this.composition,
+				value,
+				end,
+				target.label,
+				null,
+				(): void => this.replaced(target),
+			);
+			target.claim = claim;
+		}
+		return blend ? identity.blended(claim, value, target.label) : value;
+	}
+
+	private endValue(target: ActiveTarget): MotionValue {
+		const reflected = this.yoyoing && this.repeatCount > 0 && this.repeatCount % 2 === 1;
+		const time = reflected ? 0 : this.iterationDuration;
+		const reached = target.writers.map((): boolean => true);
+		const writer = target.writers[writerAt(target.writers, reached, time)];
+		return sampleTrack(writer.track, writer.localTime(time));
+	}
+
+	private replaced(target: ActiveTarget): void {
+		target.claim = null;
+		target.lost = true;
+		if (this.targets.every((other: ActiveTarget): boolean => other.lost)) { this.cancel(); }
+	}
+
+	private releaseTargets(): void {
+		for (const target of this.targets) {
+			const claim = target.claim;
+			const identity = target.binding.target;
+			if (claim !== null && identity !== null) { identity.release(claim); }
+			target.claim = null;
+			target.lost = false;
 		}
 	}
 

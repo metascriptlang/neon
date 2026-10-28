@@ -9,6 +9,7 @@ import {
 	position as decayPosition,
 	velocity as decayVelocity,
 } from "./decay";
+import { numberValue } from "./document";
 import { MotionPolicy, ReduceMotion, shouldReduce } from "./policy";
 import {
 	SpringConfig,
@@ -19,6 +20,7 @@ import {
 	springByStiffness,
 	velocity as springVelocity,
 } from "./spring";
+import { Composition, MotionTarget, TargetClaim } from "./target";
 
 export enum AnimationKind {
 	Timing,
@@ -120,6 +122,18 @@ export function repeat(
 	reverse: boolean = false,
 ): AnimationSpec {
 	return { ...baseSpec(AnimationKind.Repeat), count, reverse, children: [spec] };
+}
+
+function blendEnd(spec: AnimationSpec): float64 {
+	const kind = spec.kind;
+	if (kind === AnimationKind.Timing || kind === AnimationKind.Spring) { return spec.to; }
+	if (kind === AnimationKind.Sequence) { return blendEnd(spec.children[spec.children.length - 1]); }
+	if (kind === AnimationKind.Delay || (kind === AnimationKind.Repeat && !spec.reverse)) {
+		return blendEnd(spec.children[0]);
+	}
+	throw new Error(
+		"motion: a blended animation needs a fixed end; decay and reversing repeat have none",
+	);
 }
 
 function sameSpringConfig(a: SpringConfig, b: SpringConfig): boolean {
@@ -429,6 +443,8 @@ class Listener {
 	}
 }
 
+const LABEL = "an animated value";
+
 export class AnimatedValue {
 	private value: float64;
 	private clock: Clock;
@@ -438,12 +454,23 @@ export class AnimatedValue {
 	private frameId: int32 = 0;
 	private listeners: Listener[] = [];
 	private isDisposed: boolean = false;
+	private target: MotionTarget | null;
+	private composition: Composition;
+	private claim: TargetClaim | null = null;
 
-	constructor(value: float64, clock: Clock, policy: MotionPolicy) {
+	constructor(
+		value: float64,
+		clock: Clock,
+		policy: MotionPolicy,
+		target: MotionTarget | null = null,
+		composition: Composition = Composition.Replace,
+	) {
 		requireFinite(value, "an animated value");
 		this.value = value;
 		this.clock = clock;
 		this.policy = policy;
+		this.target = composition === Composition.None ? null : target;
+		this.composition = composition;
 	}
 
 	get disposed(): boolean {
@@ -470,19 +497,46 @@ export class AnimatedValue {
 		this.requireAlive();
 		requireFinite(value, "an animated value");
 		this.interrupt();
-		this.write(value);
+		const target = this.target;
+		if (target === null) {
+			this.write(value);
+			return;
+		}
+		const previous = this.claim;
+		const start = this.composition === Composition.Blend
+			? target.blendFrom(previous, numberValue(value), LABEL)
+			: numberValue(value);
+		this.claim = target.claim(
+			this.composition,
+			start,
+			numberValue(value),
+			LABEL,
+			previous,
+			this.onReplaced(),
+		);
+		const out = this.output(value);
+		this.release();
+		this.write(out);
 	}
 
 	cancel(): void {
 		this.requireAlive();
 		this.interrupt();
+		this.release();
 	}
 
 	animate(spec: AnimationSpec, onEnd: ((finished: boolean) => void) | null = null): void {
 		this.requireAlive();
+		const blend = this.target !== null && this.composition === Composition.Blend;
+		const end = blend ? blendEnd(spec) : spec.to;
 		const previous = this.interrupt();
+		const target = this.target;
+		const start = target === null || !blend
+			? this.value
+			: target.blendFrom(this.claim, numberValue(this.value), LABEL).number;
 		const leaf = spec.kind === AnimationKind.Timing || spec.kind === AnimationKind.Spring;
-		if (leaf && spec.to === this.value) {
+		if (leaf && !blend && spec.to === start) {
+			this.release();
 			if (onEnd !== null) { onEnd(true); }
 			return;
 		}
@@ -492,7 +546,17 @@ export class AnimatedValue {
 			run.reduceSet = true;
 		}
 		const now = this.clock.now();
-		run.start(this.value, now, previous);
+		run.start(start, now, previous);
+		if (target !== null) {
+			this.claim = target.claim(
+				this.composition,
+				numberValue(start),
+				numberValue(end),
+				LABEL,
+				this.claim,
+				this.onReplaced(),
+			);
+		}
 		this.running = run;
 		this.onEnd = onEnd;
 		this.step(run, now);
@@ -518,6 +582,7 @@ export class AnimatedValue {
 		}
 		this.listeners = [];
 		this.interrupt();
+		this.release();
 	}
 
 	private requireAlive(): void {
@@ -542,6 +607,29 @@ export class AnimatedValue {
 		return running;
 	}
 
+	private onReplaced(): () => void {
+		return (): void => {
+			this.claim = null;
+			this.interrupt();
+		};
+	}
+
+	private release(): void {
+		const claim = this.claim;
+		const target = this.target;
+		this.claim = null;
+		if (claim !== null && target !== null) { target.release(claim); }
+	}
+
+	private output(value: float64): float64 {
+		const claim = this.claim;
+		const target = this.target;
+		if (claim === null || target === null || this.composition !== Composition.Blend) {
+			return value;
+		}
+		return target.blended(claim, numberValue(value), LABEL).number;
+	}
+
 	private write(value: float64): void {
 		if (value === this.value) {
 			return;
@@ -554,12 +642,13 @@ export class AnimatedValue {
 
 	private step(run: Run, now: float64): void {
 		const done = run.frame(now);
-		this.write(run.current);
+		this.write(this.output(run.current));
 		if (this.running !== run) {
 			return;
 		}
 		if (done) {
 			this.running = null;
+			this.release();
 			const onEnd = this.onEnd;
 			this.onEnd = null;
 			if (onEnd !== null) { onEnd(true); }
