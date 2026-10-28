@@ -118,8 +118,8 @@ Nothing traced so far needed a **NEW MECHANISM**: every part is a port of one of
 | consumer | clock | execution | value reaches |
 |---|---|---|---|
 | browser renderer, JS | the browser's animation clock or rAF | WAAPI when expressible, evaluator otherwise | DOM style |
-| Void in the browser, WASM | Void's loop, on rAF | evaluator | Void scene properties, no CSS |
-| Void native, standalone | Void's frame source | evaluator | Void scene properties, no Neon |
+| Void in the browser, WASM | Void's loop, on rAF | evaluator | Void scene properties, no CSS. **Parked:** no emcc build imports yoga until `~/metascript/.inbox/yoga/2026-10-28-child-index-as-size-t-for-wasm32.md` lands |
+| Void native, standalone | `void.ms` `VoidClock`, ticked by the program's frame closure beside `Scene2D.tick(dt)` | evaluator | `VoidBindings`: 2D node and 3D object properties, no Neon |
 | Neon on Void | the Void area clock (`src/render/voidClock.ms`) | evaluator, no second scheduler | Neon → scene |
 | Neon native hosts | the host's display frame (`src/animation/frame.ms`) | evaluator | native view properties |
 | tests, headless | manual clock | evaluator | values or mock bindings |
