@@ -1,6 +1,7 @@
 import { createAsyncMemo } from "../core/memo";
-import { accessor } from "../core/signal";
-import { getOwner } from "../core/runtime";
+import { Accessor, accessor } from "../core/signal";
+import { getOwner, isServer } from "../core/runtime";
+import { runWithOwner } from "../core/owner";
 import { serverContext } from "../core/serverContext";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { createComponent } from "./component";
@@ -11,6 +12,7 @@ class LazyModule<P> {
 	load: () => Promise<(props: P) => NeonNode>;
 	loading: Promise<boolean>[] = [];
 	loaded: ((props: P) => NeonNode)[] = [];
+	settles: Accessor<boolean>[] = [];
 
 	constructor(load: () => Promise<(props: P) => NeonNode>) {
 		this.load = load;
@@ -32,6 +34,13 @@ function startLoad<P>(m: LazyModule<P>): Promise<boolean> {
 		current.catch((e): boolean => { if (m.loading.length > 0 && m.loading[0] === current) { m.loading.pop(); } return false; });
 	}
 	return m.loading[0];
+}
+
+function awaitLoaded<P>(m: LazyModule<P>): void {
+	if (m.settles.length === 0) {
+		m.settles.push(runWithOwner<Accessor<boolean>>(null, (): Accessor<boolean> => createAsyncMemo((prev: boolean | null): Promise<boolean> => startLoad<P>(m))));
+	}
+	m.settles[0]();
 }
 
 function entryFor<P>(key: string, load: () => Promise<(props: P) => NeonNode>): LazyModule<P> {
@@ -59,6 +68,7 @@ export function lazyModule<P>(key: string, load: () => Promise<(props: P) => Neo
 			if (ctx !== null && self !== null && self.id !== null) { ctx.modules.set(self.id as string, key); }
 			return startLoad<P>(m);
 		});
+		if (m.loaded.length === 0 && !isServer()) { awaitLoaded<P>(m); }
 		Show({ when: accessor((): boolean => m.loaded.length > 0 || ready()), children: mount })(host, parent, before);
 	};
 }
