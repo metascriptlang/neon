@@ -78,7 +78,7 @@ export function linearKeyframe(id: string, time: float64, value: float64): Motio
 		id,
 		time,
 		value: numberValue(value),
-		handles: { leftX: 2 / 3, leftY: 2 / 3, rightX: 1 / 3, rightY: 1 / 3 },
+		handles: { leftX: 2.0 / 3.0, leftY: 2.0 / 3.0, rightX: 1.0 / 3.0, rightY: 1.0 / 3.0 },
 		connectedRight: true,
 	};
 }
