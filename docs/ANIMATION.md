@@ -110,6 +110,15 @@ Nothing traced so far needed a **NEW MECHANISM**: every part is a port of one of
 - **Reduced motion is an explicit `MotionPolicy`.** Reanimated's System mode reads a process
   global (`ReducedMotion.ts:12-14`); Neon and a standalone Void scene in one process need their
   own.
+- **Contention between writers is anime's composition, with no hidden writer.** `target.ms`:
+  writers that carry one `MotionTarget` replace (default, `core/globals.js:54`), blend
+  (`composition.js:221-259`, `additive.js:53-73`) or ignore each other (`none`). Two departures:
+  a Replace writer and a Blend writer on one target stop each other instead of both writing with
+  the blend applied last (`engine.js:92`), which shows the same value; and a blended player keeps
+  its own document keyframes, scaling its delta by (base − end)/(start − end) where anime drops an
+  explicit `from`, because a document's keyframes are data the editor owns. Not ported: anime's
+  absolute-timeline truncation (`render.js:197-205`), so seeking a replaced player backwards does
+  not replay the part it wrote before the takeover.
 - **`dispose` follows Flutter** (`animation_controller.dart:902-920`): it ends the running
   animation with `finished = false`, notifies no listener, and refuses every later call.
 
@@ -217,9 +226,6 @@ What it found:
   meaning an immediate value (`value.ms` `AnimatedValue`), the 2026-10-08 recommendation, because
   in Reanimated's `x.value = withSpring(…)` an animation object poses as a number. The person has
   not confirmed it.
-- **Contention between players.** Inside one document it is settled (§departures). Two players
-  or animated values writing one target is not yet: anime's `composition: replace | blend | none`
-  is the reference to port.
 
 The discussion is in a pi session:
 `~/.pi/agent/sessions/--Users-le-metascript-neon-wt-rn-components--/2026-10-08T14-31-21-954Z_01a11bed-0a61-73fa-bdc0-7cd6357809ac.jsonl`.
