@@ -47,7 +47,7 @@ function mount(vh: VoidHost, app: () => NeonNode): () => void {
 }
 
 function box(vh: VoidHost): VoidNode {
-	return (vh.root as VoidNode).children[0];
+	return vh.tree.childrenOf(vh.root as VoidNode)[0];
 }
 
 function near(value: float32, expected: float64): boolean {
