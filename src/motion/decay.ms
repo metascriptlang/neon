@@ -218,11 +218,11 @@ function requireTime(tMs: float64): float64 {
 	return Math.max(tMs, 0) / 1000;
 }
 
-export function decayIsDone(this d: DecaySimulation, tMs: float64): boolean {
+export function isDone(this d: DecaySimulation, tMs: float64): boolean {
 	return requireTime(tMs) >= d.endSeconds;
 }
 
-export function decayPosition(this d: DecaySimulation, tMs: float64): float64 {
+export function position(this d: DecaySimulation, tMs: float64): float64 {
 	const seconds = requireTime(tMs);
 	if (seconds >= d.endSeconds && d.snapsToBound) {
 		return d.bound;
@@ -231,7 +231,7 @@ export function decayPosition(this d: DecaySimulation, tMs: float64): float64 {
 	return at >= d.rubberStartSeconds ? d.bound + d.rubberOffsetAt(at) : d.rigidPosition(at);
 }
 
-export function decayVelocity(this d: DecaySimulation, tMs: float64): float64 {
+export function velocity(this d: DecaySimulation, tMs: float64): float64 {
 	const seconds = requireTime(tMs);
 	if (seconds >= d.endSeconds) {
 		return 0;
