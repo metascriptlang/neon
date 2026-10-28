@@ -82,6 +82,8 @@ Sources: `~/projects/refs-animation/` (tarballs; `COMMITS` there): Theatre `6ea8
 | decay | `decay.ms` | Flutter `physics/friction_simulation.dart`; Reanimated `decay/rubberBandDecay.ts:7-46` |
 | animated value | `value.ms` | Reanimated `valueSetter.ts:10-76`, `timing.ts:90-158`, `spring.ts:146-196`, `sequence.ts`, `delay.ts`, `repeat.ts` |
 | reduced motion | `policy.ms` | Reanimated `animation/utilCommon.ts:113-132,460-478` |
+| browser execution | `waapi.ms` | anime `waapi/waapi.js:127-162,231-235,396-505`, `waapi/composition.js:36` |
+| Neon ownership | `neon.ms` | Neon's SR-3 (`docs/REFERENCE.md`) over Solid 2.0 `signals.ts:92-101` |
 
 Nothing traced so far needed a **NEW MECHANISM**: every part is a port of one of these.
 
@@ -136,7 +138,14 @@ What an app relies on, the same on every backend:
   "last write wins";
 - **lifecycle:** what a player and its callbacks do when a target unmounts or is disposed;
 - **reduced motion:** one policy with one meaning everywhere;
-- **capability:** when a backend falls back to the evaluator, and what it refuses.
+- **capability:** when a backend falls back to the evaluator, and what it refuses. In the
+  browser (`waapi.ms` `BrowserMotionPlayer`) a track goes to WAAPI only when its property is in
+  the CSS table, it is the property's only writer, its placement starts at 0, its keyframes lie
+  inside the clip and there is no repeat delay; every other track runs on the evaluator in the
+  same player, and a track with neither path is refused at construction. WAAPI interpolates
+  colour in sRGB where the evaluator uses Oklab, so a colour frame may differ; transforms use the
+  individual `translate`, `rotate` and `scale` properties, not anime's `var()` transform
+  (`waapi.js:196-216`), so the element keeps its own `transform`.
 
 Seeking a keyframe clip and seeking a simulation with interaction history are not the same. A
 timeline the editor scrubs must be reproducible, while a live gesture keeps its own state.
