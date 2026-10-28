@@ -162,6 +162,11 @@ export class MotionPlayer {
 		return this.renderedTotalTime;
 	}
 
+	get rawTime(): float64 {
+		this.live();
+		return this.playhead;
+	}
+
 	get duration(): float64 {
 		this.live();
 		return this.iterationDuration;
