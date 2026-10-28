@@ -333,6 +333,7 @@ export struct MotionElement {
 when (js) {
 	import { numberValue } from "./document";
 	import { MotionBinding, MotionPlayer } from "./player";
+	import { Composition, MotionTarget } from "./target";
 
 	extern class Animation {
 		currentTime: number | null;
@@ -368,6 +369,7 @@ when (js) {
 		element: HTMLElement;
 		track: RoutedTrack;
 		style: StyleProperty;
+		owner: ElementTarget;
 		animation: Animation | null = null;
 		baseline: string = "";
 
@@ -375,7 +377,50 @@ when (js) {
 			this.element = element;
 			this.track = track;
 			this.style = style;
+			this.owner = elementTarget(element, style.css);
 		}
+	}
+
+	class ElementTarget {
+		element: HTMLElement;
+		css: string;
+		target: MotionTarget = new MotionTarget();
+		run: StyleRun | null = null;
+		users: int32 = 0;
+
+		constructor(element: HTMLElement, css: string) {
+			this.element = element;
+			this.css = css;
+			this.target.onClaim = (): void => { this.evict(); };
+		}
+
+		evict(): void {
+			const run = this.run;
+			if (run === null) { return; }
+			this.run = null;
+			const animation = run.animation;
+			if (animation === null) { return; }
+			animation.pause();
+			commitStyles(animation);
+			animation.cancel();
+			run.animation = null;
+		}
+	}
+
+	let elementTargets: ElementTarget[] = [];
+
+	function elementTarget(element: HTMLElement, css: string): ElementTarget {
+		elementTargets = elementTargets.filter((entry: ElementTarget): boolean => entry.users > 0);
+		for (const entry of elementTargets) {
+			if (entry.element === element && entry.css === css) {
+				entry.users += 1;
+				return entry;
+			}
+		}
+		const entry = new ElementTarget(element, css);
+		entry.users = 1;
+		elementTargets.push(entry);
+		return entry;
 	}
 
 	function notify(listener: (() => void) | null): void {
@@ -414,9 +459,13 @@ when (js) {
 			const plan = planWaapi(doc, options, custom);
 			this.timing = plan.timing;
 			const all: MotionBinding[] = bindings.slice(0);
-			for (const track of plan.tracks) {
-				const style = track.style;
+			const blend = options.composition === Composition.Blend;
+			for (const planned of plan.tracks) {
+				const style = planned.style;
 				if (style === null) { continue; }
+				const track = blend && planned.route === TrackRoute.Waapi
+					? { ...planned, route: TrackRoute.Style }
+					: planned;
 				const run = new StyleRun(elementFor(elements, track), track, style);
 				this.runs.push(run);
 				all.push(this.bind(run));
@@ -522,6 +571,7 @@ when (js) {
 		dispose(): void {
 			this.halt(true);
 			this.master.dispose();
+			for (const run of this.runs) { run.owner.users -= 1; }
 			this.onStart = null;
 			this.onUpdate = null;
 			this.onRepeat = null;
@@ -538,6 +588,7 @@ when (js) {
 					run.baseline = readStyle(run.element, run.style.css);
 					return numberValue(0);
 				},
+				target: run.owner.target,
 			};
 		}
 
@@ -552,6 +603,7 @@ when (js) {
 			}
 			if (run.animation !== null) { return; }
 			run.animation = this.start(run);
+			run.owner.run = run;
 			this.align(run);
 		}
 
@@ -604,6 +656,7 @@ when (js) {
 				if (commit) { commitStyles(animation); }
 				animation.cancel();
 				run.animation = null;
+				if (run.owner.run === run) { run.owner.run = null; }
 			}
 		}
 	}

@@ -334,3 +334,28 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 		"motion: no element for slot card of track card.opacity", message;
 	dom(node).remove();
 }
+
+function fadeTo(node: HostNode, to: float64): BrowserMotionPlayer {
+	const doc = documentOf([ramp("box", "opacity", to)]);
+	return new BrowserMotionPlayer(doc, [{ slot: "box", node }], [], paused());
+}
+
+test "a second player on one element's opacity replaces the first's browser animation with no jump" {
+	const node = mount();
+	const el = dom(node);
+	const older = fadeTo(node, 1);
+	older.seek(500);
+	assert near(opacity(el), 0.5, 1e-3), computed(el, "opacity");
+	assert el.getAnimations().length === 1;
+	const newer = fadeTo(node, 0.2);
+	newer.seek(250);
+	assert el.getAnimations().length === 1, "the older animation is gone: " +
+		el.getAnimations().length.toString();
+	assert near(opacity(el), 0.05, 1e-3), computed(el, "opacity");
+	assert older.cancelled, "the older player holds nothing and is cancelled";
+	newer.dispose();
+	assert near(opacity(el), 0.05, 1e-3), "dispose commits the shown value: " +
+		computed(el, "opacity");
+	older.dispose();
+	el.remove();
+}
