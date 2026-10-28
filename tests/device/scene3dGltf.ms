@@ -66,7 +66,7 @@ function data(): GltfData {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 function mounted(value: Scene3DHandle): void {

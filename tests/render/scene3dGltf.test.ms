@@ -29,7 +29,7 @@ function model(name: string, bad: boolean): GltfData {
 }
 
 function setup(bad: boolean): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: bad ? [0.0, 0.0, 0.0] : [0.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: bad ? [0.0, 0.0, 0.0] : [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 test "Gltf keeps its wrapper and authored children while imported graphs replace atomically" {
