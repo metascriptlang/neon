@@ -6,6 +6,7 @@ import { Clock } from "./clock";
 import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "./document";
 import { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "./player";
 import { MotionPolicy } from "./policy";
+import { Composition, MotionTarget } from "./target";
 import { AnimatedValue } from "./value";
 
 class FrameTicket {
@@ -64,11 +65,17 @@ export function useMotion(
 export function useAnimatedValue(
 	initial: float64,
 	policy: MotionPolicy = new MotionPolicy(),
+	target: MotionTarget | null = null,
+	composition: Composition = Composition.Replace,
 ): [Accessor<float64>, AnimatedValue] {
 	requireOwner("useAnimatedValue");
-	const value = new AnimatedValue(initial, neonClock(), policy);
+	const value = new AnimatedValue(initial, neonClock(), policy, target, composition);
 	const [read, write] = createSignal<float64>(initial);
-	value.subscribe((next: float64): void => { write(next); });
+	const reach = target?.write ?? null;
+	value.subscribe((next: float64): void => {
+		write(next);
+		if (reach !== null) { reach(numberValue(next)); }
+	});
 	onCleanup((): void => { if (!value.disposed) { value.dispose(); } });
 	return [read, value];
 }
@@ -95,16 +102,16 @@ export class MotionSignals {
 	number(slot: string, property: string, initial: float64): Accessor<float64> {
 		const [read, write] = createSignal<float64>(initial);
 		let current = initial;
-		this.bindings.push({
+		this.bind(
 			slot,
 			property,
-			write: (value: MotionValue): void => {
+			(value: MotionValue): void => {
 				requireKind(value, ValueKind.Number, slot, property);
 				current = value.number;
 				write(value.number);
 			},
-			read: (): MotionValue => numberValue(current),
-		});
+			(): MotionValue => numberValue(current),
+		);
 		return read;
 	}
 
@@ -112,16 +119,26 @@ export class MotionSignals {
 		requireKind(initial, ValueKind.Color, slot, property);
 		const [read, write] = createSignal<string>(cssColor(initial.color));
 		let current = initial;
-		this.bindings.push({
+		this.bind(
 			slot,
 			property,
-			write: (value: MotionValue): void => {
+			(value: MotionValue): void => {
 				requireKind(value, ValueKind.Color, slot, property);
 				current = value;
 				write(cssColor(value.color));
 			},
-			read: (): MotionValue => current,
-		});
+			(): MotionValue => current,
+		);
 		return read;
+	}
+
+	private bind(
+		slot: string,
+		property: string,
+		write: (value: MotionValue) => void,
+		read: () => MotionValue,
+	): void {
+		const target = new MotionTarget(read, write);
+		this.bindings.push({ slot, property, write, read, target });
 	}
 }

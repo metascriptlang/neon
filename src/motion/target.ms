@@ -70,11 +70,30 @@ function scaledDelta(
 }
 
 export class MotionTarget {
+	read: (() => MotionValue) | null;
+	write: ((value: MotionValue) => void) | null;
+	onClaim: (() => void) | null = null;
 	private claims: TargetClaim[] = [];
 	private base: MotionValue = numberValue(0);
 
+	constructor(
+		read: (() => MotionValue) | null = null,
+		write: ((value: MotionValue) => void) | null = null,
+	) {
+		this.read = read;
+		this.write = write;
+	}
+
 	get writers(): int32 {
 		return this.claims.length;
+	}
+
+	shown(fallback: MotionValue, label: string): MotionValue {
+		const read = this.read;
+		if (read === null) { return fallback; }
+		const value = read();
+		if (value.kind !== fallback.kind) { fail(label + " reads a value of another kind from its target"); }
+		return value;
 	}
 
 	blendFrom(previous: TargetClaim | null, fallback: MotionValue, label: string): MotionValue {
@@ -95,6 +114,8 @@ export class MotionTarget {
 		if (composition === Composition.None) {
 			fail(label + " composes with None and claims no target");
 		}
+		const claimed = this.onClaim;
+		if (claimed !== null) { claimed(); }
 		if (composition === Composition.Replace) {
 			const claim = new TargetClaim(composition, end, [1], numberValue(0), onReplaced);
 			this.replaceAll(claim, previous);

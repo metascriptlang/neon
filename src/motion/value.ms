@@ -531,9 +531,12 @@ export class AnimatedValue {
 		const end = blend ? blendEnd(spec) : spec.to;
 		const previous = this.interrupt();
 		const target = this.target;
-		const start = target === null || !blend
+		const shown = target === null || this.claim !== null
 			? this.value
-			: target.blendFrom(this.claim, numberValue(this.value), LABEL).number;
+			: target.shown(numberValue(this.value), LABEL).number;
+		const start = target === null || !blend
+			? shown
+			: target.blendFrom(this.claim, numberValue(shown), LABEL).number;
 		const leaf = spec.kind === AnimationKind.Timing || spec.kind === AnimationKind.Spring;
 		if (leaf && !blend && spec.to === start) {
 			this.release();

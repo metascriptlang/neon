@@ -5,6 +5,7 @@ import { Host, HostNode, MockNode, mockHost, render } from "../../src/render/hos
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
 import { View } from "../../src/components/primitives";
+import { Easing } from "../../src/animation/easing";
 import { framePending, setFrameDriver, useManualFrames } from "../../src/animation/frame";
 import {
 	MotionDocument,
@@ -249,6 +250,83 @@ test "ownerless use refuses" {
 	try { useAnimatedValue(0); } catch (e) { valueError = e.toString(); }
 	assert valueError.includes("useAnimatedValue") && valueError.includes("owner"), valueError;
 	assert !framePending(), "a refused use requests no frame";
+	setFrameDriver(null);
+}
+
+function fade(from: float64, to: float64): MotionDocument {
+	return {
+		version: 1,
+		root: "main",
+		clips: [
+			{
+				id: "main",
+				duration: 160,
+				tracks: [
+					{
+						slot: "box",
+						property: "opacity",
+						kind: ValueKind.Number,
+						keyframes: [linearKeyframe("a", 0, from), linearKeyframe("b", 160, to)],
+					},
+				],
+				placements: [],
+				labels: [],
+			},
+		],
+	};
+}
+
+function near(a: float64, b: float64): boolean {
+	return Math.abs(a - b) < 1e-9;
+}
+
+test "a second player on one MotionSignals property replaces the first mid-flight" {
+	const frames = useManualFrames();
+	const signals = new MotionSignals();
+	const opacity = signals.number("box", "opacity", 0);
+	const [older, dispose] = createRoot((dispose: () => void): [MotionPlayer, () => void] => [
+		useMotion(fade(0, 1), signals.bindings),
+		dispose,
+	]);
+	frames.step(5);
+	assert near(opacity(), 0.5), opacity().toString();
+	const disposeNewer = createRoot((dispose: () => void): () => void => {
+		useMotion(fade(0.5, 0), signals.bindings);
+		return dispose;
+	});
+	frames.step(1);
+	assert older.cancelled, "the older player lost its only target";
+	assert near(opacity(), 0.45), opacity().toString();
+	frames.step(4);
+	assert near(opacity(), 0.25), "the older player never writes again: " + opacity().toString();
+	frames.runAll();
+	assert opacity() === 0 && !framePending();
+	disposeNewer();
+	dispose();
+	setFrameDriver(null);
+}
+
+test "useAnimatedValue joining a running player starts from the shown value" {
+	const frames = useManualFrames();
+	const signals = new MotionSignals();
+	const opacity = signals.number("box", "opacity", 0);
+	const [player, value, dispose] = createRoot(
+		(dispose: () => void): [MotionPlayer, AnimatedValue, () => void] => {
+			const player = useMotion(fade(0, 1), signals.bindings);
+			const pair = useAnimatedValue(0, new MotionPolicy(), signals.bindings[0].target);
+			return [player, pair[1], dispose];
+		},
+	);
+	frames.step(5);
+	assert near(opacity(), 0.5) && value.get() === 0;
+	value.animate(timing(0, { duration: 160, easing: Easing.linear }));
+	assert player.cancelled, "the value replaced the player";
+	assert near(value.get(), 0.5) && near(opacity(), 0.5), "no jump: " + opacity().toString();
+	frames.step(5);
+	assert near(opacity(), 0.25) && near(value.get(), 0.25), opacity().toString();
+	frames.runAll();
+	assert opacity() === 0 && !framePending();
+	dispose();
 	setFrameDriver(null);
 }
 
