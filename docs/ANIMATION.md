@@ -154,7 +154,11 @@ What an app relies on, the same on every backend:
   same player, and a track with neither path is refused at construction. WAAPI interpolates
   colour in sRGB where the evaluator uses Oklab, so a colour frame may differ; transforms use the
   individual `translate`, `rotate` and `scale` properties, not anime's `var()` transform
-  (`waapi.js:196-216`), so the element keeps its own `transform`.
+  (`waapi.js:196-216`), so the element keeps its own `transform`. Each element and CSS property
+  has one `MotionTarget`; a newer writer commits and cancels the older browser animation there,
+  as anime's `addWAAPIAnimation` removes the previous one (`waapi/composition.js:26-80`). A
+  player that blends runs its tracks on the evaluator, because the blend is computed by the
+  target, not by WAAPI's `composite: add`.
 
 Seeking a keyframe clip and seeking a simulation with interaction history are not the same. A
 timeline the editor scrubs must be reproducible, while a live gesture keeps its own state.
