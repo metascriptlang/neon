@@ -497,7 +497,10 @@ A route's `component` is `(props: RouteSectionProps<Map<string, string>, unknown
 holds the `<Loading>` (the router adds none). Solid Router calls `component.preload` at
 `routing.ts:650-681` and `:690-704`, which Neon lacks until the `.preload()` card lands.
 `tests/render/lazyRoute.test.ms` pins it on the mock host and `tests/browser/lazy.test.ms`
-in Chrome: the module is not fetched until the first navigation to the route. Hydration
+in Chrome: the module is not fetched until the first navigation to the route. A navigation to a
+lazy route whose module has not loaded keeps the old page, with or without a `<Loading>` in the
+layout, until the new page can render, and a `<Loading>` around a layout's outlet renders on the
+server (`tests/navigation/routeLazyHold.test.ms`, `routeLazyHoldServer.test.ms`). Hydration
 claims the served node only when the module is already loaded
 (`tests/render/lazyHydrate.test.ms`); Solid hands the client a preloaded module per
 hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so a lazy
