@@ -68,6 +68,16 @@ export function mountAt(host: Host, parent: HostNode, before: HostNode | null, r
 	}
 }
 
+export function mountApart(host: Host, parent: HostNode, before: HostNode | null, r: Row): void {
+	const prev = activeRow;
+	activeRow = null;
+	try {
+		mountAt(host, parent, before, r);
+	} finally {
+		activeRow = prev;
+	}
+}
+
 function spanInto(host: Host, outer: Row, inner: Row, parent: HostNode): void {
 	if (outer.parent !== parent || inner.start === null) { return; }
 	if (outer.start === null) {

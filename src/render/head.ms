@@ -1,6 +1,6 @@
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { makeRow, mountAt, removeRow } from "./reconcile";
+import { makeRow, mountApart, removeRow } from "./reconcile";
 import { unclaimed } from "./claim";
 
 interface HeadProps {
@@ -14,7 +14,7 @@ export function Head(props: HeadProps): NeonNode {
 		if (rootOf === null || children === null) { return; }
 		const head = (rootOf as (n: HostNode) => HostNode)(parent);
 		const row = makeRow(children as NeonNode);
-		unclaimed(host, (): void => { mountAt(host, head, host.firstChild(head), row); });
+		unclaimed(host, (): void => { mountApart(host, head, host.firstChild(head), row); });
 		onCleanup((): void => { removeRow(host, head, row); });
 	};
 }
