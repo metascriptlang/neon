@@ -1,6 +1,3 @@
-// The app services of every Ion host, the full-window <Void> and the Windows native host alike.
-// Ion backs none of the host-bound services yet: each is refused with the name the author called.
-
 import {
 	AlertRequest, AppServices, ShareRequest,
 } from "../../api/services";

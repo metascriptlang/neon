@@ -1,7 +1,3 @@
-// expo-av's capture services on the desktop, over Ion's audio device (ion/src/audio.ms): Ion owns
-// the device, Neon decides what plays and when it reports. Ion's status is polled, so a playing
-// sound and a running recording each tick on their own interval.
-
 import {
 	loadSound, unloadSound, playSound, pauseSound, stopSound, seekSound, setSoundVolume, setSoundMuted,
 	setSoundLooping, setSoundRate, soundStatus,
@@ -15,7 +11,6 @@ import {
 
 const FILE_SCHEME = "file://";
 
-// A path, or a file: uri (`file:///C:/a.wav`, `file:///home/a.wav`); any other scheme is refused by name.
 export function pathOfUri(uri: string): Result<string, string> {
 	if (uri.startsWith(FILE_SCHEME)) {
 		const rest = uri.substring(FILE_SCHEME.length, uri.length);
@@ -100,6 +95,11 @@ class DesktopSound {
 
 const sounds: DesktopSound[] = [];
 
+function forget<T>(list: T[], item: T): void {
+	const at = list.indexOf(item);
+	if (at >= 0) { list.splice(at, 1); }
+}
+
 function findSound(id: int32): DesktopSound | null {
 	for (const sound of sounds) {
 		if (sound.id === id) { return sound; }
@@ -166,12 +166,11 @@ function act(sound: DesktopSound, command: string, value: number): Result<void, 
 }
 
 function soundCommand(id: int32, command: string, value: number): SoundState {
-	const found = findSound(id);
-	if (found === null) { return unloadedSound("Sound: no loaded sound " + id.toString()); }
-	const sound = found as DesktopSound;
+	const sound = findSound(id);
+	if (sound === null) { return unloadedSound("Sound: no loaded sound " + id.toString()); }
 	if (command === "unload") {
 		sound.stopTicking();
-		sounds.splice(sounds.indexOf(sound), 1);
+		forget(sounds, sound);
 		const unloaded = unloadSound(sound.ion);
 		return unloadedSound(unloaded.ok ? "" : unloaded.error);
 	}
@@ -281,7 +280,7 @@ function record(recording: DesktopRecording, command: string, value: number): Re
 		} else {
 			recording.done = true;
 		}
-		recordings.splice(recordings.indexOf(recording), 1);
+		forget(recordings, recording);
 	} else if (command === "interval") {
 		recording.every = value;
 		if (recording.timer >= 0) { recording.startTicking(); }
@@ -292,9 +291,8 @@ function record(recording: DesktopRecording, command: string, value: number): Re
 }
 
 async function recordingCommand(id: int32, command: string, value: number): Promise<RecordingState> {
-	const found = findRecording(id);
-	if (found === null) { return idleRecording("Recording: no prepared recording " + id.toString()); }
-	const recording = found as DesktopRecording;
+	const recording = findRecording(id);
+	if (recording === null) { return idleRecording("Recording: no prepared recording " + id.toString()); }
 	const done = record(recording, command, value);
 	if (!done.ok) { return { ...recording.state(""), error: done.error }; }
 	return recording.state("");
