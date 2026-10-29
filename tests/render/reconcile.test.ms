@@ -246,3 +246,16 @@ test "an enclosing row keeps its end when a nested region's empty row goes away"
 	assert mockToString(root as unknown as MockNode) === "<root>fallback</root>", mockToString(root as unknown as MockNode);
 	dispose();
 }
+
+test "a duplicate row and a bad host call throw an Error carrying the message" {
+	const h = mockHost();
+	const parent = h.createElement("ul");
+	const row = rowOf(h.createElement("A"));
+	let dup: Error | null = null;
+	try { reconcileArrays(h, parent, [], [row, row], null as unknown as HostNode); } catch (e) { dup = e; }
+	assert dup !== null && dup.message.includes("same row twice"), "duplicate row";
+
+	let bad: Error | null = null;
+	try { h.removeChild(parent, h.createElement("stray")); } catch (e) { bad = e; }
+	assert bad !== null && bad.message.includes("not a child"), "removeChild of a stranger";
+}
