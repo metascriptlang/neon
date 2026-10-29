@@ -158,6 +158,14 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 	} else { mediaFollow(host, node, s); }
 }
 
+// One effect re-applying the whole style (reactive variant selection, layered
+// calls — any style EXPRESSION that reads a signal). Per-property precision is
+// impossible here: which fields the result carries is only known per run, and
+// a field can fall back to an earlier layer when deselected, so the effect
+// hands the fresh merge to setStyle each time. A sheet entry on a host with a
+// stylesheet goes through its class instead, so a rule the inline style would
+// outrank (a breakpoint's) still applies; switching between the two channels
+// clears the one left behind.
 export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	if (isServer()) { applyStaticStyle(host, node, untrack(get)); return; }
 	followStyleAll(host, node, get);
