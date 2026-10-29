@@ -80,6 +80,7 @@ export interface SceneState {
 
 export interface FrameHook {
 	run: (view: CameraView) => void;
+	live: boolean;
 }
 
 export interface NodeScope {
@@ -469,9 +470,10 @@ export function viewCamera(handle: Scene3DHandle): Result<VoidCamera3D, CameraEr
 
 
 export function onBeforeRefresh(state: SceneState, run: (view: CameraView) => void): void {
-	const hook: FrameHook = { run };
+	const hook: FrameHook = { run, live: true };
 	state.beforeRefresh.push(hook);
 	onCleanup((): void => {
+		hook.live = false;
 		const at = state.beforeRefresh.indexOf(hook);
 		if (at >= 0) { state.beforeRefresh.splice(at, 1); }
 	});
@@ -485,6 +487,6 @@ export function runBeforeRefresh(state: SceneState, pixelWidth: int32, pixelHeig
 	const view = world.value.resolve(pixelWidth, pixelHeight);
 	if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
 	for (const hook of state.beforeRefresh.slice(0)) {
-		if (state.beforeRefresh.indexOf(hook) >= 0) { hook.run(view.value); }
+		if (hook.live) { hook.run(view.value); }
 	}
 }
