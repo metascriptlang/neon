@@ -1,7 +1,3 @@
-// An Ion window whose content is one full-window <Void>: the window is the outer
-// host, it accepts only the `void` tag, and its voidArea parents a visual holding
-// the swapchain of a Void view under the window's root (void/docs/EMBED.md).
-
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
@@ -64,6 +60,11 @@ when (voidProfiler) {
 extern function voidVisualAttach(device: Ptr<void>, root: Ptr<void>, swapChain: int64): Ptr<void>;
 extern function voidVisualDetach(root: Ptr<void>, visual: Ptr<void>): void;
 
+const EXIT_NO_WINDOW: int32 = 1;
+const EXIT_FONT_FAILED: int32 = 3;
+const EXIT_VIEW_UNOWNED: int32 = 3;
+const EXIT_SWAPCHAIN_REFUSED: int32 = 4;
+
 export interface DesktopOptions {
 	title: string;
 	width: number;
@@ -86,29 +87,29 @@ interface Area {
 }
 
 // [frames the scene's dirty wake requested, frames drawn], since the process began.
-let _requested = 0;
-let _drawn = 0;
+let requestedFrames = 0;
+let drawnFrames = 0;
 
-export function frameCounts(): number[] { return [_requested, _drawn]; }
+export function frameCounts(): number[] { return [requestedFrames, drawnFrames]; }
 
 export type OptionAsAlt = "neither" | "left" | "right" | "both";
 
-let _window: Window | null = null;
-let _optionAsAlt: OptionAsAlt = "neither";
+let mainWindow: Window | null = null;
+let optionAsAlt: OptionAsAlt = "neither";
 
 export function setWindowTitle(title: string): void {
-	if (_window === null) { throw new Error(`setWindowTitle("${title}") ran before runWindow opened its window; the first title goes in desktopOptions`); }
-	setTitle(_window as Window, title);
+	if (mainWindow === null) { throw new Error(`setWindowTitle("${title}") ran before runWindow opened its window; the first title goes in desktopOptions`); }
+	setTitle(mainWindow, title);
 }
 
 // macOS only, kept until runWindow opens its window: which Option keys type as Alt instead of composing.
 export function setOptionAsAlt(sides: OptionAsAlt): void {
-	_optionAsAlt = sides;
-	if (_window !== null) { applyOptionAsAlt(_window as Window); }
+	optionAsAlt = sides;
+	if (mainWindow !== null) { applyOptionAsAlt(mainWindow); }
 }
 
 function applyOptionAsAlt(win: Window): void {
-	ionSetOptionAsAlt(win, match (_optionAsAlt) {
+	ionSetOptionAsAlt(win, match (optionAsAlt) {
 		"neither" => OptionAsAltNeither,
 		"left" => OptionAsAltLeft,
 		"right" => OptionAsAltRight,
@@ -116,45 +117,46 @@ function applyOptionAsAlt(win: Window): void {
 	});
 }
 
-const _areas: Area[] = [];
-let _retiredViews: ViewId[] = [];
-let _font: FontId = DEFAULT_FONT;
-let _family: string | null = null;
-let _wired = false;
-let _frameFires: (() => void)[] = [];
-let _firing = false;
+const areas: Area[] = [];
+let retiredViews: ViewId[] = [];
+let hostFont: FontId = DEFAULT_FONT;
+let hostFamily: string | null = null;
+let wired = false;
+let frameFires: (() => void)[] = [];
+let firing = false;
 
 function runFrameFires(): void {
-	const due = _frameFires;
-	_frameFires = [];
-	_firing = true;
+	if (frameFires.length === 0) { return; }
+	const due = frameFires;
+	frameFires = [];
+	firing = true;
 	for (const fire of due) { fire(); }
-	_firing = false;
+	firing = false;
 }
 
 function areaOfWindow(window: int32): Area | null {
-	for (const a of _areas) {
+	for (const a of areas) {
 		if (a.win.id === window) { return a; }
 	}
 	return null;
 }
 
 function areaOfView(view: ViewId): Area | null {
-	for (const a of _areas) {
+	for (const a of areas) {
 		if (a.view === view) { return a; }
 	}
 	return null;
 }
 
 export function areaScene(handle: VoidAreaHandle): Scene2D {
-	for (const a of _areas) {
+	for (const a of areas) {
 		if (a.area.hub.handle === handle) { return a.area.vh.scene; }
 	}
 	throw "areaScene: this handle belongs to no open Void area of an Ion window";
 }
 
 export function voidHostOf(host: Host): VoidHost {
-	for (const a of _areas) {
+	for (const a of areas) {
 		if (a.area.vh.host === host) { return a.area.vh; }
 	}
 	throw "voidHostOf: this host is not the host of a Void area in an Ion window";
@@ -167,15 +169,14 @@ function initGpu(): void {
 }
 
 function drawCurrent(): void {
-	const a = areaOfView(currentView());
-	if (a === null) {
+	const owner = areaOfView(currentView());
+	if (owner === null) {
 		console.log(`neon: Void asked to draw view ${currentView()}, which no area owns`);
-		exit(3);
+		exit(EXIT_VIEW_UNOWNED);
 	}
-	const owner = a as Area;
 	const area = owner.area;
 	owner.owed = false;
-	_drawn = _drawn + 1;
+	drawnFrames = drawnFrames + 1;
 	if (!drawArea(area)) {
 		commitFrame();
 		return;
@@ -227,9 +228,8 @@ export function areaPointer(e: PointerEvent): AreaPointerEvent {
 }
 
 function resized(window: int32, width: int32, height: int32, scale: float64): void {
-	const a = areaOfWindow(window);
-	if (a === null || width <= (0 as int32) || height <= (0 as int32)) { return; }
-	const owner = a as Area;
+	const owner = areaOfWindow(window);
+	if (owner === null || width <= (0 as int32) || height <= (0 as int32)) { return; }
 	deliverResize(owner.area, width, height, scale);
 	if (owner.view === ViewInvalid) {
 		attachView(owner, width, height);
@@ -245,19 +245,18 @@ function attachView(owner: Area, width: int32, height: int32): void {
 	const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
 	if (visual === null) {
 		console.log(`neon: window ${owner.win.id} refused the swapchain of view ${owner.view}`);
-		exit(4);
+		exit(EXIT_SWAPCHAIN_REFUSED);
 	}
 	owner.visual = visual;
 	commit(owner.win);
 }
 
 function showWithFirstFrame(win: Window): void {
-	const a = areaOfWindow(win.id);
-	if (a === null) {
+	const owner = areaOfWindow(win.id);
+	if (owner === null) {
 		show(win);
 		return;
 	}
-	const owner = a as Area;
 	if (owner.view !== ViewInvalid && !viewFrame(owner.view)) { requestFrame(owner.win); }
 	if (!owner.shown) {
 		owner.shown = true;
@@ -266,63 +265,61 @@ function showWithFirstFrame(win: Window): void {
 }
 
 function wireInput(): void {
-	if (_wired) { return; }
-	_wired = true;
+	if (wired) { return; }
+	wired = true;
 	embedRegister(initGpu, drawCurrent);
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
-		const a = areaOfWindow(window);
-		if (a !== null) {
-			const owner = a as Area;
-			if (owner.view !== ViewInvalid && !viewReady(owner.view)) {
-				requestFrame(owner.win);
-				return;
-			}
+		const owner = areaOfWindow(window);
+		if (owner !== null && owner.view !== ViewInvalid && !viewReady(owner.view)) {
+			requestFrame(owner.win);
+			return;
 		}
 		runFrameFires();
 		flush();
-		if (a !== null) {
-			const owner = a as Area;
-			if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty()) && !viewFrame(owner.view)) { requestFrame(owner.win); }
+		if (owner !== null && owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty()) && !viewFrame(owner.view)) {
+			requestFrame(owner.win);
 		}
-		const retired = _retiredViews;
-		_retiredViews = [];
-		for (const view of retired) { viewDestroy(view); }
+		if (retiredViews.length > 0) {
+			const retired = retiredViews;
+			retiredViews = [];
+			for (const view of retired) { viewDestroy(view); }
+		}
 	});
 	onPointer((e: PointerEvent): void => {
 		const a = areaOfWindow(e.window);
-		if (a !== null) { deliverPointer((a as Area).area, areaPointer(e)); }
+		if (a !== null) { deliverPointer(a.area, areaPointer(e)); }
 	});
 	onKey((e: KeyEvent): void => {
 		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(e.window);
-		if (a !== null) { deliverKey((a as Area).area, areaKey(e), keyName(e.key)); }
+		if (a !== null) { deliverKey(a.area, areaKey(e), keyName(e.key)); }
 	});
 	onText((window: int32, text: string): void => {
 		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(window);
-		if (a !== null) { deliverText((a as Area).area, text); }
+		if (a !== null) { deliverText(a.area, text); }
 	});
 	onImePreedit((window: int32, text: string, cursor: int32): void => {
 		const a = areaOfWindow(window);
-		if (a !== null) { deliverPreedit((a as Area).area, text, cursor); }
+		if (a !== null) { deliverPreedit(a.area, text, cursor); }
 	});
 	onFocus((window: int32, focused: boolean): void => {
 		const a = areaOfWindow(window);
-		if (a !== null) { deliverFocus((a as Area).area, focused); }
+		if (a !== null) { deliverFocus(a.area, focused); }
 	});
 }
 
 function owe(win: Window): void {
 	const a = areaOfWindow(win.id);
-	if (a !== null) { (a as Area).owed = true; }
+	if (a !== null) { a.owed = true; }
 }
 
 function ionWindowHost(win: Window): Host {
 	return windowHost({
 		name: "Ion window",
-		font: _font,
-		family: _family,
+		font: hostFont,
+		family: hostFamily,
 		pixelWidth: (): int32 => pixelWidth(win),
 		pixelHeight: (): int32 => pixelHeight(win),
 		requestFrame: (): void => {
@@ -331,8 +328,8 @@ function ionWindowHost(win: Window): Host {
 		},
 		dirty: (): void => {
 			owe(win);
-			if (_firing) { return; }
-			_requested = _requested + 1;
+			if (firing) { return; }
+			requestedFrames = requestedFrames + 1;
 			requestFrame(win);
 		},
 		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
@@ -341,24 +338,24 @@ function ionWindowHost(win: Window): Host {
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
 			const owner: Area = { win, view: ViewInvalid, visual: null, area, owed: true, shown: false };
-			_areas.push(owner);
+			areas.push(owner);
 			if (pixelWidth(win) > (0 as int32) && pixelHeight(win) > (0 as int32)) {
 				attachView(owner, pixelWidth(win), pixelHeight(win));
 			}
 		},
 		released: (area: WindowArea): void => {
-			for (let i = 0; i < _areas.length; i += 1) {
-				const owner = _areas[i];
+			for (let i = 0; i < areas.length; i += 1) {
+				const owner = areas[i];
 				if (owner.area !== area) { continue; }
-				_areas.splice(i, 1);
+				areas.splice(i, 1);
 				if (owner.visual !== null) {
-					voidVisualDetach(windowRoot(win), owner.visual as Ptr<void>);
+					voidVisualDetach(windowRoot(win), owner.visual);
 					owner.visual = null;
 					commit(win);
 				}
 				if (owner.view === ViewInvalid) { return; }
 				if (currentView() === owner.view) {
-					_retiredViews.push(owner.view);
+					retiredViews.push(owner.view);
 				} else {
 					viewDestroy(owner.view);
 				}
@@ -370,27 +367,28 @@ function ionWindowHost(win: Window): Host {
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
-	if (win === null) { return 1; }
-	_window = win;
-	applyOptionAsAlt(win);
+	if (win === null) { return EXIT_NO_WINDOW; }
+	const frameWin: Window = win;
+	mainWindow = frameWin;
+	applyOptionAsAlt(frameWin);
 	setFaceResolver(systemFace);
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
-	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
+	const family = opts.fontFamily !== null ? opts.fontFamily : opts.font;
 	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
 	if (!font.ok) {
 		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
-		return 3;
+		return EXIT_FONT_FAILED;
 	}
-	_font = font.value;
-	_family = family;
+	hostFont = font.value;
+	hostFamily = family;
 	wireInput();
 	installCaptureServices(ionCaptureServices);
 	installAppServices(ionAppServices);
 	installFrameDriver({
 		now: (): number => performance.now(),
 		schedule: (fire: () => void): void => {
-			_frameFires.push(fire);
-			requestFrame(win);
+			frameFires.push(fire);
+			requestFrame(frameWin);
 		},
 	});
 	const host = ionWindowHost(win);
@@ -402,7 +400,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	runLoop();
 	reportProfile();
 	dispose();
-	_window = null;
+	mainWindow = null;
 	return 0;
 }
 
