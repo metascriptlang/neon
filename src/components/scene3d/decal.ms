@@ -98,7 +98,6 @@ function blockOf(props: DecalProps, pass: DecalPass): Vec<float32> {
 	return made.value;
 }
 
-// h3d.prim.Cube centred: the unit box a decal's node scales, every face wound outward.
 function unitBox(): MeshData {
 	let data = MeshData.empty();
 	const white: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
