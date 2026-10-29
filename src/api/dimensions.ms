@@ -1,6 +1,6 @@
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { flush } from "../core/runtime";
-import { useWindowDimensions } from "../render/environment";
+import { useMainWindowDimensions } from "../render/environment";
 import { EventSubscription, onChange } from "./subscription";
 
 export interface ScaledSize {
@@ -45,7 +45,7 @@ export function useFontScale(): Accessor<number> {
 }
 
 function windowSize(): ScaledSize {
-	const window = useWindowDimensions()();
+	const window = useMainWindowDimensions()();
 	return {
 		width: window.width,
 		height: window.height,
@@ -55,7 +55,7 @@ function windowSize(): ScaledSize {
 }
 
 function screenSize(): ScaledSize {
-	const window = useWindowDimensions()();
+	const window = useMainWindowDimensions()();
 	const width = screenWidth() > 0 ? screenWidth() : window.width;
 	const height = screenHeight() > 0 ? screenHeight() : window.height;
 	return { width, height, scale: pixelRatio(), fontScale: fontScale() };

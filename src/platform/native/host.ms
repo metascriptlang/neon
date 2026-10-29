@@ -1,7 +1,7 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
-import { Accessor } from "../../core/signal";
+import { Accessor, createSignal } from "../../core/signal";
 import { Dispose } from "../../core/types";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
@@ -12,7 +12,7 @@ import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayou
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
-import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
+import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
@@ -1758,7 +1758,11 @@ export function mountNativeRoot(container: Ptr<void>, width: float32, height: fl
 	r.width = width;
 	r.height = height;
 	r.direction = I18nManager.isRTL() ? "rtl" : "ltr";
-	r.mountedApp = app;
+	const [size, setSize] = createSignal<WindowDimensions>({ width: width, height: height });
+	r.mountedApp = (): NeonNode => {
+		publishRootWindow(size);
+		return app();
+	};
 	roots.push(r);
 	mountInto(r, nativeHostOf(r));
 	return {
@@ -1766,6 +1770,7 @@ export function mountNativeRoot(container: Ptr<void>, width: float32, height: fl
 			if (roots.indexOf(r) < 0) { throw new Error("native host: resize of a disposed root"); }
 			r.width = w;
 			r.height = h;
+			flush((): void => { setSize({ width: w, height: h }); });
 			relayout(r);
 		},
 		dispose: (): void => {

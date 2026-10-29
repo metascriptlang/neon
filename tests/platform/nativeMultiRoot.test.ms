@@ -3,6 +3,9 @@ import { View, Pressable, TextInput } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { DevDriver, DevNode, devDriver } from "../../src/devtools/driver";
+import { Accessor } from "../../src/core/signal";
+import { WindowDimensions, useWindowDimensions } from "../../src/render/environment";
+import { Dimensions } from "../../src/api/dimensions";
 import { niViewCreate } from "../../src/platform/native/bridge.h";
 import {
 	nmTeardown, nmTapAt, nmTapAtIn, nmTouchFull, nmResize, nmControl, nmLastInputTag, nmLastPressableTag,
@@ -82,5 +85,40 @@ test "two native roots lay out, take taps, resize, focus and dispose apart from 
 	assert a.log === "a press;a press;a press;" && b.log === "b press;", "the main root keeps taking taps: " + a.log;
 	nmResize(400.0, 800.0);
 	assert a.size === "400x800", "the main root keeps laying out: " + a.size;
+	nmTeardown();
+}
+
+class Sizes {
+	window: Accessor<WindowDimensions> | null = null;
+	dimensionsGet: string = "";
+}
+
+function sizeApp(s: Sizes): () => NeonNode {
+	return (): NeonNode => {
+		s.window = useWindowDimensions();
+		const d = Dimensions.get("window");
+		s.dimensionsGet = `${d.width}x${d.height}`;
+		return <View style={{ flex: 1 }} />;
+	};
+}
+
+function shown(s: Sizes): string {
+	const w = (s.window as Accessor<WindowDimensions>)();
+	return `${w.width}x${w.height}`;
+}
+
+test "each native root's useWindowDimensions answers its own size, and Dimensions.get answers the main window" {
+	const main = new Sizes();
+	const side = new Sizes();
+	runApp(sizeApp(main));
+	const panel: NativeRootHandle = mountNativeRoot(niViewCreate(), 200.0, 100.0, sizeApp(side));
+	assert shown(main) === "400x800" && shown(side) === "200x100", "each root reads its own size: " + shown(main) + "|" + shown(side);
+	assert side.dimensionsGet === "400x800", "Dimensions.get inside the panel answers the main window: " + side.dimensionsGet;
+	panel.resize(150.0, 80.0);
+	assert shown(side) === "150x80" && shown(main) === "400x800", "the panel resize reaches only the panel: " + shown(main) + "|" + shown(side);
+	nmResize(300.0, 600.0);
+	assert shown(main) === "300x600" && shown(side) === "150x80", "the window resize reaches only the main root: " + shown(main) + "|" + shown(side);
+	panel.dispose();
+	nmResize(400.0, 800.0);
 	nmTeardown();
 }
