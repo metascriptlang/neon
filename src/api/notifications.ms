@@ -2,6 +2,7 @@ import { EventSubscription, Listeners } from "./subscription";
 import {
 	NotificationSpec, ScheduleReply, listenNotificationEvents, notificationServices,
 } from "./notificationServices";
+import { finiteOrNull } from "./hostCodec";
 import { Permissions, PermissionResponse } from "./permissions";
 
 when (js && !server) {
@@ -76,13 +77,16 @@ let handler: NotificationHandler | null = null;
 let nextIdentifier: int32 = 1;
 
 function text(value: string | null): string {
-	return typeof value === "string" ? value as string : "";
+	return value ?? "";
 }
 
-function finiteOr(value: number | null, fallback: number): number {
-	if (value === null) { return fallback; }
-	const given = value as number;
-	return Number.isFinite(given) ? given : fallback;
+const NONE_ON_THE_WIRE = -1;
+
+function nonNegative(api: string, field: string, value: number | null): number | null {
+	const finite = finiteOrNull(value);
+	if (finite === null) { return null; }
+	if (finite < 0) { throw new Error(`${api}: ${field} must not be negative, got ${finite}`); }
+	return finite;
 }
 
 function spec(request: NotificationRequestInput): NotificationSpec {
@@ -91,11 +95,13 @@ function spec(request: NotificationRequestInput): NotificationSpec {
 	const given = text(request.identifier ?? null);
 	const identifier = given !== "" ? given : "neon-" + Date.now().toString() + "-" + nextIdentifier.toString();
 	nextIdentifier += 1;
-	const seconds = trigger === null ? -1 : finiteOr(trigger.seconds ?? null, -1);
-	const date = trigger === null ? -1 : finiteOr(trigger.date ?? null, -1);
+	const api = "Notifications.scheduleNotificationAsync";
+	const seconds = trigger === null ? null : nonNegative(api, "trigger.seconds", trigger.seconds ?? null);
+	const date = trigger === null ? null : nonNegative(api, "trigger.date", trigger.date ?? null);
+	const badge = nonNegative(api, "content.badge", content.badge ?? null);
 	const repeats = trigger !== null && trigger.repeats === true;
-	if (repeats && seconds < 60) {
-		throw new Error("Notifications.scheduleNotificationAsync: a repeating trigger needs at least 60 seconds");
+	if (repeats && (seconds === null || seconds < 60)) {
+		throw new Error(api + ": a repeating trigger needs at least 60 seconds");
 	}
 	return {
 		identifier,
@@ -104,10 +110,10 @@ function spec(request: NotificationRequestInput): NotificationSpec {
 		body: text(content.body ?? null),
 		data: text(content.data ?? null),
 		sound: content.sound === true,
-		badge: finiteOr(content.badge ?? null, -1),
-		seconds,
+		badge: badge ?? NONE_ON_THE_WIRE,
+		seconds: seconds ?? NONE_ON_THE_WIRE,
 		repeats,
-		date,
+		date: date ?? NONE_ON_THE_WIRE,
 	};
 }
 

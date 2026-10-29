@@ -288,6 +288,15 @@ test "watchPosition streams fixes and errors until clearWatch, and skipPermissio
 	fake.watchUpdates[0](fixAt(3, 4));
 	assert seen.join(";") === "1;error 3 Location request timed out", seen.join(";");
 	assert fake.joined() === "locationWatch " + id.toString() + ";locationClear " + id.toString(), fake.joined();
+	Geolocation.clearWatch(id);
+	assert fake.joined() === "locationWatch " + id.toString() + ";locationClear " + id.toString(), "a second clear is a no-op";
+	let message = "";
+	try {
+		Geolocation.clearWatch(NaN);
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "Geolocation.clearWatch: watchId must be a finite number, got NaN", message;
 	Geolocation.setRNConfiguration({ skipPermissionRequests: false });
 }
 
@@ -355,6 +364,16 @@ test "getLocales and getCalendars answer expo-localization's shapes, the react-n
 	assert getCurrencies().join(",") === "VND,EGP";
 	assert getNumberFormatSettings().groupingSeparator === ".";
 	assert getLocalizeLocales()[1].isRTL && !getLocalizeLocales()[0].isRTL;
+}
+
+test "scheduleNotificationAsync refuses a negative trigger or badge, which the host reads as absent" {
+	const fake = new FakeServices();
+	fake.install();
+	const seconds = await notificationRejection({ content: { title: "x" }, trigger: { seconds: -5 } });
+	assert seconds === "Notifications.scheduleNotificationAsync: trigger.seconds must not be negative, got -5", seconds;
+	const badge = await notificationRejection({ content: { title: "x", badge: -2 }, trigger: null });
+	assert badge === "Notifications.scheduleNotificationAsync: content.badge must not be negative, got -2", badge;
+	assert fake.notifications.length === 0;
 }
 
 test "scheduleNotificationAsync flattens expo's request, names it and refuses a short repeat" {
