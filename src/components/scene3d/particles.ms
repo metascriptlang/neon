@@ -61,6 +61,21 @@ function drawSystems(state: SceneState, group: NodeId3D, effect: EffectInstance,
 	return draws;
 }
 
+function checkedSpeed(speed: float64): float64 {
+	if (!(speed >= 0.0)) { throw new Error("Particles: speed must be zero or positive, got " + speed.toString()); }
+	return speed;
+}
+
+// A draw holds a stream mesh sized by its system's capacity; a new effect of the same sizes keeps them.
+function fitsDraws(draws: SystemDraw[], effect: EffectInstance, visual: boolean): boolean {
+	if (draws.length !== effect.systems.length) { return false; }
+	const stride = visual ? PARTICLE_VISUAL_INSTANCE_STRIDE : PARTICLE_INSTANCE_STRIDE;
+	for (let s = 0; s < draws.length; s++) {
+		if (draws[s].instances.length !== effect.systems[s].capacity * stride) { return false; }
+	}
+	return true;
+}
+
 export function Particles(props: ParticlesProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Particles");
@@ -83,7 +98,7 @@ export function Particles(props: ParticlesProps): NeonNode {
 			let frames: Vec<AtlasTile> = visual ? untrack(readFrames) : [];
 			let playing = untrack(readPlaying);
 			let paused = untrack(readPaused);
-			let speed = untrack(readSpeed);
+			let speed = checkedSpeed(untrack(readSpeed));
 			// Play waits for the frame hook, which knows the group's world pose.
 			let playDue = playing;
 			let writer = ParticleWriter3D.create();
@@ -110,11 +125,13 @@ export function Particles(props: ParticlesProps): NeonNode {
 				(value: [ParticleEffect, uint32], prev: [ParticleEffect, uint32] | null): Cleanup | null => {
 					if (prev === null) { return null; }
 					const next = instanced(value[0], value[1]);
-					for (const draw of draws) {
-						if (scene.isLive(draw.node)) { const removed = remove(scene, draw.node); }
+					if (!fitsDraws(draws, next, visual)) {
+						for (const draw of draws) {
+							if (scene.isLive(draw.node)) { const removed = remove(scene, draw.node); }
+						}
+						draws = drawSystems(state, group, next, material, visual);
 					}
 					effect = next;
-					draws = drawSystems(state, group, effect, material, visual);
 					playDue = playing;
 					redraw();
 					wake();
@@ -125,7 +142,7 @@ export function Particles(props: ParticlesProps): NeonNode {
 				(prev: [boolean, boolean, float64] | null): [boolean, boolean, float64] => [readPlaying(), readPaused(), readSpeed()],
 				(value: [boolean, boolean, float64], prev: [boolean, boolean, float64] | null): Cleanup | null => {
 					if (prev === null) { return null; }
-					if (!(value[2] >= 0.0)) { throw new Error("Particles: speed must be zero or positive, got " + value[2].toString()); }
+					checkedSpeed(value[2]);
 					if (value[0] && !playing) { playDue = true; }
 					if (!value[0] && playing) {
 						playDue = false;
@@ -166,7 +183,7 @@ export function Particles(props: ParticlesProps): NeonNode {
 				if (!awake && !stale) { return; }
 				stale = false;
 				const world = worldOf(scene, group);
-				if (!world.ok) { return; }
+				if (!world.ok) { throw new Error("Particles: no world pose: " + world.error.toString()); }
 				if (playDue) {
 					playEffect(effect, world.value);
 					playDue = false;

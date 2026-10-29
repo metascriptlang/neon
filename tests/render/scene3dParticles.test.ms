@@ -118,3 +118,38 @@ test "a playing Particles keeps the area clock ticking, pause and unmount let it
 		setFrameDriver(null);
 	}
 }
+
+test "Particles refuse a negative speed at mount, not only when it changes" {
+	let message = "";
+	createRoot((dispose: () => void): void => {
+		try {
+			element(<Void><Scene3D ref={(value: Scene3DHandle): void => {}}>
+				<Particles effect={effectOf([8])} material={NO_MATERIAL} speed={-1.0} />
+			</Scene3D></Void>)(mockHost(), mockNode("root") as unknown as HostNode, null);
+		} catch (error) { message = error.toString(); } finally { dispose(); resetErrorHalt(); }
+	});
+	assert message.includes("Particles: speed must be zero or positive"), "names the rule: " + message;
+}
+
+test "a new seed restarts the effect on the same stream nodes, a new capacity replaces them" {
+	const refs: Scene3DHandle[] = [];
+	const nodes: NodeId3D[] = [];
+	let material = NO_MATERIAL;
+	const [seed, setSeed] = createSignal<uint32>(1);
+	const [capacity, setCapacity] = createSignal<int32>(16);
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); material = particleMaterial(value.context); }}>
+			<Particles effect={effectOf([capacity()])} material={material} seed={seed()}
+				ref={(value: NodeId3D): void => { nodes.push(value); }} />
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	const scene = refs[0].scene;
+	const streamNode = (): NodeId3D => scene.nodeIdAt(scene.nodes[nodes[0].index].children[0]);
+	const first = streamNode();
+	setSeed(2);
+	flush();
+	assert streamNode() === first, "a seed change keeps the stream node";
+	setCapacity(32);
+	flush();
+	assert streamNode() !== first, "a capacity change replaces it";
+}
