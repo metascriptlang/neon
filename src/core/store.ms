@@ -133,7 +133,7 @@ export class StoreTraps<T> {
 		const name = `${key}`;
 		when (isArray<T[K]>()) {
 			const found = this.children.get(name);
-			if (found !== undefined) {
+			if (found !== null) {
 				const traps = (found as Child<T[K]>).traps;
 				if (traps.raw === value || traps.origin === value) { return traps; }
 			}
@@ -142,7 +142,7 @@ export class StoreTraps<T> {
 			return traps;
 		} else {
 			const found = this.root.targets.get(value as unknown);
-			if (found !== undefined) { return (found as Child<T[K]>).traps; }
+			if (found !== null) { return (found as Child<T[K]>).traps; }
 			const traps = this.born(key, value);
 			this.root.targets.set(value as unknown, new Child<T[K]>(traps));
 			return traps;
@@ -177,7 +177,7 @@ export class StoreTraps<T> {
 		const copy = copyOf<T>(old);
 		when (!isArray<T>()) {
 			const found = this.root.targets.get(this.raw as unknown);
-			if (found !== undefined) { this.root.targets.set(copy as unknown, found); }
+			if (found !== null) { this.root.targets.set(copy as unknown, found); }
 		}
 		this.raw = copy;
 		this.owned = true;
@@ -189,7 +189,7 @@ export class StoreTraps<T> {
 		const target = this.raw;
 		const name = `${key}`;
 		const found = this.slots.get(name);
-		if (found !== undefined) { return (found as Slot<T[K]>).signal.get(); }
+		if (found !== null) { return (found as Slot<T[K]>).signal.get(); }
 		if (!isTracking()) { return Reflect.get(target, key); }
 		const slot = slotFor(Reflect.get(target, key), this.root.derived);
 		this.slots.set(name, slot);
@@ -199,7 +199,7 @@ export class StoreTraps<T> {
 	private slotOf<K extends keyof T>(target: T, key: K, old: T[K]): Slot<T[K]> {
 		const name = `${key}`;
 		const found = this.slots.get(name);
-		if (found !== undefined) { return found as Slot<T[K]>; }
+		if (found !== null) { return found as Slot<T[K]>; }
 		const slot = slotFor(old, this.root.derived);
 		this.slots.set(name, slot);
 		return slot;
@@ -211,7 +211,7 @@ export class StoreTraps<T> {
 
 	private notify(name: string): void {
 		const found = this.slots.get(name);
-		if (found !== undefined) { found.touch(); }
+		if (found !== null) { found.touch(); }
 	}
 
 	write<K extends keyof T>(key: K, value: T[K]): void {
@@ -441,7 +441,7 @@ function mergeRows<E>(traps: StoreTraps<E[]>, next: E[], key: string | null): vo
 					if (i < before) { at = i; }
 				} else {
 					const found = byKey.get(name);
-					if (found !== undefined && found.length > 0) { at = found.shift() as number; }
+					if (found !== null && found.length > 0) { at = found.shift() as number; }
 				}
 				arranged.push(at < 0 ? next[i] : mergedRow(traps, at, old[at], next[i], key));
 				i += 1;

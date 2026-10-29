@@ -363,7 +363,7 @@ function componentSlot<P>(
 ): ComponentSlot<P> {
 	const typed = key + "@" + type;
 	const found = compSlots.get(typed);
-	if (found !== undefined) { return found as ComponentSlot<P>; }
+	if (found !== null) { return found as ComponentSlot<P>; }
 	const slot = new ComponentSlot<P>(body, sigFn);
 	compSlots.set(typed, slot);
 	return slot;
@@ -377,7 +377,7 @@ function templateSlot<E>(
 ): TemplateSlot<E> {
 	const typed = key + "@" + type;
 	const found = tmplSlots.get(typed);
-	if (found !== undefined) { return found as TemplateSlot<E>; }
+	if (found !== null) { return found as TemplateSlot<E>; }
 	const slot = new TemplateSlot<E>(fn, sigFn);
 	tmplSlots.set(typed, slot);
 	return slot;
@@ -563,9 +563,9 @@ export function refreshDependency(moduleKey: string): RefreshSummary {
 	const tmpls: Instance[] = [];
 	for (const key of keys) {
 		const c = compInstances.get(key);
-		if (c !== undefined) { for (const inst of c) { comps.push(inst); } }
+		if (c !== null) { for (const inst of c) { comps.push(inst); } }
 		const t = tmplInstances.get(key);
-		if (t !== undefined) { for (const inst of t) { tmpls.push(inst); } }
+		if (t !== null) { for (const inst of t) { tmpls.push(inst); } }
 	}
 	const boundaries = patch(compInstances, comps, keys);
 	const regions = patch(tmplInstances, tmpls, keys);
