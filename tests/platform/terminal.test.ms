@@ -303,3 +303,7 @@ test "setStyle: transparent paints no colour and a non-colour fails loud" {
 	try { paintedWith("notacolour"); } catch (e) { message = String(e); }
 	assert message.indexOf("notacolour") >= 0, "the CSS value is named";
 }
+
+test "setStyle: an hsl() colour paints the nearest ansi colour" {
+	assert paintedWith("hsl(240,100%,50%)") === "\x1b[34mx\x1b[0m", "hsl blue snaps to blue";
+}
