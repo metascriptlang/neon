@@ -2,6 +2,7 @@ import { NeonEvent, neonEvent } from "../render/event";
 import { onCleanup } from "../core/cleanup";
 import { Accessor } from "../core/signal";
 import { ClaimWatch, pressSwallowed, unwatchTouchClaim, watchTouchClaim } from "../render/responder";
+import { TimerHandle } from "./timerHandle";
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
 // a press becomes a LONG press at 500ms, and a press stays visibly held for at
@@ -32,20 +33,20 @@ export interface PressEvents<E extends NeonEvent> {
 // hear one bubbling pointerdown, so the first to start a press claims that event.
 let claimedDown: NeonEvent | null = null;
 
+enum PressState {
+	Idle,
+	Pressing,
+	LongPressing,
+}
+
 export function pointerCancel(): NeonEvent {
 	return neonEvent("pointercancel");
 }
 
 function call<E extends NeonEvent>(handler: ((e: E) => void) | null, e: E): void {
-	if (handler !== null) { (handler as (x: E) => void)(e); }
+	if (handler !== null) { handler(e); }
 }
 
-// Two tiers, chosen once at build time from the props the caller actually
-// declared. `onPress` alone stays ONE click listener — the common button pays
-// nothing for gestures it never asked for. Declaring any of pressIn/pressOut/
-// longPress opts into the state machine, which then OWNS the press: it tracks
-// pointer down/up/leave itself, because "did this press become a long press"
-// is not a question the host's click event can answer.
 export function pressEvents<E extends NeonEvent>(config: PressConfig<E>, cancelled: () => E): PressEvents<E> {
 	const { onPress, onPressIn, onPressOut, onLongPress, onHoverIn, onHoverOut } = config;
 	const wantsGestures = onPressIn !== null || onPressOut !== null || onLongPress !== null;
@@ -60,20 +61,16 @@ export function pressEvents<E extends NeonEvent>(config: PressConfig<E>, cancell
 		};
 	}
 
-	let state = 0;           // 0 idle · 1 pressing · 2 long-pressing
-	let longId = -1;
-	let minId = -1;
+	let state = PressState.Idle;
+	const longTimer = new TimerHandle();
+	const minTimer = new TimerHandle();
 	let minHeld = false;
 	let outPending: E | null = null;
 	let watch: ClaimWatch | null = null;
 
-	const cancelTimer = (id: number): void => {
-		if (id >= 0) { clearTimeout(id); }
-	};
 	const settle = (): void => {
-		cancelTimer(longId);
-		longId = -1;
-		state = 0;
+		longTimer.cancel();
+		state = PressState.Idle;
 		unwatchTouchClaim(watch as ClaimWatch);
 	};
 	// RN _deactivate: pressOut waits out the remainder of the minimum hold,
@@ -82,35 +79,38 @@ export function pressEvents<E extends NeonEvent>(config: PressConfig<E>, cancell
 		if (minHeld) { call(onPressOut, e); } else { outPending = e; }
 	};
 	const down = (e: E): void => {
-		if (state !== 0 || claimedDown === e) { return; }
-		state = 1;
+		if (state !== PressState.Idle || claimedDown === e) { return; }
+		state = PressState.Pressing;
 		claimedDown = e;
 		watchTouchClaim(watch as ClaimWatch);
 		minHeld = false;
 		outPending = null;
 		call(onPressIn, e);
-		minId = setTimeout((): void => {
+		minTimer.start((): void => {
 			minHeld = true;
 			const held = outPending;
 			if (held !== null) {
 				outPending = null;
 				call(onPressOut, held as E);
 			}
-		}, MIN_PRESS_DURATION_MS) as int32;
+		}, MIN_PRESS_DURATION_MS);
 		if (onLongPress !== null) {
-			longId = setTimeout((): void => {
-				if (state !== 1) { return; }
-				state = 2;
+			longTimer.start((): void => {
+				if (state !== PressState.Pressing) { return; }
+				state = PressState.LongPressing;
 				call(onLongPress, e);
-			}, config.delayLongPress()) as int32;
+			}, config.delayLongPress());
 		}
 	};
 	// RN: `isPressCanceledByLongPress` — a press that already fired
 	// onLongPress does NOT also fire onPress, so a context menu and the
 	// primary action never both run off one gesture.
 	const up = (e: E): void => {
-		if (state === 0) { return; }
-		const wasLong = state === 2;
+		if (state === PressState.Idle) { return; }
+		const wasLong = match (state) {
+			PressState.LongPressing => true,
+			PressState.Idle | PressState.Pressing => false,
+		};
 		settle();
 		releaseOut(e);
 		if (wasLong && onLongPress !== null) { return; }
@@ -120,14 +120,14 @@ export function pressEvents<E extends NeonEvent>(config: PressConfig<E>, cancell
 	// Leaving the element (or the host cancelling) ends the press WITHOUT
 	// firing onPress — RN's press-rect exit, minus the rect measurement.
 	const cancel = (e: E): void => {
-		if (state === 0) { return; }
+		if (state === PressState.Idle) { return; }
 		settle();
 		releaseOut(e);
 	};
 	watch = new ClaimWatch((): void => { cancel(cancelled()); });
 	onCleanup((): void => {
-		cancelTimer(longId);
-		cancelTimer(minId);
+		longTimer.cancel();
+		minTimer.cancel();
 		unwatchTouchClaim(watch as ClaimWatch);
 	});
 	return {

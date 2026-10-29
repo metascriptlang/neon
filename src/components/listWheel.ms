@@ -9,6 +9,7 @@ import { NeonNode } from "../render/node";
 import { NeonEvent } from "../render/event";
 import { Style, mergeStyle } from "../render/style";
 import { ScrollView, ScrollViewHandle, View } from "./primitives";
+import { TimerHandle } from "./timerHandle";
 
 export interface WheelRenderItemInfo<T> {
 	item: T;
@@ -67,19 +68,14 @@ export function ListWheelScrollView<T>(props: {
 	const magnifyProp = props.magnification;
 	const [offset, setOffset] = createSignal<number>(0);
 	const [viewport, setViewport] = createSignal<number>(0);
-	const initial = initialProp === null ? 0 : (initialProp as Accessor<number>)();
+	const initial = initialProp === null ? 0 : initialProp();
 	let reported: int32 = initial as int32;
 	let handle: ScrollViewHandle | null = null;
-	let settle: number = -1;
+	const settle = new TimerHandle();
 	let positioned = false;
 	const [selected, setSelected] = createSignal<number>(initial);
 
-	const cancelSettle = (): void => {
-		if (settle >= 0) {
-			clearTimeout(settle);
-			settle = -1;
-		}
-	};
+	const cancelSettle = (): void => { settle.cancel(); };
 	onCleanup(cancelSettle);
 
 	const extent = (): number => extentProp();
@@ -92,8 +88,7 @@ export function ListWheelScrollView<T>(props: {
 		(handle as ScrollViewHandle).scrollTo({ x: 0, y: target, animated: true });
 	};
 	const scheduleSnap = (): void => {
-		cancelSettle();
-		settle = setTimeout(snap, SETTLE_MS) as number;
+		settle.start(snap, SETTLE_MS);
 	};
 
 	const onScroll = (e: NeonEvent): void => {
@@ -103,7 +98,7 @@ export function ListWheelScrollView<T>(props: {
 		if (index !== reported) {
 			reported = index;
 			setSelected(index as number);
-			if (changed !== null) { (changed as (index: number) => void)(index as number); }
+			if (changed !== null) { changed(index as number); }
 		}
 	};
 
@@ -111,8 +106,8 @@ export function ListWheelScrollView<T>(props: {
 		const height = extent();
 		const view = viewport();
 		if (view <= 0) { return { height, flexShrink: 0 }; }
-		const ratio = ratioProp === null ? DIAMETER_RATIO : (ratioProp as Accessor<number>)();
-		const magnification = magnifyProp === null ? 1 : (magnifyProp as Accessor<number>)();
+		const ratio = ratioProp === null ? DIAMETER_RATIO : ratioProp();
+		const magnification = magnifyProp === null ? 1 : magnifyProp();
 		const centre = (index() as number) * height + height / 2;
 		const paint = wheelPaint(centre - offset(), view / 2 - (view - height) / 2, view, ratio, magnification, height);
 		if (!paint.visible) { return { height, flexShrink: 0, opacity: 0 }; }
@@ -128,7 +123,7 @@ export function ListWheelScrollView<T>(props: {
 		return { paddingTop: pad, paddingBottom: pad };
 	});
 	return ScrollView({
-		style: accessor((): Style => mergeStyle({ flexGrow: 0 }, userStyle === null ? {} : (userStyle as Accessor<Style>)())),
+		style: accessor((): Style => mergeStyle({ flexGrow: 0 }, userStyle === null ? {} : userStyle())),
 		contentContainerStyle: padding,
 		showsVerticalScrollIndicator: accessor((): boolean => false),
 		scrollEventThrottle: accessor((): number => 16),

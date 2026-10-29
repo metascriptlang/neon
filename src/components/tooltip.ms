@@ -10,6 +10,7 @@ import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
 import { Pressable, Text, View } from "./primitives";
+import { TimerHandle } from "./timerHandle";
 
 interface TooltipProps {
 	title: Accessor<string>;
@@ -45,32 +46,24 @@ export function Tooltip(props: TooltipProps): NeonNode {
 	const { title, enterTouchDelay, leaveTouchDelay } = props;
 	const userStyle = props.style;
 	const [open, setOpen] = createSignal(false);
-	let hideId = -1;
-	const cancelHide = (): void => {
-		if (hideId >= 0) { clearTimeout(hideId); }
-		hideId = -1;
-	};
+	const hide = new TimerHandle();
 	const enter = accessor((): number => enterTouchDelay === null
 		? TOOLTIP_ENTER_MS as float64
-		: (enterTouchDelay as Accessor<int32>)() as float64);
+		: enterTouchDelay() as float64);
 	const leave = (): int32 => leaveTouchDelay === null
 		? TOOLTIP_LEAVE_MS
-		: (leaveTouchDelay as Accessor<int32>)();
+		: leaveTouchDelay();
 	const show = (e: NeonEvent): void => {
-		cancelHide();
+		hide.cancel();
 		setOpen(true);
 	};
 	const release = (e: NeonEvent): void => {
 		if (!open()) { return; }
-		cancelHide();
-		hideId = setTimeout((): void => {
-			hideId = -1;
-			setOpen(false);
-		}, leave()) as int32;
+		hide.start((): void => { setOpen(false); }, leave());
 	};
 	const wrapper = accessor((): Style => {
 		const base: Style = { zIndex: open() ? 1000 : 0 };
-		return userStyle === null ? base : layerStyles([base, (userStyle as Accessor<Style>)()]);
+		return userStyle === null ? base : layerStyles([base, userStyle()]);
 	});
 	const view = element(<Pressable style={wrapper} delayLongPress={enter()}
 		onLongPress={show} onPressOut={release} accessibilityHint={title()}>
@@ -82,7 +75,7 @@ export function Tooltip(props: TooltipProps): NeonNode {
 		</Show>
 	</Pressable>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		onCleanup(cancelHide);
+		onCleanup((): void => { hide.cancel(); });
 		view(host, parent, before);
 	};
 }

@@ -1,3 +1,4 @@
+import { TimerHandle } from "../timerHandle";
 import { CellSource, ListMetricsAggregator } from "./listMetrics";
 import { CellMetrics, CellRange } from "./virtualizeUtils";
 
@@ -30,7 +31,7 @@ export class ViewabilityHelper<T> {
 	private minimumViewTime: number;
 	private waitForInteraction: boolean;
 	private hasInteracted: boolean = false;
-	private timers: Set<number> = new Set<number>();
+	private timers: Set<TimerHandle> = new Set<TimerHandle>();
 	private scanIndices: int32[] = [];
 	private viewableIndices: int32[] = [];
 	private viewableItems: Map<T, ViewToken<T>> = new Map<T, ViewToken<T>>();
@@ -55,12 +56,12 @@ export class ViewabilityHelper<T> {
 		const indices = this.scanIndices.slice(0, this.scanIndices.length);
 		this.viewableIndices = indices;
 		if (minimumViewTime !== 0) {
-			let handle: number = -1;
-			handle = setTimeout((): void => {
-				this.timers.delete(handle);
+			const timer = new TimerHandle();
+			this.timers.add(timer);
+			timer.start((): void => {
+				this.timers.delete(timer);
 				this.updateSync(source, indices, callback);
 			}, minimumViewTime);
-			this.timers.add(handle);
 		} else {
 			this.updateSync(source, indices, callback);
 		}
@@ -75,7 +76,7 @@ export class ViewabilityHelper<T> {
 	}
 
 	dispose(): void {
-		for (const handle of this.timers) { clearTimeout(handle); }
+		for (const timer of this.timers) { timer.cancel(); }
 		this.timers.clear();
 	}
 
@@ -83,12 +84,12 @@ export class ViewabilityHelper<T> {
 		const itemVisiblePercentThreshold = this.config.itemVisiblePercentThreshold;
 		const viewAreaCoveragePercentThreshold = this.config.viewAreaCoveragePercentThreshold;
 		if ((itemVisiblePercentThreshold === null) === (viewAreaCoveragePercentThreshold === null)) {
-			throw "Must set exactly one of itemVisiblePercentThreshold or viewAreaCoveragePercentThreshold";
+			throw new Error("Must set exactly one of itemVisiblePercentThreshold or viewAreaCoveragePercentThreshold");
 		}
 		const viewAreaMode = viewAreaCoveragePercentThreshold !== null;
 		const threshold = viewAreaMode ? viewAreaCoveragePercentThreshold as number : itemVisiblePercentThreshold as number;
 		let count: int32 = 0;
-		let firstVisible: int32 = -1;
+		let firstVisible: int32 | null = null;
 		const itemCount = source.count();
 		if (range.last >= itemCount) {
 			console.warn(`Invalid render range computing viewability ${range.first}..${range.last} for ${itemCount} items`);
@@ -106,7 +107,7 @@ export class ViewabilityHelper<T> {
 						else { this.scanIndices.push(index); }
 						count += 1;
 					}
-				} else if (firstVisible >= 0) {
+				} else if (firstVisible !== null) {
 					break;
 				}
 			}

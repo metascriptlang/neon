@@ -1,5 +1,7 @@
 // Provisional frame driver until Animated lands on this branch (WORKAROUND.md F1).
 
+import { TimerHandle } from "./timerHandle";
+
 const FRAME_MS = 16;
 
 export type Curve = (t: number) => number;
@@ -23,15 +25,12 @@ export function ease(t: number): number {
 }
 
 export class Tween {
-	private timer: number = -1;
+	private timer = new TimerHandle();
 	private stopped: boolean = false;
 
 	stop(): void {
 		this.stopped = true;
-		if (this.timer >= 0) {
-			clearTimeout(this.timer);
-			this.timer = -1;
-		}
+		this.timer.cancel();
 	}
 
 	isRunning(): boolean {
@@ -47,7 +46,6 @@ export class Tween {
 		}
 		const start = performance.now();
 		const step = (): void => {
-			this.timer = -1;
 			if (this.stopped) { return; }
 			const t = Math.min(1, (performance.now() - start) / durationMs);
 			onFrame(from + (to - from) * curve(t));
@@ -56,9 +54,9 @@ export class Tween {
 				onDone();
 				return;
 			}
-			this.timer = setTimeout(step, FRAME_MS) as number;
+			this.timer.start(step, FRAME_MS);
 		};
-		this.timer = setTimeout(step, FRAME_MS) as number;
+		this.timer.start(step, FRAME_MS);
 	}
 }
 

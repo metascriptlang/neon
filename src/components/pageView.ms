@@ -48,7 +48,6 @@ export function pageTarget(position: number, velocity: number): number {
 	return Math.round(page);
 }
 
-// The page index a position shows, wrapped into [0, count) when the pager loops.
 export function pageIndex(position: number, count: int32, loop: boolean): int32 {
 	if (count <= 0) { return 0; }
 	const rounded = Math.round(position) as int32;
@@ -57,7 +56,6 @@ export function pageIndex(position: number, count: int32, loop: boolean): int32 
 	return wrapped < 0 ? wrapped + count : wrapped;
 }
 
-// A page's signed distance in pages from the position; a loop takes the shorter way round.
 export function pageDelta(index: number, position: number, count: int32, loop: boolean): number {
 	const delta = index - position;
 	if (!loop || count <= 0) { return delta; }
@@ -80,16 +78,13 @@ export class PageController {
 		this.position = new AnimatedValue(initialPage);
 	}
 
-	// Flutter's `page`: the fractional position, a reactive read.
 	page(): number { return this.position.get(); }
 
-	// The position without subscribing.
 	peek(): number { return this.position.peek(); }
 
-	// The page last reported by onPageSelected, a reactive read.
 	selectedPage(): number {
 		const read = this.reader;
-		return read === null ? Math.round(this.position.get()) : (read as () => number)();
+		return read === null ? Math.round(this.position.get()) : read();
 	}
 
 	animateToPage(index: number): void { this.move(index, true); }
@@ -101,8 +96,8 @@ export class PageController {
 
 	private move(index: number, animated: boolean): void {
 		const mover = this.mover;
-		if (mover === null) { throw "PageController: the controller is not attached to a mounted PageView"; }
-		(mover as (page: number, animated: boolean) => void)(index, animated);
+		if (mover === null) { throw new Error("PageController: the controller is not attached to a mounted PageView"); }
+		mover(index, animated);
 	}
 }
 
@@ -132,15 +127,15 @@ export function PageView<T>(props: {
 	const loopProp = props.loop;
 	const initialProp = props.initialPage;
 	const given = props.controller;
-	const initial = initialProp === null ? (given === null ? 0 : (given as PageController).initialPage) : (initialProp as Accessor<number>)();
+	const initial = initialProp === null ? (given === null ? 0 : (given as PageController).initialPage) : initialProp();
 	const controller = given === null ? new PageController(initial) : given as PageController;
 	const position = controller.position;
 	if (given === null || initialProp !== null) { position.setValue(initial); }
 
-	const vertical = (): boolean => orientationProp !== null && (orientationProp as Accessor<PageOrientation>)() === "vertical";
-	const enabled = (): boolean => enabledProp === null || (enabledProp as Accessor<boolean>)();
-	const fraction = (): number => fractionProp === null ? 1 : Math.max(0.05, Math.min(1, (fractionProp as Accessor<number>)()));
-	const loops = (): boolean => loopProp !== null && (loopProp as Accessor<boolean>)();
+	const vertical = (): boolean => orientationProp !== null && orientationProp() === "vertical";
+	const enabled = (): boolean => enabledProp === null || enabledProp();
+	const fraction = (): number => fractionProp === null ? 1 : Math.max(0.05, Math.min(1, fractionProp()));
+	const loops = (): boolean => loopProp !== null && loopProp();
 	const count = (): int32 => untrack<T[]>(data).length as int32;
 
 	const [width, setWidth] = createSignal<number>(0);
@@ -151,7 +146,7 @@ export function PageView<T>(props: {
 	let reported: int32 = pageIndex(initial, count(), untrack<boolean>(loops));
 	const [selected, setSelected] = createSignal<number>(reported as number);
 	controller.reader = (): number => selected();
-	let pending: int32 = -1;
+	let pending: int32 | null = null;
 	let state: PageScrollState = "idle";
 	let motion: CompositeAnimation | null = null;
 	let dragStart = 0.0;
@@ -159,13 +154,13 @@ export function PageView<T>(props: {
 	const setState = (next: PageScrollState): void => {
 		if (next === state) { return; }
 		state = next;
-		if (onPageScrollStateChanged !== null) { (onPageScrollStateChanged as (s: PageScrollState) => void)(next); }
+		if (onPageScrollStateChanged !== null) { onPageScrollStateChanged(next); }
 	};
 	const select = (index: int32): void => {
 		if (index === reported) { return; }
 		reported = index;
 		setSelected(index as number);
-		if (onPageSelected !== null) { (onPageSelected as (i: number) => void)(index as number); }
+		if (onPageSelected !== null) { onPageSelected(index as number); }
 	};
 
 	// page_view.dart onPageChanged: the page under the centre, reported as it changes; a
@@ -174,15 +169,15 @@ export function PageView<T>(props: {
 		const n = count();
 		const loop = untrack<boolean>(loops);
 		const at = pageIndex(s.value, n, loop);
-		if (pending >= 0) {
-			if (at === pending) { pending = -1; }
+		if (pending !== null) {
+			if (at === pending) { pending = null; }
 		} else {
 			select(at);
 		}
 		if (onPageScroll !== null) {
 			const base = Math.floor(s.value);
 			const page = pageIndex(base, n, loop);
-			(onPageScroll as (position: number, offset: number) => void)(page as number, s.value - base);
+			onPageScroll(page as number, s.value - base);
 		}
 	});
 	const stopMotion = (): void => {
@@ -233,10 +228,10 @@ export function PageView<T>(props: {
 		}
 		stopMotion();
 		const page = pageIndex(target, n, loop);
-		pending = page === pageIndex(from, n, loop) ? -1 : page;
+		pending = page === pageIndex(from, n, loop) ? null : page;
 		select(page);
 		if (!animated) {
-			pending = -1;
+			pending = null;
 			position.setValue(target);
 			setState("idle");
 			return;
@@ -247,13 +242,13 @@ export function PageView<T>(props: {
 		run.start((result: EndResult): void => {
 			if (motion === run) { motion = null; }
 			if (result.finished) {
-				pending = -1;
+				pending = null;
 				setState("idle");
 			}
 		});
 	};
 	const userRef = props.ref;
-	if (userRef !== null) { (userRef as (c: PageController) => void)(controller); }
+	if (userRef !== null) { userRef(controller); }
 
 	const lowerBound = (): number => untrack<boolean>(loops) ? -1e9 : 0;
 	const upperBound = (): number => untrack<boolean>(loops) ? 1e9 : (count() - 1) as number;
@@ -275,7 +270,7 @@ export function PageView<T>(props: {
 		},
 		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
 			stopMotion();
-			pending = -1;
+			pending = null;
 			dragStart = position.peek();
 			setState("dragging");
 		},
@@ -313,14 +308,14 @@ export function PageView<T>(props: {
 			: { position: "absolute", top: 0, bottom: 0, left: 0, width: length };
 		const placed: Style = { ...base, display: shown ? "flex" : "none", transform: `${axis}(${offset}px)` };
 		if (pageStyle === null || !shown) { return placed; }
-		const extra = (pageStyle as (d: number) => Style)(delta);
+		const extra = pageStyle(delta);
 		const extraTransform = extra.transform;
 		const merged = mergeStyle(placed, extra);
 		return extraTransform === null ? merged : { ...merged, transform: `${axis}(${offset}px) ${extraTransform as string}` };
 	});
 
 	const userStyle = props.style;
-	const outer = accessor((): Style => mergeStyle({ overflow: "hidden" }, userStyle === null ? {} : (userStyle as Accessor<Style>)()));
+	const outer = accessor((): Style => mergeStyle({ overflow: "hidden" }, userStyle === null ? {} : userStyle()));
 	const handlers = pan.panHandlers;
 	const pages = For<T>({
 		each: data,
@@ -357,7 +352,7 @@ export function PageIndicator(props: PageIndicatorProps): NeonNode {
 	const colorProp = props.color;
 	const activeProp = props.activeColor;
 	const sizeProp = props.size;
-	const size = (): number => sizeProp === null ? DOT_SIZE : (sizeProp as Accessor<number>)();
+	const size = (): number => sizeProp === null ? DOT_SIZE : sizeProp();
 	const indices = accessor((): number[] => {
 		const out: number[] = [];
 		const n = count() as int32;
@@ -371,19 +366,19 @@ export function PageIndicator(props: PageIndicatorProps): NeonNode {
 			return {
 				width: active() ? s * 2.5 : s, height: s, borderRadius: s / 2, marginLeft: s / 2, marginRight: s / 2,
 				backgroundColor: active()
-					? (activeProp === null ? DOT_ACTIVE : (activeProp as Accessor<string>)())
-					: (colorProp === null ? DOT_COLOR : (colorProp as Accessor<string>)()),
+					? (activeProp === null ? DOT_ACTIVE : activeProp())
+					: (colorProp === null ? DOT_COLOR : colorProp()),
 			};
 		});
 		const label = (): string => `page ${index + 1} of ${count()}`;
 		const press = (e: NeonEvent): void => {
-			if (onPress !== null) { (onPress as (i: number) => void)(index); }
+			if (onPress !== null) { onPress(index); }
 		};
 		return element(<Pressable style={style} accessibilityLabel={label()} accessibilityRole="button" onPress={press} />);
 	};
 	const userStyle = props.style;
 	return View({
-		style: accessor((): Style => mergeStyle({ flexDirection: "row", justifyContent: "center", alignItems: "center", paddingTop: 8, paddingBottom: 8 }, userStyle === null ? {} : (userStyle as Accessor<Style>)())),
+		style: accessor((): Style => mergeStyle({ flexDirection: "row", justifyContent: "center", alignItems: "center", paddingTop: 8, paddingBottom: 8 }, userStyle === null ? {} : userStyle())),
 		children: For<number>({ each: indices, children: (index: number, at: Accessor<number>): NeonNode => dot(index) }),
 	});
 }

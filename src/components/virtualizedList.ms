@@ -26,6 +26,7 @@ import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shou
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, LayoutBox, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
 import { stickyTranslation } from "./list/sticky";
+import { TimerHandle } from "./timerHandle";
 import {
 	ViewabilityConfig,
 	ViewabilityConfigCallbackPair,
@@ -175,9 +176,9 @@ export class FlatListHandle {
 	scrollToIndex(options: ScrollToIndexOptions): void {
 		const { index, animated = true, viewPosition = 0, viewOffset = 0 } = options;
 		const n = this.count();
-		if (index < 0) { throw `scrollToIndex out of range: requested index ${index} but minimum is 0`; }
-		if (n < 1) { throw `scrollToIndex out of range: item length ${n} but minimum is 1`; }
-		if (index >= n) { throw `scrollToIndex out of range: requested index ${index} is out of 0 to ${n - 1}`; }
+		if (index < 0) { throw new Error(`scrollToIndex out of range: requested index ${index} but minimum is 0`); }
+		if (n < 1) { throw new Error(`scrollToIndex out of range: item length ${n} but minimum is 1`); }
+		if (index >= n) { throw new Error(`scrollToIndex out of range: requested index ${index} is out of 0 to ${n - 1}`); }
 		if (this.unmeasured(index)) { return; }
 		const frame = this.frameOf(Math.floor(index));
 		const offset = Math.max(0, this.offsetOf(index) - viewPosition * (this.viewport() - frame.length)) - viewOffset;
@@ -322,7 +323,7 @@ export function listEngine<T, D>(props: {
 	const itemComponent = props.ListItemComponent;
 	const renderProp = props.renderItem;
 	if (itemComponent === null && renderProp === null) {
-		throw `${who}: Either ListItemComponent or renderItem props are required but none were found.`;
+		throw new Error(`${who}: Either ListItemComponent or renderItem props are required but none were found.`);
 	}
 	if (itemComponent !== null && renderProp !== null) {
 		console.warn(`${who}: Both ListItemComponent and renderItem props are present. ListItemComponent will take precedence over renderItem.`);
@@ -340,17 +341,17 @@ export function listEngine<T, D>(props: {
 	const userLayout = props.onLayout;
 	const userRef = props.ref;
 	const horizontal = props.horizontal;
-	const isHorizontal = (): boolean => horizontal !== null && (horizontal as () => boolean)();
+	const isHorizontal = (): boolean => horizontal !== null && horizontal();
 	const orientation = (): ListOrientation => ({ horizontal: isHorizontal(), rtl: false });
 	const isInverted = (): boolean => props.inverted !== null && (props.inverted as Accessor<boolean>)();
 	const inversionStyle = (): Style => ({ transform: isInverted() ? (isHorizontal() ? "scaleX(-1)" : "scaleY(-1)") : null });
-	const slotStyle = (user: Accessor<Style> | null): Accessor<Style> => accessor((): Style => mergeStyle(inversionStyle(), user === null ? {} : (user as Accessor<Style>)()));
+	const slotStyle = (user: Accessor<Style> | null): Accessor<Style> => accessor((): Style => mergeStyle(inversionStyle(), user === null ? {} : user()));
 
 	let current: D | null = null;
 	const getItem = props.getItem;
 	const itemTotal = (): int32 => props.getItemCount(current as D) as int32;
 	const itemAt = (index: int32): T => getItem(current as D, index as number);
-	const columnsNow = (): int32 => columnsProp === null ? 1 : (columnsProp as Accessor<number>)() as int32;
+	const columnsNow = (): int32 => columnsProp === null ? 1 : columnsProp() as int32;
 	const columns: int32 = untrack(columnsNow);
 	const cellCount = (): int32 => current === null ? 0 : (columns > 1 ? (itemTotal() + columns - 1) / columns : itemTotal());
 	const rowItems = (row: int32): T[] => {
@@ -364,11 +365,11 @@ export function listEngine<T, D>(props: {
 			(prev: [int32, boolean] | null): [int32, boolean] => [columnsNow(), isHorizontal()],
 			(now: [int32, boolean], prev: [int32, boolean] | null): Cleanup | null => {
 				if (now[0] !== columns) {
-					throw `${who}: Changing numColumns on the fly is not supported. Mount a new ${who} when changing the number of columns.`;
+					throw new Error(`${who}: Changing numColumns on the fly is not supported. Mount a new ${who} when changing the number of columns.`);
 				}
-				if (columns > 1 && now[1]) { throw `${who}: numColumns does not support horizontal.`; }
+				if (columns > 1 && now[1]) { throw new Error(`${who}: numColumns does not support horizontal.`); }
 				if (columns <= 1 && columnWrapperStyle !== null) {
-					throw `${who}: columnWrapperStyle not supported for single column lists`;
+					throw new Error(`${who}: columnWrapperStyle not supported for single column lists`);
 				}
 				return null;
 			},
@@ -379,7 +380,7 @@ export function listEngine<T, D>(props: {
 		count: (): int32 => cellCount(),
 		keyAt: (index: int32): T => itemAt(index * columns),
 		layoutAt: getItemLayout === null ? null : (index: int32): CellMetrics => {
-			const layout = (getItemLayout as (data: D, index: number) => ItemLayout)(current as D, index as number);
+			const layout = getItemLayout(current as D, index as number);
 			return { index, length: layout.length, offset: layout.offset, isMounted: true };
 		},
 	};
@@ -403,21 +404,21 @@ export function listEngine<T, D>(props: {
 			if (at > childIndex && (nextIndex < 0 || at < nextIndex)) { nextIndex = at; }
 		}
 		if (!found) { return { flexShrink: 0 }; }
-		if (isHorizontal()) { throw `${who}: stickyHeaderIndices does not support horizontal lists`; }
+		if (isHorizontal()) { throw new Error(`${who}: stickyHeaderIndices does not support horizontal lists`); }
 		state.layoutVersion.get();
 		const frame = stickyFrame(childIndex);
 		if (frame === null) { return { flexShrink: 0, zIndex: 10 }; }
 		const next = nextIndex < 0 ? null : stickyFrame(nextIndex);
 		const invert = props.invertStickyHeaders;
-		const translation = stickyTranslation(frame.offset, frame.length, next === null ? null : next.offset, state.offset.get(), state.viewport.get(), invert === null ? isInverted() : (invert as Accessor<boolean>)());
+		const translation = stickyTranslation(frame.offset, frame.length, next === null ? null : next.offset, state.offset.get(), state.viewport.get(), invert === null ? isInverted() : invert());
 		return { flexShrink: 0, zIndex: 10, transform: "translateY(" + translation.toString() + "px)" };
 	});
 
-	const initialNumToRender = (): int32 => initialProp === null ? 10 : (initialProp as () => number)() as int32;
-	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : (batchProp as () => number)() as int32;
-	const windowSize = (): int32 => windowProp === null ? 21 : (windowProp as () => number)() as int32;
-	const batchingPeriod = (): number => periodProp === null ? 50 : (periodProp as () => number)();
-	const initialScrollIndex = (): number => initialIndexProp === null ? 0 : (initialIndexProp as () => number)();
+	const initialNumToRender = (): int32 => initialProp === null ? 10 : initialProp() as int32;
+	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : batchProp() as int32;
+	const windowSize = (): int32 => windowProp === null ? 21 : windowProp() as int32;
+	const batchingPeriod = (): number => periodProp === null ? 50 : periodProp();
+	const initialScrollIndex = (): number => initialIndexProp === null ? 0 : initialIndexProp();
 	const initialRegion = (n: int32): CellRange => {
 		const first = Math.max(0, Math.min(n - 1, Math.floor(initialScrollIndex()) as int32));
 		return { first, last: Math.min(n, first + initialNumToRender()) - 1 };
@@ -440,7 +441,7 @@ export function listEngine<T, D>(props: {
 	let gridItems = new Map<T, GridItem>();
 	let parking: HostNode | null = null;
 	const listOwner = getOwner();
-	let updateTimeout: number = -1;
+	const updateTimeout = new TimerHandle();
 	let hiPriInProgress = false;
 	const [cells, setCells] = createSignal<ListCell[]>([], { ownedWrite: true });
 	const [cellTotal, setCellTotal] = createSignal<number>(0, { ownedWrite: true });
@@ -487,14 +488,14 @@ export function listEngine<T, D>(props: {
 	const pairsProp = props.viewabilityConfigCallbackPairs;
 	const changedProp = props.onViewableItemsChanged;
 	if (pairsProp !== null && changedProp !== null) {
-		throw `${who} does not support setting both onViewableItemsChanged and viewabilityConfigCallbackPairs.`;
+		throw new Error(`${who} does not support setting both onViewableItemsChanged and viewabilityConfigCallbackPairs.`);
 	}
 	if (pairsProp !== null) {
-		const pairs = untrack((): ViewabilityConfigCallbackPair<T>[] => (pairsProp as Accessor<ViewabilityConfigCallbackPair<T>[]>)());
+		const pairs = untrack((): ViewabilityConfigCallbackPair<T>[] => pairsProp());
 		for (const pair of pairs) { addViewability(pair.viewabilityConfig, pair.onViewableItemsChanged); }
 	} else if (changedProp !== null) {
 		const configProp = props.viewabilityConfig;
-		const config = configProp === null ? null : untrack((): ViewabilityConfig => (configProp as Accessor<ViewabilityConfig>)());
+		const config = configProp === null ? null : untrack((): ViewabilityConfig => configProp());
 		addViewability(config, changedProp as (info: ViewabilityInfo<T>) => void);
 	}
 	const updateViewableItems = (): void => {
@@ -530,7 +531,7 @@ export function listEngine<T, D>(props: {
 	}));
 	const emptyCell = empty === null ? null : fixedCell(View({ children: empty, style: slotStyle(null) }));
 	onCleanup((): void => {
-		if (updateTimeout >= 0) { clearTimeout(updateTimeout); }
+		updateTimeout.cancel();
 		for (const tuple of viewables) { tuple.helper.dispose(); }
 		for (const item of gridItems) { (gridItems.get(item) as GridItem).dispose(); }
 		gridItems = new Map<T, GridItem>();
@@ -548,7 +549,7 @@ export function listEngine<T, D>(props: {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
 		if (virtualizationDisabled()) {
-			const threshold = thresholdProp === null ? 2.0 : (thresholdProp as Accessor<number>)();
+			const threshold = thresholdProp === null ? 2.0 : thresholdProp();
 			const distanceFromEnd = metrics.getContentLength() - visibleLength - offset;
 			const renderAhead = distanceFromEnd < threshold * visibleLength ? maxToRenderPerBatch() : 0;
 			return { first: 0, last: Math.min(cellsAroundViewport.last + renderAhead, n - 1) };
@@ -672,7 +673,7 @@ export function listEngine<T, D>(props: {
 		};
 		return new ListCell(moveTo, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
 			const wrapper = columnWrapperStyle;
-			const rowStyle = accessor((): Style => mergeStyle({ display: "flex", flexDirection: "row" }, wrapper === null ? {} : (wrapper as Accessor<Style>)()));
+			const rowStyle = accessor((): Style => mergeStyle({ display: "flex", flexDirection: "row" }, wrapper === null ? {} : wrapper()));
 			return cellNode(at, (): T => key, View({ style: rowStyle, children: gridRowItems(members) }), scheduleUpdate, (box: LayoutBox): void => { measuredBox = box; });
 		});
 	};
@@ -699,7 +700,7 @@ export function listEngine<T, D>(props: {
 		for (let i = row * columns; i < end; i += 1) {
 			const item = itemAt(i);
 			if (seen.has(item)) {
-				throw `${who}: the same item is at indices ${seen.get(item) as int32} and ${i}; items are told apart by their identity`;
+				throw new Error(`${who}: the same item is at indices ${seen.get(item) as int32} and ${i}; items are told apart by their identity`);
 			}
 			seen.set(item, i);
 		}
@@ -746,7 +747,7 @@ export function listEngine<T, D>(props: {
 				}
 				const item = itemAt(i);
 				if (nextItems.has(item)) {
-					throw `${who}: the same item is at rows ${(nextItems.get(item) as ListCell).index} and ${i}; rows are told apart by their item`;
+					throw new Error(`${who}: the same item is at rows ${(nextItems.get(item) as ListCell).index} and ${i}; rows are told apart by their item`);
 				}
 				const cell = itemCells.has(item) ? itemCells.get(item) as ListCell : itemCell(item, i as number);
 				cell.index = i as number;
@@ -773,21 +774,21 @@ export function listEngine<T, D>(props: {
 		const contentLength = metrics.getContentLength();
 		let distanceFromEnd = contentLength - visibleLength - offset;
 		if (distanceFromEnd < ON_EDGE_REACHED_EPSILON) { distanceFromEnd = 0; }
-		const endThreshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : (thresholdProp as () => number)() * visibleLength;
+		const endThreshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : thresholdProp() * visibleLength;
 		const withinEnd = distanceFromEnd <= endThreshold;
 		if (endReached !== null && withinEnd && cellsAroundViewport.last === n - 1 && contentLength !== sentEndForContentLength) {
 			sentEndForContentLength = contentLength;
-			(endReached as (info: EndReachedInfo) => void)({ distanceFromEnd });
+			endReached({ distanceFromEnd });
 		}
 		if (!withinEnd) { sentEndForContentLength = 0.0; }
 		let distanceFromStart = offset;
 		if (distanceFromStart < ON_EDGE_REACHED_EPSILON) { distanceFromStart = 0; }
 		const startThresholdProp = props.onStartReachedThreshold;
-		const startThreshold = startThresholdProp === null ? DEFAULT_THRESHOLD_PX : (startThresholdProp as Accessor<number>)() * visibleLength;
+		const startThreshold = startThresholdProp === null ? DEFAULT_THRESHOLD_PX : startThresholdProp() * visibleLength;
 		const withinStart = distanceFromStart <= startThreshold;
 		if (startReached !== null && withinStart && cellsAroundViewport.first === 0 && contentLength !== sentStartForContentLength) {
 			sentStartForContentLength = contentLength;
-			(startReached as (info: StartReachedInfo) => void)({ distanceFromStart });
+			startReached({ distanceFromStart });
 		}
 		if (!withinStart) { sentStartForContentLength = 0.0; }
 	};
@@ -810,7 +811,7 @@ export function listEngine<T, D>(props: {
 	const hasRenderPriority = (n: int32): boolean => {
 		const start = props.onStartReachedThreshold;
 		const scroll: WindowScroll = { offset, velocity, visibleLength, zoomScale: 1.0 };
-		return shouldRenderWithPriority(n, cellsAroundViewport, metricsAt, scroll, start === null ? 2 : (start as Accessor<number>)(), thresholdProp === null ? 2 : (thresholdProp as Accessor<number>)());
+		return shouldRenderWithPriority(n, cellsAroundViewport, metricsAt, scroll, start === null ? 2 : start(), thresholdProp === null ? 2 : thresholdProp());
 	};
 
 	const updateCellsToRender = (): boolean => {
@@ -832,16 +833,10 @@ export function listEngine<T, D>(props: {
 		};
 		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && hasRenderPriority(cellCount()) && !hiPriInProgress) {
 			hiPriInProgress = true;
-			if (updateTimeout >= 0) {
-				clearTimeout(updateTimeout);
-				updateTimeout = -1;
-			}
+			updateTimeout.cancel();
 			update();
-		} else if (updateTimeout < 0) {
-			updateTimeout = setTimeout((): void => {
-				updateTimeout = -1;
-				update();
-			}, batchingPeriod());
+		} else if (!updateTimeout.pending()) {
+			updateTimeout.start(update, batchingPeriod());
 		}
 		if (!rendered) { return; }
 		if (hiPri) { hiPriInProgress = false; }
@@ -897,8 +892,8 @@ export function listEngine<T, D>(props: {
 		createRenderEffect<int32[]>(
 			(prev: int32[] | null): int32[] => (props.stickyHeaderIndices as Accessor<int32[]>)(),
 			(next: int32[], prev: int32[] | null): Cleanup | null => {
-				for (const index of next) { if (index < 0) { throw `${who}: stickyHeaderIndices must be non-negative`; } }
-				if (next.length > 0 && isHorizontal()) { throw `${who}: stickyHeaderIndices does not support horizontal lists`; }
+				for (const index of next) { if (index < 0) { throw new Error(`${who}: stickyHeaderIndices must be non-negative`); } }
+				if (next.length > 0 && isHorizontal()) { throw new Error(`${who}: stickyHeaderIndices does not support horizontal lists`); }
 				stickyIndices = next;
 				const state = sticky as StickyState;
 				state.indicesVersion.set(state.indicesVersion.peek() + 1);
@@ -941,7 +936,7 @@ export function listEngine<T, D>(props: {
 	};
 
 	const onScroll = (e: NeonEvent): void => {
-		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
+		if (userScroll !== null) { userScroll(e); }
 		const nextOffset = isHorizontal() ? e.x : e.y;
 		velocity = e.timeStamp > 0 ? (nextOffset - offset) / (timeStamp > 0 ? Math.max(1, e.timeStamp - timeStamp) : 1) : 0;
 		timeStamp = e.timeStamp;
@@ -960,7 +955,7 @@ export function listEngine<T, D>(props: {
 	const onLayout = (e: NeonEvent): void => {
 		visibleLength = isHorizontal() ? e.width : e.height;
 		if (sticky !== null) { (sticky as StickyState).viewport.set(visibleLength); }
-		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
+		if (userLayout !== null) { userLayout(e); }
 		scheduleCellsToRenderUpdate(false);
 		maybeCallOnEdgeReached(cellCount());
 	};
@@ -969,14 +964,14 @@ export function listEngine<T, D>(props: {
 		initialContentReady = width > 0 && height > 0;
 		maybeScrollToInitialIndex();
 		const changed = props.onContentSizeChange;
-		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
+		if (changed !== null) { changed(width, height); }
 		scheduleCellsToRenderUpdate(false);
 		maybeCallOnEdgeReached(cellCount());
 	};
 	const userDragBegin = props.onScrollBeginDrag;
 	const onScrollBeginDrag = viewables.length === 0 ? userDragBegin : (e: NeonEvent): void => {
 		recordInteraction();
-		if (userDragBegin !== null) { (userDragBegin as (e: NeonEvent) => void)(e); }
+		if (userDragBegin !== null) { userDragBegin(e); }
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		handle = new FlatListHandle(
@@ -990,9 +985,9 @@ export function listEngine<T, D>(props: {
 				if (getItemLayout !== null || index <= metrics.getHighestMeasuredCellIndex()) { return false; }
 				const failed = props.onScrollToIndexFailed;
 				if (failed === null) {
-					throw "scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed, otherwise there is no way to know the location of offscreen indices or handle failures.";
+					throw new Error("scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed, otherwise there is no way to know the location of offscreen indices or handle failures.");
 				}
-				(failed as (info: ScrollToIndexFailedInfo) => void)({
+				failed({
 					averageItemLength: metrics.getAverageCellLength(),
 					highestMeasuredFrameIndex: metrics.getHighestMeasuredCellIndex(),
 					index,
@@ -1012,7 +1007,7 @@ export function listEngine<T, D>(props: {
 				return -1;
 			},
 		);
-		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(handle as FlatListHandle); }
+		if (userRef !== null) { userRef(handle as FlatListHandle); }
 	};
 
 	// Parked: <ScrollView style={props.style}> wraps a nullable Accessor again (BUGS.md §3, isAccessorTyped) —

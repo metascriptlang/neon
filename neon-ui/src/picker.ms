@@ -34,11 +34,11 @@ interface PickerProps extends AccessibilityProps {
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
-export function pickerIndexOf(items: PickerItem[], value: string): int32 {
+export function pickerIndexOf(items: PickerItem[], value: string): int32 | null {
 	for (let i = 0; i < items.length; i += 1) {
 		if (items[i].value === value) { return i as int32; }
 	}
-	return -1;
+	return null;
 }
 
 const FIELD: Style = {
@@ -50,22 +50,22 @@ const SHEET: Style = { maxHeight: 480 };
 export function Picker(props: PickerProps): NeonNode {
 	const { items, selectedValue, onValueChange, enabled, prompt, color } = props;
 	const [open, setOpen] = createSignal(false);
-	const isEnabled = (): boolean => enabled === null || (enabled as Accessor<boolean>)();
-	const selected = (): int32 => {
+	const isEnabled = (): boolean => enabled === null || enabled();
+	const selected = (): int32 | null => {
 		const list = items();
-		if (selectedValue === null) { return list.length > 0 ? 0 : -1; }
-		return pickerIndexOf(list, (selectedValue as Accessor<string>)());
+		if (selectedValue === null) { return list.length > 0 ? 0 : null; }
+		return pickerIndexOf(list, selectedValue());
 	};
 	const selectedLabel = (): string => {
 		const at = selected();
-		return at < 0 ? "" : items()[at].label;
+		return at === null ? "" : items()[at].label;
 	};
 	const ink = accessor((): Style => ({ color: isEnabled() ? colorOr(color, MATERIAL_ON_SURFACE) : MATERIAL_DISABLED, fontSize: 16 }));
 	const close = (): void => { setOpen(false); };
 	const pick = (index: int32): void => {
 		setOpen(false);
 		if (index === selected() || onValueChange === null) { return; }
-		(onValueChange as (v: string, i: int32) => void)(items()[index].value, index);
+		onValueChange(items()[index].value, index);
 	};
 	const row = (item: PickerItem, index: Accessor<number>): NeonNode => {
 		const isSelected = (): boolean => selected() === (index() as int32);

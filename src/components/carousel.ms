@@ -9,6 +9,7 @@ import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/node";
 import { Style } from "../render/style";
 import { PageController, PageOrientation, PageRenderItemInfo, PageScrollState, PageView } from "./pageView";
+import { TimerHandle } from "./timerHandle";
 
 export type CarouselMode = "default" | "parallax";
 
@@ -17,7 +18,6 @@ export type CarouselMode = "default" | "parallax";
 const AUTO_PLAY_INTERVAL = 1000;
 const PARALLAX_SCALE = 0.8;
 
-// The scale of a page `delta` pages from the centre in parallax mode.
 export function parallaxScale(delta: number, scale: number): number {
 	const distance = Math.min(1, Math.abs(delta));
 	return 1 - (1 - scale) * distance;
@@ -52,26 +52,20 @@ export function Carousel<T>(props: {
 	const modeProp = props.mode;
 	const scaleProp = props.parallaxScrollingScale;
 	const initialProp = props.defaultIndex;
-	const loops = (): boolean => loopProp === null || (loopProp as Accessor<boolean>)();
-	const autoPlays = (): boolean => autoProp !== null && (autoProp as Accessor<boolean>)();
-	const interval = (): number => intervalProp === null ? AUTO_PLAY_INTERVAL : (intervalProp as Accessor<number>)();
-	const reverse = (): boolean => reverseProp !== null && (reverseProp as Accessor<boolean>)();
-	const controller = new PageController(initialProp === null ? 0 : (initialProp as Accessor<number>)());
+	const loops = (): boolean => loopProp === null || loopProp();
+	const autoPlays = (): boolean => autoProp !== null && autoProp();
+	const interval = (): number => intervalProp === null ? AUTO_PLAY_INTERVAL : intervalProp();
+	const reverse = (): boolean => reverseProp !== null && reverseProp();
+	const controller = new PageController(initialProp === null ? 0 : initialProp());
 	const userRef = props.ref;
-	if (userRef !== null) { (userRef as (c: PageController) => void)(controller); }
+	if (userRef !== null) { userRef(controller); }
 
-	let timer: number = -1;
+	const timer = new TimerHandle();
 	let snapped: number = untrack<number>((): number => controller.selectedPage());
 	let held = false;
-	const cancel = (): void => {
-		if (timer >= 0) {
-			clearTimeout(timer);
-			timer = -1;
-		}
-	};
+	const cancel = (): void => { timer.cancel(); };
 	onCleanup(cancel);
 	const advance = (): void => {
-		timer = -1;
 		const n = untrack<T[]>(data).length as int32;
 		if (n <= 1 || held) { return; }
 		const current = untrack<number>((): number => controller.selectedPage());
@@ -82,7 +76,7 @@ export function Carousel<T>(props: {
 	const schedule = (): void => {
 		cancel();
 		if (!untrack<boolean>(autoPlays) || held) { return; }
-		timer = setTimeout(advance, untrack<number>(interval)) as number;
+		timer.start(advance, untrack<number>(interval));
 	};
 	createRenderEffect<boolean>(
 		(prev: boolean | null): boolean => autoPlays(),
@@ -96,7 +90,7 @@ export function Carousel<T>(props: {
 		if (state === "dragging") {
 			held = true;
 			cancel();
-			if (onScrollStart !== null) { (onScrollStart as () => void)(); }
+			if (onScrollStart !== null) { onScrollStart(); }
 			return;
 		}
 		if (state === "idle") {
@@ -104,22 +98,22 @@ export function Carousel<T>(props: {
 			const index = untrack<number>((): number => controller.selectedPage());
 			if (index !== snapped) {
 				snapped = index;
-				if (onSnapToItem !== null) { (onSnapToItem as (i: number) => void)(index); }
+				if (onSnapToItem !== null) { onSnapToItem(index); }
 			}
-			if (onScrollEnd !== null) { (onScrollEnd as (i: number) => void)(index); }
+			if (onScrollEnd !== null) { onScrollEnd(index); }
 			schedule();
 		}
 	};
 	const pageStyle = modeProp === null ? null : (delta: number): Style => {
-		if ((modeProp as Accessor<CarouselMode>)() !== "parallax") { return {}; }
-		const scale = parallaxScale(delta, scaleProp === null ? PARALLAX_SCALE : (scaleProp as Accessor<number>)());
+		if (modeProp() !== "parallax") { return {}; }
+		const scale = parallaxScale(delta, scaleProp === null ? PARALLAX_SCALE : scaleProp());
 		return { transform: `scale(${scale})`, opacity: 0.6 + 0.4 * scale };
 	};
 	return PageView<T>({
 		data,
 		renderItem: props.renderItem,
 		controller,
-		orientation: verticalProp === null ? null : accessor((): PageOrientation => (verticalProp as Accessor<boolean>)() ? "vertical" : "horizontal"),
+		orientation: verticalProp === null ? null : accessor((): PageOrientation => verticalProp() ? "vertical" : "horizontal"),
 		scrollEnabled: props.enabled,
 		viewportFraction: props.viewportFraction,
 		loop: accessor(loops),

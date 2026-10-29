@@ -12,6 +12,7 @@ import { Style, mergeStyle } from "../render/style";
 import { View } from "./primitives";
 import { FlatList, FlatListHandle, ListRenderItemInfo } from "./flatList";
 import { PanResponder, PanResponderGestureState } from "./panResponder";
+import { TimerHandle } from "./timerHandle";
 import { Tween, easeOut, tween } from "./tween";
 
 export interface ReorderableRenderItemInfo<T> {
@@ -85,16 +86,11 @@ export function ReorderableFlatList<T>(props: {
 	let viewport = 0.0;
 	let grantOffset = 0.0;
 	let headerLength = 0.0;
-	let autoscroll: number = -1;
+	const autoscroll = new TimerHandle();
 	let handle: FlatListHandle | null = null;
 	let drop: Tween | null = null;
 
-	const stopAutoscroll = (): void => {
-		if (autoscroll >= 0) {
-			clearTimeout(autoscroll);
-			autoscroll = -1;
-		}
-	};
+	const stopAutoscroll = (): void => { autoscroll.cancel(); };
 	const stopDrop = (): void => {
 		if (drop !== null) {
 			(drop as Tween).stop();
@@ -143,7 +139,6 @@ export function ReorderableFlatList<T>(props: {
 	};
 
 	const autoscrollTick = (): void => {
-		autoscroll = -1;
 		if (activeItem === null || !granted || handle === null || viewport <= 0) { return; }
 		const from = untrack<number>(activeIndex) as int32;
 		const top = slotTop(from) - grantOffset + dragDelta;
@@ -156,7 +151,7 @@ export function ReorderableFlatList<T>(props: {
 		(handle as FlatListHandle).scrollToOffset({ offset: next, animated: false });
 		offset = next;
 		place();
-		autoscroll = setTimeout(autoscrollTick, AUTOSCROLL_MS) as number;
+		autoscroll.start(autoscrollTick, AUTOSCROLL_MS);
 	};
 
 	const startDrag = (item: T, index: number): void => {
@@ -175,7 +170,7 @@ export function ReorderableFlatList<T>(props: {
 			setTargetIndex(index);
 			setTranslation(0);
 		});
-		if (onDragBegin !== null) { (onDragBegin as (index: number) => void)(index); }
+		if (onDragBegin !== null) { onDragBegin(index); }
 	};
 
 	const finishDrag = (): void => {
@@ -194,7 +189,7 @@ export function ReorderableFlatList<T>(props: {
 				if (to !== from) { onReorder(from as number, to as number); }
 			});
 		};
-		drop = tween(untrack<number>(translation), settle, dropProp === null ? DROP_MS : (dropProp as Accessor<number>)(), easeOut, (value: number): void => { setTranslation(value); }, commit);
+		drop = tween(untrack<number>(translation), settle, dropProp === null ? DROP_MS : dropProp(), easeOut, (value: number): void => { setTranslation(value); }, commit);
 	};
 
 	const rowStyle = (item: T, index: Accessor<number>): Accessor<Style> => accessor((): Style => {
@@ -203,7 +198,7 @@ export function ReorderableFlatList<T>(props: {
 		const at = index();
 		if (at === from && activeItem === item) {
 			const lifted: Style = { transform: `translateY(${translation()}px)`, zIndex: 10 };
-			return activeStyleProp === null ? lifted : mergeStyle((activeStyleProp as Accessor<Style>)(), lifted);
+			return activeStyleProp === null ? lifted : mergeStyle(activeStyleProp(), lifted);
 		}
 		const to = targetIndex();
 		let shift = 0.0;
@@ -225,7 +220,7 @@ export function ReorderableFlatList<T>(props: {
 			onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
 				dragDelta = g.dy;
 				place();
-				if (autoscroll < 0) { autoscrollTick(); }
+				if (!autoscroll.pending()) { autoscrollTick(); }
 			},
 			onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => { finishDrag(); },
 			onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { finishDrag(); },
@@ -257,12 +252,12 @@ export function ReorderableFlatList<T>(props: {
 		onScroll: (e: NeonEvent): void => {
 			offset = e.y;
 			viewport = e.height;
-			if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
+			if (userScroll !== null) { userScroll(e); }
 		},
 		onLayout: (e: NeonEvent): void => { viewport = e.height; },
 		ref: (h: FlatListHandle): void => {
 			handle = h;
-			if (userRef !== null) { (userRef as (h: FlatListHandle) => void)(h); }
+			if (userRef !== null) { userRef(h); }
 		},
 	});
 }
