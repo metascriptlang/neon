@@ -2,7 +2,7 @@ import {
 	NotificationServices, NotificationSpec, ScheduleReply, installNotificationServices, notificationEvent,
 } from "../../api/notificationServices";
 import {
-	AppEvent, FIELD, appCall, ask, flagText, onNativeAppEvent, onNativeAppStart, refusal,
+	AppCommand, AppEvent, FIELD, appCall, ask, flagText, onNativeAppEvent, onNativeAppStart, refusal,
 } from "./appBridge";
 import { niNotificationCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
@@ -17,13 +17,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niNotificationCommand(name, arg);
-		return reply;
+		return niNotificationCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 async function scheduleNotification(spec: NotificationSpec): Promise<ScheduleReply> {

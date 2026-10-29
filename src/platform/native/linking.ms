@@ -1,5 +1,5 @@
 import { LinkingServices, installLinkingServices, urlEvent } from "../../api/linkingServices";
-import { appCall, AppEvent, onNativeAppEvent } from "./appBridge";
+import { AppCommand, AppEvent, appCall, onNativeAppEvent } from "./appBridge";
 import { niLinkingCommand } from "./commands.h";
 
 when (ios) {
@@ -9,13 +9,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niLinkingCommand(name, arg);
-		return reply;
+		return niLinkingCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 export const nativeLinkingServices: LinkingServices = {

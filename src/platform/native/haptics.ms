@@ -1,6 +1,6 @@
 import { HapticsServices, installHapticsServices } from "../../api/hapticsServices";
 import { niHapticsCommand } from "./commands.h";
-import { appCall } from "./appBridge";
+import { AppCommand, appCall } from "./appBridge";
 import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
@@ -12,13 +12,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niHapticsCommand(name, arg);
-		return reply;
+		return niHapticsCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 function haptic(kind: string, style: string): void {

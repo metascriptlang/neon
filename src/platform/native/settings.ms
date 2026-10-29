@@ -1,11 +1,8 @@
 import { SettingsServices, installSettingsServices, settingsEvent } from "../../api/settingsServices";
-import { AppEvent, appCall, onNativeAppEvent } from "./appBridge";
-
-const PRESENT = "=";
+import { AppEvent, appCall, onNativeAppEvent, presentValue } from "./appBridge";
 
 function settingsGet(key: string): string | null {
-	const reply = appCall("settings.get", key);
-	return reply.startsWith(PRESENT) ? reply.substring(1, reply.length) : null;
+	return presentValue(appCall("settings.get", key));
 }
 
 function settingsSet(values: string): void {

@@ -1,5 +1,5 @@
 import { VibrationServices, installVibrationServices } from "../../api/vibrationServices";
-import { FIELD, appCall } from "./appBridge";
+import { AppCommand, FIELD, appCall } from "./appBridge";
 import { niVibrationCommand } from "./commands.h";
 
 when (ios) {
@@ -10,13 +10,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niVibrationCommand(name, arg);
-		return reply;
+		return niVibrationCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 function vibrate(pattern: int32[], repeat: boolean): void {

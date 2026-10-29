@@ -1,6 +1,8 @@
 #ifndef NEON_NATIVE_COMMANDS_H
 #define NEON_NATIVE_COMMANDS_H
 
+// A reply points into one buffer that the next command call on any module frees (android/app.c g_reply):
+// copy it into a string before that call, which returning it from a function typed `string` does.
 const char *niNotificationCommand(const char *name, const char *arg);
 const char *niLocationCommand(const char *name, const char *arg);
 const char *niNetInfoCommand(const char *name, const char *arg);

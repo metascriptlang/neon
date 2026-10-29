@@ -1,7 +1,7 @@
 import { LocaleSnapshot, LocalizationServices, installLocalizationServices } from "../../api/localizationServices";
 import { decodeLocalization } from "../../api/hostCodec";
 import { niLocaleCommand } from "./commands.h";
-import { appCall } from "./appBridge";
+import { AppCommand, appCall } from "./appBridge";
 import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
@@ -13,13 +13,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niLocaleCommand(name, arg);
-		return reply;
+		return niLocaleCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 function localization(): LocaleSnapshot {

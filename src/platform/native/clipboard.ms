@@ -1,5 +1,5 @@
 import { ClipboardServices, installClipboardServices } from "../../api/clipboardServices";
-import { appCall } from "./appBridge";
+import { AppCommand, appCall } from "./appBridge";
 import { niClipboardCommand } from "./commands.h";
 
 import "../android/library";
@@ -13,13 +13,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niClipboardCommand(name, arg);
-		return reply;
+		return niClipboardCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 export const nativeClipboardServices: ClipboardServices = {
