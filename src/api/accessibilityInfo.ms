@@ -3,6 +3,7 @@ import { flush } from "../core/runtime";
 import { EventSubscription, Listeners, onChange } from "./subscription";
 import { appServices } from "./services";
 import { Platform } from "./platform";
+import { INT32_MAX, checkedInt32 } from "./hostCodec";
 import { ElementHandle } from "../render/measure";
 import {
 	AccessibilityFlag, accessibilityServices, listenAccessibility, listenAccessibilityFlags,
@@ -96,7 +97,10 @@ export class AccessibilityInfo {
 	static async getRecommendedTimeoutMillis(originalTimeout: number): Promise<number> {
 		if (!onAndroid()) { return originalTimeout; }
 		const services = accessibilityServices("AccessibilityInfo.getRecommendedTimeoutMillis");
-		return await services.recommendedTimeoutMillis(originalTimeout as int32);
+		const millis = checkedInt32(
+			"AccessibilityInfo.getRecommendedTimeoutMillis", "originalTimeout", Math.round(originalTimeout), 0, INT32_MAX,
+		);
+		return await services.recommendedTimeoutMillis(millis);
 	}
 
 	// RN spells this addEventListener("announcementFinished", …); parked on ~/metascript/.inbox/compiler/2026-10-16-class-overload-signature-without-a-body-parses-as-an-empty-method.md

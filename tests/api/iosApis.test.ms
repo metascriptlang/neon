@@ -1,4 +1,4 @@
-import { ActionSheetIOS } from "../../src/api/actionSheetIOS";
+import { ActionSheetIOS, ActionSheetIOSOptions } from "../../src/api/actionSheetIOS";
 import { ActionSheetRequest, ActionSheetServices, installActionSheetServices } from "../../src/api/actionSheetServices";
 import { Settings } from "../../src/api/settings";
 import { SettingsServices, installSettingsServices, settingsEvent } from "../../src/api/settingsServices";
@@ -95,6 +95,33 @@ test "ActionSheetIOS defaults an absent cancel index to -1 and takes one or many
 	assert fake.sheets[1].destructiveButtonIndices.join(",") === "0,2", fake.sheets[1].destructiveButtonIndices.join(",");
 }
 
+test "ActionSheetIOS refuses an index that is not a whole non-negative number, naming the field" {
+	const fake = new FakeIosApis();
+	fake.install();
+	const refused: string[] = [];
+	const tries: ActionSheetIOSOptions[] = [
+		{ options: ["A", "B"], disabledButtonIndices: [NaN] },
+		{ options: ["A", "B"], disabledButtonIndices: [1.5] },
+		{ options: ["A", "B"], cancelButtonIndex: 1.5 },
+		{ options: ["A", "B"], destructiveButtonIndex: [0, -1] },
+		{ options: ["A", "B"], destructiveButtonIndex: 3000000000 },
+	];
+	for (const options of tries) {
+		try {
+			ActionSheetIOS.showActionSheetWithOptions(options, (index: number): void => {});
+			refused.push("accepted");
+		} catch (e) {
+			refused.push((e as Error).message);
+		}
+	}
+	assert refused[0] === "ActionSheetIOS.showActionSheetWithOptions: disabledButtonIndices[0] must be a finite number, got NaN", refused[0];
+	assert refused[1].includes("disabledButtonIndices[0] must be a whole number, got 1.5"), refused[1];
+	assert refused[2].includes("cancelButtonIndex must be a whole number, got 1.5"), refused[2];
+	assert refused[3].includes("destructiveButtonIndex[1] must be between 0 and"), refused[3];
+	assert refused[4].includes("destructiveButtonIndex[0] must be between 0 and"), refused[4];
+	assert fake.sheets.length === 0;
+}
+
 test "ActionSheetIOS refuses a disabled index out of bounds, dismisses through the host, and names itself where no host has it" {
 	const fake = new FakeIosApis();
 	fake.install();
@@ -156,6 +183,19 @@ test "Settings.watchKeys fires per changed watched key for outside writes only, 
 	Settings.clearWatch(second);
 	fake.external("theme", "\"light\"");
 	assert seen.length === 3;
+}
+
+test "Settings.clearWatch refuses an id that is not a whole number and ignores one it never issued" {
+	const fake = new FakeIosApis();
+	fake.install();
+	Settings.clearWatch(41);
+	let message = "";
+	try {
+		Settings.clearWatch(0.5);
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "Settings.clearWatch: watchId must be a whole number, got 0.5", message;
 }
 
 test "Settings off iOS warns and answers null or -1, as RN's SettingsFallback does" {

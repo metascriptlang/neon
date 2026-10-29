@@ -1,3 +1,4 @@
+import { INT32_MAX, checkedInt32 } from "./hostCodec";
 import { vibrationServices } from "./vibrationServices";
 
 when (js && !server) {
@@ -8,14 +9,20 @@ when (js && !server) {
 	import "../platform/ion/vibration";
 }
 
+function milliseconds(field: string, value: number): int32 {
+	return checkedInt32("Vibration.vibrate", field, Math.round(value), 0, INT32_MAX);
+}
+
 export class Vibration {
 	static vibrate(pattern: number | number[] = 400, repeat: boolean = false): void {
 		const steps: int32[] = [];
 		if (typeof pattern === "number") {
 			steps.push(0);
-			steps.push(Math.round(pattern as number) as int32);
+			steps.push(milliseconds("pattern", pattern));
 		} else {
-			for (const step of pattern as number[]) { steps.push(Math.round(step) as int32); }
+			for (let i = 0; i < pattern.length; i += 1) {
+				steps.push(milliseconds(`pattern[${i}]`, pattern[i]));
+			}
 		}
 		vibrationServices("Vibration.vibrate").vibrate(steps, repeat);
 	}

@@ -1,10 +1,11 @@
 import { ActionSheetRequest, actionSheetServices } from "./actionSheetServices";
+import { INT32_MAX, checkedInt32 } from "./hostCodec";
 
 when (ios) {
 	import "../platform/native/actionSheet";
 }
 
-// Colors are CSS strings, as everywhere in Neon; `anchor` is accepted and the sheet is centered, as RN does without one.
+// `anchor` is accepted and the sheet is centered, as RN does without one.
 // Source: react-native 693e9628e8c, Libraries/ActionSheetIOS/ActionSheetIOS.js:55-130, React/CoreModules/RCTActionSheetManager.mm:76-230.
 export interface ActionSheetIOSOptions {
 	title?: string | null;
@@ -20,25 +21,31 @@ export interface ActionSheetIOSOptions {
 	disabledButtonIndices?: number[] | null;
 }
 
-function indices(values: number[]): int32[] {
+const API = "ActionSheetIOS.showActionSheetWithOptions";
+
+function indices(field: string, values: number[]): int32[] {
 	const result: int32[] = [];
-	for (const value of values) { result.push(value as int32); }
+	for (let i = 0; i < values.length; i += 1) {
+		result.push(checkedInt32(API, `${field}[${i}]`, values[i], 0, INT32_MAX));
+	}
 	return result;
 }
 
 function destructive(value: number | number[] | null): int32[] {
 	if (value === null) { return []; }
-	if (typeof value === "number") { return [value as int32]; }
-	return indices(value);
+	if (typeof value === "number") { return indices("destructiveButtonIndex", [value]); }
+	return indices("destructiveButtonIndex", value);
 }
 
 export class ActionSheetIOS {
 	static showActionSheetWithOptions(options: ActionSheetIOSOptions, callback: (buttonIndex: number) => void): void {
-		const disabled = indices(options.disabledButtonIndices ?? []);
+		const disabled = indices("disabledButtonIndices", options.disabledButtonIndices ?? []);
+		const cancel = options.cancelButtonIndex ?? null;
+		const cancelIndex = cancel === null ? -1 : checkedInt32(API, "cancelButtonIndex", cancel, 0, INT32_MAX);
 		for (const index of disabled) {
-			if (index < 0 || index >= options.options.length) {
+			if (index >= options.options.length) {
 				throw new Error(
-					`ActionSheetIOS.showActionSheetWithOptions: index ${index} from disabledButtonIndices is out of bounds, the maximum is ${options.options.length - 1}`,
+					`${API}: index ${index} from disabledButtonIndices is out of bounds, the maximum is ${options.options.length - 1}`,
 				);
 			}
 		}
@@ -46,7 +53,7 @@ export class ActionSheetIOS {
 			title: options.title ?? "",
 			message: options.message ?? "",
 			options: options.options,
-			cancelButtonIndex: (options.cancelButtonIndex ?? -1) as int32,
+			cancelButtonIndex: cancelIndex,
 			destructiveButtonIndices: destructive(options.destructiveButtonIndex),
 			disabledButtonIndices: disabled,
 			tintColor: options.tintColor ?? "",

@@ -266,6 +266,26 @@ test "Vibration turns a duration into one pause-vibrate step and passes a patter
 	assert fake.joined() === "vibrate 0 400;vibrate 0 250;vibrate 0 100 50 100 repeat;cancelVibration", fake.joined();
 }
 
+test "Vibration refuses a duration the host cannot hold, naming the field" {
+	const fake = new FakeServices();
+	fake.install();
+	const refused: string[] = [];
+	const tries: (number | number[])[] = [3000000000, -5, NaN, [0, 100, 1e12]];
+	for (const pattern of tries) {
+		try {
+			Vibration.vibrate(pattern);
+			refused.push("accepted");
+		} catch (e) {
+			refused.push((e as Error).message);
+		}
+	}
+	assert refused[0].startsWith("Vibration.vibrate: pattern must be between 0 and"), refused[0];
+	assert refused[1].startsWith("Vibration.vibrate: pattern must be between 0 and"), refused[1];
+	assert refused[2] === "Vibration.vibrate: pattern must be a finite number, got NaN", refused[2];
+	assert refused[3].startsWith("Vibration.vibrate: pattern[2] must be between 0 and"), refused[3];
+	assert fake.joined() === "", fake.joined();
+}
+
 test "Linking opens, checks and reports urls through the host, and rejects what it cannot open" {
 	const fake = new FakeServices();
 	fake.install();

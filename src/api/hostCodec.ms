@@ -4,6 +4,26 @@ import { LocaleFields, LocaleSnapshot } from "./localizationServices";
 const FIELD = "\u001f";
 const RECORD = "\u001e";
 
+export const INT32_MAX: int32 = 2147483647;
+
+export function checkedInt32(api: string, field: string, value: number, min: int32, max: int32): int32 {
+	if (!Number.isFinite(value)) {
+		throw new Error(`${api}: ${field} must be a finite number, got ${value}`);
+	}
+	if (value !== Math.trunc(value)) {
+		throw new Error(`${api}: ${field} must be a whole number, got ${value}`);
+	}
+	if (value < min || value > max) {
+		throw new Error(`${api}: ${field} must be between ${min} and ${max}, got ${value}`);
+	}
+	return value as int32;
+}
+
+export function finiteOrNull(value: number | null): number | null {
+	if (value === null) { return null; }
+	return Number.isFinite(value) ? value : null;
+}
+
 // The localization reply every host encodes the same way: the calendar record
 // (calendar, time zone, 24-hour clock 1/0, first weekday 1 = Sunday), then one record per preferred locale.
 export function decodeLocalization(value: string): LocaleSnapshot {

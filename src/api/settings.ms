@@ -1,4 +1,6 @@
+import { INT32_MAX, checkedInt32 } from "./hostCodec";
 import { SettingsServices, installedSettingsServices, listenSettings } from "./settingsServices";
+import { EventSubscription, Listeners } from "./subscription";
 
 when (ios) {
 	import "../platform/native/settings";
@@ -6,13 +8,14 @@ when (ios) {
 
 // Source: react-native 693e9628e8c, Libraries/Settings/Settings.ios.js:21-80 and RCTSettingsManager.mm:64-110;
 // off iOS the calls warn and answer null or -1 as SettingsFallback.js:13-31 does.
-interface Watch {
-	keys: string[];
-	seen: (string | null)[];
-	callback: (() => void) | null;
+interface SettingsEvent {
+	services: SettingsServices;
+	written: string[] | null;
 }
 
-const watches: Watch[] = [];
+const watches = new Listeners<SettingsEvent>();
+const subscriptions = new Map<int32, EventSubscription>();
+let nextWatch: int32 = 0;
 
 function unsupported(): void {
 	console.warn("Settings is not yet supported on this platform.");
@@ -25,15 +28,7 @@ function read(services: SettingsServices, key: string): string | null {
 function onSettingsChanged(): void {
 	const services = installedSettingsServices();
 	if (services === null) { return; }
-	for (const watch of watches.slice(0, watches.length)) {
-		for (let i = 0; i < watch.keys.length; i += 1) {
-			const now = read(services, watch.keys[i]);
-			if (now === watch.seen[i]) { continue; }
-			watch.seen[i] = now;
-			const callback = watch.callback;
-			if (callback !== null) { callback(); }
-		}
-	}
+	watches.emit({ services, written: null });
 }
 
 listenSettings(onSettingsChanged);
@@ -65,11 +60,7 @@ export class Settings {
 		const value = written.value;
 		if (value.kind !== JsonKind.Object) { throw new Error("Settings.set: the settings must be an object, got " + text); }
 		services.settingsSet(text);
-		for (const watch of watches) {
-			for (let i = 0; i < watch.keys.length; i += 1) {
-				if (value.keys.indexOf(watch.keys[i]) >= 0) { watch.seen[i] = read(services, watch.keys[i]); }
-			}
-		}
+		watches.emit({ services, written: value.keys });
 	}
 
 	static watchKeys(keys: string | string[], callback: () => void): number {
@@ -82,8 +73,22 @@ export class Settings {
 		const seen: (string | null)[] = [];
 		for (const key of list) { seen.push(read(services, key)); }
 		services.watchSettings();
-		const id = watches.length;
-		watches.push({ keys: list, seen, callback });
+		const id = nextWatch;
+		nextWatch += 1;
+		subscriptions.set(id, watches.add((event: SettingsEvent): void => {
+			for (let i = 0; i < list.length; i += 1) {
+				if (event.written !== null) {
+					if (event.written.indexOf(list[i]) >= 0) {
+						seen[i] = read(event.services, list[i]);
+					}
+					continue;
+				}
+				const now = read(event.services, list[i]);
+				if (now === seen[i]) { continue; }
+				seen[i] = now;
+				callback();
+			}
+		}));
 		return id;
 	}
 
@@ -92,6 +97,10 @@ export class Settings {
 			unsupported();
 			return;
 		}
-		if (watchId >= 0 && watchId < watches.length) { watches[watchId] = { keys: [], seen: [], callback: null }; }
+		const id = checkedInt32("Settings.clearWatch", "watchId", watchId, 0, INT32_MAX);
+		const subscription = subscriptions.get(id);
+		if (subscription === null) { return; }
+		subscription.remove();
+		subscriptions.delete(id);
 	}
 }

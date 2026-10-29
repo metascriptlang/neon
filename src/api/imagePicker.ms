@@ -1,4 +1,5 @@
 import { PickReply, PickRequest, PickedAsset, captureServices } from "./captureServices";
+import { INT32_MAX, checkedInt32 } from "./hostCodec";
 import { Permissions, PermissionResponse } from "./permissions";
 
 when (js && !server) {
@@ -58,8 +59,7 @@ function pickRequest(options: ImagePickerOptions, camera: boolean): PickRequest 
 	if (!(quality >= 0 && quality <= 1)) {
 		throw new Error(`ImagePicker: quality must be between 0 and 1, got ${quality}`);
 	}
-	const limit = options.selectionLimit ?? 0;
-	if (!(limit >= 0)) { throw new Error(`ImagePicker: selectionLimit must be 0 or more, got ${limit}`); }
+	const limit = checkedInt32("ImagePicker", "selectionLimit", options.selectionLimit ?? 0, 0, INT32_MAX);
 	const facing: string = options.cameraType ?? "back";
 	const request: PickRequest = {
 		camera,
@@ -69,7 +69,7 @@ function pickRequest(options: ImagePickerOptions, camera: boolean): PickRequest 
 		quality,
 		base64: options.base64 ?? false,
 		multiple: !camera && (options.allowsMultipleSelection ?? false),
-		selectionLimit: limit as int32,
+		selectionLimit: limit,
 		cameraType: facing,
 	};
 	mediaFlags(options, request);
