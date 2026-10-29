@@ -491,7 +491,7 @@ export function repeat<U>(
 		if (wanted < 0 || Math.floor(wanted) !== wanted || wanted > 2147483647) {
 			throw new Error("Repeat: count must be a non-negative integer below 2^31, got " + wanted.toString());
 		}
-		if (Math.floor(origin) !== origin || Math.abs(origin) > 2147483647) {
+		if (Math.floor(origin) !== origin || origin < -2147483648 || origin > 2147483647) {
 			throw new Error("Repeat: from must be an integer within int32, got " + origin.toString());
 		}
 		const newLen = wanted as int32;
