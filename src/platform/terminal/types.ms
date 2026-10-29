@@ -1,7 +1,3 @@
-// TerminalNode — the host object for terminal rendering.
-// Same tree shape as MockNode (browser/dom.jms counterpart); the difference is
-// in the paint pass (paint.ms) which walks this tree and emits ANSI lines.
-
 import { NeonEvent } from "../../render/event";
 
 export interface TerminalStyle {
