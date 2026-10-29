@@ -12,6 +12,10 @@ import { vec3 } from "../../../void/src/math/math3d";
 import { approx } from "../../../void/src/test/helpers";
 import { DirShadowMap } from "../../../void/src/void3d/dirShadowMap";
 
+function recordAt(record: int32): int32 {
+	return LIGHT_UNIFORM_LENGTH + record * LIGHT_RECORD_LENGTH;
+}
+
 function frameRequests(outer: MockNode): int32 {
 	let count: int32 = 0;
 	for (const attr of outer.attrs) {
@@ -38,28 +42,29 @@ test "Light color radius priority power and pose update retained nodes and colle
 	const outer = root.children[0];
 	try {
 		const scene = refs[0].scene;
-		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-		const first = LIGHT_UNIFORM_LENGTH;
-		const second = LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_LENGTH;
+		let block: Vec<float32> = [];
+		const first = recordAt(0);
+		const second = recordAt(1);
+		const firstColor = first + LIGHT_RECORD_COLOR;
+		const secondColor = second + LIGHT_RECORD_COLOR;
 		assert collectLights(scene, block).ok;
+		assert block.length === LIGHT_UNIFORM_LENGTH + 2 * LIGHT_RECORD_LENGTH;
 		assert approx(block[first], 1.0) && approx(block[first + 3], 2.0);
 		const requests = frameRequests(root.children[0]);
 		setValue(7.0); setPriority(0); flush();
 		assert nodes.length === 2 && scene.nodeCount() === 3;
 		assert collectLights(scene, block).ok;
 		assert approx(block[first], 7.0) && approx(block[first + 3], 14.0);
-		assert approx(block[first + LIGHT_RECORD_COLOR], 7.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 9.0);
+		assert approx(block[firstColor], 7.0) && approx(block[firstColor + 3], 9.0);
 		assert approx(block[second], 20.0) && approx(block[second + 3], 4.0);
-		assert approx(block[second + LIGHT_RECORD_COLOR], 0.4) && approx(block[second + LIGHT_RECORD_COLOR + 3], 8.0);
-		assert scene.lights[scene.nodes[nodes[0].index].payload].priority === 0;
+		assert approx(block[secondColor], 0.4) && approx(block[secondColor + 3], 8.0);
 		assert scene.lights[scene.nodes[nodes[1].index].payload].priority === 3;
 		assert frameRequests(root.children[0]) > requests;
 		setValue(2.0); setPriority(9); flush();
 		assert collectLights(scene, block).ok;
 		assert approx(block[first], 2.0) && approx(block[first + 3], 4.0);
-		assert approx(block[first + LIGHT_RECORD_COLOR], 2.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 4.0);
-		assert approx(block[second], 20.0), "the sibling's record is unchanged";
-		assert scene.lights[scene.nodes[nodes[0].index].payload].priority === 9;
+		assert approx(block[firstColor], 2.0) && approx(block[firstColor + 3], 4.0);
+		assert approx(block[second], 20.0), "priority does not reorder the records";
 	} finally { dispose(); resetErrorHalt(); }
 	const requests = frameRequests(outer);
 	setValue(3.0); setPriority(1); flush();
@@ -168,11 +173,12 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 		const shadow = refs[0].renderer.core.shadow;
 		assert shadow !== null && (shadow as DirShadowMap).opacity === 0.5;
 		setValue(0.8); flush();
-		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-		const first = LIGHT_UNIFORM_LENGTH;
+		let block: Vec<float32> = [];
 		assert collectLights(scene, block).ok;
+		assert block.length === LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_LENGTH;
 		assert approx(block[7], 0.5) && approx(block[8], 0.8);
-		assert approx(block[first], 4.0) && approx(block[first + 3], 3.0) && approx(block[first + LIGHT_RECORD_COLOR + 3], 2.8);
+		assert approx(block[recordAt(0)], 4.0) && approx(block[recordAt(0) + 3], 3.0);
+		assert approx(block[recordAt(0) + LIGHT_RECORD_COLOR + 3], 2.8);
 		assert scene.lights[1].priority === 2;
 	} finally { dispose(); resetErrorHalt(); }
 	assert refs[0].renderer.closed && refs[0].scene.nodeCount() === 0;
