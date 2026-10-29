@@ -7,31 +7,14 @@ import {
 	createTerminalNode, createTerminalTextNode, makeStyle,
 } from "./types";
 import { cells } from "./paint";
-
-function hexNibble(c: string): int32 {
-	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
-	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
-	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
-	return -1;
-}
+import { parseColor } from "../../components/svg/color";
 
 function ansiNameFor(css: string): string {
 	if (css === "") { return ""; }
-	if (css.charAt(0) !== "#") { return css; }
-	const body = css.substring(1, css.length);
-	let r = -1;
-	let g = -1;
-	let b = -1;
-	if (body.length === 3) {
-		r = hexNibble(body.charAt(0)) * 17;
-		g = hexNibble(body.charAt(1)) * 17;
-		b = hexNibble(body.charAt(2)) * 17;
-	} else if (body.length === 6) {
-		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
-		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
-		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
-	}
-	if (r < 0 || g < 0 || b < 0) { return ""; }
+	const parsed = parseColor(css);
+	if (!parsed.ok) { throw new Error(`terminal host: "${css}" is not a CSS colour`); }
+	const c = parsed.value;
+	if (c.a === 0.0) { return ""; }
 
 	const names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
 	const reds = [0, 205, 0, 205, 0, 205, 0, 229];
@@ -40,9 +23,9 @@ function ansiNameFor(css: string): string {
 	let best = 0;
 	let bestDist = -1;
 	for (let i = 0; i < names.length; i += 1) {
-		const dr = r - reds[i];
-		const dg = g - greens[i];
-		const db = b - blues[i];
+		const dr = c.r - reds[i];
+		const dg = c.g - greens[i];
+		const db = c.b - blues[i];
 		const dist = dr * dr + dg * dg + db * db;
 		if (bestDist < 0 || dist < bestDist) { bestDist = dist; best = i; }
 	}

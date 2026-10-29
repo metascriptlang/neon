@@ -282,3 +282,24 @@ test "measureText counts display cells" {
 	const host = terminalHost();
 	assert host.measureText!("日本é", {} as Style).width === 5, "two wide plus one narrow accent";
 }
+
+function paintedWith(css: string): string {
+	const host = terminalHost();
+	const node = host.createElement("span");
+	host.setStyle(node, { color: css } as Style);
+	tn(node).text = "x";
+	return paintNode(tn(node), 5)[0];
+}
+
+test "setStyle: a CSS colour name or rgb() paints the nearest ansi colour" {
+	assert paintedWith("orange") === "\x1b[33mx\x1b[0m", "orange snaps to yellow";
+	assert paintedWith("rgb(255,0,0)") === "\x1b[31mx\x1b[0m", "rgb red snaps to red";
+}
+
+test "setStyle: transparent paints no colour and a non-colour fails loud" {
+	assert paintedWith("transparent") === "x", "alpha 0 is no colour";
+	assert paintedWith("rgba(0,0,0,0)") === "x", "rgba alpha 0 is no colour";
+	let message = "";
+	try { paintedWith("notacolour"); } catch (e) { message = String(e); }
+	assert message.indexOf("notacolour") >= 0, "the CSS value is named";
+}
