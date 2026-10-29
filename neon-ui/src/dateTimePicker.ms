@@ -55,16 +55,16 @@ export function daysInMonth(year: int32, month: int32): int32 {
 
 // Sakamoto's method: 0 is Sunday.
 export function weekdayOf(year: int32, month: int32, day: int32): int32 {
-	const offsets: number[] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
-	const y: number = month < 3 ? year - 1 : year;
-	return ((y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + offsets[month - 1] + day) % 7) as int32;
+	const offsets: int32[] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+	const y: int32 = month < 3 ? year - 1 : year;
+	return (y + y / 4 - y / 100 + y / 400 + offsets[month - 1] + day) % 7;
 }
 
 function field(text: string, at: int32, length: int32): int32 {
 	let n: int32 = 0;
 	for (let i = at; i < at + length; i += 1) {
 		const c = i < text.length ? text.charCodeAt(i) : 0;
-		if (c < 48 || c > 57) { throw `DateTimePicker: "${text}" is not a local ISO-8601 date, time or date and time`; }
+		if (c < 48 || c > 57) { throw new Error(`DateTimePicker: "${text}" is not a local ISO-8601 date, time or date and time`); }
 		n = n * 10 + (c - 48) as int32;
 	}
 	return n;
@@ -115,10 +115,10 @@ const WHEEL: Style = { width: 56, height: ITEM * 5 };
 
 export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 	const { value, mode, display, minimumDate, maximumDate, disabled, accentColor, textColor, onChange } = props;
-	const modeOf = (): DateTimeMode => mode === null ? "date" : (mode as Accessor<DateTimeMode>)();
+	const modeOf = (): DateTimeMode => mode === null ? "date" : mode();
 	const hasDate = (): boolean => modeOf() !== "time";
 	const hasTime = (): boolean => modeOf() !== "date";
-	const inline = (): boolean => display !== null && (display as Accessor<DateTimeDisplay>)() === "inline";
+	const inline = (): boolean => display !== null && display() === "inline";
 	const start = untrack<DateParts>((): DateParts => partsOf(value(), hasDate(), hasTime()));
 	const [open, setOpen] = createSignal(false);
 	const [viewYear, setViewYear] = createSignal<int32>(start.year);
@@ -146,15 +146,15 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 	};
 	const report = (day: string, h: int32, m: int32): void => {
 		const next = result(day, h, m);
-		if (next !== untrack<string>(value) && onChange !== null) { (onChange as (v: string) => void)(next); }
+		if (next !== untrack<string>(value) && onChange !== null) { onChange(next); }
 	};
 	const changed = (day: string, h: int32, m: int32): void => { if (inline()) { report(day, h, m); } };
 	const allowed = (iso: string): boolean =>
-		(minimumDate === null || iso >= (minimumDate as Accessor<string>)().slice(0, 10)) &&
-		(maximumDate === null || iso <= (maximumDate as Accessor<string>)().slice(0, 10));
+		(minimumDate === null || iso >= minimumDate().slice(0, 10)) &&
+		(maximumDate === null || iso <= maximumDate().slice(0, 10));
 	const turn = (by: int32): void => {
 		const months = untrack<int32>(viewYear) * 12 + untrack<int32>(viewMonth) - 1 + by;
-		setViewYear(Math.floor(months / 12) as int32);
+		setViewYear(months / 12);
 		setViewMonth((months % 12 + 1) as int32);
 	};
 
