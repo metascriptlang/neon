@@ -83,6 +83,16 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Pin:** `tests/api/iosApis.test.ms` "Settings.watchKeys fires per changed watched key for outside writes only, until clearWatch"
 - **Checked:** 2026-10-27, read.
 
+### SF-6 · `useWindowDimensions` answers the window its root is mounted in; `Dimensions.get` answers the main window
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** `useWindowDimensions` is `Dimensions.get('window')` kept in state and refreshed on `Dimensions`' `change` event (`packages/react-native/Libraries/Utilities/useWindowDimensions.js:18-40`), and `Dimensions` holds one process-wide store (`Dimensions.js:33-51`), so every root reads the same window
+- **MS:** `mountNativeRoot` (`src/platform/native/host.ms`) gives its root a size signal and sets it with `publishRootWindow`; `useWindowDimensions` (`src/render/environment.ms`) reads that context under an owner and falls back to the process-wide window. `Dimensions` (`src/api/dimensions.ms`) reads `useMainWindowDimensions`, so RN code that asks `Dimensions` keeps its meaning. Breakpoints (`mediaWidth`) follow the root's window.
+- **Why:** a second native window (a panel beside the board) lays out at its own size, and a component there that sizes itself from the main window is wrong. WORKAROUND.md A2, approved by the person on 2026-10-07: "A2 moves per Host when Neon gets multiple windows".
+- **Don't:** read `Dimensions.get('window')` inside a panel to size it; it answers the main window.
+- **Pin:** `tests/platform/nativeMultiRoot.test.ms` "each native root's useWindowDimensions answers its own size, and Dimensions.get answers the main window"
+- **Checked:** 2026-10-29, read, and measured on C with the mock bridge. Color scheme, keyboard and safe area stay process-wide, because the macOS bridge, the only one with several roots, answers them for the whole app (`niColorScheme`, `niKeyboardHeight`, `niSafeAreaInset` in `src/platform/macos/bridge.m`).
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
