@@ -37,6 +37,17 @@ and the invariants that outlived them were moved to the head of the test that pi
   prints three FAILs: `disposal ran: false`, `window query after unmount answers zeros: 200,200,20,20, want 0,0,0,0`,
   `layout query after unmount calls onFail: unexpected bounds 200,200,20,20`. The other `ion*.ms --check` examples pass;
   `tests/run.sh` does not run it. Not diagnosed.
+- **OPEN 2026-10-30 — a second native window (`mountNativeRoot`, `mountNativeWindow`) has unproven corners.**
+  - Modal and Alert opened from the panel: which window they appear over is not run.
+  - Accessibility, wheel and measure inside the panel are not run.
+  - Text measure falls back to the main screen's width (`niScreenWidth()` in `src/platform/native/host.ms`, the
+    measure fallbacks near lines 494, 565 and 993), so panel text wider than the panel is measured against the screen.
+  - `tests/platform/nativeMultiRoot.test.ms` "a press in flight in the main window survives the panel's dispose"
+    stays green when the panel's dispose resets press state, so it pins nothing; a probe that reads only
+    `pressOwnerTag` is owed.
+  - App services run again on every `createNativeHost()` and never on `mountNativeRoot`.
+  Lightcube's launcher (summon, typing, outside click, Escape) was run on the real app on 2026-10-29 and uses none
+  of these.
 - **OPEN 2026-10-20 — the size check of `tests/apps/run.sh` measures the checkout's path.** The JS
   bundle's mangled names carry the source path, so the same tree measures a different size in a
   worktree than in the main checkout. `msc build --target=js tests/apps/bundlePlainApp.ms` at Neon
