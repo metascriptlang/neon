@@ -689,6 +689,17 @@ test "a native TextInput writes its props, routes typing, focus and submit, and 
 	assert nmReleaseCalls() === nmViewsCreated(), "the input is released with the rest";
 }
 
+test "a native TextInput's key press reaches onKeyPress with its key" {
+	let log = "";
+	const app = (): NeonNode => <View>
+		<TextInput value="" onKeyPress={(e: NeonEvent): void => { log += `key ${e.key} "${e.value}";`; }} />
+	</View>;
+	runApp(app);
+	nmControl(nmLastInputTag(), 16, "Escape");
+	assert log === "key Escape \"\";", "onKeyPress carries the key and no value: " + log;
+	nmTeardown();
+}
+
 test "the native host publishes window size, keyboard height and color scheme as signals" {
 	let seen = "";
 	const dims = useWindowDimensions();

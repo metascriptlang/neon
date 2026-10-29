@@ -1281,6 +1281,11 @@ static BOOL flagValue(const char *value, const char *name) {
 }
 
 - (BOOL)command:(SEL)selector {
+	if (selector == @selector(cancelOperation:)) {
+		emitControl(self.neonTag, 16, @"Escape");
+		[self focus:NO];
+		return YES;
+	}
 	if (selector != @selector(insertNewline:)) return NO;
 	if (self.multiline && !self.blurOnSubmit) return NO;
 	emitControl(self.neonTag, 3, [self text]);

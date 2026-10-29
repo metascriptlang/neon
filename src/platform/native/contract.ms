@@ -428,6 +428,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			13 => "progress",
 			14 => "end",
 			15 => "accessibilityaction",
+			16 => "keypress",
 			30 => "cameraready",
 			31 => "mounterror",
 			32 => "picture",
@@ -440,7 +441,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			if (eventType(route.name) !== type) { continue; }
 			const event = neonEvent(type);
 			event.timeStamp = timeStamp;
-			event.value = value;
+			if (type === "keypress") { event.key = value; } else { event.value = value; }
 			event.width = width;
 			event.height = height;
 			fireRoute(route, event);
