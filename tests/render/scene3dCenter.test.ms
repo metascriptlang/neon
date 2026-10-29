@@ -6,6 +6,7 @@ import { useContext } from "../../src/render/context";
 import { mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Mesh, Center } from "../../src/components/scene3d";
+import { Centered } from "../../src/components/scene3d/center";
 import { SceneState, sceneScope, runBeforeRefresh } from "../../src/components/scene3d/core";
 import { NodeId3D } from "../../../void/src/void3d/scene";
 import { center } from "../../../void/src/void3d/bounds";
@@ -107,4 +108,55 @@ test "Center measures again only when its props or cacheKey change" {
 	flush();
 	runBeforeRefresh(states[0], 320, 240);
 	assert approx(innerPosition(states[0], containers[0]).x, (first - 5.0) as float32), "a new cacheKey re-measures: " + innerPosition(states[0], containers[0]).x.toString();
+}
+
+test "Center reports what it measured through onCentered, aligned as drei's top wins over bottom" {
+	const states: SceneState[] = [];
+	const reports: Centered[] = [];
+	const shape = box(2.0, 4.0, 6.0);
+	const at = shape.bounds.center();
+	let mesh = NO_MESH;
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { mesh = seeded(value, shape); }}>
+			{Capture(states)}
+			<Center top={true} bottom={true} front={true} back={true} onCentered={(value: Centered): void => { reports.push(value); }}>
+				<Mesh mesh={mesh} />
+			</Center>
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	runBeforeRefresh(states[0], 320, 240);
+	runBeforeRefresh(states[0], 320, 240);
+	assert reports.length === 1, "one report per measurement: " + reports.length.toString();
+	const report = reports[0];
+	assert approx(report.width, 2.0) && approx(report.height, 4.0) && approx(report.depth, 6.0), "the extent";
+	assert approx(report.center.x, at.x) && approx(report.center.y, at.y) && approx(report.center.z, at.z), "the centre";
+	assert approx(report.verticalAlignment, 2.0) && report.horizontalAlignment === 0.0 && approx(report.depthAlignment, 3.0),
+		"top and front win, like drei Center.tsx:76-78";
+}
+
+test "Center does not walk its content again while the scene's mesh count is unchanged" {
+	const states: SceneState[] = [];
+	const containers: NodeId3D[] = [];
+	const reports: Centered[] = [];
+	const [key, setKey] = createSignal<int32>(0);
+	let handle: Scene3DHandle | null = null;
+	let mesh = NO_MESH;
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { handle = value; mesh = seeded(value, MeshData.empty()); }}>
+			{Capture(states)}
+			<Center cacheKey={key()} onCentered={(value: Centered): void => { reports.push(value); }} ref={(id: NodeId3D): void => { containers.push(id); }}>
+				<Mesh mesh={mesh} />
+			</Center>
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	runBeforeRefresh(states[0], 320, 240);
+	assert reports.length === 0, "a mesh without bounds measures nothing yet";
+	const grown = box(2.0, 2.0, 2.0);
+	(handle as Scene3DHandle).context.meshData[mesh.index] = grown.copy();
+	runBeforeRefresh(states[0], 320, 240);
+	assert reports.length === 0, "the same mesh count is not walked again";
+	setKey(1);
+	flush();
+	runBeforeRefresh(states[0], 320, 240);
+	assert reports.length === 1, "a new cacheKey measures again";
 }
