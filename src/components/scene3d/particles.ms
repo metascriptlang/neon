@@ -90,6 +90,7 @@ export function Particles(props: ParticlesProps): NeonNode {
 			const readPlaying = (): boolean => valueOr<boolean>(props.playing, true);
 			const readPaused = (): boolean => valueOr<boolean>(props.paused, false);
 			const readSpeed = (): float64 => valueOr<float64>(props.speed, 1.0);
+			let speed = checkedSpeed(untrack(readSpeed));
 			const group = addGroup(scene, scope.parent, local);
 			ownNode(state, group);
 			let effect = instanced(untrack(() => props.effect()), untrack(readSeed));
@@ -98,7 +99,6 @@ export function Particles(props: ParticlesProps): NeonNode {
 			let frames: Vec<AtlasTile> = visual ? untrack(readFrames) : [];
 			let playing = untrack(readPlaying);
 			let paused = untrack(readPaused);
-			let speed = checkedSpeed(untrack(readSpeed));
 			// Play waits for the frame hook, which knows the group's world pose.
 			let playDue = playing;
 			let writer = ParticleWriter3D.create();
