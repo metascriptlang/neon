@@ -9,7 +9,7 @@ import { Scene3D } from "../../src/components/scene3d/scene";
 import { Mesh } from "../../src/components/scene3d/mesh";
 import { createMaterial } from "../../src/components/scene3d/material";
 import { NodeId3D } from "../../../void/src/void3d/scene";
-import { DrawContext, MaterialId, NO_MESH } from "../../../void/src/void3d/draw";
+import { DrawContext, MaterialId, NO_MESH, releaseMesh } from "../../../void/src/void3d/draw";
 import { MATERIAL_COLOR, PBR_UV_MATRIX } from "../../../void/src/void3d/gpu3d";
 import { Color, rgba } from "../../../void/src/void2d/types";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
@@ -44,6 +44,7 @@ function mountMesh(shadowed: boolean): [Scene3DHandle, NodeId3D, () => void] {
 			mesh = added(handle.context, litShape());
 		}}>{painted}</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	assert releaseMesh(refs[0].context, mesh).ok;
 	return [refs[0], nodes[0], dispose];
 }
 

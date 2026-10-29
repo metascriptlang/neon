@@ -11,7 +11,7 @@ import { Mesh } from "../../src/components/scene3d/mesh";
 import { createMaterial, MaterialProps } from "../../src/components/scene3d/material";
 import { NodeId3D } from "../../../void/src/void3d/scene";
 import {
-	DrawContext, MaterialId, NO_MESH, releaseMesh,
+	DrawContext, MaterialId, NO_MESH, releaseMesh, releaseTexture,
 } from "../../../void/src/void3d/draw";
 import { MaterialKind } from "../../../void/src/void3d/material";
 import { TextureId } from "../../../void/src/void3d/texture";
@@ -126,7 +126,7 @@ function mountError(props: MaterialProps): string {
 			mockHost(), mockNode("root") as unknown as HostNode);
 		cleanup();
 	} catch (error) { message = error.message; }
-	finally { resetErrorHalt(); }
+	finally { held.splice(0, held.length); resetErrorHalt(); }
 	return message;
 }
 
@@ -155,8 +155,11 @@ test "createMaterial refuses to run outside a Scene3D" {
 	assert message === "createMaterial: mount inside Scene3D within Void", message;
 }
 
+const held: TextureId[] = [];
+
 function fixed(context: DrawContext, view: uint32): Accessor<TextureId> {
 	const id = addedOwner(context, Texture.adopt(0, view, 1, 1));
+	held.push(id);
 	return accessor((): TextureId => id);
 }
 
@@ -173,6 +176,7 @@ function mountedWith(build: (context: DrawContext) => MaterialProps): [Scene3DHa
 			props = build(handle.context);
 		}}>{painted}</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	for (const id of held.splice(0, held.length)) { assert releaseTexture(refs[0].context, id).ok; }
 	return [refs[0], made, dispose];
 }
 
@@ -182,7 +186,7 @@ function refusalWith(build: (context: DrawContext) => MaterialProps): string {
 		const [handle, made, dispose] = mountedWith(build);
 		dispose();
 	} catch (error) { message = error.message; }
-	finally { resetErrorHalt(); }
+	finally { held.splice(0, held.length); resetErrorHalt(); }
 	return message;
 }
 
