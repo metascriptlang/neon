@@ -17,8 +17,6 @@ export const METHOD_NOT_FOUND = -32601;
 export const INVALID_PARAMS = -32602;
 export const APP_ERROR = -32000;
 
-export const CONTROL_METHODS = ["ping", "tree", "components", "press", "type", "subscribe", "eval"];
-
 export class ControlSession {
 	send: (line: string) => void;
 	unsubscribe: (() => void) | null = null;
@@ -31,7 +29,7 @@ export class ControlSession {
 export function closeSession(session: ControlSession): void {
 	const off = session.unsubscribe;
 	session.unsubscribe = null;
-	if (off !== null) { (off as () => void)(); }
+	if (off !== null) { off(); }
 }
 
 class ControlError extends Error {
@@ -118,39 +116,62 @@ function components(): JsonValue {
 	return jsonArray(out);
 }
 
+function pingMethod(session: ControlSession, params: JsonValue): JsonValue {
+	const d = devDriver();
+	return jsonObject(["protocol", "host"], [jsonInt(DEV_EVENTS_VERSION as int64), d === null ? jsonNull() : jsonString(d.host)]);
+}
+
+function pressMethod(session: ControlSession, params: JsonValue): JsonValue {
+	const d = driverOrFail();
+	const root = d.tree();
+	const target = stringParam(params, "target");
+	const found = target.startsWith("text:") ? findByText(root, target.substring(5)) : findById(root, target);
+	if (found === null) { throw new ControlError(INVALID_PARAMS as int32, `press: no node matches "${target}"; read "tree" for ids, or use "text:<exact text>"`); }
+	const n = found as DevNode;
+	const x = n.x + n.w / 2.0;
+	const y = n.y + n.h / 2.0;
+	d.pressAt(x, y);
+	return jsonObject(["x", "y"], [jsonNumber(x as number), jsonNumber(y as number)]);
+}
+
+function typeMethod(session: ControlSession, params: JsonValue): JsonValue {
+	driverOrFail().type(stringParam(params, "text"));
+	return jsonBool(true);
+}
+
+function subscribeMethod(session: ControlSession, params: JsonValue): JsonValue {
+	if (session.unsubscribe === null) {
+		session.unsubscribe = onDevEvent((line: string): void => {
+			session.send(`{"jsonrpc":"2.0","method":"event","params":${line}}`);
+		});
+	}
+	return jsonBool(true);
+}
+
+function evalMethod(session: ControlSession, params: JsonValue): JsonValue {
+	throw new ControlError(METHOD_NOT_FOUND as int32, "eval needs the compiler half (msc compiles the snippet against the running build); see docs/DEVTOOLS.md §Build events and eval");
+}
+
+interface ControlMethod {
+	name: string;
+	run: (session: ControlSession, params: JsonValue) => JsonValue;
+}
+
+const METHODS: ControlMethod[] = [
+	{ name: "ping", run: pingMethod },
+	{ name: "tree", run: (session: ControlSession, params: JsonValue): JsonValue => nodeJson(driverOrFail().tree(), "") },
+	{ name: "components", run: (session: ControlSession, params: JsonValue): JsonValue => components() },
+	{ name: "press", run: pressMethod },
+	{ name: "type", run: typeMethod },
+	{ name: "subscribe", run: subscribeMethod },
+	{ name: "eval", run: evalMethod },
+];
+
+export const CONTROL_METHODS = METHODS.map((m: ControlMethod): string => m.name);
+
 function call(session: ControlSession, method: string, params: JsonValue): JsonValue {
-	if (method === "ping") {
-		const d = devDriver();
-		return jsonObject(["protocol", "host"], [jsonInt(DEV_EVENTS_VERSION as int64), d === null ? jsonNull() : jsonString(d.host)]);
-	}
-	if (method === "tree") { return nodeJson(driverOrFail().tree(), ""); }
-	if (method === "components") { return components(); }
-	if (method === "press") {
-		const d = driverOrFail();
-		const root = d.tree();
-		const target = stringParam(params, "target");
-		const found = target.startsWith("text:") ? findByText(root, target.substring(5)) : findById(root, target);
-		if (found === null) { throw new ControlError(INVALID_PARAMS as int32, `press: no node matches "${target}"; read "tree" for ids, or use "text:<exact text>"`); }
-		const n = found as DevNode;
-		const x = n.x + n.w / 2.0;
-		const y = n.y + n.h / 2.0;
-		d.pressAt(x, y);
-		return jsonObject(["x", "y"], [jsonNumber(x as number), jsonNumber(y as number)]);
-	}
-	if (method === "type") {
-		driverOrFail().type(stringParam(params, "text"));
-		return jsonBool(true);
-	}
-	if (method === "subscribe") {
-		if (session.unsubscribe === null) {
-			session.unsubscribe = onDevEvent((line: string): void => {
-				session.send(`{"jsonrpc":"2.0","method":"event","params":${line}}`);
-			});
-		}
-		return jsonBool(true);
-	}
-	if (method === "eval") {
-		throw new ControlError(METHOD_NOT_FOUND as int32, "eval needs the compiler half (msc compiles the snippet against the running build); see docs/DEVTOOLS.md §Build events and eval");
+	for (const m of METHODS) {
+		if (m.name === method) { return m.run(session, params); }
 	}
 	throw new ControlError(METHOD_NOT_FOUND as int32, `unknown method "${method}"; known: ${CONTROL_METHODS.join(", ")}`);
 }
@@ -182,7 +203,9 @@ export function handleRequest(session: ControlSession, line: string): void {
 	}
 }
 
-interface ControlClient {
+export const MAX_REQUEST_LINE = 1048576;
+
+export interface ControlClient {
 	fd: int32;
 	input: string;
 	output: string;
@@ -207,6 +230,21 @@ function openListener(): void {
 		listener = fd;
 		console.log(`neon devtools: control channel on 127.0.0.1:${n}`);
 	}
+}
+
+export function feedClient(c: ControlClient, chunk: string): boolean {
+	const scanFrom = c.input.length;
+	c.input += chunk;
+	let start = 0;
+	for (let nl = c.input.indexOf("\n", scanFrom); nl >= 0; nl = c.input.indexOf("\n", start)) {
+		const line = c.input.substring(start, nl).trim();
+		start = nl + 1;
+		if (line !== "") { handleRequest(c.session, line); }
+	}
+	if (start > 0) { c.input = c.input.substring(start); }
+	if (c.input.length <= MAX_REQUEST_LINE) { return true; }
+	c.session.send(failure(jsonNull(), INVALID_REQUEST as int32, `request line exceeds ${MAX_REQUEST_LINE} bytes; closing the connection`));
+	return false;
 }
 
 function flush(c: ControlClient): boolean {
@@ -243,11 +281,13 @@ export function pollControl(): void {
 		}
 		for (let i = clients.length - 1; i >= 0; i -= 1) {
 			const c = clients[i];
-			for (let chunk = recvNonBlock(c.fd, 8192 as int32); chunk !== ""; chunk = recvNonBlock(c.fd, 8192 as int32)) { c.input += chunk; }
-			for (let nl = c.input.indexOf("\n"); nl >= 0; nl = c.input.indexOf("\n")) {
-				const line = c.input.substring(0, nl).trim();
-				c.input = c.input.substring(nl + 1);
-				if (line !== "") { handleRequest(c.session, line); }
+			let keep = true;
+			for (let chunk = recvNonBlock(c.fd, 8192 as int32); keep && chunk !== ""; chunk = recvNonBlock(c.fd, 8192 as int32)) {
+				keep = feedClient(c, chunk);
+			}
+			if (!keep) {
+				flush(c);
+				drop(i as int32);
 			}
 		}
 		for (let i = clients.length - 1; i >= 0; i -= 1) {

@@ -6,7 +6,7 @@ import { flush } from "../../src/core/runtime";
 import { refreshComponent0, refreshBoundary0, refreshModule, refreshState, refreshReset } from "../../src/render/refresh";
 import { DevNode, setDevDriver } from "../../src/devtools/driver";
 import { devEvent, devEventLine } from "../../src/devtools/events";
-import { ControlSession, handleRequest, closeSession } from "../../src/devtools/control";
+import { ControlClient, ControlSession, CONTROL_METHODS, MAX_REQUEST_LINE, feedClient, handleRequest, closeSession } from "../../src/devtools/control";
 import { jsonString } from "std/serialize/json/builder";
 
 function session(): string[] {
@@ -136,4 +136,41 @@ test "control: components lists mounted boundaries with their live kept state, a
 	closeSession(s);
 	dispose();
 	refreshReset();
+}
+
+function client(lines: string[]): ControlClient {
+	return { fd: -1, input: "", output: "", session: new ControlSession((line: string): void => { lines.push(line); }) };
+}
+
+test "control: the method list is the dispatch table" {
+	assert CONTROL_METHODS.join(",") === "ping,tree,components,press,type,subscribe,eval", CONTROL_METHODS.join(",");
+}
+
+test "control: a request split across chunks is answered once, and the next one stays buffered" {
+	setDevDriver(null);
+	const lines: string[] = [];
+	const c = client(lines);
+	assert feedClient(c, `{"jsonrpc":"2.0","id":1,`), "partial";
+	assert lines.length === 0, "nothing before the newline";
+	assert feedClient(c, `"method":"ping"}\n{"jsonrpc":"2.0","id":2,"method":"pi`), "rest";
+	assert lines.length === 1 && lines[0].indexOf(`"id":1`) >= 0, "first answered";
+	assert feedClient(c, `ng"}\n`), "tail";
+	assert lines.length === 2 && lines[1].indexOf(`"id":2`) >= 0, "second answered";
+	assert c.input === "", "nothing left over";
+}
+
+test "control: a request line past the cap is refused with an error reply and the client is dropped" {
+	const lines: string[] = [];
+	const c = client(lines);
+	const block = "x".repeat(65536);
+	let kept = true;
+	let sent = 0;
+	while (kept && sent <= MAX_REQUEST_LINE) {
+		kept = feedClient(c, block);
+		sent += 65536;
+	}
+	assert !kept, "dropped";
+	assert lines.length === 1 && lines[0].indexOf(`"code":-32600`) >= 0 && lines[0].indexOf("exceeds") >= 0, lines.join("|");
+	const ok = client(lines);
+	assert feedClient(ok, block + "\n"), "a long line under the cap with a newline is not dropped";
 }
