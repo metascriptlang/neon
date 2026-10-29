@@ -163,14 +163,14 @@ export function Video(props: VideoProps): NeonNode {
 	if (start !== null) {
 		evts.push(evt("onLoadStart", (e: NeonEvent): void => {
 			const at = e.value !== "" ? e.value : uri;
-			(start as (d: OnLoadStartData) => void)({ isNetwork: isNetworkUri(at), type: "", uri: at });
+			start({ isNetwork: isNetworkUri(at), type: "", uri: at });
 		}));
 	}
 	const load = props.onLoad;
 	if (load !== null) {
 		evts.push(evt("onLoad", (e: NeonEvent): void => {
 			const fields = e.value.split("\x1f");
-			(load as (d: OnLoadData) => void)({
+			load({
 				currentTime: fieldNumber(fields, 1),
 				duration: fieldNumber(fields, 0),
 				naturalSize: {
@@ -185,7 +185,7 @@ export function Video(props: VideoProps): NeonNode {
 	if (progress !== null) {
 		evts.push(evt("onProgress", (e: NeonEvent): void => {
 			const fields = e.value.split("\x1f");
-			(progress as (d: OnProgressData) => void)({
+			progress({
 				currentTime: fieldNumber(fields, 0),
 				playableDuration: fieldNumber(fields, 1),
 				seekableDuration: fieldNumber(fields, 2),
@@ -193,25 +193,25 @@ export function Video(props: VideoProps): NeonNode {
 		}));
 	}
 	const end = props.onEnd;
-	if (end !== null) { evts.push(evt("onEnd", (e: NeonEvent): void => { (end as () => void)(); })); }
+	if (end !== null) { evts.push(evt("onEnd", (e: NeonEvent): void => { end(); })); }
 	const fail = props.onError;
 	if (fail !== null) {
 		evts.push(evt("onError", (e: NeonEvent): void => {
 			const cut = e.value.indexOf("\x1f");
 			const code = cut < 0 ? 0 : parseInt(e.value.substring(0, cut)) as int32;
 			const text = cut < 0 ? e.value : e.value.substring(cut + 1, e.value.length);
-			(fail as (d: OnVideoErrorData) => void)({ error: { errorString: text, localizedDescription: text, code } });
+			fail({ error: { errorString: text, localizedDescription: text, code } });
 		}));
 	}
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const userStyle = props.style;
-	const style = (): Style => userStyle === null ? VIDEO_BASE : layerStyles([VIDEO_BASE, (userStyle as () => Style)()]);
+	const style = (): Style => userStyle === null ? VIDEO_BASE : layerStyles([VIDEO_BASE, userStyle()]);
 	const userRef = props.ref;
 	const inner = hostElement("video", attrs, evts, null, style, (node: HostNode): void => {
 		slot.node = node;
 		slot.mounted = true;
 		onCleanup((): void => { slot.mounted = false; });
-		if (userRef !== null) { (userRef as (h: VideoHandle) => void)(new VideoHandle(slot)); }
+		if (userRef !== null) { userRef(new VideoHandle(slot)); }
 	});
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		slot.host = host;

@@ -15,11 +15,11 @@ export const MATERIAL_DISABLED = "#bdbdbd";
 export const MATERIAL_SCRIM = "#000000";
 
 export function colorOr(color: Accessor<string> | null, fallback: string): string {
-	return color === null ? fallback : (color as Accessor<string>)();
+	return color === null ? fallback : color();
 }
 
 export function flagOn(flag: Accessor<boolean> | null): boolean {
-	return flag !== null && (flag as Accessor<boolean>)();
+	return flag !== null && flag();
 }
 
 export function stateAttr(attrs: VAttr[], tokens: () => string): void {

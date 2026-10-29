@@ -23,7 +23,7 @@ export function SafeAreaView(props: SafeAreaViewProps): NeonNode {
 	const insets = useSafeAreaInsets();
 	const user = props.style;
 	const style = accessor((): Style => {
-		const own: Style = user === null ? {} : (user as () => Style)();
+		const own: Style = user === null ? {} : user();
 		const edge: EdgeInsets = insets();
 		return layerStyles([own, {
 			paddingTop: points(own.paddingTop, own.padding) + edge.top,

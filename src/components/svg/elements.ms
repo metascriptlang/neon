@@ -374,7 +374,7 @@ export interface SvgProps extends SvgPresentationProps, AccessibilityProps {
 // A width or height given in points sizes the view; a percentage leaves it to layout.
 function pointsOf(value: Accessor<NumberProp> | null): float64 | null {
 	if (value === null) { return null; }
-	const v = (value as Accessor<NumberProp>)();
+	const v = value();
 	if (typeof v === "string") {
 		const text = (v as string).trim();
 		if (text.endsWith("%") || text === "") { return null; }
@@ -391,7 +391,7 @@ function svgStyle(width: Accessor<NumberProp> | null, height: Accessor<NumberPro
 	if (w !== null) { size.width = w as float64; }
 	if (h !== null) { size.height = h as float64; }
 	if (style === null) { return size; }
-	return mergeStyle(size, (style as Accessor<Style>)());
+	return mergeStyle(size, style());
 }
 
 // The <Svg> host node carries the scene as one `displayList` attr (grammar: encodeScene).

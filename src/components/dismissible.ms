@@ -64,10 +64,10 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 	const thresholdProp = props.dismissThreshold;
 	const movementProp = props.movementDuration;
 	const resizeProp = props.resizeDuration;
-	const direction = (): DismissDirection => directionProp === null ? "horizontal" : (directionProp as Accessor<DismissDirection>)();
-	const threshold = (): number => thresholdProp === null ? DISMISS_THRESHOLD : (thresholdProp as Accessor<number>)();
-	const movementMs = (): number => movementProp === null ? MOVEMENT_MS : (movementProp as Accessor<number>)();
-	const resizeMs = (): number => resizeProp === null ? RESIZE_MS : (resizeProp as Accessor<number>)();
+	const direction = (): DismissDirection => directionProp === null ? "horizontal" : directionProp();
+	const threshold = (): number => thresholdProp === null ? DISMISS_THRESHOLD : thresholdProp();
+	const movementMs = (): number => movementProp === null ? MOVEMENT_MS : movementProp();
+	const resizeMs = (): number => resizeProp === null ? RESIZE_MS : resizeProp();
 
 	const [extent, setExtent] = createSignal<number>(0);
 	const [sizeFactor, setSizeFactor] = createSignal<number>(1);
@@ -93,13 +93,13 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 		if (onUpdate !== null) {
 			const length = axisLength();
 			const progress = length > 0 ? Math.min(1, Math.abs(value) / length) : 0;
-			(onUpdate as (progress: number, direction: DismissDirection) => void)(progress, directionOf(untrack<DismissDirection>(direction), value));
+			onUpdate(progress, directionOf(untrack<DismissDirection>(direction), value));
 		}
 	};
 
 	const finishDismiss = (towards: DismissDirection): void => {
 		settled = true;
-		if (onDismissed !== null) { (onDismissed as (d: DismissDirection) => void)(towards); }
+		if (onDismissed !== null) { onDismissed(towards); }
 	};
 
 	const startResize = (towards: DismissDirection): void => {
@@ -114,7 +114,7 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 			const local = t <= RESIZE_HOLD ? 0 : (t - RESIZE_HOLD) / (1 - RESIZE_HOLD);
 			const factor = 1 - ease(local);
 			setSizeFactor(factor);
-			if (onResize !== null && t < 1) { (onResize as (f: number) => void)(factor); }
+			if (onResize !== null && t < 1) { onResize(factor); }
 		}, (): void => {
 			motion = null;
 			finishDismiss(towards);
@@ -139,7 +139,7 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 			animateTo(0, (): void => {});
 			return;
 		}
-		const confirmed = confirmDismiss === null ? true : (confirmDismiss as (d: DismissDirection) => boolean)(towards);
+		const confirmed = confirmDismiss === null ? true : confirmDismiss(towards);
 		if (!confirmed) {
 			animateTo(0, (): void => {});
 			return;
@@ -217,7 +217,7 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 	const outerStyle = accessor((): Style => {
 		const base: Style = { overflow: "hidden" };
 		const sized: Style = resizing() ? (vertical(direction()) ? { width: width * sizeFactor(), flexShrink: 0 } : { height: height * sizeFactor(), flexShrink: 0 }) : {};
-		return mergeStyle(mergeStyle(base, userStyle === null ? {} : (userStyle as Accessor<Style>)()), sized);
+		return mergeStyle(mergeStyle(base, userStyle === null ? {} : userStyle()), sized);
 	});
 	const background = props.background;
 	const secondaryBackground = props.secondaryBackground;

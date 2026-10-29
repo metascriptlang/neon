@@ -75,7 +75,7 @@ export function TabBar(props: {
 	const indicatorProp = props.indicatorColor;
 	const tabStyleProp = props.tabStyle;
 	const labelStyleProp = props.labelStyle;
-	const scrolls = (): boolean => scrollProp !== null && (scrollProp as Accessor<boolean>)();
+	const scrolls = (): boolean => scrollProp !== null && scrollProp();
 	const [layouts, setLayouts] = createSignal<TabLayout[]>([]);
 	const [viewport, setViewport] = createSignal<number>(0);
 	let scroller: ScrollViewHandle | null = null;
@@ -117,12 +117,12 @@ export function TabBar(props: {
 			const base: Style = scrolls()
 				? { minHeight: TAB_HEIGHT, paddingLeft: LABEL_PADDING, paddingRight: LABEL_PADDING, alignItems: "center", justifyContent: "center" }
 				: { flex: 1, minHeight: TAB_HEIGHT, paddingLeft: 4, paddingRight: 4, alignItems: "center", justifyContent: "center" };
-			return tabStyleProp === null ? base : mergeStyle(base, (tabStyleProp as Accessor<Style>)());
+			return tabStyleProp === null ? base : mergeStyle(base, tabStyleProp());
 		});
 		const label = accessor((): Style => {
 			const ink = focused() ? colorOr(activeProp, MATERIAL_PRIMARY) : colorOr(inactiveProp, INACTIVE_COLOR);
 			const base: Style = { fontSize: 14, fontWeight: "bold", color: ink };
-			return labelStyleProp === null ? base : mergeStyle(base, (labelStyleProp as Accessor<Style>)());
+			return labelStyleProp === null ? base : mergeStyle(base, labelStyleProp());
 		});
 		const attrs: VAttr[] = [];
 		attrs.push(dynAttr("accessibilityRole", (): string | null => "tab"));
@@ -130,7 +130,7 @@ export function TabBar(props: {
 		attrs.push(dynAttr("accessibilityLabel", (): string | null => spoken === null ? route.title : spoken as string));
 		stateAttr(attrs, (): string => stateTokens("", focused(), false));
 		const press = (e: NeonEvent): void => {
-			if (onTabPress !== null) { (onTabPress as (i: number) => void)(at()); }
+			if (onTabPress !== null) { onTabPress(at()); }
 		};
 		const layout = (e: NeonEvent): void => { measured(at(), e); };
 		const kids = element(<Text style={label}>{route.title}</Text>);
@@ -150,7 +150,7 @@ export function TabBar(props: {
 	const attrs: VAttr[] = [];
 	attrs.push(dynAttr("accessibilityRole", (): string | null => "tablist"));
 	const userStyle = props.style;
-	const barStyle = accessor((): Style => mergeStyle({ flexDirection: "row", backgroundColor: MATERIAL_SURFACE }, userStyle === null ? {} : (userStyle as Accessor<Style>)()));
+	const barStyle = accessor((): Style => mergeStyle({ flexDirection: "row", backgroundColor: MATERIAL_SURFACE }, userStyle === null ? {} : userStyle()));
 	const scroll: NeonNode = ScrollView({
 		horizontal: accessor((): boolean => true),
 		showsHorizontalScrollIndicator: accessor((): boolean => false),
@@ -188,11 +188,11 @@ export function TabView(props: {
 	const preloadProp = props.lazyPreloadDistance;
 	const placeholder = props.renderLazyPlaceholder;
 	const positionProp = props.tabBarPosition;
-	const controller = new PageController(indexProp === null ? 0 : untrack((): number => (indexProp as Accessor<number>)()));
+	const controller = new PageController(indexProp === null ? 0 : untrack((): number => indexProp()));
 	const selected = (): number => controller.selectedPage();
 
 	const changed = (at: number): void => {
-		if (onIndexChange !== null) { (onIndexChange as (i: number) => void)(at); }
+		if (onIndexChange !== null) { onIndexChange(at); }
 	};
 	const jumpTo = (key: string): void => {
 		const all = untrack<TabRoute[]>(routes);
@@ -204,7 +204,7 @@ export function TabView(props: {
 	// the index it echoes back already matches.
 	if (indexProp !== null) {
 		createRenderEffect<number>(
-			(prev: number | null): number => (indexProp as Accessor<number>)(),
+			(prev: number | null): number => indexProp(),
 			(wanted: number, prev: number | null): Cleanup | null => {
 				if (selected() !== wanted) { controller.setPage(wanted); }
 				return null;
@@ -212,8 +212,8 @@ export function TabView(props: {
 		);
 	}
 
-	const isLazy = (): boolean => lazyProp !== null && (lazyProp as Accessor<boolean>)();
-	const preload = (): number => preloadProp === null ? 0 : (preloadProp as Accessor<number>)();
+	const isLazy = (): boolean => lazyProp !== null && lazyProp();
+	const preload = (): number => preloadProp === null ? 0 : preloadProp();
 	const scene = (info: PageRenderItemInfo<TabRoute>): NeonNode => {
 		const route = info.item;
 		const at = info.index;
@@ -225,7 +225,7 @@ export function TabView(props: {
 			return visited;
 		});
 		const content = renderScene({ route, index: untrack<number>(at), focused, jumpTo });
-		const fallback: NeonNode = placeholder === null ? View({}) : (placeholder as (r: TabRoute) => NeonNode)(route);
+		const fallback: NeonNode = placeholder === null ? View({}) : placeholder(route);
 		return element(<View style={{ flex: 1 }}><Show when={ready()} fallback={fallback}>{content}</Show></View>);
 	};
 
@@ -255,9 +255,9 @@ export function TabView(props: {
 		tabStyle: props.tabStyle,
 		labelStyle: props.labelStyle,
 	});
-	const bottom = (): boolean => positionProp !== null && (positionProp as Accessor<TabBarPosition>)() === "bottom";
+	const bottom = (): boolean => positionProp !== null && positionProp() === "bottom";
 	const userStyle = props.style;
-	const outer = accessor((): Style => mergeStyle({ flex: 1, flexDirection: "column" }, userStyle === null ? {} : (userStyle as Accessor<Style>)()));
+	const outer = accessor((): Style => mergeStyle({ flex: 1, flexDirection: "column" }, userStyle === null ? {} : userStyle()));
 	return element(<View style={outer}>
 		<Show when={!bottom()}>{bar}</Show>
 		{pages}

@@ -60,7 +60,7 @@ export function progressLabel(progress: float64): string {
 export function ProgressBar(props: ProgressBarProps): NeonNode {
 	const { progress, indeterminate, color, trackColor, visible } = props;
 	const isIndeterminate = (): boolean => flagOn(indeterminate);
-	const amount = (): float64 => progress === null ? 0.0 : (progress as Accessor<float64>)();
+	const amount = (): float64 => progress === null ? 0.0 : progress();
 	const [phase, setPhase] = createSignal(0);
 	createRenderEffect<boolean>(
 		(prev: boolean | null): boolean => isIndeterminate(),
@@ -72,7 +72,7 @@ export function ProgressBar(props: ProgressBarProps): NeonNode {
 		},
 	);
 	const span = (): BarSpan => isIndeterminate() ? sweepSpan(phase()) : determinateSpan(amount());
-	const shown = (): boolean => visible === null || (visible as Accessor<boolean>)();
+	const shown = (): boolean => visible === null || visible();
 	const track = (): Style => {
 		const s: Style = {
 			flexDirection: "row", height: 4, borderRadius: 2, overflow: "hidden",

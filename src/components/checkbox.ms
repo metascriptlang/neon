@@ -64,7 +64,7 @@ export function Checkbox(props: CheckboxProps): NeonNode {
 	});
 	const press = (e: NeonEvent): void => {
 		if (isDisabled() || onValueChange === null) { return; }
-		(onValueChange as (v: boolean) => void)(isMixed() ? true : !isChecked());
+		onValueChange(isMixed() ? true : !isChecked());
 	};
 	const kids = element(<View style={box}>
 		<View style={surface}><Text style={markStyle}>{glyph()}</Text></View>

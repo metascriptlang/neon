@@ -27,7 +27,7 @@ const FILL: Style = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0
 // containing block, which a browser only grants a positioned element.
 export function ImageBackground(props: ImageBackgroundProps): NeonNode {
 	const imageStyle = props.imageStyle;
-	const fill = accessor((): Style => imageStyle === null ? FILL : layerStyles([FILL, (imageStyle as () => Style)()]));
+	const fill = accessor((): Style => imageStyle === null ? FILL : layerStyles([FILL, imageStyle()]));
 	const image = Image({
 		source: props.source,
 		resizeMode: props.resizeMode,
@@ -43,7 +43,7 @@ export function ImageBackground(props: ImageBackgroundProps): NeonNode {
 		if (kids !== null) { (kids as NeonNode)(host, parent, before); }
 	};
 	const user = props.style;
-	const box = accessor((): Style => user === null ? RELATIVE : layerStyles([RELATIVE, (user as () => Style)()]));
+	const box = accessor((): Style => user === null ? RELATIVE : layerStyles([RELATIVE, user()]));
 	return View({
 		style: box,
 		accessible: props.accessible,

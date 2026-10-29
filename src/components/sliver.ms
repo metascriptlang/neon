@@ -93,13 +93,13 @@ export function CollapsingHeader(props: {
 	const floating = new FloatingOffset();
 	const metrics = createMemo<HeaderMetrics>((): HeaderMetrics => {
 		const expanded = expandedProp();
-		const collapsed = collapsedProp === null ? TOOLBAR_HEIGHT : (collapsedProp as Accessor<number>)();
-		const pinned = pinnedProp !== null && (pinnedProp as Accessor<boolean>)();
+		const collapsed = collapsedProp === null ? TOOLBAR_HEIGHT : collapsedProp();
+		const pinned = pinnedProp !== null && pinnedProp();
 		const raw = offsetProp();
-		const isFloating = floatingProp !== null && (floatingProp as Accessor<boolean>)();
+		const isFloating = floatingProp !== null && floatingProp();
 		const offset = isFloating ? floating.update(raw, expanded) : raw;
 		const m = headerMetrics(offset, expanded, collapsed, pinned);
-		if (onProgress !== null) { untrack((): void => { (onProgress as (p: number) => void)(m.progress); }); }
+		if (onProgress !== null) { untrack((): void => { onProgress(m.progress); }); }
 		return m;
 	});
 	const userStyle = props.style;
@@ -109,12 +109,12 @@ export function CollapsingHeader(props: {
 			position: "absolute", left: 0, right: 0, top: 0, height: m.extent, overflow: "hidden", zIndex: 10,
 			transform: `translateY(${m.translate}px)`,
 		};
-		return userStyle === null ? base : mergeStyle((userStyle as Accessor<Style>)(), base);
+		return userStyle === null ? base : mergeStyle(userStyle(), base);
 	});
 	const backgroundStyle = accessor((): Style => {
 		const m = metrics();
 		const expanded = expandedProp();
-		const collapsed = collapsedProp === null ? TOOLBAR_HEIGHT : (collapsedProp as Accessor<number>)();
+		const collapsed = collapsedProp === null ? TOOLBAR_HEIGHT : collapsedProp();
 		const parallax = -(m.progress * (expanded - collapsed) / 4);
 		return {
 			position: "absolute", left: 0, right: 0, top: 0, height: expanded,

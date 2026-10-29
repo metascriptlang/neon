@@ -25,26 +25,26 @@ export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): NeonNode
 	const keyboard = useKeyboard();
 	const { behavior, keyboardVerticalOffset, enabled } = props;
 	const bottom = accessor((): number => {
-		if (enabled !== null && !(enabled as Accessor<boolean>)()) { return 0; }
+		if (enabled !== null && !enabled()) { return 0; }
 		const k = keyboard();
 		if (!k.visible) { return 0; }
-		const offset = keyboardVerticalOffset === null ? 0 : (keyboardVerticalOffset as Accessor<number>)();
+		const offset = keyboardVerticalOffset === null ? 0 : keyboardVerticalOffset();
 		return Math.max(0, k.height - offset);
 	});
 	const mode = (): string => {
 		if (behavior === null) { return ""; }
-		const b: KeyboardAvoidingBehavior = (behavior as Accessor<KeyboardAvoidingBehavior>)();
+		const b: KeyboardAvoidingBehavior = behavior();
 		return b;
 	};
 	const [frameHeight, setFrameHeight] = createSignal<number>(-1);
 	const userLayout = props.onLayout;
 	const layout = (e: NeonEvent): void => {
 		if (frameHeight() < 0 || bottom() === 0) { setFrameHeight(e.height); }
-		if (userLayout !== null) { (userLayout as (x: NeonEvent) => void)(e); }
+		if (userLayout !== null) { userLayout(e); }
 	};
 	const user = props.style;
 	const style = accessor((): Style => {
-		const own: Style = user === null ? {} : (user as () => Style)();
+		const own: Style = user === null ? {} : user();
 		const m = mode();
 		if (m === "padding") { return layerStyles([own, { paddingBottom: bottom() }]); }
 		if (m === "height" && frameHeight() >= 0 && bottom() > 0) {
@@ -54,7 +54,7 @@ export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): NeonNode
 	});
 	const contentUser = props.contentContainerStyle;
 	const shifted = accessor((): Style => {
-		const own: Style = contentUser === null ? {} : (contentUser as () => Style)();
+		const own: Style = contentUser === null ? {} : contentUser();
 		return mode() === "position" ? layerStyles([{ position: "relative" }, own, { bottom: bottom() }]) : own;
 	});
 	const kids = mode() === "position" ? View({ style: shifted, children: props.children }) : props.children;

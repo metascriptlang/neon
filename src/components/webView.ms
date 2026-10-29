@@ -230,22 +230,22 @@ export function WebView(props: WebViewProps): NeonNode {
 	const navigation = props.onNavigationStateChange;
 	const changed = (state: WebViewNavigation): void => {
 		slot.state = state;
-		if (navigation !== null) { (navigation as (n: WebViewNavigation) => void)(state); }
+		if (navigation !== null) { navigation(state); }
 	};
 	const evts: VEvent[] = [];
 	evts.push(evt("onLoadStart", (e: NeonEvent): void => {
 		const state = parseNavigation(e.value);
-		if (loadStart !== null) { (loadStart as (x: WebViewNavigationEvent) => void)(navigationEvent(state)); }
+		if (loadStart !== null) { loadStart(navigationEvent(state)); }
 		changed(state);
 	}));
 	evts.push(evt("onLoad", (e: NeonEvent): void => {
 		const state = parseNavigation(e.value);
 		if (injected !== null) {
-			const script = (injected as Accessor<string>)();
+			const script = injected();
 			if (script !== "") { slot.command("injectJavaScript", script); }
 		}
-		if (load !== null) { (load as (x: WebViewNavigationEvent) => void)(navigationEvent(state)); }
-		if (loadEnd !== null) { (loadEnd as (x: WebViewNavigationEvent) => void)(navigationEvent(state)); }
+		if (load !== null) { load(navigationEvent(state)); }
+		if (loadEnd !== null) { loadEnd(navigationEvent(state)); }
 		changed(state);
 	}));
 	evts.push(evt("onError", (e: NeonEvent): void => {
@@ -261,14 +261,14 @@ export function WebView(props: WebViewProps): NeonNode {
 			description: fields.length > 1 ? fields[1] : "",
 		};
 		if (loadEnd !== null) {
-			(loadEnd as (x: WebViewNavigationEvent) => void)(navigationEvent({ ...state, url: error.url, loading: false }));
+			loadEnd(navigationEvent({ ...state, url: error.url, loading: false }));
 		}
-		if (fail !== null) { (fail as (x: WebViewErrorEvent) => void)({ nativeEvent: error }); }
+		if (fail !== null) { fail({ nativeEvent: error }); }
 	}));
 	if (message !== null) {
 		evts.push(evt("onMessage", (e: NeonEvent): void => {
 			const state = slot.state;
-			(message as (x: WebViewMessageEvent) => void)({
+			message({
 				nativeEvent: {
 					url: state.url,
 					title: state.title,
@@ -283,7 +283,7 @@ export function WebView(props: WebViewProps): NeonNode {
 	evts.push(evt("onShouldStartLoad", (e: NeonEvent): void => {
 		const fields = e.value.split("\x1f");
 		const url = fields[0];
-		const allowed = whitelist === null ? DEFAULT_WHITELIST : (whitelist as Accessor<string[]>)();
+		const allowed = whitelist === null ? DEFAULT_WHITELIST : whitelist();
 		if (!passesWhitelist(allowed, url)) {
 			slot.answer(false);
 			if (hasAppServices()) { openOutside(url); }
@@ -303,17 +303,17 @@ export function WebView(props: WebViewProps): NeonNode {
 			navigationType: fields.length > 1 ? fields[1] : "other",
 			isTopFrame: fields.length > 2 ? fields[2] !== "false" : true,
 		};
-		slot.answer((decide as (r: ShouldStartLoadRequest) => boolean)(request));
+		slot.answer(decide(request));
 	}));
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const userStyle = props.style;
-	const style = (): Style => userStyle === null ? WEBVIEW_BASE : layerStyles([WEBVIEW_BASE, (userStyle as () => Style)()]);
+	const style = (): Style => userStyle === null ? WEBVIEW_BASE : layerStyles([WEBVIEW_BASE, userStyle()]);
 	const userRef = props.ref;
 	const inner = hostElement("webview", attrs, evts, null, style, (node: HostNode): void => {
 		slot.node = node;
 		slot.mounted = true;
 		onCleanup((): void => { slot.mounted = false; });
-		if (userRef !== null) { (userRef as (h: WebViewHandle) => void)(new WebViewHandle(slot)); }
+		if (userRef !== null) { userRef(new WebViewHandle(slot)); }
 	});
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		slot.host = host;

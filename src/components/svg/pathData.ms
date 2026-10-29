@@ -83,7 +83,6 @@ function skipSpace(ref c: PathCursor): void {
 	while (c.at < c.text.length && isSpace(c.text.charCodeAt(c.at))) { c.at += 1; }
 }
 
-// Whitespace with at most one comma between two numbers.
 function skipSeparator(ref c: PathCursor): void {
 	skipSpace(c);
 	if (c.at < c.text.length && c.text.charCodeAt(c.at) === 44) {
@@ -161,7 +160,6 @@ struct PenState {
 	y: float64;
 	startX: float64;
 	startY: float64;
-	// The second control point of the last curve, for S and T reflections.
 	controlX: float64;
 	controlY: float64;
 	lastCubic: boolean;
@@ -260,7 +258,6 @@ function lowerCase(code: int32): int32 {
 	return code >= 65 && code <= 90 ? code + 32 : code;
 }
 
-// One command and its parameter sets; false when the data stops being valid.
 function runCommand(g: Geometry, ref c: PathCursor, ref pen: PenState, command: int32): boolean {
 	const relative = command >= 97;
 	const kind = lowerCase(command);
@@ -413,7 +410,6 @@ export function parsePathData(d: string): Geometry {
 	return g;
 }
 
-// Absolute path text of the geometry, numbers rounded to four decimals.
 export function geometryText(g: Geometry): string {
 	let out = "";
 	let i = 0;
@@ -488,7 +484,6 @@ function cubicPoint(p0: float64, p1: float64, p2: float64, p3: float64, t: float
 	return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
 }
 
-// The parameters in (0, 1) where one coordinate of a cubic turns.
 function cubicExtrema(p0: float64, p1: float64, p2: float64, p3: float64): float64[] {
 	const a = -p0 + 3 * p1 - 3 * p2 + p3;
 	const b = 2 * (p0 - 2 * p1 + p2);

@@ -50,7 +50,7 @@ export function Collapsible(props: {
 	const [open, setOpen] = createSignal<boolean>(startOpen);
 	let motion: CompositeAnimation | null = null;
 	let waiting = false;
-	const floor = (): number => heightProp === null ? 0 : (heightProp as Accessor<number>)();
+	const floor = (): number => heightProp === null ? 0 : heightProp();
 
 	const stop = (): void => {
 		if (motion !== null) {
@@ -62,7 +62,7 @@ export function Collapsible(props: {
 	const run = (to: number): void => {
 		stop();
 		waiting = false;
-		const duration = durationProp === null ? COLLAPSIBLE_MS : (durationProp as Accessor<number>)();
+		const duration = durationProp === null ? COLLAPSIBLE_MS : durationProp();
 		const easing = easingProp === null ? Easing.out(Easing.cubic) : easingProp as EasingFunction;
 		const anim = Animated.timing(progress, { toValue: to, duration, easing });
 		motion = anim;
@@ -71,7 +71,7 @@ export function Collapsible(props: {
 			if (!result.finished) { return; }
 			setMoving(false);
 			if (to === 0) { setOpen(false); }
-			if (onAnimationEnd !== null) { (onAnimationEnd as () => void)(); }
+			if (onAnimationEnd !== null) { onAnimationEnd(); }
 		});
 	};
 	createRenderEffect<boolean>(
@@ -92,7 +92,7 @@ export function Collapsible(props: {
 	const outer = accessor((): Style => {
 		const user = props.style;
 		const base: Style = { overflow: "hidden" };
-		const merged = user === null ? base : mergeStyle(base, (user as Accessor<Style>)());
+		const merged = user === null ? base : mergeStyle(base, user());
 		if (open() && !moving()) { return merged; }
 		const low = floor();
 		const high = Math.max(low, measured());
@@ -142,13 +142,13 @@ export function ExpansionTile(props: {
 	const durationProp = props.duration;
 	const startOpen = controlled !== null ? untrack<boolean>(controlled as Accessor<boolean>) : (initialProp !== null && untrack<boolean>(initialProp as Accessor<boolean>));
 	const [inner, setInner] = createSignal<boolean>(startOpen);
-	const expanded = (): boolean => controlled === null ? inner() : (controlled as Accessor<boolean>)();
+	const expanded = (): boolean => controlled === null ? inner() : controlled();
 	const turns = new AnimatedValue(startOpen ? 1 : 0);
 
 	const toggle = (e: NeonEvent): void => {
 		const next = !untrack<boolean>(expanded);
 		if (controlled === null) { setInner(next); }
-		if (onExpansionChanged !== null) { (onExpansionChanged as (x: boolean) => void)(next); }
+		if (onExpansionChanged !== null) { onExpansionChanged(next); }
 	};
 	const ink = (): string => expanded() ? colorOr(textProp, MATERIAL_PRIMARY) : colorOr(collapsedTextProp, MATERIAL_ON_SURFACE);
 	const titleStyle = accessor((): Style => ({ fontSize: 16, color: ink() }));
@@ -164,7 +164,7 @@ export function ExpansionTile(props: {
 		? element(<View style={{ flex: 1 }}><Text style={titleStyle}>{title()}</Text></View>)
 		: element(<View style={{ flex: 1 }}>
 			<Text style={titleStyle}>{title()}</Text>
-			<Text style={subtitleStyle}>{(subtitle as Accessor<string>)()}</Text>
+			<Text style={subtitleStyle}>{subtitle()}</Text>
 		</View>);
 	const leadingBox: NeonNode = leading === null ? View({}) : View({ style: accessor((): Style => ({ marginRight: 16 })), children: leading });
 	const headerStyle = (): Style => ({
@@ -178,19 +178,19 @@ export function ExpansionTile(props: {
 	const header = hostElement("pressable", attrs, [evt("onPress", toggle)], headerKids, headerStyle, null);
 	const body = Collapsible({
 		collapsed: accessor((): boolean => !expanded()),
-		duration: accessor((): number => durationProp === null ? EXPANSION_MS : (durationProp as Accessor<number>)()),
+		duration: accessor((): number => durationProp === null ? EXPANSION_MS : durationProp()),
 		easing: Easing.ease,
 		progress: turns,
 		children: View({
-			style: accessor((): Style => paddingProp === null ? {} : { padding: (paddingProp as Accessor<number>)() }),
+			style: accessor((): Style => paddingProp === null ? {} : { padding: paddingProp() }),
 			children: props.children,
 		}),
 	});
 	const userStyle = props.style;
 	const outer = accessor((): Style => {
 		const fill = expanded() ? backgroundProp : collapsedBackgroundProp;
-		const base: Style = fill === null ? {} : { backgroundColor: (fill as Accessor<string>)() };
-		return userStyle === null ? base : mergeStyle(base, (userStyle as Accessor<Style>)());
+		const base: Style = fill === null ? {} : { backgroundColor: fill() };
+		return userStyle === null ? base : mergeStyle(base, userStyle());
 	});
 	return View({ style: outer, children: element(<>{header}{body}</>) });
 }
@@ -242,9 +242,9 @@ export function Accordion<T>(props: {
 			easing: props.easing,
 			children: renderContent(item, index, active),
 		});
-		const title: NeonNode = titleRender === null ? View({}) : (titleRender as (s: T, i: number, a: Accessor<boolean>) => NeonNode)(item, index, active);
+		const title: NeonNode = titleRender === null ? View({}) : titleRender(item, index, active);
 		return View({
-			style: accessor((): Style => containerProp === null ? {} : (containerProp as Accessor<Style>)()),
+			style: accessor((): Style => containerProp === null ? {} : containerProp()),
 			children: element(<>{title}{header}{body}</>),
 		});
 	};

@@ -8,7 +8,7 @@ import { VAttr, dynAttr } from "../render/node";
 export function layered(base: () => Style, user: Accessor<Style> | null): () => Style {
 	const style = accessor((): Style => {
 		if (user === null) { return base(); }
-		return layerStyles([base(), (user as () => Style)()]);
+		return layerStyles([base(), user()]);
 	});
 	return style as () => Style;
 }

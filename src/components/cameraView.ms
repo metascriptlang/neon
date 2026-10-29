@@ -141,39 +141,39 @@ export function CameraView(props: CameraViewProps): NeonNode {
 	const facing = props.facing;
 	choice(attrs, "facing", (): string => {
 		if (facing === null) { return "back"; }
-		const value: string = (facing as Accessor<CameraType>)();
+		const value: string = facing();
 		return value;
 	});
 	const flash = props.flash;
 	choice(attrs, "flash", (): string => {
 		if (flash === null) { return "off"; }
-		const value: string = (flash as Accessor<FlashMode>)();
+		const value: string = flash();
 		return value;
 	});
 	const active = props.active;
-	choice(attrs, "active", (): string => active === null || (active as Accessor<boolean>)() ? "true" : "false");
+	choice(attrs, "active", (): string => active === null || active() ? "true" : "false");
 	const mirror = props.mirror;
-	choice(attrs, "mirror", (): string => mirror !== null && (mirror as Accessor<boolean>)() ? "true" : "false");
+	choice(attrs, "mirror", (): string => mirror !== null && mirror() ? "true" : "false");
 	accessibilityAttrs(props, attrs);
 	const evts: VEvent[] = [];
 	evts.push(evt("onPicture", (e: NeonEvent): void => { slot.settle(e.value); }));
 	const ready = props.onCameraReady;
-	if (ready !== null) { evts.push(evt("onCameraReady", (e: NeonEvent): void => { (ready as () => void)(); })); }
+	if (ready !== null) { evts.push(evt("onCameraReady", (e: NeonEvent): void => { ready(); })); }
 	const failed = props.onMountError;
 	if (failed !== null) {
 		evts.push(evt("onMountError", (e: NeonEvent): void => {
-			(failed as (error: CameraMountError) => void)({ message: e.value });
+			failed({ message: e.value });
 		}));
 	}
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const userStyle = props.style;
-	const style = (): Style => userStyle === null ? CAMERA_BASE : layerStyles([CAMERA_BASE, (userStyle as () => Style)()]);
+	const style = (): Style => userStyle === null ? CAMERA_BASE : layerStyles([CAMERA_BASE, userStyle()]);
 	const userRef = props.ref;
 	const inner = hostElement("camera", attrs, evts, null, style, (node: HostNode): void => {
 		slot.node = node;
 		slot.mounted = true;
 		onCleanup((): void => { slot.unmount(); });
-		if (userRef !== null) { (userRef as (h: CameraViewHandle) => void)(new CameraViewHandle(slot)); }
+		if (userRef !== null) { userRef(new CameraViewHandle(slot)); }
 	});
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		slot.host = host;

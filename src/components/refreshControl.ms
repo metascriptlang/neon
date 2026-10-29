@@ -22,16 +22,16 @@ interface RefreshControlProps {
 export function RefreshControl(props: RefreshControlProps): NeonNode {
 	const { refreshing, onRefresh, enabled, tintColor, title, colors, progressBackgroundColor } = props;
 	return (host: Host, scroll: HostNode, before: HostNode | null): void => {
-		bindAttr(host, scroll, "refreshEnabled", (): string | null => enabled === null || (enabled as Accessor<boolean>)() ? "true" : "false");
+		bindAttr(host, scroll, "refreshEnabled", (): string | null => enabled === null || enabled() ? "true" : "false");
 		bindAttr(host, scroll, "refreshing", (): string | null => refreshing() ? "true" : "false");
-		if (tintColor !== null) { bindAttr(host, scroll, "refreshTintColor", (): string | null => (tintColor as Accessor<string>)()); }
-		if (title !== null) { bindAttr(host, scroll, "refreshTitle", (): string | null => (title as Accessor<string>)()); }
-		if (colors !== null) { bindAttr(host, scroll, "refreshColors", (): string | null => (colors as Accessor<string[]>)().join(",")); }
+		if (tintColor !== null) { bindAttr(host, scroll, "refreshTintColor", (): string | null => tintColor()); }
+		if (title !== null) { bindAttr(host, scroll, "refreshTitle", (): string | null => title()); }
+		if (colors !== null) { bindAttr(host, scroll, "refreshColors", (): string | null => colors().join(",")); }
 		if (progressBackgroundColor !== null) {
-			bindAttr(host, scroll, "refreshBackgroundColor", (): string | null => (progressBackgroundColor as Accessor<string>)());
+			bindAttr(host, scroll, "refreshBackgroundColor", (): string | null => progressBackgroundColor());
 		}
 		if (onRefresh !== null) {
-			host.addEvent(scroll, "onRefresh", (e: NeonEvent): void => { (onRefresh as () => void)(); });
+			host.addEvent(scroll, "onRefresh", (e: NeonEvent): void => { onRefresh(); });
 		}
 	};
 }

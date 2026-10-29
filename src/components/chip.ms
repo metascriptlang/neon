@@ -56,7 +56,7 @@ export function Chip(props: ChipProps): NeonNode {
 	const isSelected = (): boolean => flagOn(selected);
 	const outlined = (): boolean => {
 		if (mode === null) { return false; }
-		const m: ChipMode = (mode as Accessor<ChipMode>)();
+		const m: ChipMode = mode();
 		return m === "outlined";
 	};
 	const surfaceColor = (): string => {
@@ -79,8 +79,8 @@ export function Chip(props: ChipProps): NeonNode {
 		return isDisabled() ? MATERIAL_DISABLED : colorOr(selectedColor, MATERIAL_ON_SURFACE);
 	};
 	const glyph = (): string => {
-		if (icon !== null) { return (icon as Accessor<string>)(); }
-		const check = showSelectedCheck === null || (showSelectedCheck as Accessor<boolean>)();
+		if (icon !== null) { return icon(); }
+		const check = showSelectedCheck === null || showSelectedCheck();
 		return check && isSelected() ? "✓" : "";
 	};
 	const iconStyle = accessor((): Style => ({
@@ -88,7 +88,7 @@ export function Chip(props: ChipProps): NeonNode {
 	}));
 	const textStyle = accessor((): Style => ({ color: ink(), fontSize: 14 }));
 	const content = label !== null
-		? element(<Text style={textStyle}>{(label as Accessor<string>)()}</Text>)
+		? element(<Text style={textStyle}>{label()}</Text>)
 		: element(<Text style={textStyle}>{props.children}</Text>);
 	const attrs: VAttr[] = [];
 	const role = selected === null ? "button" : "togglebutton";
@@ -101,7 +101,7 @@ export function Chip(props: ChipProps): NeonNode {
 	stateAttr(attrs, (): string => stateTokens("", isSelected(), isDisabled()));
 	const press = (e: NeonEvent): void => {
 		if (isDisabled() || onPress === null) { return; }
-		(onPress as (x: NeonEvent) => void)(e);
+		onPress(e);
 	};
 	const bodyKids = element(<><Text style={iconStyle}>{glyph()}</Text>{content}</>);
 	const bodyEvents = [evt("onPress", press)];
@@ -115,11 +115,11 @@ export function Chip(props: ChipProps): NeonNode {
 	closeAttrs.push(dynAttr("accessibilityRole", (): string | null => "button"));
 	const closeLabel = props.closeIconAccessibilityLabel;
 	closeAttrs.push(dynAttr("accessibilityLabel", (): string | null => {
-		return closeLabel === null ? "Close" : (closeLabel as Accessor<string>)();
+		return closeLabel === null ? "Close" : closeLabel();
 	}));
 	const close = (e: NeonEvent): void => {
 		if (isDisabled()) { return; }
-		(onClose as () => void)();
+		onClose();
 	};
 	const closeKids = element(<Text style={textStyle}>×</Text>);
 	const closeEvents = [evt("onPress", close)];

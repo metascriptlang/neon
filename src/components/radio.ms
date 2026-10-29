@@ -78,7 +78,7 @@ export function RadioButton(props: RadioButtonProps): NeonNode {
 	const isDisabled = (): boolean => flagOn(disabled);
 	const isChecked = (): boolean => {
 		if (status === null) { return false; }
-		const s: RadioStatus = (status as Accessor<RadioStatus>)();
+		const s: RadioStatus = status();
 		return s === "checked";
 	};
 	const tint = (): string => markTint(isChecked(), isDisabled(), color, uncheckedColor);
@@ -88,7 +88,7 @@ export function RadioButton(props: RadioButtonProps): NeonNode {
 	stateAttr(attrs, (): string => radioState(isChecked(), isDisabled()));
 	const press = (e: NeonEvent): void => {
 		if (isDisabled() || onPress === null) { return; }
-		(onPress as (x: NeonEvent) => void)(e);
+		onPress(e);
 	};
 	const style = layered(() => BUTTON_ROOT, props.style);
 	const mark = radioMark(isChecked, tint);
@@ -115,7 +115,7 @@ export function RadioGroup(props: RadioGroupProps): NeonNode {
 	}));
 	const row = (option: RadioOption): NeonNode => {
 		const isChecked = (): boolean => {
-			return value !== null && (value as Accessor<string>)() === option.value;
+			return value !== null && value() === option.value;
 		};
 		const tint = (): string => markTint(isChecked(), isDisabled(), color, uncheckedColor);
 		const attrs: VAttr[] = [];
@@ -124,7 +124,7 @@ export function RadioGroup(props: RadioGroupProps): NeonNode {
 		stateAttr(attrs, (): string => radioState(isChecked(), isDisabled()));
 		const press = (e: NeonEvent): void => {
 			if (isDisabled() || onValueChange === null) { return; }
-			(onValueChange as (v: string) => void)(option.value);
+			onValueChange(option.value);
 		};
 		const mark = radioMark(isChecked, tint);
 		const kids = element(<>{mark}<Text style={labelStyle}>{option.label}</Text></>);

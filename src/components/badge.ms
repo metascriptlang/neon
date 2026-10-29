@@ -28,10 +28,10 @@ export function Badge(props: BadgeProps): NeonNode {
 	const { value, children, visible, size, color, backgroundColor } = props;
 	const hasContent = value !== null || children !== null;
 	const side = (): int32 => {
-		if (size !== null) { return (size as Accessor<int32>)(); }
+		if (size !== null) { return size(); }
 		return hasContent ? BADGE_SIZE : DOT_SIZE;
 	};
-	const shown = (): boolean => visible === null || (visible as Accessor<boolean>)();
+	const shown = (): boolean => visible === null || visible();
 	const pill = (): Style => {
 		const s: Style = {
 			height: side(), minWidth: side(), borderRadius: side() / 2,

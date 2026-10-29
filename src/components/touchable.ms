@@ -49,26 +49,26 @@ class PressFeedback {
 		const [pressed, setPressed] = createSignal(false);
 		this.pressed = pressed;
 		const disabled = props.disabled;
-		const off = (): boolean => disabled !== null && (disabled as Accessor<boolean>)();
+		const off = (): boolean => disabled !== null && disabled();
 		const press = props.onPress;
 		const pressIn = props.onPressIn;
 		const pressOut = props.onPressOut;
 		const longPress = props.onLongPress;
 		this.onPress = (e: NeonEvent): void => {
-			if (!off() && press !== null) { (press as (x: NeonEvent) => void)(e); }
+			if (!off() && press !== null) { press(e); }
 		};
 		this.onPressIn = (e: NeonEvent): void => {
 			if (off()) { return; }
 			setPressed(true);
-			if (pressIn !== null) { (pressIn as (x: NeonEvent) => void)(e); }
+			if (pressIn !== null) { pressIn(e); }
 		};
 		this.onPressOut = (e: NeonEvent): void => {
 			if (!pressed()) { return; }
 			setPressed(false);
-			if (pressOut !== null) { (pressOut as (x: NeonEvent) => void)(e); }
+			if (pressOut !== null) { pressOut(e); }
 		};
 		this.onLongPress = longPress === null ? null : (e: NeonEvent): void => {
-			if (!off()) { (longPress as (x: NeonEvent) => void)(e); }
+			if (!off()) { longPress(e); }
 		};
 	}
 }
@@ -105,9 +105,9 @@ export function TouchableOpacity(props: TouchableOpacityProps): NeonNode {
 	const user = props.style;
 	const active = props.activeOpacity;
 	const style = accessor((): Style => {
-		const own: Style = user === null ? {} : (user as () => Style)();
+		const own: Style = user === null ? {} : user();
 		const rest = own.opacity ?? 1;
-		const pressedOpacity = active === null ? 0.2 : (active as Accessor<number>)();
+		const pressedOpacity = active === null ? 0.2 : active();
 		return layerStyles([own, { opacity: feedback.pressed() ? pressedOpacity : rest }]);
 	});
 	return touchable(props, feedback, style, props.children);
@@ -122,13 +122,13 @@ export function TouchableHighlight(props: TouchableHighlightProps): NeonNode {
 	const underlay = props.underlayColor;
 	const active = props.activeOpacity;
 	const style = accessor((): Style => {
-		const own: Style = user === null ? {} : (user as () => Style)();
+		const own: Style = user === null ? {} : user();
 		const rest = own.backgroundColor ?? "transparent";
-		const shown = underlay === null ? "#000000" : (underlay as Accessor<string>)();
+		const shown = underlay === null ? "#000000" : underlay();
 		return layerStyles([own, { backgroundColor: feedback.pressed() ? shown : rest }]);
 	});
 	const childStyle = accessor((): Style => {
-		const pressedOpacity = active === null ? 0.85 : (active as Accessor<number>)();
+		const pressedOpacity = active === null ? 0.85 : active();
 		return { opacity: feedback.pressed() ? pressedOpacity : 1 };
 	});
 	const child = View({ style: childStyle, children: props.children });
@@ -171,8 +171,8 @@ export function TouchableNativeFeedback(props: TouchableNativeFeedbackProps): Ne
 	const background = props.background;
 	const foreground = props.useForeground;
 	const ripple = accessor((): AndroidRipple => {
-		const chosen: AndroidRipple = background === null ? NativeFeedback.SelectableBackground() : (background as Accessor<AndroidRipple>)();
-		return { ...chosen, foreground: foreground !== null && (foreground as Accessor<boolean>)() };
+		const chosen: AndroidRipple = background === null ? NativeFeedback.SelectableBackground() : background();
+		return { ...chosen, foreground: foreground !== null && foreground() };
 	});
 	return touchable(props, feedback, props.style, props.children, ripple);
 }

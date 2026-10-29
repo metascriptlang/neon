@@ -174,7 +174,7 @@ export function VirtualizedSectionList<T, S>(props: {
 	const userRef = props.ref;
 	const sectionChanged = props.onViewableItemsChanged;
 	const stickyProp = props.stickySectionHeadersEnabled;
-	const stickyHeaders = stickyProp !== null && untrack((): boolean => (stickyProp as Accessor<boolean>)());
+	const stickyHeaders = stickyProp !== null && untrack((): boolean => stickyProp());
 	const listHeaderOffset: int32 = props.ListHeaderComponent === null ? 0 : 1;
 
 	const layout = createMemo<SectionLayout<S>>((): SectionLayout<S> => {
@@ -222,10 +222,10 @@ export function VirtualizedSectionList<T, S>(props: {
 	const renderCell = (info: ListRenderItemInfo<SectionCell<T, S>>): NeonNode => {
 		const cell = info.item;
 		if (cell.kind === SectionCellKind.Header) {
-			return renderHeader === null ? emptyCell : (renderHeader as (info: SectionInfo<S>) => NeonNode)({ section: cell.section as S });
+			return renderHeader === null ? emptyCell : renderHeader({ section: cell.section as S });
 		}
 		if (cell.kind === SectionCellKind.Footer) {
-			return renderFooter === null ? emptyCell : (renderFooter as (info: SectionInfo<S>) => NeonNode)({ section: cell.section as S });
+			return renderFooter === null ? emptyCell : renderFooter({ section: cell.section as S });
 		}
 		const flat = info.index;
 		const sectionIndex = (): int32 => sectionAt(flat() as int32);
@@ -270,7 +270,7 @@ export function VirtualizedSectionList<T, S>(props: {
 			return out;
 		}),
 		onViewableItemsChanged: sectionChanged === null ? null : (info: ViewabilityInfo<SectionCell<T, S>>): void => {
-			(sectionChanged as (info: SectionViewabilityInfo<T, S>) => void)({
+			sectionChanged({
 				viewableItems: tokens(info.viewableItems),
 				changed: tokens(info.changed),
 				viewabilityConfig: info.viewabilityConfig,
@@ -279,7 +279,7 @@ export function VirtualizedSectionList<T, S>(props: {
 		viewabilityConfigCallbackPairs: null,
 		ref: (list: FlatListHandle): void => {
 			if (userRef === null) { return; }
-			(userRef as (handle: SectionListHandle) => void)(new SectionListHandle(list, (sectionIndex: int32): int32 => {
+			userRef(new SectionListHandle(list, (sectionIndex: int32): int32 => {
 				const laid = layout();
 				return sectionIndex < laid.starts.length ? laid.starts[sectionIndex] : laid.total;
 			}, stickyHeaders));

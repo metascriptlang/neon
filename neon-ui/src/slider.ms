@@ -47,7 +47,7 @@ export function snapSliderValue(raw: float64, minimum: float64, maximum: float64
 }
 
 function read(value: Accessor<float64> | null, fallback: float64): float64 {
-	return value === null ? fallback : (value as Accessor<float64>)();
+	return value === null ? fallback : value();
 }
 
 export function Slider(props: SliderProps): NeonNode {
@@ -88,7 +88,7 @@ export function Slider(props: SliderProps): NeonNode {
 	let active = false;
 	let last: float64 = 0;
 	const report = (callback: ((v: float64) => void) | null, v: float64): void => {
-		if (callback !== null) { (callback as (x: float64) => void)(v); }
+		if (callback !== null) { callback(v); }
 	};
 	const finish = (): void => {
 		if (!active) { return; }
@@ -129,7 +129,7 @@ export function Slider(props: SliderProps): NeonNode {
 	const layout = props.onLayout;
 	const evts: VEvent[] = [evt("onLayout", (e: NeonEvent): void => {
 		setWidth(e.width);
-		if (layout !== null) { (layout as (e: NeonEvent) => void)(e); }
+		if (layout !== null) { layout(e); }
 	})];
 	const kids = element(<View {...handlers} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, justifyContent: "center" }}>
 		<View style={rail} />

@@ -38,8 +38,8 @@ const SELECTED_TEXT: Style = { fontSize: 14, fontWeight: "bold" };
 
 export function SegmentedControl(props: SegmentedControlProps): NeonNode {
 	const { values, selectedIndex, onChange, onValueChange, enabled, tintColor } = props;
-	const isEnabled = (): boolean => enabled === null || (enabled as Accessor<boolean>)();
-	const current = (): int32 => selectedIndex === null ? -1 : (selectedIndex as Accessor<int32>)();
+	const isEnabled = (): boolean => enabled === null || enabled();
+	const current = (): int32 => selectedIndex === null ? -1 : selectedIndex();
 	const trackColor = props.backgroundColor;
 	const track = (): Style => ({
 		flexDirection: "row", padding: 2, borderRadius: 8,
@@ -67,8 +67,8 @@ export function SegmentedControl(props: SegmentedControlProps): NeonNode {
 		const press = (e: NeonEvent): void => {
 			if (!isEnabled() || isSelected()) { return; }
 			const at = index() as int32;
-			if (onChange !== null) { (onChange as (i: int32) => void)(at); }
-			if (onValueChange !== null) { (onValueChange as (v: string) => void)(value); }
+			if (onChange !== null) { onChange(at); }
+			if (onValueChange !== null) { onValueChange(value); }
 		};
 		const kids = element(<Text style={label}>{value}</Text>);
 		const events = [evt("onPress", press)];

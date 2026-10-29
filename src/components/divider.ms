@@ -23,7 +23,7 @@ const DIVIDER_COLOR = "#e0e0e0";
 const INSET = 16.0;
 
 function amount(value: Accessor<float64> | null, fallback: float64): float64 {
-	return value === null ? fallback : (value as Accessor<float64>)();
+	return value === null ? fallback : value();
 }
 
 export function Divider(props: DividerProps): NeonNode {

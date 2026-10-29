@@ -81,18 +81,18 @@ export function Stepper(props: StepperProps): NeonNode {
 	const accent = (): string => colorOr(color, MATERIAL_PRIMARY);
 	const continueText = accessor((): string => continueLabel === null
 		? "Continue"
-		: (continueLabel as Accessor<string>)());
+		: continueLabel());
 	const cancelText = accessor((): string => cancelLabel === null
 		? "Cancel"
-		: (cancelLabel as Accessor<string>)());
+		: cancelLabel());
 	const root = accessor((): Style => userStyle === null
 		? STEPPER
-		: layerStyles([STEPPER, (userStyle as Accessor<Style>)()]));
+		: layerStyles([STEPPER, userStyle()]));
 	const continuePress = (e: NeonEvent): void => {
-		if (onStepContinue !== null) { (onStepContinue as () => void)(); }
+		if (onStepContinue !== null) { onStepContinue(); }
 	};
 	const cancelPress = (): void => {
-		if (onStepCancel !== null) { (onStepCancel as () => void)(); }
+		if (onStepCancel !== null) { onStepCancel(); }
 	};
 	const continueBox = accessor((): Style => ({ ...STEP_CONTINUE, backgroundColor: accent() }));
 	const continueLabelStyle: Style = {
@@ -139,11 +139,11 @@ export function Stepper(props: StepperProps): NeonNode {
 			backgroundColor: STEP_LINE,
 		}));
 		const tap = (e: NeonEvent): void => {
-			if (onStepTapped !== null) { (onStepTapped as (i: int32) => void)(index); }
+			if (onStepTapped !== null) { onStepTapped(index); }
 		};
 		const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 			if (renderContent === null) { return; }
-			(renderContent as (i: int32) => NeonNode)(index)(host, parent, before);
+			renderContent(index)(host, parent, before);
 		};
 		return element(<View>
 			<Pressable style={STEP_HEADER} onPress={tap}

@@ -24,7 +24,7 @@ const DEFAULT_SIZE = 40;
 
 export function Avatar(props: AvatarProps): NeonNode {
 	const { label, source, size, color, backgroundColor } = props;
-	const side = (): int32 => size === null ? DEFAULT_SIZE : (size as Accessor<int32>)();
+	const side = (): int32 => size === null ? DEFAULT_SIZE : size();
 	const round = (): Style => ({
 		width: side(), height: side(), borderRadius: side() / 2, overflow: "hidden",
 		alignItems: "center", justifyContent: "center",

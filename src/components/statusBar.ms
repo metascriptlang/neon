@@ -42,7 +42,7 @@ function bump(): void {
 function mergedStyle(): string {
 	for (let i = stack.length - 1; i >= 0; i -= 1) {
 		const read = stack[i].props.barStyle;
-		if (read !== null) { const v: StatusBarStyle = (read as Accessor<StatusBarStyle>)(); return v; }
+		if (read !== null) { const v: StatusBarStyle = read(); return v; }
 	}
 	return "default";
 }
@@ -50,7 +50,7 @@ function mergedStyle(): string {
 function mergedColor(): string {
 	for (let i = stack.length - 1; i >= 0; i -= 1) {
 		const read = stack[i].props.backgroundColor;
-		if (read !== null) { return (read as Accessor<string>)(); }
+		if (read !== null) { return read(); }
 	}
 	return "#000000";
 }
@@ -58,7 +58,7 @@ function mergedColor(): string {
 function mergedFlag(pick: (p: StatusBarProps) => Accessor<boolean> | null): string {
 	for (let i = stack.length - 1; i >= 0; i -= 1) {
 		const read = pick(stack[i].props);
-		if (read !== null) { return (read as Accessor<boolean>)() ? "true" : "false"; }
+		if (read !== null) { return read() ? "true" : "false"; }
 	}
 	return "false";
 }

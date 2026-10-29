@@ -86,15 +86,15 @@ export function DataTable(props: {
 	const spacingProp = props.columnSpacing;
 	const headingTextProp = props.headingTextStyle;
 	const dataTextProp = props.dataTextStyle;
-	const sortIndex = (): number => sortIndexProp === null ? -1 : (sortIndexProp as Accessor<number>)();
-	const ascending = (): boolean => ascendingProp === null || (ascendingProp as Accessor<boolean>)();
-	const headingHeight = (): number => headingProp === null ? HEADING_ROW_HEIGHT : (headingProp as Accessor<number>)();
-	const rowHeight = (): number => rowHeightProp === null ? DATA_ROW_HEIGHT : (rowHeightProp as Accessor<number>)();
-	const margin = (): number => marginProp === null ? HORIZONTAL_MARGIN : (marginProp as Accessor<number>)();
-	const spacing = (): number => spacingProp === null ? COLUMN_SPACING : (spacingProp as Accessor<number>)();
+	const sortIndex = (): number => sortIndexProp === null ? -1 : sortIndexProp();
+	const ascending = (): boolean => ascendingProp === null || ascendingProp();
+	const headingHeight = (): number => headingProp === null ? HEADING_ROW_HEIGHT : headingProp();
+	const rowHeight = (): number => rowHeightProp === null ? DATA_ROW_HEIGHT : rowHeightProp();
+	const margin = (): number => marginProp === null ? HORIZONTAL_MARGIN : marginProp();
+	const spacing = (): number => spacingProp === null ? COLUMN_SPACING : spacingProp();
 	// data_table.dart: the checkbox column shows when any row can be selected.
 	const checkboxes = (): boolean => {
-		if (checkboxProp !== null && !(checkboxProp as Accessor<boolean>)()) { return false; }
+		if (checkboxProp !== null && !checkboxProp()) { return false; }
 		for (const row of rows()) {
 			if (row.onSelectChanged !== null) { return true; }
 		}
@@ -104,7 +104,7 @@ export function DataTable(props: {
 	const rowFill = (row: DataRow): string => rowSelected(row) ? SELECTED_ROW : "#ffffff";
 	const toggleRow = (row: DataRow): void => {
 		const change = row.onSelectChanged;
-		if (change !== null) { (change as (s: boolean) => void)(!rowSelected(row)); }
+		if (change !== null) { change(!rowSelected(row)); }
 	};
 	const divider = (): NeonNode => View({ style: accessor((): Style => ({ height: 1, backgroundColor: DIVIDER })) });
 
@@ -120,14 +120,14 @@ export function DataTable(props: {
 		};
 		const textStyle = accessor((): Style => {
 			const base: Style = { fontSize: 14, color: MATERIAL_ON_SURFACE };
-			return dataTextProp === null ? base : mergeStyle(base, (dataTextProp as Accessor<Style>)());
+			return dataTextProp === null ? base : mergeStyle(base, dataTextProp());
 		});
 		const child = cell.child;
 		const label = cell.text;
 		const content: NeonNode = child !== null ? child as NeonNode : element(<Text style={textStyle}>{label === null ? "" : label as string}</Text>);
 		const tap = cell.onTap;
 		const events = tap !== null
-			? [evt("onPress", (e: NeonEvent): void => { (tap as () => void)(); })]
+			? [evt("onPress", (e: NeonEvent): void => { tap(); })]
 			: (row.onSelectChanged !== null ? [evt("onPress", (e: NeonEvent): void => { toggleRow(row); })] : []);
 		const attrs: VAttr[] = [];
 		const kind = events.length === 0 ? "view" : "pressable";
@@ -142,7 +142,7 @@ export function DataTable(props: {
 		}));
 		const textStyle = accessor((): Style => {
 			const base: Style = { fontSize: 14, fontWeight: "bold", color: HEADING_INK };
-			return headingTextProp === null ? base : mergeStyle(base, (headingTextProp as Accessor<Style>)());
+			return headingTextProp === null ? base : mergeStyle(base, headingTextProp());
 		});
 		const label = element(<Text style={textStyle}>{column.label}</Text>);
 		const sortable = column.onSort !== null;
@@ -166,7 +166,7 @@ export function DataTable(props: {
 			const sort = column.onSort;
 			if (sort === null) { return; }
 			const index = at();
-			(sort as (i: number, a: boolean) => void)(index, nextSortAscending(index, sortIndex(), ascending()));
+			sort(index, nextSortAscending(index, sortIndex(), ascending()));
 		};
 		const events = sortable ? [evt("onPress", press)] : [];
 		return element(<View>{hostElement(sortable ? "pressable" : "view", attrs, events, content, box, null)}{divider()}</View>);
@@ -193,12 +193,12 @@ export function DataTable(props: {
 	};
 	const selectAll = (checked: boolean): void => {
 		if (onSelectAll !== null) {
-			(onSelectAll as (s: boolean) => void)(checked);
+			onSelectAll(checked);
 			return;
 		}
 		for (const row of untrack<DataRow[]>(rows)) {
 			const change = row.onSelectChanged;
-			if (change !== null && rowSelected(row) !== checked) { (change as (s: boolean) => void)(checked); }
+			if (change !== null && rowSelected(row) !== checked) { change(checked); }
 		}
 	};
 	const checkPad = (): Style => ({ paddingLeft: margin(), paddingRight: margin() / 2, justifyContent: "center" });
@@ -227,7 +227,7 @@ export function DataTable(props: {
 	const userStyle = props.style;
 	return ScrollView({
 		horizontal: accessor((): boolean => true),
-		style: accessor((): Style => mergeStyle({ flexGrow: 0, backgroundColor: "#ffffff" }, userStyle === null ? {} : (userStyle as Accessor<Style>)())),
+		style: accessor((): Style => mergeStyle({ flexGrow: 0, backgroundColor: "#ffffff" }, userStyle === null ? {} : userStyle())),
 		children: table,
 	});
 }

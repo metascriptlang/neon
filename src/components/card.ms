@@ -30,10 +30,10 @@ export function cardEdge(elevation: int32): int32 {
 export function Card(props: CardProps): NeonNode {
 	const { elevation, onPress } = props;
 	const user = props.style;
-	const level = (): int32 => cardEdge(elevation === null ? 1 : (elevation as Accessor<int32>)());
+	const level = (): int32 => cardEdge(elevation === null ? 1 : elevation());
 	const layout = (): Style => {
 		const base: Style = { flexDirection: "column", borderRadius: RADIUS };
-		return user === null ? base : layerStyles([base, (user as () => Style)()]);
+		return user === null ? base : layerStyles([base, user()]);
 	};
 	const edge = accessor((): Style => ({
 		...layout(),

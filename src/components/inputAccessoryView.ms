@@ -26,7 +26,7 @@ export function inputAccessoryViewNode(props: InputAccessoryViewProps): NeonNode
 	if (props.children === null) { return nothing; }
 	const { nativeID, backgroundColor, style } = props;
 	const box = (): Style => {
-		const own: Style = style === null ? {} : (style as Accessor<Style>)();
+		const own: Style = style === null ? {} : style();
 		return { ...own, position: "absolute", top: 0, left: 0, right: 0 };
 	};
 	const attrs: VAttr[] = [];

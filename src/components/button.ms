@@ -42,18 +42,18 @@ when (ios) {
 
 export function Button(props: ButtonProps): NeonNode {
 	const { onPress, color, disabled } = props;
-	const isDisabled = (): boolean => disabled !== null && (disabled as Accessor<boolean>)();
-	const tint = (): string => color === null ? defaultTint() : (color as Accessor<string>)();
+	const isDisabled = (): boolean => disabled !== null && disabled();
+	const tint = (): string => color === null ? defaultTint() : color();
 	const box = accessor((): Style => buttonBox(tint(), isDisabled()));
 	const label = accessor((): Style => buttonLabel(tint(), isDisabled()));
 	const press = (e: NeonEvent): void => {
 		if (isDisabled() || onPress === null) { return; }
-		(onPress as (x: NeonEvent) => void)(e);
+		onPress(e);
 	};
 	const title = props.title;
 	const a11y = props.accessibilityLabel === null ? title : props.accessibilityLabel as Accessor<string>;
 	const hintProp = props.accessibilityHint;
-	const hint = accessor((): string => hintProp === null ? "" : (hintProp as Accessor<string>)());
+	const hint = accessor((): string => hintProp === null ? "" : hintProp());
 	return element(<Pressable style={box} onPress={press} accessibilityRole="button" accessibilityLabel={a11y()} accessibilityHint={hint()}
 		accessibilityState={{ disabled: isDisabled() }}>
 		<Text style={label}>{buttonTitle(title())}</Text>
