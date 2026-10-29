@@ -36,7 +36,17 @@ export interface Scene3DHandle {
 export interface LightShadow {
 	mapSize: int32;
 	bias: float32;
+	normalBias: float32;
+	radius: float32;
 	opacity: float32;
+}
+
+export enum LightSlot {
+	Sun,
+	Spot,
+	Cube,
+	Directional,
+	Cookie,
 }
 
 export interface CameraEntry {
@@ -58,7 +68,9 @@ export interface SceneState {
 	invalidate: () => void;
 	limbo?: NodeId3D | null;
 	shadowMaterials: Vec<MaterialId | null>;
-	shadowOf: (light: NodeId3D, shadow: LightShadow | null) => void;
+	shadowOf: (light: NodeId3D, slot: LightSlot, shadow: LightShadow | null) => void;
+	claimLight: (slot: LightSlot, light: NodeId3D) => void;
+	releaseLight: (slot: LightSlot, light: NodeId3D) => void;
 	beforeRefresh: FrameHook[];
 }
 

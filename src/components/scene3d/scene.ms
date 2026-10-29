@@ -14,15 +14,18 @@ import {
 	ForwardRenderer, ForwardError, create, createHdrWhere, prepareFrame, drawOverScreen, closeForward,
 	setOutlineBlend, setOutlineSettings, setBloom,
 } from "../../../../void/src/void3d/forwardRenderer";
-import { ToneMode, setToneMode, setCameraView, setCameraPosition, setExposure, setElapsedTime, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
+import {
+	ToneMode, setToneMode, setCameraView, setCameraPosition, setExposure, setElapsedTime, attachShadow, attachSpotShadow,
+	attachCubeShadow, markChanged,
+} from "../../../../void/src/void3d/renderer";
 import { BloomSettings } from "../../../../void/src/void3d/bloom";
-import { DirShadowMap, closeDirShadow } from "../../../../void/src/void3d/dirShadowMap";
+import { DirShadowMap, ShadowSamplingKind, closeDirShadow } from "../../../../void/src/void3d/dirShadowMap";
 import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../../void/src/void3d/forwardOutline";
 import { fits } from "../../../../void/src/void3d/uniformPool";
 import { PixelFormat, contextGeneration, formatRenderable } from "../../../../void/src/gpu/door";
 import { Scene3D as VoidScene3D, NodeId3D, NO_NODE_ID, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
-import { Scene3DHandle, SceneState, LightShadow, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
+import { Scene3DHandle, SceneState, LightShadow, LightSlot, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
 import { runBeforeRefresh } from "./core";
 import { useVoidClock } from "../../render/voidClock";
 import { NeonEvent } from "../../render/event";
@@ -40,6 +43,26 @@ export interface Scene3DProps {
 	onPressMissed?: ((e: NeonEvent) => void) | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
+}
+
+function slotIndex(slot: LightSlot): int32 {
+	return match (slot) {
+		LightSlot.Sun => 0,
+		LightSlot.Spot => 1,
+		LightSlot.Cube => 2,
+		LightSlot.Directional => 3,
+		LightSlot.Cookie => 4,
+	};
+}
+
+function slotRefusal(slot: LightSlot): string {
+	return match (slot) {
+		LightSlot.Sun => "Light: only one directional Light casts shadows in a Scene3D",
+		LightSlot.Spot => "Light: only one spot Light casts shadows in a Scene3D; Void has one spot shadow map (LightError.TooManyShadowedSpots)",
+		LightSlot.Cube => "Light: only one point, rectangle or capsule Light casts shadows in a Scene3D; Void has one cube shadow map (LightError.TooManyCubeCasters)",
+		LightSlot.Directional => "Light: only one Directional light in a Scene3D; Void has one sun (LightError.TooManyDirectionalLights)",
+		LightSlot.Cookie => "Light: only one Spot light carries a map in a Scene3D; Void projects one cookie per frame (LightError.TooManyCookieSpots)",
+	};
 }
 
 function validBloom(settings: BloomSettings): boolean {
@@ -80,42 +103,63 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let deviceChecked = !hdr;
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			const handle: Scene3DHandle = { context: context, scene: scene, camera: null, renderer: renderer, invalidate: invalidate };
-			let shadow: DirShadowMap | null = null;
-			let caster: NodeId3D = NO_NODE_ID;
-			const dropShadow = (): void => {
-				const held = shadow;
-				if (held === null) { return; }
-				attachShadow(renderer.core, null);
-				closeDirShadow(held);
-				shadow = null;
-				caster = NO_NODE_ID;
+			const maps: (DirShadowMap | null)[] = [null, null, null];
+			const claims: NodeId3D[] = [NO_NODE_ID, NO_NODE_ID, NO_NODE_ID, NO_NODE_ID, NO_NODE_ID];
+			const claimed = (slot: LightSlot, light: NodeId3D): boolean => claims[slotIndex(slot)] === light;
+			const claimLight = (slot: LightSlot, light: NodeId3D): void => {
+				const at = slotIndex(slot);
+				if (claims[at] !== NO_NODE_ID && claims[at] !== light) { throw new Error(slotRefusal(slot)); }
+				claims[at] = light;
 			};
-			const shadowOf = (light: NodeId3D, settings: LightShadow | null): void => {
+			const releaseLight = (slot: LightSlot, light: NodeId3D): void => {
+				if (claimed(slot, light)) { claims[slotIndex(slot)] = NO_NODE_ID; }
+			};
+			const dropShadow = (slot: LightSlot): void => {
+				const at = slotIndex(slot);
+				const held = maps[at];
+				if (held === null) { return; }
+				if (slot === LightSlot.Sun) { attachShadow(renderer.core, null); }
+				else if (slot === LightSlot.Spot) { attachSpotShadow(renderer.core, null); }
+				else { attachCubeShadow(renderer.core, null); }
+				closeDirShadow(held);
+				maps[at] = null;
+				claims[at] = NO_NODE_ID;
+			};
+			const shadowOf = (light: NodeId3D, slot: LightSlot, settings: LightShadow | null): void => {
 				if (renderer.closed) { return; }
-				const owns = shadow !== null && caster.index === light.index && caster.generation === light.generation;
 				if (settings === null) {
-					if (owns) { dropShadow(); invalidate(); }
+					if (claimed(slot, light)) { dropShadow(slot); invalidate(); }
 					return;
 				}
-				if (shadow !== null && !owns) { throw new Error("Light: only one Light casts shadows in a Scene3D"); }
-				let held = shadow;
+				claimLight(slot, light);
+				const at = slotIndex(slot);
+				let held = maps[at];
 				if (held === null) {
-					const created = DirShadowMap.create(context, settings.mapSize);
-					if (!created.ok) { throw new Error("Light: castShadow failed: " + created.error.toString()); }
-					attachShadow(renderer.core, created.value);
+					const created = slot === LightSlot.Sun ? DirShadowMap.create(context, settings.mapSize) :
+						slot === LightSlot.Spot ? DirShadowMap.createSpot(context, settings.mapSize) :
+						DirShadowMap.createCube(context, settings.mapSize);
+					if (!created.ok) {
+						claims[at] = NO_NODE_ID;
+						throw new Error("Light: castShadow failed: " + created.error.toString());
+					}
+					if (slot === LightSlot.Sun) { attachShadow(renderer.core, created.value); }
+					else if (slot === LightSlot.Spot) { attachSpotShadow(renderer.core, created.value); }
+					else { attachCubeShadow(renderer.core, created.value); }
 					held = created.value;
-					shadow = held;
-					caster = light;
+					maps[at] = held;
 				}
 				held.size = settings.mapSize;
 				held.bias = settings.bias;
+				held.normalBias = settings.normalBias;
 				held.opacity = settings.opacity;
+				held.samplingKind = ShadowSamplingKind.Pcf;
+				held.pcfScale = settings.radius;
 				markChanged(renderer.core);
 				invalidate();
 			};
 			const state: SceneState = {
 				handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: invalidate, beforeRefresh: [],
-				shadowMaterials: [null, null, null, null], shadowOf: shadowOf,
+				shadowMaterials: [null, null, null, null], shadowOf: shadowOf, claimLight: claimLight, releaseLight: releaseLight,
 			};
 			if (hdr) { setToneMode(renderer.core, ToneMode.Filmic); }
 			let items: Vec<DrawItem> = [];
@@ -166,7 +210,9 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
 				unregister();
-				dropShadow();
+				dropShadow(LightSlot.Sun);
+				dropShadow(LightSlot.Spot);
+				dropShadow(LightSlot.Cube);
 				closeForward(renderer);
 				state.invalidate();
 				handle.camera = null;
