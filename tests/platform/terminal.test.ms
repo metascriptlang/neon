@@ -210,3 +210,75 @@ test "terminalHost: removeAttr restores the style field it drove" {
 	assert !n.style.bold && !n.style.dim && !n.style.italic && !n.style.underline, "flags back to off";
 	assert n.dirty, "a removal repaints";
 }
+
+test "paint: a box around accented and box-drawing text is sized in display cells" {
+	const root = createTerminalNode("box");
+	root.attrs.set("border", "true");
+	root.children.push(createTerminalTextNode("héllo─"));
+	const lines = paintNode(root, 10);
+	assert lines[0] === "┌────────┐\x1b[0m", "top rule spans the width";
+	assert lines[1] === "│héllo─  │\x1b[0m", "content pads by cells, not by a unit count of the accents";
+}
+
+test "paint: a wide character takes two cells" {
+	const root = createTerminalNode("box");
+	root.attrs.set("border", "true");
+	root.children.push(createTerminalTextNode("日本"));
+	assert paintNode(root, 8)[1] === "│日本  │\x1b[0m", "two wide characters fill four cells";
+	const narrow = createTerminalNode("box");
+	narrow.attrs.set("border", "true");
+	narrow.children.push(createTerminalTextNode("日本語"));
+	assert paintNode(narrow, 6)[1] === "│日本│\x1b[0m", "a wide character that does not fit is dropped whole";
+}
+
+test "paint: a styled line clipped inside a border keeps its escape sequences whole" {
+	const host = terminalHost();
+	const span = host.createElement("span");
+	host.setAttr(span, "color", "red");
+	tn(span).text = "héllo─wide";
+	const root = createTerminalNode("box");
+	root.attrs.set("border", "true");
+	root.children.push(tn(span));
+	assert paintNode(root, 7)[1] === "│\x1b[31mhéllo\x1b[0m│\x1b[0m", "the cut falls between cells and the reset survives";
+}
+
+test "paint: a styled line clipped to a narrower width ends on its reset" {
+	const host = terminalHost();
+	const node = host.createElement("span");
+	host.setAttr(node, "color", "red");
+	tn(node).text = "héllo─wide";
+	assert paintNode(tn(node), 5)[0] === "\x1b[31mhéllo\x1b[0m", "clip happens before styling";
+}
+
+test "paint: an unknown colour name fails loud, an empty one means no colour" {
+	const host = terminalHost();
+	const node = host.createElement("span");
+	tn(node).text = "x";
+	host.setAttr(node, "bg", "teal");
+	let message = "";
+	try { paintNode(tn(node), 5); } catch (e) { message = String(e); }
+	assert message.indexOf("teal") >= 0, "the unknown name is reported";
+	host.setAttr(node, "bg", "");
+	assert paintNode(tn(node), 5)[0] === "x", "empty means unstyled";
+}
+
+test "paint: a bright background uses the +10 code" {
+	const host = terminalHost();
+	const node = host.createElement("span");
+	host.setAttr(node, "bg", "bright-red");
+	tn(node).text = "x";
+	assert paintNode(tn(node), 5)[0] === "\x1b[101mx\x1b[0m", "bright-red background is 101";
+}
+
+test "paint: a malformed numeric attribute fails loud" {
+	const node = createTerminalNode("gap");
+	node.attrs.set("height", "abc");
+	let message = "";
+	try { paintNode(node, 5); } catch (e) { message = String(e); }
+	assert message.indexOf("height") >= 0, "the attribute is named";
+}
+
+test "measureText counts display cells" {
+	const host = terminalHost();
+	assert host.measureText!("日本é", {} as Style).width === 5, "two wide plus one narrow accent";
+}

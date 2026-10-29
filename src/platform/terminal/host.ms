@@ -1,18 +1,3 @@
-// Terminal Host — implements Neon's Host interface for terminal rendering.
-//
-// The Host creates TerminalNode objects (a retained tree), same as mockHost
-// creates MockNode and domHost creates DOM nodes. The paint pass (paint.ms)
-// walks the resulting TerminalNode tree and emits ANSI string lines.
-//
-// Supported tags:
-//   <box>    — container with optional border, padding, color
-//   <row>    — horizontal container (children side by side)
-//   <text>   — text block (wraps within parent width)
-//   <span>   — inline text fragment
-//   <line>   — single-line text (no wrapping, truncates)
-//   <hr>     — horizontal rule (fills width with ─)
-//   <gap>    — vertical spacer (height attribute = number of blank lines)
-
 import { Host, HostNode, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Style, isBoldWeight } from "../../render/style";
@@ -21,6 +6,7 @@ import {
 	TerminalNode, TerminalEvent, TerminalStyle,
 	createTerminalNode, createTerminalTextNode, makeStyle,
 } from "./types";
+import { cells } from "./paint";
 
 function hexNibble(c: string): int32 {
 	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
@@ -29,8 +15,6 @@ function hexNibble(c: string): int32 {
 	return -1;
 }
 
-// "#rgb" / "#rrggbb" → the nearest of the 8 ANSI base colors, which is all a
-// terminal can render. Any other string is passed through as a colour name.
 function ansiNameFor(css: string): string {
 	if (css === "") { return ""; }
 	if (css.charAt(0) !== "#") { return css; }
@@ -235,7 +219,7 @@ export function terminalHost(): Host {
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
-		measureText: (text: string, style: Style): TextMeasure => ({ width: text.length, height: 1, ascender: 1, descender: 0 }),
+		measureText: (text: string, style: Style): TextMeasure => ({ width: cells(text), height: 1, ascender: 1, descender: 0 }),
 	};
 }
 

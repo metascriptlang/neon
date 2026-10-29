@@ -1,112 +1,146 @@
-// Terminal paint — walks a TerminalNode tree and produces string[] (one per line).
-//
-// Layout model:
-//   <box flexDirection="column">  → children stacked vertically (default)
-//   <box flexDirection="row">     → children side by side horizontally
-//   <text>                        → text content, word-wrapped to width
-//   <hr>                          → horizontal rule filling width
-//   <gap height="N">              → N blank lines
-//
-// Box attrs: border ("true"), padding (number), color, bg
-// Text attrs: color, bold, dim, italic, underline
-//
-// This is the terminal equivalent of the browser engine's layout + paint pass.
-// Called after render builds the TerminalNode tree, and again on every
-// reactive update (dirty nodes).
-
 import { TerminalNode, TerminalStyle } from "./types";
 
-// ANSI SGR codes
+const ESC = 0x1b;
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
 const ITALIC = "\x1b[3m";
 const UNDERLINE = "\x1b[4m";
+const BACKGROUND_OFFSET = 10;
+const MAX_GAP_HEIGHT = 1000;
 
-function ansiColor(prefix: string, name: string): string {
-	if (name === "") { return ""; }
-	const codes: Map<string, string> = new Map<string, string>();
-	codes.set("black", prefix === "fg" ? "30" : "40");
-	codes.set("red", prefix === "fg" ? "31" : "41");
-	codes.set("green", prefix === "fg" ? "32" : "42");
-	codes.set("yellow", prefix === "fg" ? "33" : "43");
-	codes.set("blue", prefix === "fg" ? "34" : "44");
-	codes.set("magenta", prefix === "fg" ? "35" : "45");
-	codes.set("cyan", prefix === "fg" ? "36" : "46");
-	codes.set("white", prefix === "fg" ? "37" : "47");
-	codes.set("gray", prefix === "fg" ? "90" : "100");
-	codes.set("bright-red", prefix === "fg" ? "91" : "101");
-	codes.set("bright-green", prefix === "fg" ? "92" : "102");
-	codes.set("bright-yellow", prefix === "fg" ? "93" : "103");
-	codes.set("bright-blue", prefix === "fg" ? "94" : "104");
-	codes.set("bright-magenta", prefix === "fg" ? "95" : "105");
-	codes.set("bright-cyan", prefix === "fg" ? "96" : "106");
-	const code = codes.get(name);
-	if (code === null) { return ""; }
-	return "\x1b[" + code + "m";
+function foregroundCode(name: string): int32 {
+	match (name) {
+		"black" => { return 30; },
+		"red" => { return 31; },
+		"green" => { return 32; },
+		"yellow" => { return 33; },
+		"blue" => { return 34; },
+		"magenta" => { return 35; },
+		"cyan" => { return 36; },
+		"white" => { return 37; },
+		"gray" => { return 90; },
+		"bright-red" => { return 91; },
+		"bright-green" => { return 92; },
+		"bright-yellow" => { return 93; },
+		"bright-blue" => { return 94; },
+		"bright-magenta" => { return 95; },
+		"bright-cyan" => { return 96; },
+		_ => { throw new Error(`terminal paint: "${name}" is not an ansi colour name`); },
+	};
+}
+
+function colorEscape(name: string, offset: int32): string {
+	return "\x1b[" + String(foregroundCode(name) + offset) + "m";
 }
 
 function stylePrefix(s: TerminalStyle): string {
 	let p = "";
-	if (s.bold) { p = p + BOLD; }
-	if (s.dim) { p = p + DIM; }
-	if (s.italic) { p = p + ITALIC; }
-	if (s.underline) { p = p + UNDERLINE; }
-	if (s.color !== "") { p = p + ansiColor("fg", s.color); }
-	if (s.bg !== "") { p = p + ansiColor("bg", s.bg); }
+	if (s.bold) { p += BOLD; }
+	if (s.dim) { p += DIM; }
+	if (s.italic) { p += ITALIC; }
+	if (s.underline) { p += UNDERLINE; }
+	if (s.color !== "") { p += colorEscape(s.color, 0); }
+	if (s.bg !== "") { p += colorEscape(s.bg, BACKGROUND_OFFSET); }
 	return p;
 }
 
-function pad2(n: number): string {
-	if (n < 10) { return " " + n.toString(); }
-	return n.toString();
+function cellWidth(cp: int32): int32 {
+	if (cp === 0x200d || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0x300 && cp <= 0x36f) || (cp >= 0xfe00 && cp <= 0xfe0f)) { return 0; }
+	if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3)
+		|| (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe6f) || (cp >= 0xff00 && cp <= 0xff60)
+		|| (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1f9ff)
+		|| (cp >= 0x20000 && cp <= 0x3fffd)) { return 2; }
+	return 1;
 }
 
-// Word-wrap a string to a given width. Returns array of lines (no ANSI).
-function wrapText(s: string, width: number): string[] {
+function codePointAt(s: string, i: int32): int32 {
+	const hi = s.charCodeAt(i);
+	if (hi >= 0xd800 && hi <= 0xdbff && i + 1 < s.length) {
+		const lo = s.charCodeAt(i + 1);
+		if (lo >= 0xdc00 && lo <= 0xdfff) { return 0x10000 + (hi - 0xd800) * 0x400 + (lo - 0xdc00); }
+	}
+	return hi;
+}
+
+function escapeEnd(s: string, start: int32): int32 {
+	let i = start;
+	while (i < s.length && s.charCodeAt(i) !== "m".code) { i += 1; }
+	return i < s.length ? i + 1 : i;
+}
+
+export function cells(s: string): int32 {
+	let total = 0;
+	let i = 0;
+	while (i < s.length) {
+		if (s.charCodeAt(i) === ESC) { i = escapeEnd(s, i); continue; }
+		const cp = codePointAt(s, i);
+		total += cellWidth(cp);
+		i += cp > 0xffff ? 2 : 1;
+	}
+	return total;
+}
+
+function clip(s: string, width: int32): string {
+	let out = "";
+	let used = 0;
+	let full = false;
+	let i = 0;
+	while (i < s.length) {
+		if (s.charCodeAt(i) === ESC) {
+			const end = escapeEnd(s, i);
+			out += s.slice(i, end);
+			i = end;
+			continue;
+		}
+		const cp = codePointAt(s, i);
+		const units = cp > 0xffff ? 2 : 1;
+		const w = cellWidth(cp);
+		if (!full && used + w > width) { full = true; }
+		if (!full) {
+			out += s.slice(i, i + units);
+			used += w;
+		}
+		i += units;
+	}
+	return out;
+}
+
+function padTo(s: string, width: int32): string {
+	const have = cells(s);
+	if (have >= width) { return s; }
+	return s + " ".repeat(width - have);
+}
+
+function wrapText(s: string, width: int32): string[] {
 	if (width <= 0) { return [""]; }
-	const words = s.split(" ");
 	const lines: string[] = [];
 	let current = "";
-	for (const word of words) {
+	for (const word of s.split(" ")) {
 		if (current === "") {
 			current = word;
-		} else if (current.length + 1 + word.length <= width) {
-			current = current + " " + word;
+		} else if (cells(current) + 1 + cells(word) <= width) {
+			current += " " + word;
 		} else {
 			lines.push(current);
 			current = word;
 		}
 	}
-	if (current !== "" || lines.length === 0) {
-		lines.push(current);
-	}
+	if (current !== "" || lines.length === 0) { lines.push(current); }
 	return lines;
 }
 
-// Split text on explicit newlines, then word-wrap each segment.
-function splitLines(s: string, width: number): string[] {
+function splitLines(s: string, width: int32): string[] {
 	const result: string[] = [];
-	const segments = s.split("\n");
-	for (const seg of segments) {
-		const wrapped = wrapText(seg, width);
-		for (const w of wrapped) {
-			result.push(w);
-		}
+	for (const seg of s.split("\n")) {
+		for (const w of wrapText(seg, width)) { result.push(w); }
 	}
 	return result;
 }
 
-// Apply ANSI style to a line and pad/truncate to exact width.
-function styleLine(content: string, width: number, s: TerminalStyle, pad: boolean): string {
+function styleLine(content: string, width: int32, s: TerminalStyle): string {
+	const body = clip(content, width);
 	const prefix = stylePrefix(s);
-	const visibleLen = content.length;
-	let body = content;
-	if (pad && visibleLen < width) {
-		body = content + " ".repeat((width - visibleLen) as int32);
-	} else if (visibleLen > width) {
-		body = content.slice(0, width as int32);
-	}
 	if (prefix === "") { return body; }
 	return prefix + body + RESET;
 }
@@ -118,88 +152,65 @@ function getAttr(node: TerminalNode, name: string, fallback: string): string {
 	return v;
 }
 
-function getAttrNum(node: TerminalNode, name: string, fallback: number): number {
-	if (!node.attrs.has(name)) { return fallback; }
-	const v = node.attrs.get(name);
-	if (v === null) { return fallback; }
-	return parseInt(v) as number;
+function getAttrCount(node: TerminalNode, name: string, fallback: int32, max: int32): int32 {
+	const v = getAttr(node, name, "");
+	if (v === "") { return fallback; }
+	let n = 0;
+	for (let i = 0; i < v.length; i += 1) {
+		const digit = v.charCodeAt(i) - "0".code;
+		n = n * 10 + digit;
+		if (digit < 0 || digit > 9 || n > max) { throw new Error(`terminal paint: ${name}="${v}" is not a whole number from 0 to ${max}`); }
+	}
+	return n;
 }
 
-// Paint a single node into a list of styled lines fitting within `width`.
-export function paintNode(node: TerminalNode, width: number): string[] {
+function paintLines(text: string, width: int32, style: TerminalStyle): string[] {
+	const result: string[] = [];
+	for (const line of splitLines(text, width)) { result.push(styleLine(line, width, style)); }
+	return result;
+}
+
+export function paintNode(node: TerminalNode, width: int32): string[] {
 	if (node.style.hidden) { return []; }
-	if (node.isText) {
-		const lines = splitLines(node.text, width);
-		const result: string[] = [];
-		for (const line of lines) {
-			result.push(styleLine(line, width, node.style, false));
-		}
-		return result;
-	}
+	if (node.isText) { return paintLines(node.text, width, node.style); }
 
 	match (node.tag) {
-		"text" => {
-			const lines = splitLines(node.text, width);
-			const result: string[] = [];
-			for (const line of lines) {
-				result.push(styleLine(line, width, node.style, false));
-			}
-			return result;
-		},
-		"span" => {
-			return [styleLine(node.text, width, node.style, false)];
-		},
-		"hr" => {
-			return [styleLine("─".repeat(width as int32), width, node.style, false)];
-		},
+		"text" => { return paintLines(node.text, width, node.style); },
+		"span" => { return [styleLine(node.text, width, node.style)]; },
+		"hr" => { return [styleLine("─".repeat(width), width, node.style)]; },
 		"gap" => {
-			const h = getAttrNum(node, "height", 1);
 			const result: string[] = [];
-			let i = 0;
-			while (i < h) { result.push(""); i += 1; }
+			for (let i = 0; i < getAttrCount(node, "height", 1, MAX_GAP_HEIGHT); i += 1) { result.push(""); }
 			return result;
 		},
 		_ => {},
 	};
 
-	// Default: container (box, row, custom tags)
 	const hasBorder = getAttr(node, "border", "false") === "true";
-	const padding = getAttrNum(node, "padding", 0);
-	let dirDefault = "column";
-	if (node.tag === "row") { dirDefault = "row"; }
-	const flexDirection = getAttr(node, "flexDirection", dirDefault);
+	const padding = getAttrCount(node, "padding", 0, width);
+	const flexDirection = getAttr(node, "flexDirection", node.tag === "row" ? "row" : "column");
+	const innerWidth = Math.max(0, width - (hasBorder ? 2 : 0) - padding * 2) as int32;
 
-	const innerWidth = width - (hasBorder ? 2 : 0) - padding * 2;
-
-	if (flexDirection === "row") {
-		return paintRow(node, innerWidth, hasBorder, padding);
-	}
+	if (flexDirection === "row") { return paintRow(node, innerWidth, hasBorder, padding); }
 	return paintColumn(node, innerWidth, hasBorder, padding);
 }
 
-function paintColumn(node: TerminalNode, innerWidth: number, hasBorder: boolean, padding: number): string[] {
+function paintColumn(node: TerminalNode, innerWidth: int32, hasBorder: boolean, padding: int32): string[] {
 	const lines: string[] = [];
-
 	for (const child of node.children) {
-		const childLines = paintNode(child, innerWidth);
-		for (const line of childLines) {
-			lines.push(line);
-		}
+		for (const line of paintNode(child, innerWidth)) { lines.push(line); }
 	}
-
 	return applyBoxDecoration(lines, node, innerWidth, hasBorder, padding);
 }
 
-function paintRow(node: TerminalNode, innerWidth: number, hasBorder: boolean, padding: number): string[] {
+function paintRow(node: TerminalNode, innerWidth: int32, hasBorder: boolean, padding: int32): string[] {
 	const shown: TerminalNode[] = [];
 	for (const child of node.children) {
 		if (!child.style.hidden) { shown.push(child); }
 	}
-	if (shown.length === 0) {
-		return applyBoxDecoration([], node, innerWidth, hasBorder, padding);
-	}
+	if (shown.length === 0) { return applyBoxDecoration([], node, innerWidth, hasBorder, padding); }
 
-	const childWidth = (innerWidth / shown.length) as int32;
+	const childWidth = innerWidth / shown.length;
 	const blocks: string[][] = [];
 	let maxLines = 0;
 	for (const child of shown) {
@@ -209,91 +220,46 @@ function paintRow(node: TerminalNode, innerWidth: number, hasBorder: boolean, pa
 	}
 
 	const lines: string[] = [];
-	let row = 0;
-	while (row < maxLines) {
+	for (let row = 0; row < maxLines; row += 1) {
 		let line = "";
-		let bi = 0;
-		while (bi < blocks.length) {
-			const block = blocks[bi];
-			if (row < block.length) {
-				line = line + block[row];
-				const padLen = childWidth - visibleLen(block[row]);
-				if (padLen > 0) { line = line + " ".repeat(padLen as int32); }
-			} else {
-				line = line + " ".repeat(childWidth);
-			}
-			bi += 1;
+		for (const block of blocks) {
+			line += padTo(row < block.length ? block[row] : "", childWidth);
 		}
 		lines.push(line);
-		row += 1;
 	}
-
 	return applyBoxDecoration(lines, node, innerWidth, hasBorder, padding);
 }
 
-function visibleLen(s: string): number {
-	let len = 0;
-	let inEscape = false;
-	let i = 0;
-	while (i < s.length) {
-		const code = s.charCodeAt(i);
-		if (code === 0x1b) { inEscape = true; i += 1; continue; }
-		if (inEscape) {
-			if (code === "m".code) { inEscape = false; }
-			i += 1;
-			continue;
-		}
-		len += 1;
-		i += 1;
-	}
-	return len;
-}
-
 function applyBoxDecoration(
-	lines: string[], node: TerminalNode, innerWidth: number, hasBorder: boolean, padding: number
+	lines: string[], node: TerminalNode, innerWidth: int32, hasBorder: boolean, padding: int32
 ): string[] {
 	let working = lines;
 
 	if (padding > 0) {
-		const padLine = " ".repeat(innerWidth as int32);
+		const padLine = " ".repeat(innerWidth);
+		const side = " ".repeat(padding);
 		const padded: string[] = [];
-		let pi = 0;
-		while (pi < padding) { padded.push(padLine); pi += 1; }
-		for (const line of working) {
-			let content = line;
-			const vl = visibleLen(line);
-			if (vl < innerWidth) { content = line + " ".repeat((innerWidth - vl) as int32); }
-			padded.push(" ".repeat(padding as int32) + content + " ".repeat(padding as int32));
-		}
-		pi = 0;
-		while (pi < padding) { padded.push(padLine); pi += 1; }
+		for (let i = 0; i < padding; i += 1) { padded.push(padLine); }
+		for (const line of working) { padded.push(side + padTo(line, innerWidth) + side); }
+		for (let i = 0; i < padding; i += 1) { padded.push(padLine); }
 		working = padded;
 	}
 
 	if (hasBorder) {
 		const totalWidth = innerWidth + padding * 2;
 		const prefix = stylePrefix(node.style);
-		const top = prefix + "┌" + "─".repeat(totalWidth as int32) + "┐" + RESET;
-		const bottom = prefix + "└" + "─".repeat(totalWidth as int32) + "┘" + RESET;
-		const bordered: string[] = [top];
+		const rule = "─".repeat(totalWidth);
+		const bordered: string[] = [prefix + "┌" + rule + "┐" + RESET];
 		for (const line of working) {
-			const vl = visibleLen(line);
-			const totalContentWidth = totalWidth;
-			let content = line;
-			if (vl < totalContentWidth) {
-				content = line + " ".repeat((totalContentWidth - vl) as int32);
-			} else if (vl > totalContentWidth) {
-				content = line.slice(0, totalContentWidth as int32);
-			}
-			bordered.push(prefix + "│" + content + "│" + RESET);
+			bordered.push(prefix + "│" + padTo(line, totalWidth) + "│" + RESET);
 		}
-		bordered.push(bottom);
+		bordered.push(prefix + "└" + rule + "┘" + RESET);
 		working = bordered;
 	}
 
 	return working;
 }
 
-export function paintTree(root: TerminalNode, width: number): string[] {
+export function paintTree(root: TerminalNode, width: int32): string[] {
 	return paintNode(root, width);
 }
