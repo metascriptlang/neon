@@ -23,3 +23,5 @@ export { RenderTexture, RenderTextureHandle } from "./scene3d/renderTexture";
 export { useFrame } from "../render/voidClock";
 export { Pointer3DEvent, PointerProps } from "./scene3d/pointer";
 export { OrbitControls, OrbitControlsProps } from "./scene3d/orbitControls";
+export { Decal, DecalProps, DecalNormalFade } from "./scene3d/decal";
+export { Line, LineProps } from "./scene3d/line";
