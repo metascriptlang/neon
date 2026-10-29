@@ -10,8 +10,10 @@ class BoundaryKey {}
 
 const BOUNDARY_KEY = new BoundaryKey();
 
+enum BoundaryKind { Loading, Errored }
+
 class Boundary {
-	kind: int32;
+	kind: BoundaryKind;
 	parent: Boundary | null;
 	tree: Computation | null = null;
 	output: Computation | null = null;
@@ -21,10 +23,10 @@ class Boundary {
 	fallbackShown: boolean = false;
 	failure: Signal<Error | null> | null;
 
-	constructor(kind: int32, parent: Boundary | null) {
+	constructor(kind: BoundaryKind, parent: Boundary | null) {
 		this.kind = kind;
 		this.parent = parent;
-		this.failure = kind === STATUS_ERROR ? new Signal<Error | null>(null, null, true, true) : null;
+		this.failure = kind === BoundaryKind.Errored ? new Signal<Error | null>(null, null, true, true) : null;
 	}
 }
 
@@ -40,11 +42,15 @@ function boundaryOf(node: Computation): Boundary | null {
 }
 
 function isCollecting(b: Boundary): boolean {
-	return b.kind === STATUS_ERROR || !b.initialized;
+	return b.kind === BoundaryKind.Errored || !b.initialized;
 }
 
 function unsettled(b: Boundary): int32 {
-	return b.kind === STATUS_ERROR ? STATUS_ERROR | STATUS_PENDING : STATUS_PENDING;
+	return b.kind === BoundaryKind.Errored ? STATUS_ERROR | STATUS_PENDING : STATUS_PENDING;
+}
+
+function catches(b: Boundary): int32 {
+	return b.kind === BoundaryKind.Errored ? STATUS_ERROR : STATUS_PENDING;
 }
 
 function addReader(b: Boundary, node: Computation): void {
@@ -115,7 +121,7 @@ function statusOf(node: Computation): Error {
 // boundaries.ts:161 caught
 function caught(b: Boundary, node: Computation, error: Error | null): void {
 	let reader = node;
-	if (b.kind === STATUS_ERROR) {
+	if (b.kind === BoundaryKind.Errored) {
 		const raised = error !== null ? error : statusOf(node);
 		reader = errorSource(node, raised);
 		(b.failure as Signal<Error | null>).set(raised);
@@ -138,7 +144,7 @@ function catchStatus(node: Computation, flags: int32, error: Error | null): bool
 		return false;
 	}
 	for (let b = boundaryOf(node); b !== null; b = b.parent) {
-		if ((b.kind & flags) === 0) { continue; }
+		if ((catches(b) & flags) === 0) { continue; }
 		if (isCollecting(b)) {
 			caught(b, node, error);
 			return true;
@@ -264,7 +270,7 @@ function derive<T>(b: Boundary, content: Accessor<T>, show: (b: Boundary) => T):
 	const status = tree.status & (STATUS_PENDING | STATUS_ERROR);
 	if (status !== 0) {
 		linkDependency(tree, self);
-		if ((status & b.kind) !== 0) {
+		if ((status & catches(b)) !== 0) {
 			if (isCollecting(b)) {
 				caught(b, tree, null);
 				return showFallback<T>(b, show);
@@ -279,7 +285,7 @@ function derive<T>(b: Boundary, content: Accessor<T>, show: (b: Boundary) => T):
 	try {
 		value = content();
 	} catch (e) {
-		if (e instanceof NotReadyError ? b.kind === STATUS_PENDING : b.kind === STATUS_ERROR) {
+		if (e instanceof NotReadyError ? b.kind === BoundaryKind.Loading : b.kind === BoundaryKind.Errored) {
 			if (isCollecting(b)) {
 				caught(b, tree, e);
 				return showFallback<T>(b, show);
@@ -297,7 +303,7 @@ function derive<T>(b: Boundary, content: Accessor<T>, show: (b: Boundary) => T):
 }
 
 // boundaries.ts:471 createBoundary
-function createBoundary<T>(kind: int32, fn: () => T, show: (b: Boundary) => T): Accessor<T> {
+function createBoundary<T>(kind: BoundaryKind, fn: () => T, show: (b: Boundary) => T): Accessor<T> {
 	installBoundaryHooks(catchStatus, sweepBoundaries, heldRun);
 	const owner = createOwner();
 	const b = new Boundary(kind, boundaryOf(owner));
@@ -318,7 +324,7 @@ function createBoundary<T>(kind: int32, fn: () => T, show: (b: Boundary) => T): 
 
 // boundaries.ts:739 createLoadingBoundary, without `on`: the dependency list re-arms a boundary through a held frame
 export function createLoadingBoundary<T>(fn: () => T, fallback: () => T): Accessor<T> {
-	return createBoundary<T>(STATUS_PENDING, fn, (b: Boundary): T => fallback());
+	return createBoundary<T>(BoundaryKind.Loading, fn, (b: Boundary): T => fallback());
 }
 
 function failureOf(b: Boundary): Accessor<Error> {
@@ -332,5 +338,5 @@ function failureOf(b: Boundary): Accessor<Error> {
 
 // boundaries.ts:770 createErrorBoundary
 export function createErrorBoundary<T>(fn: () => T, fallback: (error: Accessor<Error>, reset: () => void) => T): Accessor<T> {
-	return createBoundary<T>(STATUS_ERROR, fn, (b: Boundary): T => fallback(failureOf(b), (): void => { reset(b); }));
+	return createBoundary<T>(BoundaryKind.Errored, fn, (b: Boundary): T => fallback(failureOf(b), (): void => { reset(b); }));
 }
