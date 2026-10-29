@@ -8,7 +8,7 @@ import {
 	NodeId3D, NO_NODE_ID, LightKind, collectLights, nodeCount,
 } from "../../../void/src/void3d/scene";
 import { LIGHT_UNIFORM_LENGTH, LIGHT_RECORD_LENGTH, LIGHT_RECORD_COLOR } from "../../../void/src/void3d/gpu3d";
-import { vec3 } from "../../../void/src/math/math3d";
+import { vec3, vec4, Vec3 } from "../../../void/src/math/math3d";
 import { approx } from "../../../void/src/test/helpers";
 import { DirShadowMap } from "../../../void/src/void3d/dirShadowMap";
 
@@ -182,4 +182,70 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 		assert scene.lights[1].priority === 2;
 	} finally { dispose(); resetErrorHalt(); }
 	assert refs[0].renderer.closed && refs[0].scene.nodeCount() === 0;
+}
+
+const reads: int32[] = [0, 0, 0];
+
+function colorOf(tick: int32): Vec3 {
+	reads[0] += 1;
+	return vec3(0.1, 0.2, 0.3);
+}
+
+function radiusOf(value: float32): float32 {
+	reads[1] += 1;
+	return value;
+}
+
+function powerOf(value: float32): float32 {
+	reads[2] += 1;
+	return value;
+}
+
+test "each Light prop has its own binder: one prop changing re-reads none of the others" {
+	const [tick, setTick] = createSignal(0);
+	const [radius, setRadius] = createSignal<float32>(2.0);
+	const [power, setPower] = createSignal<float32>(1.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene3D>
+		<Light kind={LightKind.Point} color={colorOf(tick())} radius={radiusOf(radius())} power={powerOf(power())} />
+	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
+	try {
+		reads[0] = 0; reads[1] = 0; reads[2] = 0;
+		setRadius(5.0); flush();
+		assert reads[0] === 0 && reads[1] === 1 && reads[2] === 0;
+		setPower(3.0); flush();
+		assert reads[0] === 0 && reads[1] === 1 && reads[2] === 1;
+		setTick(1); flush();
+		assert reads[0] === 1 && reads[1] === 1 && reads[2] === 1;
+	} finally { dispose(); resetErrorHalt(); }
+}
+
+test "a Light accessor that returns an equal fresh value writes nothing and asks for no frame" {
+	const [tick, setTick] = createSignal(0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene3D>
+		<Light kind={LightKind.Point} color={colorOf(tick())} radius={radiusOf((tick() * 0.0 + 4.0) as float32)} />
+	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const requests = frameRequests(root.children[0]);
+		setTick(1); flush();
+		setTick(2); flush();
+		assert frameRequests(root.children[0]) === requests;
+	} finally { dispose(); resetErrorHalt(); }
+}
+
+test "Scene3D background takes an equal fresh Vec4 each run and refuses only a real change" {
+	const [tick, setTick] = createSignal(0);
+	const [red, setRed] = createSignal<float32>(0.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene3D background={vec4(red(), (tick() * 0.0) as float32, 0.0, 1.0)} /></Void>),
+		mockHost(), root as unknown as HostNode);
+	try {
+		setTick(1); flush();
+		let message = "";
+		try { setRed(0.5); flush(); }
+		catch (error) { message = error.toString(); }
+		finally { resetErrorHalt(); }
+		assert message.includes("Scene3D: background is fixed at mount; remount the Scene3D to change it");
+	} finally { dispose(); resetErrorHalt(); }
 }
