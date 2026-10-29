@@ -1,5 +1,5 @@
 // CSS colours as SVG paint takes them: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba()
-// with numbers or percentages, the 148 CSS named colours and `transparent`.
+// with numbers or percentages, hsl()/hsla(), the 148 CSS named colours and `transparent`.
 
 export struct Rgba {
 	r: int32;
@@ -102,14 +102,47 @@ function alphaOf(text: string): float64 {
 	return Math.min(Math.max(v, 0), 1);
 }
 
+function percentOf(text: string): float64 {
+	const t = text.trim();
+	if (!t.endsWith("%")) { return NaN; }
+	return Math.min(Math.max(parseFloat(t.substring(0, t.length - 1)), 0), 100) / 100;
+}
+
+function hueOf(text: string): float64 {
+	const t = text.trim();
+	const h: float64 = parseFloat(t.endsWith("deg") ? t.substring(0, t.length - 3) : t);
+	return ((h % 360) + 360) % 360;
+}
+
+function hslChannel(n: int32, h: float64, s: float64, l: float64): int32 {
+	const k = (n + h / 30) % 12;
+	const a = s * Math.min(l, 1 - l);
+	return Math.round((l - a * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1))) * 255) as int32;
+}
+
+function parseHsl(body: string[]): Result<Rgba, ColorError> {
+	const h = hueOf(body[0]);
+	const s = percentOf(body[1]);
+	const l = percentOf(body[2]);
+	if (h !== h || s !== s || l !== l) { return Result.err(ColorError.Unknown); }
+	return Result.ok({
+		r: hslChannel(0, h, s, l),
+		g: hslChannel(8, h, s, l),
+		b: hslChannel(4, h, s, l),
+		a: body.length === 4 ? alphaOf(body[3]) : 1.0,
+	});
+}
+
 function parseFunction(text: string): Result<Rgba, ColorError> {
 	const open = text.indexOf("(");
 	const close = text.lastIndexOf(")");
 	if (open < 0 || close < open) { return Result.err(ColorError.Unknown); }
 	const name = text.substring(0, open).trim();
-	if (name !== "rgb" && name !== "rgba") { return Result.err(ColorError.Unknown); }
+	const isRgb = name === "rgb" || name === "rgba";
+	if (!isRgb && name !== "hsl" && name !== "hsla") { return Result.err(ColorError.Unknown); }
 	const body = text.substring(open + 1, close).split("/").join(",").split(",");
 	if (body.length !== 3 && body.length !== 4) { return Result.err(ColorError.Unknown); }
+	if (!isRgb) { return parseHsl(body); }
 	return Result.ok({
 		r: channel(body[0]),
 		g: channel(body[1]),
