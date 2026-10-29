@@ -50,6 +50,17 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 			let width = props.width();
 			let height = props.height();
 			checkedSize(width, height);
+			// Cleanups run last-registered first: this one is first, so a pinned material throws only after the texture and target are released.
+			let material: MaterialId | null = null;
+			onCleanup((): void => {
+				const shown = material;
+				if (shown === null) { return; }
+				if (context.materialPins[(shown as MaterialId).index] > 0) {
+					throw new Error("RenderTexture: a Mesh still shows its material; unmount that Mesh first");
+				}
+				const released = releaseMaterial(context, shown as MaterialId);
+				if (!released.ok) { throw new Error("RenderTexture: releaseMaterial failed: " + released.error.toString()); }
+			});
 			const target = RenderTarget.allocate(width, height, PixelFormat.Rgba8, true);
 			onCleanup((): void => { target.close(); });
 			const shown = addTargetTexture(context, target, FilterMode.Linear, Wrap.Clamp, TextureAlpha.Premultiplied);
@@ -79,14 +90,7 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				if (!released.ok) { throw new Error("RenderTexture: releaseUniforms failed: " + released.error.toString()); }
 				throw new Error("RenderTexture: addMaterial failed: " + added.error.toString());
 			}
-			const material = added.value;
-			onCleanup((): void => {
-				if (context.materialPins[material.index] > 0) {
-					throw new Error("RenderTexture: a Mesh still shows its material; unmount that Mesh first");
-				}
-				const released = releaseMaterial(context, material);
-				if (!released.ok) { throw new Error("RenderTexture: releaseMaterial failed: " + released.error.toString()); }
-			});
+			material = added.value;
 			let dirty = true;
 			const into: AreaTarget = { target, drawers: [] };
 			const hub = createAreaHub({
@@ -142,7 +146,7 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				dirty = false;
 			});
 			if (props.ref !== null) {
-				(props.ref as (handle: RenderTextureHandle) => void)({ texture: texture, material: material });
+				(props.ref as (handle: RenderTextureHandle) => void)({ texture: texture, material: added.value });
 			}
 			const children = props.children;
 			if (children !== null) {
