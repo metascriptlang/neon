@@ -11,6 +11,7 @@ import {
 	MATERIAL_SATURATION,
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
+	MATERIAL_PARALLAX,
 	MATERIAL_COLOR,
 	MOVING_UV_MATRIX,
 	MOVING_UV_OFFSET,
@@ -19,9 +20,24 @@ import {
 	MOVING_DISSOLVE_THRESHOLD,
 	MOVING_DISSOLVE_EDGE_WIDTH,
 	MOVING_DISSOLVE_EDGE_COLOR,
+	MOVING_FLIPBOOK_COLUMNS,
+	MOVING_FLIPBOOK_ROWS,
+	MOVING_FLIPBOOK_FRAMES,
+	MOVING_FLIPBOOK_SPEED,
+	MOVING_FLIPBOOK_START_TIME,
+	MOVING_FLIPBOOK_START_FRAME,
+	MOVING_FLIPBOOK_LOOP,
+	MOVING_FLIPBOOK_BLEND,
+	MOVING_FADE_NEAR_START,
+	MOVING_FADE_NEAR_END,
+	MOVING_FADE_FAR_START,
+	MOVING_FADE_FAR_END,
+	MOVING_COLOR_KEY,
 	PBR_METALNESS,
 	PBR_ROUGHNESS,
 	PBR_OCCLUSION,
+	PBR_OCCLUSION_STRENGTH,
+	PBR_PARALLAX_STEPS,
 	PBR_UV_MATRIX,
 	PBR_UV_OFFSET,
 	PBR_UV_SCROLL,
@@ -41,6 +57,30 @@ import {
 } from "../../../../void/src/void3d/draw";
 import { requireScene, whiteMaterialBlock } from "./core";
 
+// A grid of frames in the base texture, Heaps' AnimatedTexture (void3d/gpu3d.ms MOVING_FLIPBOOK_*).
+// numberOfFrames, fps, startFrame and loop are drei's SpriteAnimator props
+// (SpriteAnimator.tsx:125-133); columns, rows, startTime (seconds of the frame clock) and blend
+// (mix the next frame in by the fraction elapsed) have no drei name.
+export struct Flipbook {
+	columns: int32;
+	rows: int32;
+	numberOfFrames: int32;
+	fps: float32;
+	startFrame: int32;
+	startTime: float32;
+	loop: boolean;
+	blend: boolean;
+}
+
+// Heaps' DistanceFade in world units from the camera: alpha rises from 0 to 1 between nearStart
+// and nearEnd and falls to 0 between farStart and farEnd. A side with start equal to end is off.
+export struct DistanceFade {
+	nearStart: float32;
+	nearEnd: float32;
+	farStart: float32;
+	farEnd: float32;
+}
+
 export interface MaterialProps {
 	unlit?: Accessor<boolean> | null;
 	kind?: Accessor<MaterialKind> | null;
@@ -52,6 +92,8 @@ export interface MaterialProps {
 	emissiveTexture?: Accessor<TextureId> | null;
 	backTexture?: Accessor<TextureId> | null;
 	dissolveTexture?: Accessor<TextureId> | null;
+	metalRoughTexture?: Accessor<TextureId> | null;
+	occlusionTexture?: Accessor<TextureId> | null;
 	color?: Accessor<Color> | null;
 	saturation?: Accessor<float32> | null;
 	alphaKill?: Accessor<float32> | null;
@@ -65,6 +107,13 @@ export interface MaterialProps {
 	dissolve?: Accessor<float32> | null;
 	dissolveEdgeWidth?: Accessor<float32> | null;
 	dissolveEdgeColor?: Accessor<Color> | null;
+	aoMapIntensity?: Accessor<float32> | null;
+	occlusionChannel?: Accessor<int32> | null;
+	parallaxScale?: Accessor<float32> | null;
+	parallaxSteps?: Accessor<int32> | null;
+	flipbook?: Accessor<Flipbook> | null;
+	distanceFade?: Accessor<DistanceFade> | null;
+	colorKey?: Accessor<Color> | null;
 }
 
 function refuse(reason: string): Error {
@@ -88,7 +137,16 @@ function movesUv(props: MaterialProps): boolean {
 }
 
 function pbrOf(props: MaterialProps): boolean {
-	return props.metalness !== null || props.roughness !== null;
+	return props.metalness !== null || props.roughness !== null ||
+		props.metalRoughTexture !== null || props.occlusionTexture !== null;
+}
+
+function movesBlock(props: MaterialProps): boolean {
+	return props.flipbook !== null || props.distanceFade !== null || props.colorKey !== null;
+}
+
+function mapsOccluded(props: MaterialProps): boolean {
+	return props.aoMapIntensity !== null || props.occlusionChannel !== null;
 }
 
 function shapeOf(props: MaterialProps): Material {
@@ -97,6 +155,8 @@ function shapeOf(props: MaterialProps): Material {
 	const emissive = textureOf(props.emissiveTexture);
 	const back = textureOf(props.backTexture);
 	const noise = textureOf(props.dissolveTexture);
+	const metalRough = textureOf(props.metalRoughTexture);
+	const occlusion = textureOf(props.occlusionTexture);
 	const unlit = flagOf(props.unlit);
 	const textured = texture.isTexture();
 	if (unlit && !textured) { throw refuse("unlit needs a texture; Void has no untextured unlit program"); }
@@ -112,15 +172,44 @@ function shapeOf(props: MaterialProps): Material {
 		throw refuse("Void has no pbr program with a back texture or a dissolve");
 	}
 	if (movesUv(props) && !textured) { throw refuse("uvRepeat, uvOffset and uvScroll need a texture"); }
+	if (metalRough.isTexture() !== occlusion.isTexture()) {
+		throw refuse("metalRoughTexture and occlusionTexture go together; Void's pbr maps program reads both");
+	}
+	const mapped = metalRough.isTexture();
+	if (mapped && !litTextured) { throw refuse("metalRoughTexture and occlusionTexture need a lit material with a texture"); }
+	if (mapsOccluded(props) && !mapped) {
+		throw refuse("aoMapIntensity and occlusionChannel need an occlusionTexture");
+	}
+	const channel = props.occlusionChannel === null ? 0 : (props.occlusionChannel as () => int32)();
+	if (channel < 0 || channel > 1) { throw refuse("occlusionChannel must be 0 or 1; Void reads uv sets 0 and 1"); }
+	const parallax = props.parallaxScale !== null;
+	if (props.parallaxSteps !== null && !parallax) { throw refuse("parallaxSteps needs parallaxScale"); }
+	if (parallax && !(mapped && normal.isTexture())) {
+		throw refuse("parallaxScale needs metalRoughTexture, occlusionTexture and normalTexture; Void reads the height in the alpha of metalRoughTexture");
+	}
+	if (movesBlock(props) && !textured) { throw refuse("flipbook, distanceFade and colorKey need a texture"); }
+	if (movesBlock(props) && pbr) {
+		throw refuse("flipbook, distanceFade and colorKey need a program without pbr; Void's pbr programs read no moving block");
+	}
+	const kind = props.kind === null ? MaterialKind.Opaque : (props.kind as () => MaterialKind)();
+	if (props.distanceFade !== null && (kind == MaterialKind.Opaque || kind == MaterialKind.AlphaKill)) {
+		throw refuse("distanceFade shows only through blending; use MaterialKind.Alpha, Add or SoftAdd");
+	}
+	if (parallax && kind == MaterialKind.AlphaKill && flagOf(props.castShadow)) {
+		throw refuse("parallaxScale with MaterialKind.AlphaKill cannot cast a shadow; Void has no such caster");
+	}
 	const program = unlit ? Program.UnlitTextured : textured ? Program.LitTextured : Program.Lit;
-	const base = Material.ofKind(program, props.kind === null ? MaterialKind.Opaque : (props.kind as () => MaterialKind)());
+	const base = Material.ofKind(program, kind);
 	let key = base.program;
 	if (pbr) { key = key.withPbr(); }
-	if (movesUv(props) && !pbr) { key = key.withUvTransform(); }
+	if (mapped) { key = key.withPbrMaps(); }
+	if (mapped && channel == 1) { key = key.withOcclusionUvB(); }
+	if ((movesUv(props) && !pbr) || movesBlock(props)) { key = key.withUvTransform(); }
 	if (back.isTexture()) { key = key.withBackTexture(); }
 	if (noise.isTexture()) { key = key.withDissolve(); }
 	if (emissive.isTexture()) { key = key.withEmissive(); }
 	if (normal.isTexture()) { key = key.withNormalMap(); }
+	if (parallax) { key = key.withParallax(); }
 	const shaped: Material = { ...base, program: key };
 	const sided: Material = flagOf(props.doubleSided) ?
 		{ ...shaped, pass: shaped.pass.withCulling(Face.None) } : shaped;
@@ -131,6 +220,8 @@ function shapeOf(props: MaterialProps): Material {
 		emissiveTexture: emissive,
 		backTexture: back,
 		dissolveTexture: noise,
+		metalRoughTexture: metalRough,
+		occlusionTexture: occlusion,
 	};
 }
 
@@ -157,6 +248,48 @@ function writeUv(ref values: Vec<float32>, props: MaterialProps, matrix: int32, 
 	}
 }
 
+function writeFlipbook(ref values: Vec<float32>, base: int32, book: Flipbook): void {
+	if (book.columns < 1 || book.rows < 1) { throw refuse("flipbook columns and rows must be at least 1"); }
+	const cells = (book.columns as int64) * (book.rows as int64);
+	if (book.numberOfFrames < 1 || (book.numberOfFrames as int64) > cells) {
+		throw refuse("flipbook numberOfFrames must be from 1 to columns * rows; omit flipbook for none");
+	}
+	if (book.startFrame < 0 || book.startFrame >= book.numberOfFrames) {
+		throw refuse("flipbook startFrame must be below numberOfFrames");
+	}
+	if (!(Number.isFinite(book.fps) && book.fps >= 0.0) || !Number.isFinite(book.startTime)) {
+		throw refuse("flipbook fps must be finite and not negative, and startTime finite");
+	}
+	values[base + MOVING_FLIPBOOK_COLUMNS] = book.columns as float32;
+	values[base + MOVING_FLIPBOOK_ROWS] = book.rows as float32;
+	values[base + MOVING_FLIPBOOK_FRAMES] = book.numberOfFrames as float32;
+	values[base + MOVING_FLIPBOOK_SPEED] = book.fps;
+	values[base + MOVING_FLIPBOOK_START_TIME] = book.startTime;
+	values[base + MOVING_FLIPBOOK_START_FRAME] = book.startFrame as float32;
+	values[base + MOVING_FLIPBOOK_LOOP] = book.loop ? 1.0 : 0.0;
+	values[base + MOVING_FLIPBOOK_BLEND] = book.blend ? 1.0 : 0.0;
+}
+
+function writeFade(ref values: Vec<float32>, base: int32, fade: DistanceFade): void {
+	const finite = Number.isFinite(fade.nearStart) && Number.isFinite(fade.nearEnd) &&
+		Number.isFinite(fade.farStart) && Number.isFinite(fade.farEnd);
+	if (!finite) { throw refuse("distanceFade distances must be finite"); }
+	if (fade.nearEnd < fade.nearStart || fade.farEnd < fade.farStart) {
+		throw refuse("distanceFade needs each end at or past its start; equal turns a side off");
+	}
+	values[base + MOVING_FADE_NEAR_START] = fade.nearStart;
+	values[base + MOVING_FADE_NEAR_END] = fade.nearEnd;
+	values[base + MOVING_FADE_FAR_START] = fade.farStart;
+	values[base + MOVING_FADE_FAR_END] = fade.farEnd;
+}
+
+function writeColorKey(ref values: Vec<float32>, base: int32, key: Color): void {
+	if (!(key.a > 0.0) || !Number.isFinite(key.r) || !Number.isFinite(key.g) || !Number.isFinite(key.b)) {
+		throw refuse("colorKey needs a finite colour with alpha above 0; Void keys nothing at alpha 0, so omit the prop");
+	}
+	writeColor(values, base + MOVING_COLOR_KEY, key);
+}
+
 function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	const key = material.program;
 	if ((props.emissive !== null || props.emissiveIntensity !== null) && !key.emissive) {
@@ -180,6 +313,25 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 		values[PBR_OCCLUSION] = checked.value.occlusion;
 		writeUv(values, props, PBR_UV_MATRIX, PBR_UV_OFFSET, PBR_UV_SCROLL);
 	}
+	if (key.pbrMaps) {
+		const strength = floatOf(props.aoMapIntensity, 1.0);
+		if (!(strength >= 0.0 && strength <= 1.0)) {
+			throw refuse("aoMapIntensity must be from 0 to 1; Void's occlusion strength is a unit value");
+		}
+		values[PBR_OCCLUSION_STRENGTH] = strength;
+	}
+	if (key.parallax) {
+		const scale = floatOf(props.parallaxScale, 0.0);
+		if (!(Number.isFinite(scale) && scale > 0.0)) {
+			throw refuse("parallaxScale must be a finite number above 0");
+		}
+		values[MATERIAL_PARALLAX] = scale;
+		const steps = props.parallaxSteps === null ? 0 : (props.parallaxSteps as () => int32)();
+		if (steps < 0 || steps > 255) {
+			throw refuse("parallaxSteps must be from 0 to 255, where 0 is Void's 24");
+		}
+		values[PBR_PARALLAX_STEPS] = steps as float32;
+	}
 	if (key.moves()) {
 		const base = movingBase(key);
 		writeUv(values, props, base + MOVING_UV_MATRIX, base + MOVING_UV_OFFSET, base + MOVING_UV_SCROLL);
@@ -190,6 +342,11 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 		if (props.dissolveEdgeColor !== null) {
 			writeColor(values, base + MOVING_DISSOLVE_EDGE_COLOR, (props.dissolveEdgeColor as () => Color)());
 		}
+		if (props.flipbook !== null) { writeFlipbook(values, base, (props.flipbook as () => Flipbook)()); }
+		if (props.distanceFade !== null) {
+			writeFade(values, base, (props.distanceFade as () => DistanceFade)());
+		}
+		if (props.colorKey !== null) { writeColorKey(values, base, (props.colorKey as () => Color)()); }
 	}
 	if (key.emissive) {
 		const at = emissiveBase(key);
