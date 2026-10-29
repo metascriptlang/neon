@@ -5,6 +5,8 @@ import { NeonEvent } from "../../src/render/event";
 import { View, TextInput } from "../../src/components/primitives";
 import { onCleanup } from "../../src/core/cleanup";
 import { requestFrame } from "../../src/animation/frame";
+import { Accessor } from "../../src/core/signal";
+import { WindowDimensions, useWindowDimensions } from "../../src/render/environment";
 import { harnessIsCheck, harnessExpect, harnessSample, harnessClick, harnessPostKeys, harnessFocusedText } from "./harness.h";
 import { createWindow, defaultOptions, closeWindow, show, hide, focus, setSize, Window } from "../../../ion/src/index";
 import { exit } from "std/process";
@@ -34,8 +36,11 @@ let panelValue = "";
 let panelFocuses = 0;
 let panelLayouts = 0;
 let panelDisposed = false;
+let boardSize: Accessor<WindowDimensions> | null = null;
+let panelSize: Accessor<WindowDimensions> | null = null;
 
 function Board(): NeonNode {
+	boardSize = useWindowDimensions();
 	return <View style={styles.board} onLayout={(e: NeonEvent): void => {
 		boardWidth = e.width;
 		boardLayouts += 1;
@@ -50,6 +55,7 @@ function Board(): NeonNode {
 
 function Launcher(): NeonNode {
 	onCleanup((): void => { panelDisposed = true; });
+	panelSize = useWindowDimensions();
 	return <View style={styles.panel} onLayout={(e: NeonEvent): void => { panelLayouts += 1; }}>
 		<TextInput style={styles.panelField} onChangeText={(t: string): void => { panelValue = t; }}
 			onFocus={(e: NeonEvent): void => { panelFocuses += 1; }} />
@@ -111,6 +117,9 @@ steps.push((): void => {
 });
 steps.push((): void => {
 	expect("the panel mounts its own root", panelLayouts > 0, `${panelLayouts} layouts`);
+	const side = (panelSize as Accessor<WindowDimensions>)();
+	const board = (boardSize as Accessor<WindowDimensions>)();
+	expect("each window's useWindowDimensions answers its own size", side.width === 340 && side.height === 72 && board.width === boardWidth, `panel ${side.width}x${side.height}, board ${board.width}x${board.height}, board layout width ${boardWidth}`);
 	harnessExpect("panel background", 330, 64, 192, 57, 43);
 	harnessExpect("panel field", 30, 26, 255, 255, 255);
 	failures += harnessSample(PANEL);
