@@ -11,13 +11,13 @@ import { RenderTarget, allocate, resize, close } from "../../../../void/src/gpu/
 import { Scene2D as VoidScene2D } from "../../../../void/src/void2d/node";
 import { create, prepare, drawTarget, close as closeScene2D } from "../../../../void/src/void2d/scene";
 import { rgba } from "../../../../void/src/void2d/types";
-import { Program, ProgramKey, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH, UNLIT_MATERIAL_COLOR } from "../../../../void/src/void3d/gpu3d";
-import { Material, Phase } from "../../../../void/src/void3d/material";
+import { Program, ProgramKey, UNLIT_MATERIAL_UNIFORM_LENGTH, UNLIT_MATERIAL_COLOR } from "../../../../void/src/void3d/gpu3d";
+import { Material, Phase, UniformBlock } from "../../../../void/src/void3d/material";
 import { TextureId, TextureAlpha } from "../../../../void/src/void3d/texture";
 import {
-	MaterialId, addTargetTexture, addMaterial, releaseMaterial, releaseTexture, reserveUniforms, writeUniforms, releaseUniforms,
+	MaterialId, addTargetTexture, releaseMaterial, releaseTexture,
 } from "../../../../void/src/void3d/draw";
-import { mountOwned, requireScene, onBeforeRefresh } from "./core";
+import { mountOwned, requireScene, onBeforeRefresh, addUniformMaterial } from "./core";
 import { AreaTarget, getAreaTargetContext } from "../../platform/void/areaScope";
 
 export interface RenderTextureHandle {
@@ -62,32 +62,18 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				target.close();
 				if (!released.ok) { throw new Error("RenderTexture: releaseTexture failed: " + released.error.toString()); }
 			};
-			const reserved = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH);
-			if (!reserved.ok) {
-				dropTexture();
-				throw new Error("RenderTexture: reserveUniforms failed: " + reserved.error.toString());
-			}
-			const block = reserved.value;
 			let values: Vec<float32> = new Array(UNLIT_MATERIAL_UNIFORM_LENGTH);
 			for (let i: int32 = 0; i < 4; i += 1) { values[UNLIT_MATERIAL_COLOR + i] = 1.0; }
-			const written = writeUniforms(context, block, values);
-			if (!written.ok) {
-				const released = releaseUniforms(context, block);
+			let material: MaterialId;
+			try {
+				material = addUniformMaterial(context, "RenderTexture", values, (block: UniformBlock): Material => ({
+					...Material.keyed(ProgramKey.of(Program.UnlitTextured).withPremultiplied(), premultipliedPass(), Phase.Alpha),
+					texture: texture, uniforms: block,
+				}));
+			} catch (error) {
 				dropTexture();
-				if (!released.ok) { throw new Error("RenderTexture: releaseUniforms failed: " + released.error.toString()); }
-				throw new Error("RenderTexture: writeUniforms failed: " + written.error.toString());
+				throw error;
 			}
-			const added = addMaterial(context, {
-				...Material.keyed(ProgramKey.of(Program.UnlitTextured).withPremultiplied(), premultipliedPass(), Phase.Alpha),
-				texture: texture, uniforms: block,
-			});
-			if (!added.ok) {
-				const released = releaseUniforms(context, block);
-				dropTexture();
-				if (!released.ok) { throw new Error("RenderTexture: releaseUniforms failed: " + released.error.toString()); }
-				throw new Error("RenderTexture: addMaterial failed: " + added.error.toString());
-			}
-			const material = added.value;
 			onCleanup((): void => {
 				if (context.materialPins[material.index] > 0) {
 					dropTexture();

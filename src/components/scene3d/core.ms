@@ -12,7 +12,7 @@ import { place } from "../../render/reconcile";
 import { Vec3, Quat, vec3 } from "../../../../void/src/math/math3d";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, MATERIAL_COLOR } from "../../../../void/src/void3d/gpu3d";
-import { Material, Phase } from "../../../../void/src/void3d/material";
+import { Material, Phase, UniformBlock } from "../../../../void/src/void3d/material";
 import { MeshId } from "../../../../void/src/void3d/draw";
 import { DrawContext, MaterialId, addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
 import {
@@ -428,28 +428,34 @@ export function whiteMaterialBlock(length: int32 = MATERIAL_UNIFORM_LENGTH): Vec
 	return values;
 }
 
-export function defaultMaterialOf(state: SceneState): MaterialId {
-	const existing = state.defaultMaterial;
-	if (existing !== null) { return existing; }
-	const context = state.handle.context;
-	const reserved = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
-	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
+export function addUniformMaterial(
+	context: DrawContext, prefix: string, values: Vec<float32>, material: (block: UniformBlock) => Material,
+): MaterialId {
+	const reserved = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
+	if (!reserved.ok) { throw new Error(prefix + ": reserveUniforms failed: " + reserved.error.toString()); }
 	const block = reserved.value;
 	try {
-		const written = writeUniforms(context, block, whiteMaterialBlock());
-		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
-		const added = addMaterial(context, {
-			...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),
-			uniforms: block,
-		});
-		if (!added.ok) { throw new Error("Mesh: addMaterial failed: " + added.error.toString()); }
-		state.defaultMaterial = added.value;
+		const written = writeUniforms(context, block, values);
+		if (!written.ok) { throw new Error(prefix + ": writeUniforms failed: " + written.error.toString()); }
+		const added = addMaterial(context, material(block));
+		if (!added.ok) { throw new Error(prefix + ": addMaterial failed: " + added.error.toString()); }
 		return added.value;
 	} catch (error) {
 		const released = releaseUniforms(context, block);
-		if (!released.ok) { throw new Error("Mesh: releaseUniforms failed: " + released.error.toString()); }
+		if (!released.ok) { throw new Error(prefix + ": releaseUniforms failed: " + released.error.toString()); }
 		throw error;
 	}
+}
+
+export function defaultMaterialOf(state: SceneState): MaterialId {
+	const existing = state.defaultMaterial;
+	if (existing !== null) { return existing; }
+	const made = addUniformMaterial(state.handle.context, "Mesh", whiteMaterialBlock(), (block: UniformBlock): Material => ({
+		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),
+		uniforms: block,
+	}));
+	state.defaultMaterial = made;
+	return made;
 }
 
 export const DEFAULT_CAMERA: VoidCamera3D = {

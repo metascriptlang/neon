@@ -5,13 +5,12 @@ import { onCleanup } from "../../core/cleanup";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { MeshData } from "../../../../void/src/void3d/meshData";
 import { MeshId, MaterialId, addMeshData, releaseMesh } from "../../../../void/src/void3d/draw";
-import { addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
-import { Material, Phase, ShadowCasting, withShadows } from "../../../../void/src/void3d/material";
-import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
+import { Material, Phase, ShadowCasting, UniformBlock, withShadows } from "../../../../void/src/void3d/material";
+import { Program } from "../../../../void/src/void3d/gpu3d";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
 import { PointerProps, bindPointer } from "./pointer";
-import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf, whiteMaterialBlock, valueOr } from "./core";
+import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf, whiteMaterialBlock, addUniformMaterial, valueOr } from "./core";
 
 export interface MeshProps extends PointerProps {
 	geometry?: Accessor<MeshData> | null;
@@ -26,26 +25,12 @@ function shadowMaterialOf(state: SceneState, cast: boolean, receive: boolean): M
 	const slot = (cast ? 2 : 0) + (receive ? 1 : 0);
 	const existing = state.shadowMaterials[slot];
 	if (existing !== null) { return existing; }
-	const context = state.handle.context;
-	const reserved = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
-	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
-	const block = reserved.value;
-	try {
-		const written = writeUniforms(context, block, whiteMaterialBlock());
-		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
-		const plain = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
-		const added = addMaterial(context, {
-			...plain.withShadows(cast ? ShadowCasting.On : ShadowCasting.Off, receive),
-			uniforms: block,
-		});
-		if (!added.ok) { throw new Error("Mesh: addMaterial failed: " + added.error.toString()); }
-		state.shadowMaterials[slot] = added.value;
-		return added.value;
-	} catch (error) {
-		const released = releaseUniforms(context, block);
-		if (!released.ok) { throw new Error("Mesh: releaseUniforms failed: " + released.error.toString()); }
-		throw error;
-	}
+	const made = addUniformMaterial(state.handle.context, "Mesh", whiteMaterialBlock(), (block: UniformBlock): Material => ({
+		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque).withShadows(cast ? ShadowCasting.On : ShadowCasting.Off, receive),
+		uniforms: block,
+	}));
+	state.shadowMaterials[slot] = made;
+	return made;
 }
 
 function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
