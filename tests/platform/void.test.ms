@@ -440,3 +440,23 @@ test "under a scaled parent, the Void host's window frame scales and its layout 
 	});
 	assert got === "10,20,60,80,20,40;10,20,30,40", got;
 }
+
+test "the Void host lays out on the pixel grid of the scale it is given and follows a scale change" {
+	const vh = createVoidHost();
+	render(element(
+		<View style={{ width: 100 }}>
+			<View style={{ height: 17.5 }} />
+			<View style={{ height: 17.5 }} />
+			<View style={{ height: 17.5 }} />
+			<View style={{ height: 17.5 }} />
+		</View>
+	), vh.host, vh.root);
+	const column = vh.tree.childrenOf(vh.root as VoidNode)[0];
+	const tops = (): string => vh.tree.childrenOf(column).map((n: VoidNode): string => `${n.ref.local().y}`).join(",");
+	vh.layout(100.0, 100.0, 2.0);
+	assert tops() === "0,17.5,35,52.5", "2x: " + tops();
+	vh.layout(100.0, 100.0);
+	assert tops() === "0,18,35,53", "no scale is whole points: " + tops();
+	vh.layout(100.0, 100.0, 2.0);
+	assert tops() === "0,17.5,35,52.5", "back at 2x: " + tops();
+}

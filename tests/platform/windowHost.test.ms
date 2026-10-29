@@ -291,6 +291,26 @@ test "a sibling onLayout after the release does not run, and the frame stays und
 	assert p.log.slice(mark).join(",") === "first,released", p.log.join(",");
 }
 
+test "a frame lays out on the window's pixel grid, so 17.5 point rows stay 35 device pixels apart at 2x" {
+	const p = probe();
+	const tops: number[] = [];
+	let dispose: (() => void) | null = null;
+	dispose = render(element(
+		<Void>
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => {
+				tops.push(e.y);
+				if (dispose !== null) { (dispose as () => void)(); }
+			}} />
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	deliverResize(p.areas[0], 640 as int32, 360 as int32, 2.0);
+	assert !drawArea(p.areas[0]), "the last onLayout released the area";
+	assert tops.join(",") === "0,17.5,35,52.5", tops.join(",");
+}
+
 test "the control channel drives a window: tree shows what is laid out, press and type take the real input path" {
 	const p = probe();
 	const log: string[] = [];

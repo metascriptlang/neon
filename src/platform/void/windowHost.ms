@@ -398,7 +398,7 @@ export function layersInPaintOrder(vh: VoidHost, layers: AreaLayer[], painted: N
 }
 
 export function drawArea(a: WindowArea): boolean {
-	a.vh.layout(a.logicalWidth(), a.logicalHeight());
+	a.vh.layout(a.logicalWidth(), a.logicalHeight(), a.scale);
 	const scene = a.vh.scene;
 	if (scene.isClosed()) { return false; }
 	const layers = a.hub.layers();

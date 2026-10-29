@@ -421,7 +421,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {
 					if (scene.closed) { return; }
 					const dpi = area.handle.scale();
-					vh.layout((pixelWidth as float32) / dpi, (pixelHeight as float32) / dpi);
+					vh.layout((pixelWidth as float32) / dpi, (pixelHeight as float32) / dpi, dpi);
 				},
 				prepare: (pixelWidth: int32, pixelHeight: int32): void => {
 					if (scene.closed) { return; }

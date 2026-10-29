@@ -1,7 +1,8 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
-import { Accessor, createSignal } from "../../core/signal";
+import { Accessor, createSignal, untrack } from "../../core/signal";
+import { usePixelRatio } from "../../api/dimensions";
 import { Dispose } from "../../core/types";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
@@ -1588,7 +1589,8 @@ function relayout(r: NativeRoot): void {
 	const top = r.node;
 	top.flex = { width, height };
 	prepareVisibleContent(r);
-	layoutPassAt(top, width, height, r.direction);
+	const pointScale = untrack((): float64 => usePixelRatio()()) as float32;
+	layoutPassAt(top, width, height, r.direction, pointScale);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
 		for (const t of r.textNodes) {
@@ -1601,7 +1603,7 @@ function relayout(r: NativeRoot): void {
 			if (growInput(field)) { changed = true; }
 		}
 		if (!changed) { break; }
-		layoutPassAt(top, width, height, r.direction);
+		layoutPassAt(top, width, height, r.direction, pointScale);
 	}
 	layoutPlan = null;
 	writeContentSizes(r);

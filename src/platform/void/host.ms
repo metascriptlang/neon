@@ -235,7 +235,7 @@ export interface VoidHost {
 	commitText: (text: string) => void;
 	composeText: (text: string, cursor: int32) => void;
 	setWindowFocus: (focused: boolean) => void;
-	layout: (width: float32, height: float32) => void;
+	layout: (width: float32, height: float32, pointScale?: float32) => void;
 	focus: (node: VoidNode | null) => void;
 	focused: () => VoidNode | null;
 	imeRect: () => CaretRect | null;
@@ -1720,11 +1720,12 @@ export function createVoidHostWith(
 		}
 	};
 
+	let laidScale: float32 = 1.0;
 	const layoutIslands = (n: VoidNode): void => {
 		for (const c of tree.childrenOf(n)) {
 			if (n.raw && !c.raw && c.flex !== null) {
 				const box = n.ref.content();
-				layoutPassAt(layoutOf(tree, c), box.w, box.h, rootDirection);
+				layoutPassAt(layoutOf(tree, c), box.w, box.h, rootDirection, laidScale);
 			}
 			layoutIslands(c);
 		}
@@ -1755,7 +1756,7 @@ export function createVoidHostWith(
 		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			if (scene.isClosed()) { return; }
-			layoutPassAt(layoutOf(tree, root), w, h, rootDirection);
+			layoutPassAt(layoutOf(tree, root), w, h, rootDirection, laidScale);
 			layoutIslands(root);
 			flowText(root);
 			fitScrollers();
@@ -1769,9 +1770,10 @@ export function createVoidHostWith(
 	let laidWidth: float32 = -1.0;
 	let laidHeight: float32 = -1.0;
 	let laying = false;
-	const layout = (w: float32, h: float32): void => {
+	const layout = (w: float32, h: float32, pointScale?: float32): void => {
 		laidWidth = w;
 		laidHeight = h;
+		laidScale = pointScale ?? 1.0;
 		laying = true;
 		try { layoutPasses(w, h); } finally { laying = false; }
 	};
