@@ -12,7 +12,6 @@ import {
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
 	MATERIAL_COLOR,
-	UNLIT_MATERIAL_COLOR,
 	MOVING_UV_MATRIX,
 	MOVING_UV_OFFSET,
 	MOVING_UV_SCROLL,
@@ -160,9 +159,6 @@ function writeUv(ref values: Vec<float32>, props: MaterialProps, matrix: int32, 
 
 function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	const key = material.program;
-	if (props.color !== null && key.program != Program.UnlitTextured) {
-		throw refuse("color needs an unlit material; Void's lit programs have no colour uniform");
-	}
 	if ((props.emissive !== null || props.emissiveIntensity !== null) && !key.emissive) {
 		throw refuse("emissive and emissiveIntensity need an emissiveTexture");
 	}
@@ -174,7 +170,7 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	const kill = floatOf(props.alphaKill, key.cutout ? DEFAULT_ALPHA_KILL : 0.0);
 	if (key.cutout && !(kill > 0.0)) { throw refuse("alphaKill must be above 0 for MaterialKind.AlphaKill"); }
 	values[MATERIAL_ALPHA_KILL] = kill;
-	if (props.color !== null) { writeColor(values, UNLIT_MATERIAL_COLOR, (props.color as () => Color)()); }
+	if (props.color !== null) { writeColor(values, MATERIAL_COLOR, (props.color as () => Color)()); }
 	if (key.pbr) {
 		const checked = PbrProperties.heapsValues(floatOf(props.metalness, 0.0), floatOf(props.roughness, 1.0), 1.0);
 		if (!checked.ok) { throw refuse("metalness and roughness: " + checked.error.toString()); }

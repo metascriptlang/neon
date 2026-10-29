@@ -89,7 +89,7 @@ test "createMaterial owns a lit material: values in place, a key change swaps, u
 	}
 }
 
-test "createMaterial writes pbr roughness in place and refuses a colour on a lit material" {
+test "createMaterial writes pbr roughness in place" {
 	const refs: Scene3DHandle[] = [];
 	const made: Accessor<MaterialId>[] = [];
 	const [roughness, setRoughness] = createSignal<float32>(0.5);
@@ -110,19 +110,6 @@ test "createMaterial writes pbr roughness in place and refuses a colour on a lit
 	} finally {
 		dispose(); resetErrorHalt();
 	}
-	let message = "";
-	try {
-		const coloured: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			const material = createMaterial({
-				color: accessor((): Color => rgba(1.0, 0.0, 0.0, 1.0)),
-			});
-		};
-		const cleanup = render(element(<Void><Scene3D>{coloured}</Scene3D></Void>),
-			mockHost(), mockNode("root") as unknown as HostNode);
-		cleanup();
-	} catch (error) { message = error.message; }
-	finally { resetErrorHalt(); }
-	assert message.includes("createMaterial: color"), message;
 }
 
 function mountError(props: MaterialProps): string {
