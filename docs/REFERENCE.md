@@ -93,6 +93,15 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Pin:** `tests/platform/nativeMultiRoot.test.ms` "each native root's useWindowDimensions answers its own size, and Dimensions.get answers the main window"
 - **Checked:** 2026-10-29, read, and measured on C with the mock bridge. Color scheme, keyboard and safe area stay process-wide, because the macOS bridge, the only one with several roots, answers them for the whole app (`niColorScheme`, `niKeyboardHeight`, `niSafeAreaInset` in `src/platform/macos/bridge.m`).
 
+### SF-7 · On the web, a selected or checked button is `aria-pressed`, and `togglebutton` is `role="button"`
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** react-native-web (`~/projects/react-native-web` at `f1b5322`) writes `aria-selected` for selected whatever the role (`packages/react-native-web/src/modules/createDOMProps/index.js:724-727`) and passes a role its table does not know, `togglebutton` among them, to the DOM as written (`modules/AccessibilityUtil/propsToAriaRole.js:10-40`)
+- **MS:** `ariaStateValues` in `src/render/web.ms` reads the role (`ariaStateRole`: a role-less `<button>` is a button): on `button` and `togglebutton` the selected or checked state is `aria-pressed`, `false` on a `togglebutton` that is neither; other roles keep `aria-checked` and `aria-selected`. `ariaRole` maps `togglebutton` to `button`. The DOM host rewrites the state when the role changes (`writeAriaRole` in `src/platform/browser/dom.jms`); SSR reads the role first (`src/render/ssr.ms`).
+- **Why:** ARIA has no `togglebutton` role and ignores `aria-selected` on a button, so a screen reader never heard that a toggle was on. The native hosts already announce it. Approved by the person on 2026-10-30.
+- **Pin:** `tests/render/ssrMarkupServer.test.ms` "SSR writes accessibilityState as the aria attributes the DOM host writes"; `tests/browser/controls.test.ms` "a selected button is pressed, and a later role moves the state to the attribute that role reads"
+- **Checked:** 2026-10-30, measured in SSR (C, JS) and in Chrome.
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
