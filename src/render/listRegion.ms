@@ -4,7 +4,7 @@ import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner, isServer } from "../core/runtime";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
-import { List, ListQueue, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
+import { List, ListQueue, ListOp, ListOpKind, matchByIds } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
 import { RowHome, regionHome, buildHeld } from "./node";
@@ -34,13 +34,10 @@ interface Region<Item> {
 	steps: Step[];
 }
 
-const stepInsert = 0;
-const stepMove = 1;
-const stepRemove = 2;
-const stepReconcile = 3;
+enum StepKind { Insert, Move, Remove, Reconcile }
 
 interface Step {
-	kind: number;
+	kind: StepKind;
 	row: Row | null;
 	before: Row | null;
 	prev: Row[];
@@ -83,7 +80,7 @@ function buildHeldOrDispose<Item>(g: Region<Item>, b: Built<Item>): void {
 	}
 }
 
-function step(kind: number, row: Row | null, before: Row | null): Step {
+function step(kind: StepKind, row: Row | null, before: Row | null): Step {
 	return { kind, row, before, prev: [] as Row[], next: [] as Row[] };
 }
 
@@ -115,12 +112,12 @@ function insertRow<Item>(g: Region<Item>, i: number, v: Item, within: Computatio
 	g.rows[i] = b.row;
 	g.cells[i] = b.cell;
 	g.disposers[i] = b.dispose;
-	g.steps.push(step(stepInsert, b.row, rowAfter<Item>(g, i + 1)));
+	g.steps.push(step(StepKind.Insert, b.row, rowAfter<Item>(g, i + 1)));
 }
 
 function removeRowAt<Item>(g: Region<Item>, i: number): void {
 	g.disposers[i]();
-	g.steps.push(step(stepRemove, g.rows[i], null));
+	g.steps.push(step(StepKind.Remove, g.rows[i], null));
 	const last = g.rows.length - 1;
 	for (let j = i; j < last; j += 1) {
 		g.rows[j] = g.rows[j + 1];
@@ -152,7 +149,7 @@ function moveRowTo<Item>(g: Region<Item>, from: number, to: number): void {
 	g.rows[to] = r;
 	g.cells[to] = c;
 	g.disposers[to] = d;
-	g.steps.push(step(stepMove, r, rowAfter<Item>(g, to + 1)));
+	g.steps.push(step(StepKind.Move, r, rowAfter<Item>(g, to + 1)));
 }
 
 // Each new row takes the old row that carries the same item — by number key when the list has one,
@@ -227,7 +224,7 @@ function resetTo<Item>(g: Region<Item>, items: Item[], within: Computation | nul
 		if (!kept[i]) { g.disposers[i](); }
 	}
 
-	const reconcile = step(stepReconcile, null, null);
+	const reconcile = step(StepKind.Reconcile, null, null);
 	reconcile.prev = g.rows;
 	reconcile.next = nextRows;
 	g.steps.push(reconcile);
@@ -237,11 +234,12 @@ function resetTo<Item>(g: Region<Item>, items: Item[], within: Computation | nul
 }
 
 function applyOp<Item>(g: Region<Item>, op: ListOp<Item>, within: Computation | null): void {
-	if (op.kind === listInsert) { insertRow<Item>(g, op.a, op.v, within); return; }
-	if (op.kind === listMove) { moveRowTo<Item>(g, op.a, op.b); return; }
-	if (op.kind === listRemove) { removeRowAt<Item>(g, op.a); return; }
-	if (op.kind === listSet) { g.cells[op.a].set(op.v); return; }
-	throw new Error("ForList: list op kind " + op.kind.toString() + " has no region case");
+	match (op.kind) {
+		ListOpKind.Insert => insertRow<Item>(g, op.a, op.v, within),
+		ListOpKind.Move => moveRowTo<Item>(g, op.a, op.b),
+		ListOpKind.Remove => removeRowAt<Item>(g, op.a),
+		ListOpKind.Set => g.cells[op.a].set(op.v),
+	};
 }
 
 // An op that raises inside a row body is taken off the queue, so the region is left loud and never
@@ -281,15 +279,11 @@ function playSteps<Item>(g: Region<Item>): void {
 	const steps = g.steps;
 	g.steps = [];
 	for (const s of steps) {
-		if (s.kind === stepInsert || s.kind === stepMove) {
-			moveRow(g.host, g.parent, s.row as Row, nodeBefore<Item>(g, s.before));
-		} else if (s.kind === stepRemove) {
-			removeRow(g.host, g.parent, s.row as Row);
-		} else if (s.kind === stepReconcile) {
-			reconcileArrays(g.host, g.parent, s.prev, s.next, g.anchor, "ForList");
-		} else {
-			throw new Error("ForList: step kind " + s.kind.toString() + " has no region case");
-		}
+		match (s.kind) {
+			StepKind.Insert | StepKind.Move => moveRow(g.host, g.parent, s.row as Row, nodeBefore<Item>(g, s.before)),
+			StepKind.Remove => removeRow(g.host, g.parent, s.row as Row),
+			StepKind.Reconcile => reconcileArrays(g.host, g.parent, s.prev, s.next, g.anchor, "ForList"),
+		};
 	}
 }
 

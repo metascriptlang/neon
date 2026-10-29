@@ -1,4 +1,4 @@
-import { createList, listInsert, listMove, listRemove, listSet } from "../../src/core/list";
+import { createList, ListOpKind } from "../../src/core/list";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
 import { flush } from "../../src/core/runtime";
@@ -18,7 +18,7 @@ test "push writes one insert op at the tail" {
 	const q = l.attach();
 	l.push(3);
 	assert q.ops.length === 1, "one op";
-	assert q.ops[0].kind === listInsert, "kind insert";
+	assert q.ops[0].kind === ListOpKind.Insert, "kind insert";
 	assert q.ops[0].a === 2, "at the tail";
 	assert q.ops[0].v === 3, "carries the value";
 	assert l.length() === 3 && l.at(2) === 3, "the array holds it";
@@ -28,7 +28,7 @@ test "insert shifts the array and names the slot it wrote" {
 	const l = createList<number>([1, 2, 3]);
 	const q = l.attach();
 	l.insert(1, 9);
-	assert q.ops[0].kind === listInsert && q.ops[0].a === 1 && q.ops[0].v === 9, "insert at 1";
+	assert q.ops[0].kind === ListOpKind.Insert && q.ops[0].a === 1 && q.ops[0].v === 9, "insert at 1";
 	assert l.length() === 4, "length 4";
 	assert l.at(0) === 1 && l.at(1) === 9 && l.at(2) === 2 && l.at(3) === 3, "shifted right of 1";
 	l.insert(4, 7);
@@ -39,7 +39,7 @@ test "remove shifts the array and carries the item that left" {
 	const l = createList<number>([1, 2, 3]);
 	const q = l.attach();
 	l.remove(0);
-	assert q.ops[0].kind === listRemove && q.ops[0].a === 0 && q.ops[0].v === 1, "remove 0 carries 1";
+	assert q.ops[0].kind === ListOpKind.Remove && q.ops[0].a === 0 && q.ops[0].v === 1, "remove 0 carries 1";
 	assert l.length() === 2 && l.at(0) === 2 && l.at(1) === 3, "shifted left";
 }
 
@@ -47,7 +47,7 @@ test "move rotates one item in both directions" {
 	const l = createList<number>([1, 2, 3, 4]);
 	const q = l.attach();
 	l.move(0, 2);
-	assert q.ops[0].kind === listMove && q.ops[0].a === 0 && q.ops[0].b === 2, "move 0 to 2";
+	assert q.ops[0].kind === ListOpKind.Move && q.ops[0].a === 0 && q.ops[0].b === 2, "move 0 to 2";
 	assert l.at(0) === 2 && l.at(1) === 3 && l.at(2) === 1 && l.at(3) === 4, "forward move";
 	l.move(3, 1);
 	assert l.at(0) === 2 && l.at(1) === 4 && l.at(2) === 3 && l.at(3) === 1, "backward move";
@@ -59,7 +59,7 @@ test "set writes the value and one set op" {
 	const l = createList<number>([1, 2]);
 	const q = l.attach();
 	l.set(1, 5);
-	assert q.ops[0].kind === listSet && q.ops[0].a === 1 && q.ops[0].v === 5, "set at 1";
+	assert q.ops[0].kind === ListOpKind.Set && q.ops[0].a === 1 && q.ops[0].v === 5, "set at 1";
 	assert l.at(1) === 5, "the array holds it";
 }
 

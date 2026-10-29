@@ -1,12 +1,9 @@
 import { Signal } from "./signal";
 
-export const listInsert = 0;
-export const listMove = 1;
-export const listRemove = 2;
-export const listSet = 3;
+export enum ListOpKind { Insert, Move, Remove, Set }
 
 export interface ListOp<T> {
-	kind: number;
+	kind: ListOpKind;
 	a: number;
 	b: number;
 	v: T;
@@ -26,11 +23,11 @@ export function matchByIds<K>(oldIds: K[], newIds: K[], out: number[]): void {
 	}
 	for (let j = 0; j < newIds.length; j += 1) {
 		const k = newIds[j];
-		if (!byId.has(k)) {
+		const at = byId.get(k);
+		if (at === null) {
 			out[j] = -1;
 			continue;
 		}
-		const at = byId.get(k) as number;
 		out[j] = at;
 		byId.set(k, -1);
 	}
@@ -87,7 +84,7 @@ export class List<T> {
 	push(v: T): void {
 		const i = this.items.length;
 		this.items.push(v);
-		this.emit({ kind: listInsert, a: i, b: -1, v: v });
+		this.emit({ kind: ListOpKind.Insert, a: i, b: -1, v: v });
 	}
 
 	insert(i: number, v: T): void {
@@ -98,7 +95,7 @@ export class List<T> {
 		this.items.push(v);
 		for (let j = n; j > i; j -= 1) { this.items[j] = this.items[j - 1]; }
 		this.items[i] = v;
-		this.emit({ kind: listInsert, a: i, b: -1, v: v });
+		this.emit({ kind: ListOpKind.Insert, a: i, b: -1, v: v });
 	}
 
 	move(from: number, to: number): void {
@@ -113,7 +110,7 @@ export class List<T> {
 			for (let j = from; j > to; j -= 1) { this.items[j] = this.items[j - 1]; }
 		}
 		this.items[to] = it;
-		this.emit({ kind: listMove, a: from, b: to, v: it });
+		this.emit({ kind: ListOpKind.Move, a: from, b: to, v: it });
 	}
 
 	remove(i: number): void {
@@ -122,13 +119,13 @@ export class List<T> {
 		const gone = this.items[i];
 		for (let j = i; j < n - 1; j += 1) { this.items[j] = this.items[j + 1]; }
 		this.items.pop();
-		this.emit({ kind: listRemove, a: i, b: -1, v: gone });
+		this.emit({ kind: ListOpKind.Remove, a: i, b: -1, v: gone });
 	}
 
 	set(i: number, v: T): void {
 		this.bounds(i, this.items.length, "set");
 		this.items[i] = v;
-		this.emit({ kind: listSet, a: i, b: -1, v: v });
+		this.emit({ kind: ListOpKind.Set, a: i, b: -1, v: v });
 	}
 
 	replaceAll(next: T[]): void {
