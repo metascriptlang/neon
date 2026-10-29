@@ -59,7 +59,7 @@ test "a focusable div takes DOM focus through ViewHandle.focus" {
 
 test "accessibilityState maps onto aria-checked, aria-selected and aria-disabled and clears what it drops" {
 	const h = domHost();
-	const el = mount("pressable");
+	const el = mount("view");
 	h.setAttr(el, "accessibilityState", "checked,selected,disabled");
 	const first = `${probe(el).getAttribute("aria-checked")} ${probe(el).getAttribute("aria-selected")} ${probe(el).getAttribute("aria-disabled")}`;
 	assert first === "true true true", "first: " + first;
@@ -68,5 +68,21 @@ test "accessibilityState maps onto aria-checked, aria-selected and aria-disabled
 	assert second === "mixed null null", "second: " + second;
 	h.removeAttr(el, "accessibilityState");
 	assert probe(el).getAttribute("aria-checked") === null, "removed: " + (probe(el).getAttribute("aria-checked") as string);
+	probe(el).remove();
+}
+
+test "a selected button is pressed, and a later role moves the state to the attribute that role reads" {
+	const h = domHost();
+	const el = mount("pressable");
+	const read = (): string => `${probe(el).getAttribute("aria-pressed")} ${probe(el).getAttribute("aria-selected")} ${probe(el).getAttribute("role")}`;
+	h.setAttr(el, "accessibilityState", "selected");
+	assert read() === "true null null", "button: " + read();
+	h.setAttr(el, "role", "tab");
+	assert read() === "null true tab", "tab: " + read();
+	h.setAttr(el, "accessibilityState", "");
+	h.setAttr(el, "role", "togglebutton");
+	assert read() === "false null button", "togglebutton: " + read();
+	h.removeAttr(el, "role");
+	assert read() === "null null null", "role removed: " + read();
 	probe(el).remove();
 }

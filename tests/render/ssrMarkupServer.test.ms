@@ -27,8 +27,16 @@ test "SSR writes input attributes with the values the DOM host writes" {
 }
 
 test "SSR writes accessibilityState as the aria attributes the DOM host writes" {
-	const all = renderToString(el("pressable", [attr("accessibilityState", "checked,selected,disabled,busy,expanded")], [], null));
-	assert all === "<button aria-checked=\"true\" aria-selected=\"true\" aria-disabled=\"true\" aria-busy=\"true\" aria-expanded=\"true\" class=\"neon-view\"></button>", all;
+	const all = renderToString(el("view", [attr("accessibilityState", "checked,selected,disabled,busy,expanded")], [], null));
+	assert all === "<div aria-checked=\"true\" aria-selected=\"true\" aria-disabled=\"true\" aria-busy=\"true\" aria-expanded=\"true\" class=\"neon-view\"></div>", all;
+	const button = renderToString(el("pressable", [attr("accessibilityState", "selected,disabled")], [], null));
+	assert button === "<button aria-disabled=\"true\" aria-pressed=\"true\" class=\"neon-view\"></button>", button;
+	const toggle = renderToString(el("pressable", [attr("accessibilityState", ""), attr("accessibilityRole", "togglebutton")], [], null));
+	assert toggle === "<button aria-pressed=\"false\" role=\"button\" class=\"neon-view\"></button>", toggle;
+	const tab = renderToString(el("pressable", [attr("accessibilityState", "selected"), attr("role", "tab")], [], null));
+	assert tab === "<button aria-selected=\"true\" role=\"tab\" class=\"neon-view\"></button>", tab;
+	const box = renderToString(el("pressable", [attr("role", "checkbox"), attr("accessibilityState", "checked")], [], null));
+	assert box === "<button role=\"checkbox\" aria-checked=\"true\" class=\"neon-view\"></button>", box;
 	const off = renderToString(el("view", [attr("accessibilityState", "unchecked,collapsed")], [], null));
 	assert off === "<div aria-checked=\"false\" aria-expanded=\"false\" class=\"neon-view\"></div>", off;
 	const mixed = renderToString(el("view", [attr("accessibilityState", "mixed")], [], null));

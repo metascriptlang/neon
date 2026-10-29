@@ -41,6 +41,7 @@ import {
 	domAttrValue,
 	ariaGroupNames,
 	ariaGroupValues,
+	ariaStateRole,
 } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
@@ -711,9 +712,19 @@ function writeNewControlAttr(el: Node, kind: string, name: string, value: string
 	return false;
 }
 
+const ariaRoles = new Map<Node, string>();
+const ariaStates = new Map<Node, string>();
+
+function writeAriaRole(el: Node, role: string): void {
+	ariaRoles.set(el, role);
+	if (ariaStates.has(el)) { writeAriaGroup(el, "accessibilityState", ariaStates.get(el) as string); }
+}
+
 function writeAriaGroup(el: Node, name: string, value: string): void {
+	if (name === "accessibilityState") { ariaStates.set(el, value); }
+	const role = ariaStateRole(ariaRoles.has(el) ? ariaRoles.get(el) as string : "", el.tagName.toLowerCase());
 	const names = ariaGroupNames(name);
-	const values = ariaGroupValues(name, value);
+	const values = ariaGroupValues(name, value, role);
 	for (let i = 0; i < names.length; i += 1) {
 		const v = values[i];
 		if (v === null) { el.removeAttribute(names[i]); }
@@ -750,6 +761,7 @@ function writeDomAttr(el: Node, name: string, value: string): void {
 		if (current === "") { el.value = value; }
 		return;
 	}
+	if (name === "role" || name === "accessibilityRole") { writeAriaRole(el, value); }
 	const mapped = domAttrValue(name, value);
 	if (mapped === null) { el.removeAttribute(domAttrName(name)); return; }
 	el.setAttribute(domAttrName(name), mapped as string);
@@ -959,6 +971,8 @@ export function domHost(): Host {
 		releaseMedia(el as unknown as HostNode);
 		controlKinds.delete(el);
 		switchValues.delete(el);
+		ariaRoles.delete(el);
+		ariaStates.delete(el);
 		if (cleanups.has(el)) {
 			for (const cleanup of cleanups.get(el) as (() => void)[]) { cleanup(); }
 			cleanups.delete(el);
@@ -1182,6 +1196,7 @@ export function domHost(): Host {
 			const base = name === "class" ? baseClassOf(el) : "";
 			if (ariaGroupNames(name).length > 0) { writeAriaGroup(el, name, ""); }
 			else { el.removeAttribute(domAttrName(name)); }
+			if (name === "role" || name === "accessibilityRole") { writeAriaRole(el, ""); }
 			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
