@@ -6,19 +6,18 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { useContext } from "../../render/context";
 import { getAreaFaceContext } from "../../platform/void/areaScope";
 import { FontId } from "../../../../void/src/void2d/font";
-import { Mat4, vec3, determinant3x3 } from "../../../../void/src/math/math3d";
+import { Mat4, vec3, identity, determinant3x3 } from "../../../../void/src/math/math3d";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { TextStyle } from "../../../../void/src/void2d/textLayout";
 import { setColor, textStyle, setTextStyle } from "../../../../void/src/void2d/node";
 import { Anchor, ANCHOR_CENTER } from "../../../../void/src/void3d/billboard";
-import { basisOf } from "../../../../void/src/void3d/camera";
+import { CameraBasis, CameraView } from "../../../../void/src/void3d/camera";
 import { NodeId3D, Transform3D, addGroup, setLocal, worldOf } from "../../../../void/src/void3d/scene";
 import {
 	WorldLabel, WorldLabelStyle, plainStyle, setLabelText, setLabelOutline, refreshLabel, faceCamera, closeLabel,
 } from "../../../../void/src/void3d/worldLabel";
 import {
-	NodeProps, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, viewCamera,
-	onBeforeRefresh,
+	NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh,
 } from "./core";
 
 export interface Text3DProps extends NodeProps {
@@ -66,16 +65,6 @@ function outlineLabel(label: WorldLabel, width: float32, color: Color): void {
 	}
 }
 
-function faceActiveCamera(state: SceneState, label: WorldLabel, group: NodeId3D): void {
-	const world = state.handle.scene.worldOf(group);
-	if (!world.ok) { throw new Error("Text3D: billboard has no world pose: " + world.error.toString()); }
-	const pose: Mat4 = world.value;
-	if (pose.determinant3x3() < 0.0) { throw new Error("Text3D: billboard needs ancestors that do not mirror"); }
-	const camera = viewCamera(state.handle);
-	if (!camera.ok) { throw new Error("Text3D: billboard needs a camera with a world pose: " + camera.error.toString()); }
-	faceCamera(label, vec3(pose.m41, pose.m42, pose.m43), camera.value.basisOf());
-}
-
 export function Text3D(props: Text3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Text3D");
@@ -90,7 +79,12 @@ export function Text3D(props: Text3DProps): NeonNode {
 			const node = addGroup(scene, scope.parent, local);
 			ownNode(state, node);
 			let label: WorldLabel | null = null;
-			let billboard = false;
+			let billboard = props.billboard === null ? false : untrack(props.billboard as () => boolean);
+			let unposed = false;
+			// What the label last faced; the next frame faces it again only when the label, its pose or the camera moved.
+			let faced: WorldLabel | null = null;
+			let facedPose = identity();
+			let facedBasis: CameraBasis | null = null;
 			const close = (): void => {
 				const open = label;
 				if (open !== null) {
@@ -99,13 +93,12 @@ export function Text3D(props: Text3DProps): NeonNode {
 				}
 			};
 			onCleanup(close);
-			createRenderEffect<[float32, Anchor, boolean]>(
-				(prev: [float32, Anchor, boolean] | null): [float32, Anchor, boolean] => [
+			createRenderEffect<[float32, Anchor]>(
+				(prev: [float32, Anchor] | null): [float32, Anchor] => [
 					props.pixelsPerUnit === null ? DEFAULT_PIXELS_PER_UNIT : (props.pixelsPerUnit as () => float32)(),
 					props.anchor === null ? ANCHOR_CENTER : (props.anchor as () => Anchor)(),
-					props.billboard === null ? false : (props.billboard as () => boolean)(),
 				],
-				(value: [float32, Anchor, boolean], prev: [float32, Anchor, boolean] | null): Cleanup | null => {
+				(value: [float32, Anchor], prev: [float32, Anchor] | null): Cleanup | null => {
 					if (!(value[0] > 0.0)) { throw new Error("Text3D: pixelsPerUnit must be positive"); }
 					untrack((): void => {
 						const size = sizeOf(props);
@@ -127,11 +120,27 @@ export function Text3D(props: Text3DProps): NeonNode {
 						close();
 						label = next;
 					});
-					billboard = value[2];
 					state.invalidate();
 					return null;
 				},
 			);
+			if (props.billboard !== null) {
+				createRenderEffect<boolean>(
+					(prev: boolean | null): boolean => (props.billboard as () => boolean)(),
+					(value: boolean, prev: boolean | null): Cleanup | null => {
+						if (prev === null || value === billboard) { return null; }
+						billboard = value;
+						faced = null;
+						const open = label;
+						if (!value && open !== null) {
+							open.posed = false;
+							unposed = true;
+						}
+						state.invalidate();
+						return null;
+					},
+				);
+			}
 			createRenderEffect<string>(
 				(prev: string | null): string => props.text(),
 				(value: string, prev: string | null): Cleanup | null => {
@@ -174,11 +183,22 @@ export function Text3D(props: Text3DProps): NeonNode {
 					},
 				);
 			}
-			onBeforeRefresh(state, (): void => {
+			onBeforeRefresh(state, (view: CameraView): void => {
 				const open = label;
 				if (open === null) { return; }
-				if (billboard) { faceActiveCamera(state, open, node); }
-				if (refreshLabel(open) && !billboard) {
+				if (billboard) {
+					const world = scene.worldOf(node);
+					if (!world.ok) { throw new Error("Text3D: billboard has no world pose: " + world.error.toString()); }
+					if (faced !== open || world.value != facedPose || view.basis != facedBasis) {
+						if (world.value.determinant3x3() < 0.0) { throw new Error("Text3D: billboard needs ancestors that do not mirror"); }
+						faceCamera(open, vec3(world.value.m41, world.value.m42, world.value.m43), view.basis);
+						faced = open;
+						facedPose = world.value;
+						facedBasis = view.basis;
+					}
+				}
+				if ((refreshLabel(open) || unposed) && !billboard) {
+					unposed = false;
 					setLocal(scene, open.node, {
 						...Transform3D.identity(),
 						scale: vec3((open.width as float32) / open.pixelsPerUnit, (open.height as float32) / open.pixelsPerUnit, 1.0),
