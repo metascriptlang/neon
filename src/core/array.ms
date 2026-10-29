@@ -488,11 +488,11 @@ export function repeat<U>(
 		owner.parentComputed = getOwner();
 		const wanted = count();
 		const origin = from === null ? 0 : (from as () => number)();
-		if (wanted < 0 || Math.floor(wanted) !== wanted) {
-			throw new Error("Repeat: count must be a non-negative integer, got " + wanted.toString());
+		if (wanted < 0 || Math.floor(wanted) !== wanted || wanted > 2147483647) {
+			throw new Error("Repeat: count must be a non-negative integer below 2^31, got " + wanted.toString());
 		}
-		if (Math.floor(origin) !== origin) {
-			throw new Error("Repeat: from must be an integer, got " + origin.toString());
+		if (Math.floor(origin) !== origin || Math.abs(origin) > 2147483647) {
+			throw new Error("Repeat: from must be an integer within int32, got " + origin.toString());
 		}
 		const newLen = wanted as int32;
 		const start = origin as int32;

@@ -749,6 +749,14 @@ test "repeat refuses a count that is not a non-negative integer" {
 	flush();
 	caught = failure(() => { m(); });
 	assert caught.includes("Repeat: count"), "a negative count written later named: " + caught;
+	setN(4294967298);
+	flush();
+	caught = failure(() => { m(); });
+	assert caught.includes("below 2^31"), "a count past int32 is refused, not wrapped to 2: " + caught;
+	setN(2147483648);
+	flush();
+	caught = failure(() => { m(); });
+	assert caught.includes("below 2^31"), "the first count past int32: " + caught;
 	setN(2);
 	flush();
 	assert m().join(",") === "0,1" && built === 2, "the refused counts left the rows as they were: " + built.toString();
