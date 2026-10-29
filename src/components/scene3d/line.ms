@@ -100,11 +100,9 @@ export function Line(props: LineProps): NeonNode {
 			let color = untrack(readColor);
 			let graphics = graphicsOf(untrack(props.points), untrack(readSegments), width);
 			let values: Vec<float32> = new Array(LINE_UNIFORM_LENGTH);
-			let block: UniformBlock | null = null;
-			const material: MaterialId = addUniformMaterial(context, "Line", values, (reserved: UniformBlock): Material => {
-				block = reserved;
-				return { ...Material.ofKind(Program.Line, MaterialKind.Opaque), uniforms: reserved };
-			});
+			const material: MaterialId = addUniformMaterial(context, "Line", values, (block: UniformBlock): Material => ({
+				...Material.ofKind(Program.Line, MaterialKind.Opaque), uniforms: block,
+			}));
 			onCleanup((): void => {
 				const released = releaseMaterial(context, material);
 				if (!released.ok) { throw refuse("releaseMaterial failed: " + released.error.toString()); }
@@ -152,7 +150,7 @@ export function Line(props: LineProps): NeonNode {
 				const world = viewCamera(state.handle);
 				if (!world.ok) { throw refuse("the active camera has no world pose: " + world.error.toString()); }
 				writeLineBlock(graphics, world.value, view, color, values);
-				const written = writeUniforms(context, block as UniformBlock, values);
+				const written = writeUniforms(context, context.materials[material.index].uniforms, values);
 				if (!written.ok) { throw refuse("writeUniforms failed: " + written.error.toString()); }
 			});
 			bindNode(state, node, props, local);
