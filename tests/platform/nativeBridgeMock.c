@@ -630,8 +630,10 @@ static MockView *hitView(MockView *p, float x, float y) {
 	return NULL;
 }
 
-void nmTapAt(float x, float y) {
-	MockView *hit = hitView(&s_container, x, y);
+void nmTapAt(float x, float y) { nmTapAtIn(&s_container, x, y); }
+
+void nmTapAtIn(void *container, float x, float y) {
+	MockView *hit = hitView(live(container, "nmTapAtIn"), x, y);
 	if (!hit || !hit->tag) return;
 	g_tapClock += 10;
 	nmTouchFull(hit->tag, 0, x, y, g_tapClock);

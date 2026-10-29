@@ -1747,6 +1747,35 @@ function teardownApp(): void {
 	closeRoot(mainRoot);
 }
 
+export interface NativeRootHandle {
+	resize: (width: float32, height: float32) => void;
+	dispose: Dispose;
+}
+
+export function mountNativeRoot(container: Ptr<void>, width: float32, height: float32, app: () => NeonNode): NativeRootHandle {
+	installBridge();
+	const r = new NativeRoot(nativeNode(container, false, false), false);
+	r.width = width;
+	r.height = height;
+	r.direction = I18nManager.isRTL() ? "rtl" : "ltr";
+	r.mountedApp = app;
+	roots.push(r);
+	mountInto(r, nativeHostOf(r));
+	return {
+		resize: (w: float32, h: float32): void => {
+			if (roots.indexOf(r) < 0) { throw new Error("native host: resize of a disposed root"); }
+			r.width = w;
+			r.height = h;
+			relayout(r);
+		},
+		dispose: (): void => {
+			if (roots.indexOf(r) < 0) { return; }
+			closeRoot(r);
+			roots.splice(roots.indexOf(r), 1);
+		},
+	};
+}
+
 export function runApp(app: () => NeonNode): int32 {
 	mainRoot.mountedApp = app;
 	when (android && hcr) {
