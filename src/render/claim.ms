@@ -74,7 +74,7 @@ function pathOf(c: Claim): string {
 }
 
 function refuse(c: Claim, message: string): void {
-	when (debug) { throw message; } else {
+	when (debug) { throw new Error(message); } else {
 		if (c.refused === null) {
 			c.refused = message;
 			c.paused += 1;
@@ -120,9 +120,9 @@ function settled(c: Claim, parent: HostNode, node: HostNode): boolean {
 }
 
 export function beginClaim(host: Host, container: HostNode): void {
-	if (active !== null) { throw "hydrate: another hydrate is still running"; }
+	if (active !== null) { throw new Error("hydrate: another hydrate is still running"); }
 	const take = host.claim;
-	if (take === null) { throw "hydrate: this host has no claim capability, so it cannot take over a page's nodes"; }
+	if (take === null) { throw new Error("hydrate: this host has no claim capability, so it cannot take over a page's nodes"); }
 	const c: Claim = {
 		host,
 		take: take as (parent: HostNode, after: HostNode | null, tag: string) => HostNode | null,
@@ -205,7 +205,7 @@ export function regionAnchor(host: Host, parent: HostNode, before: HostNode | nu
 
 export function regionParent(host: Host, anchor: HostNode, region: string): HostNode {
 	const p = host.parentOf(anchor);
-	if (p === null) { throw region + ": the region's anchor has no parent at an update, so there is nowhere to put its rows"; }
+	if (p === null) { throw new Error(region + ": the region's anchor has no parent at an update, so there is nowhere to put its rows"); }
 	return p as HostNode;
 }
 

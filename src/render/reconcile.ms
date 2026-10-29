@@ -176,7 +176,7 @@ export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[]
 		if (row.start === null) {
 			throw new Error("[ROW_NOT_BUILT] " + region + " was handed a row that no compute built; build it with builtRow in the compute that makes it, because a row built in the apply halts reactivity on a pending read");
 		}
-		if (row.stamp === stamp) { throw "reconcileArrays: the next list holds the same row twice"; }
+		if (row.stamp === stamp) { throw new Error("reconcileArrays: the next list holds the same row twice"); }
 		row.stamp = stamp;
 		row.kept = row.slot === BUILT_IN_PLACE;
 		row.slot = i;

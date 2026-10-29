@@ -114,7 +114,7 @@ export function mockAreaHub(outer: MockNode): AreaHub {
 	for (const m of mockHubs) {
 		if (m.outer === outer) { return m.hub; }
 	}
-	throw "mockAreaHub: this node opened no void area";
+	throw new Error("mockAreaHub: this node opened no void area");
 }
 
 const MOCK_FONT_SIZE = 16;
@@ -173,7 +173,7 @@ export function mockHost(): Host {
 			let target: number = p.children.length;
 			if (ref !== null) {
 				target = lastChildIndex(p, ref as unknown as MockNode);
-				if (target < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
+				if (target < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
 			}
 			const curIdx = n.parent === p ? childIndex(p, n) : -1;
 			if (curIdx >= 0) {
@@ -189,7 +189,7 @@ export function mockHost(): Host {
 			const p = parent as unknown as MockNode;
 			const n = node as unknown as MockNode;
 			const idx = childIndex(p, n);
-			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
+			if (idx < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
 			p.children.splice(idx, 1);
 			n.parent = null;
 		},
@@ -199,7 +199,7 @@ export function mockHost(): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if ((node as unknown as MockNode).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+			if ((node as unknown as MockNode).parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as MockNode;

@@ -56,12 +56,12 @@ export function mountTemplate(t: Template, wire: (host: Host, root: HostNode) =>
 // builder disagree — a framework bug, not user error: fail loud.
 export function childOf(host: Host, node: HostNode): HostNode {
 	const c = host.firstChild(node);
-	if (c === null) { throw "template walk: expected a first child but the instantiated node has none"; }
+	if (c === null) { throw new Error("template walk: expected a first child but the instantiated node has none"); }
 	return c;
 }
 
 export function siblingOf(host: Host, node: HostNode): HostNode {
 	const s = host.nextSibling(node);
-	if (s === null) { throw "template walk: expected a next sibling but the instantiated node has none"; }
+	if (s === null) { throw new Error("template walk: expected a next sibling but the instantiated node has none"); }
 	return s;
 }
