@@ -107,10 +107,7 @@ export function pressEvents<E extends NeonEvent>(config: PressConfig<E>, cancell
 	// primary action never both run off one gesture.
 	const up = (e: E): void => {
 		if (state === PressState.Idle) { return; }
-		const wasLong = match (state) {
-			PressState.LongPressing => true,
-			PressState.Idle | PressState.Pressing => false,
-		};
+		const wasLong = state === PressState.LongPressing;
 		settle();
 		releaseOut(e);
 		if (wasLong && onLongPress !== null) { return; }
