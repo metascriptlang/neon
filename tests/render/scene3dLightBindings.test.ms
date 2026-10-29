@@ -119,7 +119,7 @@ test "Directional Light color updates without changing fixed kind or power" {
 	} finally { dispose(); resetErrorHalt(); }
 }
 
-test "Light keeps named kind refusal and applies other parameters after reset and retry" {
+test "Light keeps named kind refusal and its other binders apply a later change after reset" {
 	const refs: Scene3DHandle[] = [];
 	let node = NO_NODE_ID;
 	const [directional, setDirectional] = createSignal(false);
@@ -144,8 +144,9 @@ test "Light keeps named kind refusal and applies other parameters after reset an
 		assert scene.lights[row].color === vec3(2.0, 0.0, 0.0);
 		setDirectional(false); flush();
 		assert scene.lights[row].kind === LightKind.Point;
-		assert approx(scene.lights[row].radius, 5.0);
-		assert scene.lights[row].color === vec3(5.0, 0.0, 0.0);
+		setRadius(6.0); flush();
+		assert approx(scene.lights[row].radius, 6.0);
+		assert scene.lights[row].color === vec3(6.0, 0.0, 0.0);
 		assert approx(scene.lights[row].power, 1.0);
 	} finally { dispose(); resetErrorHalt(); }
 }
