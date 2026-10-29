@@ -57,7 +57,7 @@ function mountGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, assets
 	const staging = addGroup(scene, parent, Transform3D.identity());
 	const mounted = addGltfBoundNodes(scene, staging, data, assets.bindings);
 	if (!mounted.ok) {
-		const removed = remove(scene, staging);
+		remove(scene, staging);
 		throw sceneFailure("addGltfBoundNodes", mounted.error, data);
 	}
 	return { data: data, root: staging, nodes: mounted.value.nodes };
@@ -102,7 +102,7 @@ export function Gltf(props: GltfProps): NeonNode {
 				const previous = imported;
 				if (previous !== null) {
 					insertBefore(scene, wrapper, next, previous);
-					const removed = remove(scene, previous);
+					remove(scene, previous);
 				}
 				imported = next;
 				setRoot(next);
