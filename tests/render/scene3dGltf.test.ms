@@ -1,4 +1,5 @@
 import { createSignal, accessor } from "../../src/core/signal";
+import { whiteMaterialBlock } from "../../src/components/scene3d/core";
 import { onCleanup } from "../../src/core/cleanup";
 import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
@@ -29,7 +30,7 @@ function model(name: string, bad: boolean): GltfData {
 }
 
 function setup(bad: boolean): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: bad ? [0.0, 0.0, 0.0] : [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
+	return { pass: RenderState.defaults(), block: bad ? [0.0, 0.0, 0.0] : whiteMaterialBlock() };
 }
 
 test "Gltf keeps its wrapper and authored children while imported graphs replace atomically" {

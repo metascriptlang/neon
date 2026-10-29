@@ -1,4 +1,5 @@
 import { createSignal, accessor } from "../../src/core/signal";
+import { whiteMaterialBlock } from "../../src/components/scene3d/core";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -53,7 +54,7 @@ function callerAssets(context: DrawContext): GltfAssets {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
+	return { pass: RenderState.defaults(), block: whiteMaterialBlock() };
 }
 
 function mountError(node: NeonNode): string {

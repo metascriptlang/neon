@@ -1,4 +1,5 @@
 import { createSignal, accessor } from "../../src/core/signal";
+import { whiteMaterialBlock } from "../../src/components/scene3d/core";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Gate, gated, release } from "../core/asyncClock";
 import { onCleanup } from "../../src/core/cleanup";
@@ -32,7 +33,7 @@ function model(name: string, bad: boolean): GltfData {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
+	return { pass: RenderState.defaults(), block: whiteMaterialBlock() };
 }
 
 test "a Gltf whose data is pending shows the fallback, mounts the model once it settles, and frees it on unmount" {

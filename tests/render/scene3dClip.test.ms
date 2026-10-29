@@ -1,4 +1,5 @@
 import { accessor, createSignal, Accessor } from "../../src/core/signal";
+import { whiteMaterialBlock } from "../../src/components/scene3d/core";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show, Errored } from "../../src/macros/ui/flow";
@@ -49,7 +50,7 @@ function riggedAt(hipX: float32): GltfData {
 }
 
 function setup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
+	return { pass: RenderState.defaults(), block: whiteMaterialBlock() };
 }
 
 function localOf(handle: Scene3DHandle, name: string): Transform3D {
