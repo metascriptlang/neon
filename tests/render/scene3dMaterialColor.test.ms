@@ -44,7 +44,7 @@ function mountMesh(shadowed: boolean): [Scene3DHandle, NodeId3D, () => void] {
 			mesh = added(handle.context, litShape());
 		}}>{painted}</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
-	assert releaseMesh(refs[0].context, mesh).ok;
+	if (!releaseMesh(refs[0].context, mesh).ok) { throw new Error("fixture: the held mesh did not release"); }
 	return [refs[0], nodes[0], dispose];
 }
 

@@ -57,7 +57,10 @@ function mounted(
 			props = build(handle.context);
 		}}>{painted}</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
-	for (const id of held.splice(0, held.length)) { assert releaseTexture(refs[0].context, id).ok; }
+	for (const id of held) {
+		if (!releaseTexture(refs[0].context, id).ok) { throw new Error("fixture: a held texture did not release"); }
+	}
+	held.splice(0, held.length);
 	return [refs[0], made, dispose];
 }
 
