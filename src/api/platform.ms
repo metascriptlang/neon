@@ -17,9 +17,11 @@ function chosen<T>(spec: {
 		"web" => spec.web,
 		_ => null,
 	};
-	if (own != null) { return own as T; }
-	if ((os === "ios" || os === "android") && spec.native != null) { return spec.native as T; }
-	if (spec.default != null) { return spec.default as T; }
+	if (own != null) { return own; }
+	const native = spec.native ?? null;
+	if ((os === "ios" || os === "android") && native !== null) { return native; }
+	const fallback = spec.default ?? null;
+	if (fallback !== null) { return fallback; }
 	throw new Error("Platform.select: no entry for " + os + " and no default");
 }
 
@@ -85,7 +87,7 @@ when (android) {
 			native?: T | null;
 			default?: T | null;
 		}): T {
-			return chosen<T>(spec, OS_NAME as string);
+			return chosen<T>(spec, OS_NAME);
 		}
 	}
 

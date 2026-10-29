@@ -18,7 +18,7 @@ export type NetInfoUnsubscribe = () => void;
 
 const UNKNOWN: NetInfoState = { type: "unknown", isConnected: null, isInternetReachable: null, details: null };
 
-let watchedBy: int32 = -1;
+let watchedBy: int32 | null = null;
 
 function watch(api: string): void {
 	const services = netInfoServices(api);
@@ -29,7 +29,7 @@ function watch(api: string): void {
 
 function sameFlag(a: boolean | null, b: boolean | null): boolean {
 	if (a === null || b === null) { return a === null && b === null; }
-	return (a as boolean) === (b as boolean);
+	return a === b;
 }
 
 function expensive(state: NetInfoState): boolean {

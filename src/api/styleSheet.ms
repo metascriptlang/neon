@@ -20,19 +20,18 @@ export class StyleSheet {
 	static absoluteFill: Style = FILL;
 	static absoluteFillObject: Style = FILL;
 
-	// RN flatten: later entries win field by field; null entries (RN's falsy) are skipped.
 	static flatten(styles: (Style | null)[]): Style {
 		const layers: Style[] = [{}];
 		for (const s of styles) {
-			if (s !== null) { layers.push(s as Style); }
+			if (s !== null) { layers.push(s); }
 		}
 		return layerStyles(layers);
 	}
 
 	static compose(first: Style | null, second: Style | null): Style {
-		if (first === null) { return second === null ? {} : second as Style; }
-		if (second === null) { return first as Style; }
-		return mergeStyle(first as Style, second as Style);
+		if (first === null) { return second ?? {}; }
+		if (second === null) { return first; }
+		return mergeStyle(first, second);
 	}
 }
 

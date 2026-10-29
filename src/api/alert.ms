@@ -37,7 +37,7 @@ export class Alert {
 		for (const button of given) {
 			const style = button.style;
 			const text = button.text ?? "";
-			specs.push({ text, style: style != null ? (style as string) : "default" });
+			specs.push({ text, style: style ?? "default" });
 		}
 		appServices("Alert.alert").alert({
 			title,

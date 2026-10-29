@@ -78,7 +78,7 @@ export function getCalendars(): Calendar[] {
 		calendar: given(now.calendar),
 		timeZone: given(now.timeZone),
 		uses24hourClock: now.uses24hourClock,
-		firstWeekday: now.firstWeekday as number,
+		firstWeekday: now.firstWeekday,
 	}];
 }
 

@@ -258,15 +258,19 @@ export class Sound {
 	}
 
 	async setStatusAsync(status: AVPlaybackStatusToSet): Promise<AVPlaybackStatus> {
-		if (status.volume !== null && status.volume !== undefined) { await this.setVolumeAsync(status.volume as number); }
-		if (status.rate !== null && status.rate !== undefined) { await this.setRateAsync(status.rate as number); }
-		if (status.isLooping !== null && status.isLooping !== undefined) { await this.setIsLoopingAsync(status.isLooping as boolean); }
-		if (status.isMuted !== null && status.isMuted !== undefined) { await this.setIsMutedAsync(status.isMuted as boolean); }
-		if (status.positionMillis !== null && status.positionMillis !== undefined) {
-			await this.setPositionAsync(status.positionMillis as number);
-		}
-		if (status.shouldPlay !== null && status.shouldPlay !== undefined) {
-			if (status.shouldPlay as boolean) { await this.playAsync(); } else { await this.pauseAsync(); }
+		const volume = status.volume ?? null;
+		if (volume !== null) { await this.setVolumeAsync(volume); }
+		const rate = status.rate ?? null;
+		if (rate !== null) { await this.setRateAsync(rate); }
+		const isLooping = status.isLooping ?? null;
+		if (isLooping !== null) { await this.setIsLoopingAsync(isLooping); }
+		const isMuted = status.isMuted ?? null;
+		if (isMuted !== null) { await this.setIsMutedAsync(isMuted); }
+		const positionMillis = status.positionMillis ?? null;
+		if (positionMillis !== null) { await this.setPositionAsync(positionMillis); }
+		const shouldPlay = status.shouldPlay ?? null;
+		if (shouldPlay !== null) {
+			if (shouldPlay) { await this.playAsync(); } else { await this.pauseAsync(); }
 		}
 		const now = await this.getStatusAsync();
 		return now;
