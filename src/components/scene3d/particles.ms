@@ -14,7 +14,7 @@ import {
 import { AtlasTile } from "../../../../void/src/void3d/billboard";
 import { NodeId3D, Transform3D, addGroup, addMeshNode, setMaterialOf, remove, worldOf } from "../../../../void/src/void3d/scene";
 import { CameraView } from "../../../../void/src/void3d/camera";
-import { NodeProps, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh } from "./core";
+import { NodeProps, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr } from "./core";
 
 export interface ParticlesProps extends NodeProps {
 	effect: Accessor<ParticleEffect>;
@@ -86,10 +86,10 @@ export function Particles(props: ParticlesProps): NeonNode {
 			const local = localOf(props);
 			const visual = props.frames !== null;
 			const readFrames = (): Vec<AtlasTile> => (props.frames as () => Vec<AtlasTile>)();
-			const readSeed = (): uint32 => props.seed === null ? DEFAULT_SEED : (props.seed as () => uint32)();
-			const readPlaying = (): boolean => props.playing === null ? true : (props.playing as () => boolean)();
-			const readPaused = (): boolean => props.paused === null ? false : (props.paused as () => boolean)();
-			const readSpeed = (): float64 => props.speed === null ? 1.0 : (props.speed as () => float64)();
+			const readSeed = (): uint32 => valueOr<uint32>(props.seed, DEFAULT_SEED);
+			const readPlaying = (): boolean => valueOr<boolean>(props.playing, true);
+			const readPaused = (): boolean => valueOr<boolean>(props.paused, false);
+			const readSpeed = (): float64 => valueOr<float64>(props.speed, 1.0);
 			const group = addGroup(scene, scope.parent, local);
 			ownNode(state, group);
 			let effect = instanced(untrack(() => props.effect()), untrack(readSeed));

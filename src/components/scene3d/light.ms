@@ -13,7 +13,7 @@ import {
 	SpotLightShape, RectangleLightShape, CapsuleLightShape, validateSpot, validateRectangle, validateCapsule, coneCosines,
 } from "../../../../void/src/void3d/lightShape";
 import {
-	NodeProps, LightShadow, LightSlot, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren,
+	NodeProps, LightShadow, LightSlot, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, valueOr,
 } from "./core";
 import { DEFAULT_SHADOW_BIAS } from "../../../../void/src/void3d/dirShadowMap";
 
@@ -114,21 +114,21 @@ export function Light(props: LightProps): NeonNode {
 			const state = scope.state;
 			const scene = state.handle.scene;
 			const local = localOf(props);
-			const radius = props.radius === null ? 10.0 : (props.radius as () => float32)();
-			const shape = props.shape === null ? NO_SHAPE : (props.shape as () => LightShape)();
+			const radius = valueOr<float32>(props.radius, 10.0);
+			const shape = valueOr<LightShape>(props.shape, NO_SHAPE);
 			if (props.shape !== null) {
 				const problem = shapeProblem(kind, shape, radius);
 				if (problem !== null) { throw new Error("Light: kind " + name + " refuses its shape: " + problem); }
 			}
-			const cookie = props.cookie === null ? NO_TEXTURE : (props.cookie as () => TextureId)();
+			const cookie = valueOr<TextureId>(props.cookie, NO_TEXTURE);
 			const light: LightInstance = {
 				kind: kind,
-				color: props.color === null ? vec3(1.0, 1.0, 1.0) : (props.color as () => Vec3)(),
+				color: valueOr<Vec3>(props.color, vec3(1.0, 1.0, 1.0)),
 				radius: radius,
-				power: props.power === null ? 1.0 : (props.power as () => float32)(),
-				priority: props.priority === null ? 0 : (props.priority as () => int32)(),
+				power: valueOr<float32>(props.power, 1.0),
+				priority: valueOr<int32>(props.priority, 0),
 				shape: shape,
-				shadows: kind !== LightKind.Directional && props.castShadow !== null && (props.castShadow as () => boolean)(),
+				shadows: kind !== LightKind.Directional && valueOr<boolean>(props.castShadow, false),
 				cookie: cookie,
 			};
 			const node = addLightNode(scene, scope.parent, local, light);
@@ -179,11 +179,11 @@ export function Light(props: LightProps): NeonNode {
 				onCleanup((): void => { state.shadowOf(node, slot, null); });
 				createRenderEffect<LightShadow | null>(
 					(prev: LightShadow | null | null): LightShadow | null => (props.castShadow as () => boolean)() ? {
-						mapSize: props.shadowMapSize === null ? DEFAULT_SHADOW_MAP_SIZE : (props.shadowMapSize as () => int32)(),
-						bias: props.shadowBias === null ? DEFAULT_SHADOW_BIAS : (props.shadowBias as () => float32)(),
-						normalBias: props.shadowNormalBias === null ? 0.0 : (props.shadowNormalBias as () => float32)(),
-						radius: props.shadowRadius === null ? DEFAULT_SHADOW_RADIUS : (props.shadowRadius as () => float32)(),
-						opacity: props.shadowOpacity === null ? 1.0 : (props.shadowOpacity as () => float32)(),
+						mapSize: valueOr<int32>(props.shadowMapSize, DEFAULT_SHADOW_MAP_SIZE),
+						bias: valueOr<float32>(props.shadowBias, DEFAULT_SHADOW_BIAS),
+						normalBias: valueOr<float32>(props.shadowNormalBias, 0.0),
+						radius: valueOr<float32>(props.shadowRadius, DEFAULT_SHADOW_RADIUS),
+						opacity: valueOr<float32>(props.shadowOpacity, 1.0),
 					} : null,
 					(value: LightShadow | null, prev: LightShadow | null | null): Cleanup | null => {
 						if (kind !== LightKind.Directional && (value !== null) !== light.shadows) {

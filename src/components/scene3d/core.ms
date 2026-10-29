@@ -25,6 +25,10 @@ import { ForwardRenderer } from "../../../../void/src/void3d/forwardRenderer";
 import { CameraView, resolve } from "../../../../void/src/void3d/camera";
 import { syncWorld } from "../../../../void/src/void3d/scene";
 
+export function valueOr<T>(read: Accessor<T> | null, fallback: T): T {
+	return read === null ? fallback : (read as () => T)();
+}
+
 export interface Scene3DHandle {
 	context: DrawContext;
 	scene: VoidScene3D;
@@ -125,7 +129,7 @@ export function requireScene(tag: string): NodeScope {
 }
 
 export function localOf(props: TransformProps): Transform3D {
-	let local = props.transform === null ? Transform3D.identity() : (props.transform as () => Transform3D)();
+	let local = valueOr<Transform3D>(props.transform, Transform3D.identity());
 	if (props.position !== null) { local.position = (props.position as () => Vec3)(); }
 	if (props.rotation !== null) { local.rotation = (props.rotation as () => Quat)(); }
 	if (props.scale !== null) { local.scale = (props.scale as () => Vec3)(); }

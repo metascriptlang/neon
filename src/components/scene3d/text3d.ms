@@ -17,7 +17,7 @@ import {
 	WorldLabel, WorldLabelStyle, plainStyle, setLabelText, setLabelOutline, refreshLabel, faceCamera, closeLabel,
 } from "../../../../void/src/void3d/worldLabel";
 import {
-	NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh,
+	NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr,
 } from "./core";
 
 export interface Text3DProps extends NodeProps {
@@ -36,11 +36,11 @@ const DEFAULT_SIZE: float32 = 16.0;
 const DEFAULT_PIXELS_PER_UNIT: float32 = 100.0;
 
 function sizeOf(props: Text3DProps): float32 {
-	return props.size === null ? DEFAULT_SIZE : (props.size as () => float32)();
+	return valueOr<float32>(props.size, DEFAULT_SIZE);
 }
 
 function colorOf(props: Text3DProps): Color {
-	return props.color === null ? rgba(1.0, 1.0, 1.0, 1.0) : (props.color as () => Color)();
+	return valueOr<Color>(props.color, rgba(1.0, 1.0, 1.0, 1.0));
 }
 
 function styleLabel(label: WorldLabel, style: TextStyle | null, size: float32, font: FontId): void {
@@ -95,8 +95,8 @@ export function Text3D(props: Text3DProps): NeonNode {
 			onCleanup(close);
 			createRenderEffect<[float32, Anchor]>(
 				(prev: [float32, Anchor] | null): [float32, Anchor] => [
-					props.pixelsPerUnit === null ? DEFAULT_PIXELS_PER_UNIT : (props.pixelsPerUnit as () => float32)(),
-					props.anchor === null ? ANCHOR_CENTER : (props.anchor as () => Anchor)(),
+					valueOr<float32>(props.pixelsPerUnit, DEFAULT_PIXELS_PER_UNIT),
+					valueOr<Anchor>(props.anchor, ANCHOR_CENTER),
 				],
 				(value: [float32, Anchor], prev: [float32, Anchor] | null): Cleanup | null => {
 					if (!(value[0] > 0.0)) { throw new Error("Text3D: pixelsPerUnit must be positive"); }

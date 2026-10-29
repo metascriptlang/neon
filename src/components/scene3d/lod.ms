@@ -6,7 +6,7 @@ import { CameraView } from "../../../../void/src/void3d/camera";
 import { NodeId3D, addGroup, setVisible, worldOf } from "../../../../void/src/void3d/scene";
 import { MeshLod, MeshLodProjectedSize } from "../../../../void/src/void3d/meshLod";
 import { Mat4, Vec3, vec3, identity, position, length, determinant3x3 } from "../../../../void/src/math/math3d";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh } from "./core";
+import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr } from "./core";
 
 export interface LodProps extends NodeProps {
 	radius: Accessor<float32>;
@@ -65,7 +65,7 @@ export function Lod(props: LodProps): NeonNode {
 			createRenderEffect<[float32[], float32, float32, int32 | null]>(
 				(prev: [float32[], float32, float32, int32 | null] | null): [float32[], float32, float32, int32 | null] => [
 					props.thresholds(),
-					props.cullingRatio === null ? 0.0 : (props.cullingRatio as () => float32)(),
+					valueOr<float32>(props.cullingRatio, 0.0),
 					props.radius(),
 					props.forcedLevel === null ? null : (props.forcedLevel as () => int32 | null)(),
 				],

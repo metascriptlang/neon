@@ -9,7 +9,7 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { Vec3, vec3, eulerQuat } from "../../../../void/src/math/math3d";
 import { ProjectionKind } from "../../../../void/src/void3d/camera";
 import { NodeId3D, Transform3D, setLocal, cameraViewOf } from "../../../../void/src/void3d/scene";
-import { mountOwned, requireScene } from "./core";
+import { mountOwned, requireScene, valueOr } from "./core";
 import { Pointer3D, PointerDrag, pointerScope } from "./pointer";
 
 // drei <OrbitControls> over three's OrbitControls: left drag orbits the target, right drag pans it, the wheel dollies.
@@ -37,14 +37,6 @@ enum OrbitMode {
 	Idle,
 	Rotate,
 	Pan,
-}
-
-function read(value: Accessor<float32> | null, fallback: float32): float32 {
-	return value === null ? fallback : (value as () => float32)();
-}
-
-function enabled(value: Accessor<boolean> | null): boolean {
-	return value === null ? true : (value as () => boolean)();
 }
 
 export function OrbitControls(props: OrbitControlsProps): NeonNode {
@@ -75,11 +67,11 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 
 			// three Spherical with y up: theta around y from +z, phi down from +y.
 			const pose = (id: NodeId3D, radius: float32, theta: float32, phi: float32): void => {
-				const lowPole = Math.max(read(props.minPolarAngle, 0.0), POLE_EPS) as float32;
-				const highPole = Math.min(read(props.maxPolarAngle, PI), PI - POLE_EPS) as float32;
+				const lowPole = Math.max(valueOr<float32>(props.minPolarAngle, 0.0), POLE_EPS) as float32;
+				const highPole = Math.min(valueOr<float32>(props.maxPolarAngle, PI), PI - POLE_EPS) as float32;
 				const polar = Math.min(Math.max(phi, lowPole), highPole) as float32;
-				const near = read(props.minDistance, 0.0);
-				const far = read(props.maxDistance, Infinity as float32);
+				const near = valueOr<float32>(props.minDistance, 0.0);
+				const far = valueOr<float32>(props.maxDistance, Infinity as float32);
 				const distance = Math.min(Math.max(radius, near), far) as float32;
 				const across = Math.sin(polar) as float32;
 				const offset = vec3(
@@ -108,7 +100,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 			const rotate = (dx: float32, dy: float32): void => {
 				const id = camera();
 				const at = spherical(id);
-				const turn = 2.0 * PI * read(props.rotateSpeed, 1.0) / viewHeight();
+				const turn = 2.0 * PI * valueOr<float32>(props.rotateSpeed, 1.0) / viewHeight();
 				pose(id, at.x, at.y - dx * turn, at.z - dy * turn);
 			};
 
@@ -123,7 +115,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 					ProjectionKind.Perspective => { halfFov = projection.fovY / 2.0; },
 					ProjectionKind.Orthographic => {},
 				}
-				const span = 2.0 * at.x * (Math.tan(halfFov) as float32) * read(props.panSpeed, 1.0) / viewHeight();
+				const span = 2.0 * at.x * (Math.tan(halfFov) as float32) * valueOr<float32>(props.panSpeed, 1.0) / viewHeight();
 				const yaw = at.y;
 				const pitch = PI / 2.0 - at.z;
 				const right = vec3(Math.cos(yaw) as float32, 0.0, -(Math.sin(yaw) as float32));
@@ -139,7 +131,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 			const drag: PointerDrag = {
 				begin: (x: float32, y: float32, e: NeonEvent): boolean => {
 					const panning = e.button === RIGHT_BUTTON;
-					if (panning ? !enabled(props.enablePan) : !enabled(props.enableRotate)) { return false; }
+					if (panning ? !valueOr<boolean>(props.enablePan, true) : !valueOr<boolean>(props.enableRotate, true)) { return false; }
 					mode = panning ? OrbitMode.Pan : OrbitMode.Rotate;
 					lastX = x;
 					lastY = y;
@@ -160,10 +152,10 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				end: (x: float32, y: float32, e: NeonEvent): void => { mode = OrbitMode.Idle; },
 				// three getZoomScale: 0.95 per step; Ion's wheel dy > 0 turns away from the user, which dollies in.
 				wheel: (x: float32, y: float32, e: NeonEvent): boolean => {
-					if (!enabled(props.enableZoom) || e.deltaY === 0) { return false; }
+					if (!valueOr<boolean>(props.enableZoom, true) || e.deltaY === 0) { return false; }
 					const id = camera();
 					const at = spherical(id);
-					const step = Math.pow(0.95, read(props.zoomSpeed, 1.0)) as float32;
+					const step = Math.pow(0.95, valueOr<float32>(props.zoomSpeed, 1.0)) as float32;
 					pose(id, e.deltaY > 0 ? at.x * step : at.x / step, at.y, at.z);
 					return true;
 				},

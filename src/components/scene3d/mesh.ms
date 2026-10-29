@@ -11,7 +11,7 @@ import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../.
 import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
 import { PointerProps, bindPointer } from "./pointer";
-import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf, whiteMaterialBlock } from "./core";
+import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf, whiteMaterialBlock, valueOr } from "./core";
 
 export interface MeshProps extends PointerProps {
 	geometry?: Accessor<MeshData> | null;
@@ -180,8 +180,8 @@ export function Mesh(props: MeshProps): NeonNode {
 				let shadowed: MaterialId | null = null;
 				createRenderEffect<[boolean, boolean]>(
 					(prev: [boolean, boolean] | null): [boolean, boolean] => [
-						props.castShadow === null ? false : (props.castShadow as () => boolean)(),
-						props.receiveShadow === null ? false : (props.receiveShadow as () => boolean)(),
+						valueOr<boolean>(props.castShadow, false),
+						valueOr<boolean>(props.receiveShadow, false),
 					],
 					(value: [boolean, boolean], prev: [boolean, boolean] | null): Cleanup | null => {
 						const next = shadowMaterialOf(scope.state, value[0], value[1]);

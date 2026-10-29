@@ -6,7 +6,7 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { Vec3, vec3, eulerQuat } from "../../../../void/src/math/math3d";
 import { NodeId3D, Transform3D, addCameraNode, setCameraOf, setLocal, setCameraLayers } from "../../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, CameraProjection, ProjectionKind } from "../../../../void/src/void3d/camera";
-import { NodeProps, CameraEntry, mountOwned, requireScene, ownNode, bindNode, mountNodeChildren, selectCamera } from "./core";
+import { NodeProps, CameraEntry, mountOwned, requireScene, ownNode, bindNode, mountNodeChildren, selectCamera, valueOr } from "./core";
 
 export interface Camera3DProps {
 	position?: Accessor<Vec3> | null;
@@ -28,11 +28,11 @@ function cameraOf(props: Camera3DProps): VoidCamera3D {
 		kind: ProjectionKind.Perspective, fovY: 1.0471975511965976,
 	} : (props.projection as () => CameraProjection)();
 	return {
-		position: props.position === null ? vec3(0.0, 0.0, 0.0) : (props.position as () => Vec3)(),
-		yaw: props.yaw === null ? 0.0 : (props.yaw as () => float32)(),
-		pitch: props.pitch === null ? 0.0 : (props.pitch as () => float32)(),
-		nearPlane: props.nearPlane === null ? 0.1 : (props.nearPlane as () => float32)(),
-		farPlane: props.farPlane === null ? 1000.0 : (props.farPlane as () => float32)(),
+		position: valueOr<Vec3>(props.position, vec3(0.0, 0.0, 0.0)),
+		yaw: valueOr<float32>(props.yaw, 0.0),
+		pitch: valueOr<float32>(props.pitch, 0.0),
+		nearPlane: valueOr<float32>(props.nearPlane, 0.1),
+		farPlane: valueOr<float32>(props.farPlane, 1000.0),
 		projection: projection,
 	};
 }

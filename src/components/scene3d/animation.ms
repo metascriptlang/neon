@@ -32,7 +32,7 @@ import {
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, setLocal, isLive,
 } from "../../../../void/src/void3d/scene";
-import { NodeScope, mountOwned, requireScene } from "./core";
+import { NodeScope, mountOwned, requireScene, valueOr } from "./core";
 import { GltfMount, GltfScope, gltfScope } from "./gltf";
 
 export interface FrameClockProps {
@@ -577,9 +577,9 @@ export function Clip(props: ClipProps): NeonNode {
 			);
 			createRenderEffect<[boolean, float64, boolean]>(
 				(prev: [boolean, float64, boolean] | null): [boolean, float64, boolean] => [
-					props.playing === null ? true : (props.playing as () => boolean)(),
-					props.speed === null ? 1.0 : (props.speed as () => float64)(),
-					props.loop === null ? true : (props.loop as () => boolean)(),
+					valueOr<boolean>(props.playing, true),
+					valueOr<float64>(props.speed, 1.0),
+					valueOr<boolean>(props.loop, true),
 				],
 				(value: [boolean, float64, boolean], prev: [boolean, float64, boolean] | null): Cleanup | null => {
 					if (!Number.isFinite(value[1])) { throw new Error("Clip: speed must be finite"); }
@@ -594,8 +594,8 @@ export function Clip(props: ClipProps): NeonNode {
 			);
 			createRenderEffect<[float64, float64]>(
 				(prev: [float64, float64] | null): [float64, float64] => [
-					props.weight === null ? 1.0 : (props.weight as () => float64)(),
-					props.fadeMs === null ? 0.0 : (props.fadeMs as () => float64)(),
+					valueOr<float64>(props.weight, 1.0),
+					valueOr<float64>(props.fadeMs, 0.0),
 				],
 				(value: [float64, float64], prev: [float64, float64] | null): Cleanup | null => {
 					run.weight = checkedWeight(value[0]);

@@ -25,7 +25,7 @@ import { fits } from "../../../../void/src/void3d/uniformPool";
 import { PixelFormat, contextGeneration, formatRenderable } from "../../../../void/src/gpu/door";
 import { Scene3D as VoidScene3D, NodeId3D, NO_NODE_ID, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
-import { Scene3DHandle, SceneState, LightShadow, LightSlot, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
+import { Scene3DHandle, SceneState, LightShadow, LightSlot, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera, valueOr } from "./core";
 import { runBeforeRefresh } from "./core";
 import { useVoidClock } from "../../render/voidClock";
 import { NeonEvent } from "../../render/event";
@@ -235,8 +235,8 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			if (props.outlineBlend !== null || props.outlineSettings !== null) {
 				createRenderEffect<[float32, ForwardOutlineSettings]>(
 					(prev: [float32, ForwardOutlineSettings] | null): [float32, ForwardOutlineSettings] => [
-						props.outlineBlend === null ? 0.0 : (props.outlineBlend as () => float32)(),
-						props.outlineSettings === null ? ForwardOutlineSettings.defaults() : (props.outlineSettings as () => ForwardOutlineSettings)(),
+						valueOr<float32>(props.outlineBlend, 0.0),
+						valueOr<ForwardOutlineSettings>(props.outlineSettings, ForwardOutlineSettings.defaults()),
 					],
 					(value: [float32, ForwardOutlineSettings], prev: [float32, ForwardOutlineSettings] | null): Cleanup | null => {
 						const blend = value[0];

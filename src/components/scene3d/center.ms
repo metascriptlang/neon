@@ -7,7 +7,7 @@ import { Bounds3D, empty, addBounds, isEmpty, size, center, transformed } from "
 import { NodeId3D, NO_NODE_ID, Transform3D, addGroup, setLocal, worldOf } from "../../../../void/src/void3d/scene";
 import { Vec3, vec3 } from "../../../../void/src/math/math3d";
 import { Group } from "./group";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh } from "./core";
+import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr } from "./core";
 
 // drei's OnCenterCallbackProps without `parent`, `container` and `boundingSphere`; `ref` gives the container.
 export interface Centered {
@@ -48,7 +48,7 @@ const DISABLE_Y: int32 = 256;
 const DISABLE_Z: int32 = 512;
 
 function bit(read: Accessor<boolean> | null, flag: int32): int32 {
-	return read !== null && (read as () => boolean)() ? flag : 0;
+	return valueOr<boolean>(read, false) ? flag : 0;
 }
 
 function axisOffset(disabled: boolean, center: float32, alignment: float32): float32 {
@@ -76,7 +76,7 @@ export function Center(props: CenterProps): NeonNode {
 					bit(props.top, TOP) | bit(props.right, RIGHT) | bit(props.bottom, BOTTOM) | bit(props.left, LEFT) |
 						bit(props.front, FRONT) | bit(props.back, BACK) | bit(props.disable, DISABLE) |
 						bit(props.disableX, DISABLE_X) | bit(props.disableY, DISABLE_Y) | bit(props.disableZ, DISABLE_Z),
-					props.cacheKey === null ? 0 : (props.cacheKey as () => int32)(),
+					valueOr<int32>(props.cacheKey, 0),
 				],
 				(value: [int32, int32], prev: [int32, int32] | null): Cleanup | null => {
 					flags = value[0];

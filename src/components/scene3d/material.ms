@@ -55,7 +55,7 @@ import { TextureId, NO_TEXTURE } from "../../../../void/src/void3d/texture";
 import {
 	DrawContext, MaterialId, addMaterial, releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms,
 } from "../../../../void/src/void3d/draw";
-import { requireScene, whiteMaterialBlock } from "./core";
+import { requireScene, whiteMaterialBlock, valueOr } from "./core";
 
 // A grid of frames in the base texture, Heaps' AnimatedTexture (void3d/gpu3d.ms MOVING_FLIPBOOK_*).
 // numberOfFrames, fps, startFrame and loop are drei's SpriteAnimator props
@@ -120,18 +120,6 @@ function refuse(reason: string): Error {
 	return new Error("createMaterial: " + reason);
 }
 
-function textureOf(read: Accessor<TextureId> | null): TextureId {
-	return read === null ? NO_TEXTURE : (read as () => TextureId)();
-}
-
-function flagOf(read: Accessor<boolean> | null): boolean {
-	return read === null ? false : (read as () => boolean)();
-}
-
-function floatOf(read: Accessor<float32> | null, fallback: float32): float32 {
-	return read === null ? fallback : (read as () => float32)();
-}
-
 function movesUv(props: MaterialProps): boolean {
 	return props.uvRepeat !== null || props.uvOffset !== null || props.uvScroll !== null;
 }
@@ -150,14 +138,14 @@ function mapsOccluded(props: MaterialProps): boolean {
 }
 
 function shapeOf(props: MaterialProps): Material {
-	const texture = textureOf(props.texture);
-	const normal = textureOf(props.normalTexture);
-	const emissive = textureOf(props.emissiveTexture);
-	const back = textureOf(props.backTexture);
-	const noise = textureOf(props.dissolveTexture);
-	const metalRough = textureOf(props.metalRoughTexture);
-	const occlusion = textureOf(props.occlusionTexture);
-	const unlit = flagOf(props.unlit);
+	const texture = valueOr<TextureId>(props.texture, NO_TEXTURE);
+	const normal = valueOr<TextureId>(props.normalTexture, NO_TEXTURE);
+	const emissive = valueOr<TextureId>(props.emissiveTexture, NO_TEXTURE);
+	const back = valueOr<TextureId>(props.backTexture, NO_TEXTURE);
+	const noise = valueOr<TextureId>(props.dissolveTexture, NO_TEXTURE);
+	const metalRough = valueOr<TextureId>(props.metalRoughTexture, NO_TEXTURE);
+	const occlusion = valueOr<TextureId>(props.occlusionTexture, NO_TEXTURE);
+	const unlit = valueOr<boolean>(props.unlit, false);
 	const textured = texture.isTexture();
 	if (unlit && !textured) { throw refuse("unlit needs a texture; Void has no untextured unlit program"); }
 	const litTextured = textured && !unlit;
@@ -180,7 +168,7 @@ function shapeOf(props: MaterialProps): Material {
 	if (mapsOccluded(props) && !mapped) {
 		throw refuse("aoMapIntensity and occlusionChannel need an occlusionTexture");
 	}
-	const channel = props.occlusionChannel === null ? 0 : (props.occlusionChannel as () => int32)();
+	const channel = valueOr<int32>(props.occlusionChannel, 0);
 	if (channel < 0 || channel > 1) { throw refuse("occlusionChannel must be 0 or 1; Void reads uv sets 0 and 1"); }
 	const parallax = props.parallaxScale !== null;
 	if (props.parallaxSteps !== null && !parallax) { throw refuse("parallaxSteps needs parallaxScale"); }
@@ -191,11 +179,11 @@ function shapeOf(props: MaterialProps): Material {
 	if (movesBlock(props) && pbr) {
 		throw refuse("flipbook, distanceFade and colorKey need a program without pbr; Void's pbr programs read no moving block");
 	}
-	const kind = props.kind === null ? MaterialKind.Opaque : (props.kind as () => MaterialKind)();
+	const kind = valueOr<MaterialKind>(props.kind, MaterialKind.Opaque);
 	if (props.distanceFade !== null && (kind == MaterialKind.Opaque || kind == MaterialKind.AlphaKill)) {
 		throw refuse("distanceFade shows only through blending; use MaterialKind.Alpha, Add or SoftAdd");
 	}
-	if (parallax && kind == MaterialKind.AlphaKill && flagOf(props.castShadow)) {
+	if (parallax && kind == MaterialKind.AlphaKill && valueOr<boolean>(props.castShadow, false)) {
 		throw refuse("parallaxScale with MaterialKind.AlphaKill cannot cast a shadow; Void has no such caster");
 	}
 	const program = unlit ? Program.UnlitTextured : textured ? Program.LitTextured : Program.Lit;
@@ -211,10 +199,10 @@ function shapeOf(props: MaterialProps): Material {
 	if (normal.isTexture()) { key = key.withNormalMap(); }
 	if (parallax) { key = key.withParallax(); }
 	const shaped: Material = { ...base, program: key };
-	const sided: Material = flagOf(props.doubleSided) ?
+	const sided: Material = valueOr<boolean>(props.doubleSided, false) ?
 		{ ...shaped, pass: shaped.pass.withCulling(Face.None) } : shaped;
 	return {
-		...sided.withShadows(flagOf(props.castShadow) ? ShadowCasting.On : ShadowCasting.Off, flagOf(props.receiveShadow)),
+		...sided.withShadows(valueOr<boolean>(props.castShadow, false) ? ShadowCasting.On : ShadowCasting.Off, valueOr<boolean>(props.receiveShadow, false)),
 		texture: texture,
 		normalTexture: normal,
 		emissiveTexture: emissive,
@@ -233,7 +221,7 @@ function writeColor(ref values: Vec<float32>, at: int32, color: Color): void {
 }
 
 function writeUv(ref values: Vec<float32>, props: MaterialProps, matrix: int32, offset: int32, scroll: int32): void {
-	const repeat: Vec2 = props.uvRepeat === null ? { x: 1.0, y: 1.0 } : (props.uvRepeat as () => Vec2)();
+	const repeat: Vec2 = valueOr<Vec2>(props.uvRepeat, { x: 1.0, y: 1.0 });
 	values[matrix] = repeat.x;
 	values[matrix + 3] = repeat.y;
 	if (props.uvOffset !== null) {
@@ -298,14 +286,14 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	const dissolves = props.dissolve !== null || props.dissolveEdgeWidth !== null || props.dissolveEdgeColor !== null;
 	if (dissolves && !key.dissolve) { throw refuse("dissolve values need a dissolveTexture"); }
 	let values: Vec<float32> = whiteMaterialBlock(emissiveBase(key) + (key.emissive ? EMISSIVE_LENGTH : 0));
-	values[MATERIAL_SATURATION] = floatOf(props.saturation, 0.0);
+	values[MATERIAL_SATURATION] = valueOr<float32>(props.saturation, 0.0);
 	values[MATERIAL_DOUBLE_SIDED] = material.pass.culling == Face.None ? 1.0 : 0.0;
-	const kill = floatOf(props.alphaKill, key.cutout ? DEFAULT_ALPHA_KILL : 0.0);
+	const kill = valueOr<float32>(props.alphaKill, key.cutout ? DEFAULT_ALPHA_KILL : 0.0);
 	if (key.cutout && !(kill > 0.0)) { throw refuse("alphaKill must be above 0 for MaterialKind.AlphaKill"); }
 	values[MATERIAL_ALPHA_KILL] = kill;
 	if (props.color !== null) { writeColor(values, MATERIAL_COLOR, (props.color as () => Color)()); }
 	if (key.pbr) {
-		const checked = PbrProperties.heapsValues(floatOf(props.metalness, 0.0), floatOf(props.roughness, 1.0), 1.0);
+		const checked = PbrProperties.heapsValues(valueOr<float32>(props.metalness, 0.0), valueOr<float32>(props.roughness, 1.0), 1.0);
 		if (!checked.ok) { throw refuse("metalness and roughness: " + checked.error.toString()); }
 		if (checked.value.roughness == 0.0) { throw refuse("roughness 0 has no valid BRDF in Void"); }
 		values[PBR_METALNESS] = checked.value.metalness;
@@ -314,19 +302,19 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 		writeUv(values, props, PBR_UV_MATRIX, PBR_UV_OFFSET, PBR_UV_SCROLL);
 	}
 	if (key.pbrMaps) {
-		const strength = floatOf(props.aoMapIntensity, 1.0);
+		const strength = valueOr<float32>(props.aoMapIntensity, 1.0);
 		if (!(strength >= 0.0 && strength <= 1.0)) {
 			throw refuse("aoMapIntensity must be from 0 to 1; Void's occlusion strength is a unit value");
 		}
 		values[PBR_OCCLUSION_STRENGTH] = strength;
 	}
 	if (key.parallax) {
-		const scale = floatOf(props.parallaxScale, 0.0);
+		const scale = valueOr<float32>(props.parallaxScale, 0.0);
 		if (!(Number.isFinite(scale) && scale > 0.0)) {
 			throw refuse("parallaxScale must be a finite number above 0");
 		}
 		values[MATERIAL_PARALLAX] = scale;
-		const steps = props.parallaxSteps === null ? 0 : (props.parallaxSteps as () => int32)();
+		const steps = valueOr<int32>(props.parallaxSteps, 0);
 		if (steps < 0 || steps > 255) {
 			throw refuse("parallaxSteps must be from 0 to 255, where 0 is Void's 24");
 		}
@@ -337,8 +325,8 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 		writeUv(values, props, base + MOVING_UV_MATRIX, base + MOVING_UV_OFFSET, base + MOVING_UV_SCROLL);
 		values[base + MOVING_BACK_UV_MATRIX] = 1.0;
 		values[base + MOVING_BACK_UV_MATRIX + 3] = 1.0;
-		values[base + MOVING_DISSOLVE_THRESHOLD] = floatOf(props.dissolve, 0.0);
-		values[base + MOVING_DISSOLVE_EDGE_WIDTH] = floatOf(props.dissolveEdgeWidth, 0.0);
+		values[base + MOVING_DISSOLVE_THRESHOLD] = valueOr<float32>(props.dissolve, 0.0);
+		values[base + MOVING_DISSOLVE_EDGE_WIDTH] = valueOr<float32>(props.dissolveEdgeWidth, 0.0);
 		if (props.dissolveEdgeColor !== null) {
 			writeColor(values, base + MOVING_DISSOLVE_EDGE_COLOR, (props.dissolveEdgeColor as () => Color)());
 		}
@@ -356,7 +344,7 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 			values[at + EMISSIVE_COLOR + 1] = glow.g;
 			values[at + EMISSIVE_COLOR + 2] = glow.b;
 		}
-		values[at + EMISSIVE_STRENGTH] = floatOf(props.emissiveIntensity, 1.0);
+		values[at + EMISSIVE_STRENGTH] = valueOr<float32>(props.emissiveIntensity, 1.0);
 	}
 	return values;
 }
