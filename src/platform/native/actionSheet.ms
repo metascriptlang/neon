@@ -1,5 +1,5 @@
 import { ActionSheetRequest, ActionSheetServices, installActionSheetServices } from "../../api/actionSheetServices";
-import { AppEvent, FIELD, RECORD, appCall, onNativeAppEvent } from "./appBridge";
+import { AppEvent, FIELD, RECORD, appCall, onNativeAppEvent, wireFields, wireInt } from "./appBridge";
 
 interface PendingSheet {
 	id: int32;
@@ -39,13 +39,13 @@ function showActionSheet(request: ActionSheetRequest): void {
 
 function dismissActionSheet(): void {
 	const dismissed = appCall("actionsheet.dismiss", "");
-	if (dismissed !== "") { remove(parseInt(dismissed) as int32); }
+	if (dismissed !== "") { remove(wireInt("Action sheet", "dismissed id", dismissed)); }
 }
 
 function onActionSheetEvent(value: string): void {
-	const fields = value.split(FIELD);
-	const pending = remove(parseInt(fields[0]) as int32);
-	if (pending !== null) { pending.done(parseInt(fields[1]) as int32); }
+	const fields = wireFields("Action sheet", value, 2);
+	const pending = remove(wireInt("Action sheet", "request id", fields[0]));
+	if (pending !== null) { pending.done(wireInt("Action sheet", "button index", fields[1])); }
 }
 
 export const nativeActionSheetServices: ActionSheetServices = { showActionSheet, dismissActionSheet };

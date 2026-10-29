@@ -1,31 +1,10 @@
-import { niAppCall } from "./app.h";
-import { AppEvent, appCall, onNativeAppEvent, requestReply } from "./appBridge";
+import {
+	AppEvent, FIELD, RECORD, appCall, ask, flagText, onNativeAppEvent, refusal, wireId, wirePayload,
+} from "./appBridge";
 import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, unloadedSound,
 } from "../../api/captureServices";
-
-const FIELD = "\u001f";
-const RECORD = "\u001e";
-
-function call(name: string, arg: string): string {
-	const reply: string = niAppCall(name, arg);
-	return reply;
-}
-
-async function ask(name: string, arg: string): Promise<string> {
-	return await new Promise<string>((resolve) => {
-		requestReply(appCall, name, arg, (reply: string): void => { resolve(reply); });
-	});
-}
-
-function flag(value: boolean): string {
-	return value ? "1" : "0";
-}
-
-function refusal(reply: string): string {
-	return reply.startsWith("!") ? reply.substring(1, reply.length) : "";
-}
 
 function amount(text: string): number {
 	return text === "" ? -1 : parseFloat(text);
@@ -59,9 +38,9 @@ export function decodePick(reply: string): PickReply {
 }
 
 async function pickMedia(request: PickRequest): Promise<PickReply> {
-	const reply = await ask("capture.pick", [
-		flag(request.camera), flag(request.images), flag(request.videos), flag(request.allowsEditing),
-		request.quality.toString(), flag(request.base64), flag(request.multiple), request.selectionLimit.toString(),
+	const reply = await ask(appCall, "capture.pick", [
+		flagText(request.camera), flagText(request.images), flagText(request.videos), flagText(request.allowsEditing),
+		request.quality.toString(), flagText(request.base64), flagText(request.multiple), request.selectionLimit.toString(),
 		request.cameraType,
 	].join(FIELD));
 	return decodePick(reply);
@@ -106,9 +85,9 @@ function forgetSound(id: int32): void {
 async function soundLoad(id: int32, setup: SoundSetup, update: (state: SoundState) => void): Promise<SoundState> {
 	forgetSound(id);
 	sounds.push({ id, update });
-	const state = decodeSound(await ask("sound.load", [
-		id.toString(), setup.uri, flag(setup.shouldPlay), setup.volume.toString(), flag(setup.isLooping),
-		flag(setup.isMuted), setup.positionMillis.toString(), setup.rate.toString(),
+	const state = decodeSound(await ask(appCall, "sound.load", [
+		id.toString(), setup.uri, flagText(setup.shouldPlay), setup.volume.toString(), flagText(setup.isLooping),
+		flagText(setup.isMuted), setup.positionMillis.toString(), setup.rate.toString(),
 		setup.progressUpdateIntervalMillis.toString(),
 	].join(FIELD)));
 	if (!state.isLoaded) { forgetSound(id); }
@@ -116,22 +95,21 @@ async function soundLoad(id: int32, setup: SoundSetup, update: (state: SoundStat
 }
 
 function soundCommand(id: int32, command: string, value: number): SoundState {
-	const state = decodeSound(call("sound." + command, id.toString() + FIELD + value.toString()));
+	const state = decodeSound(appCall("sound." + command, id.toString() + FIELD + value.toString()));
 	if (command === "unload") { forgetSound(id); }
 	return state;
 }
 
 function onSoundEvent(value: string): void {
-	const split = value.indexOf(FIELD);
-	const id = parseInt(value.substring(0, split)) as int32;
-	const state = decodeSound(value.substring(split + 1, value.length));
+	const id = wireId("Sound", value);
+	const state = decodeSound(wirePayload(value));
 	for (const watch of sounds.slice(0, sounds.length)) {
 		if (watch.id === id) { watch.update(state); }
 	}
 }
 
 async function audioMode(allowsRecording: boolean, playsInSilentMode: boolean): Promise<string> {
-	return refusal(call("audio.mode", flag(allowsRecording) + FIELD + flag(playsInSilentMode)));
+	return refusal(appCall("audio.mode", flagText(allowsRecording) + FIELD + flagText(playsInSilentMode)));
 }
 
 export function decodeRecording(value: string): RecordingState {
@@ -168,7 +146,7 @@ function forgetRecording(id: int32): void {
 async function recordingPrepare(id: int32, setup: RecordingSetup, update: (state: RecordingState) => void): Promise<RecordingState> {
 	forgetRecording(id);
 	recordings.push({ id, update });
-	const state = decodeRecording(await ask("recording.prepare", [
+	const state = decodeRecording(await ask(appCall, "recording.prepare", [
 		id.toString(), setup.extension, setup.sampleRate.toString(), setup.numberOfChannels.toString(),
 		setup.bitRate.toString(), setup.progressUpdateIntervalMillis.toString(),
 	].join(FIELD)));
@@ -177,15 +155,14 @@ async function recordingPrepare(id: int32, setup: RecordingSetup, update: (state
 }
 
 async function recordingCommand(id: int32, command: string, value: number): Promise<RecordingState> {
-	const state = decodeRecording(call("recording." + command, id.toString() + FIELD + value.toString()));
+	const state = decodeRecording(appCall("recording." + command, id.toString() + FIELD + value.toString()));
 	if (command === "stop") { forgetRecording(id); }
 	return state;
 }
 
 function onRecordingEvent(value: string): void {
-	const split = value.indexOf(FIELD);
-	const id = parseInt(value.substring(0, split)) as int32;
-	const state = decodeRecording(value.substring(split + 1, value.length));
+	const id = wireId("Recording", value);
+	const state = decodeRecording(wirePayload(value));
 	for (const watch of recordings.slice(0, recordings.length)) {
 		if (watch.id === id) { watch.update(state); }
 	}

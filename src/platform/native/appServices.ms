@@ -4,7 +4,7 @@ import { publishScale, publishScreen } from "../../api/dimensions";
 import { AppStateStatus, publishAppState, publishMemoryWarning } from "../../api/appState";
 import { dispatchHardwareBackPress } from "../../api/backHandler";
 import {
-	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
+	AppEvent, FIELD, PENDING_REPLY, RECORD, appCall, appEventOf, dispatchNativeAppEvent, runNativeAppStarts, wireFields, wireInt,
 } from "./appBridge";
 import { CaptureServices, installCaptureServices } from "../../api/captureServices";
 
@@ -44,14 +44,21 @@ const alerts: PendingAlert[] = [];
 const shares: ((action: string, activityType: string) => void)[] = [];
 let nextRequest: int32 = 1;
 
-function call(name: string, arg: string): string {
-	return appCall(name, arg);
+function appStateOf(value: string): AppStateStatus {
+	return match (value) {
+		"active" => "active",
+		"background" => "background",
+		"inactive" => "inactive",
+		"unknown" => "unknown",
+		"extension" => "extension",
+		_ => { throw new Error("App state: the host sent the unknown state " + value); },
+	};
 }
 
 function settleAlert(value: string): void {
-	const fields = value.split(FIELD);
-	const id = parseInt(fields[0]) as int32;
-	const index = parseInt(fields[1]) as int32;
+	const fields = wireFields("Alert", value, 2);
+	const id = wireInt("Alert", "request id", fields[0]);
+	const index = wireInt("Alert", "button index", fields[1]);
 	for (let i = 0; i < alerts.length; i += 1) {
 		if (alerts[i].id === id) {
 			const pending = alerts[i];
@@ -72,9 +79,9 @@ function settleShare(value: string): void {
 
 function onAppEvent(): void {
 	const value: string = niLastAppValue();
-	const kind = niLastAppEvent() as AppEvent;
+	const kind = appEventOf(niLastAppEvent());
 	match (kind) {
-		AppEvent.State => publishAppState(value as AppStateStatus),
+		AppEvent.State => publishAppState(appStateOf(value)),
 		AppEvent.BackPress => niSetAppEventResult(dispatchHardwareBackPress() ? 1 : 0),
 		AppEvent.Alert => settleAlert(value),
 		AppEvent.Share => settleShare(value),
@@ -85,8 +92,8 @@ function onAppEvent(): void {
 }
 
 function settleImage(value: string): void {
-	const fields = value.split(FIELD);
-	const id = parseInt(fields[0]) as int32;
+	const fields = wireFields("Image size", value, 3);
+	const id = wireInt("Image size", "request id", fields[0]);
 	for (let i = 0; i < images.length; i += 1) {
 		if (images[i].id === id) {
 			const pending = images[i];
@@ -102,7 +109,7 @@ export function imageSize(uri: string, done: (width: number, height: number, err
 	const id = nextRequest;
 	nextRequest += 1;
 	images.push({ id, done });
-	call("image.size", id.toString() + FIELD + uri);
+	appCall("image.size", id.toString() + FIELD + uri);
 }
 
 let runEvent: (fn: () => void) => void = (fn: () => void): void => { fn(); };
@@ -118,12 +125,12 @@ function alert(request: AlertRequest): void {
 	let arg = id.toString() + FIELD + request.title + FIELD + request.message + FIELD +
 		(request.cancelable ? "1" : "0");
 	for (const button of request.buttons) { arg += RECORD + button.text + FIELD + button.style; }
-	call("alert", arg);
+	appCall("alert", arg);
 }
 
 function share(request: ShareRequest): void {
-	const reply = call("share", request.title + FIELD + request.message + FIELD + request.url);
-	if (reply !== "") {
+	const reply = appCall("share", request.title + FIELD + request.message + FIELD + request.url);
+	if (reply !== PENDING_REPLY) {
 		request.done(reply, "");
 		return;
 	}
@@ -131,11 +138,11 @@ function share(request: ShareRequest): void {
 }
 
 const services: AppServices = {
-	dismissKeyboard: (): void => { call("keyboard.dismiss", ""); },
+	dismissKeyboard: (): void => { appCall("keyboard.dismiss", ""); },
 	alert,
 	share,
-	announce: (text: string): void => { call("a11y.announce", text); },
-	exitApp: (): void => { call("exitApp", ""); },
+	announce: (text: string): void => { appCall("a11y.announce", text); },
+	exitApp: (): void => { appCall("exitApp", ""); },
 	imageSize,
 };
 
@@ -147,12 +154,10 @@ when (macos && !testBuild) {
 }
 let app: AppServices = services;
 
-// A desktop owner that runs the audio device itself (Ion) answers capture in place of the bridge.
 export function useCaptureServices(services: CaptureServices): void {
 	capture = services;
 }
 
-// A desktop owner (Ion) answers the app services in place of the bridge, as it does capture.
 export function useAppServices(owned: AppServices): void {
 	app = owned;
 }
@@ -162,13 +167,13 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	niSetAppHandler(onAppEventBatched);
 	installAppServices(app);
 	installCaptureServices(capture);
-	publishPlatform(call("platform", ""), call("isPad", "") === "1");
-	const ratio = call("pixelRatio", "");
-	const font = call("fontScale", "");
+	publishPlatform(appCall("platform", ""), appCall("isPad", "") === "1");
+	const ratio = appCall("pixelRatio", "");
+	const font = appCall("fontScale", "");
 	if (ratio !== "" && font !== "") { publishScale(parseFloat(ratio), parseFloat(font)); }
-	const screen = call("screen", "").split(FIELD);
+	const screen = appCall("screen", "").split(FIELD);
 	if (screen.length === 2) { publishScreen(parseFloat(screen[0]), parseFloat(screen[1])); }
-	const state = call("appState", "");
-	if (state !== "") { publishAppState(state as AppStateStatus); }
+	const state = appCall("appState", "");
+	if (state !== "") { publishAppState(appStateOf(state)); }
 	runNativeAppStarts();
 }

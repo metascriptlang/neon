@@ -25,11 +25,45 @@ export enum AppEvent {
 	Settings,
 }
 
+export const PENDING_REPLY = "";
+
+const LAST_APP_EVENT = AppEvent.Settings as int32;
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
 export type AppCommand = (name: string, arg: string) => string;
 
 export function appCall(name: string, arg: string): string {
-	const reply: string = niAppCall(name, arg);
-	return reply;
+	return niAppCall(name, arg);
+}
+
+export function appEventOf(kind: int32): AppEvent {
+	if (kind < 0 || kind > LAST_APP_EVENT) { throw new Error("App bridge: the host sent the unknown event kind " + kind.toString()); }
+	return kind as AppEvent;
+}
+
+export function wireInt(module: string, field: string, text: string): int32 {
+	const value = parseInt(text);
+	if (value.toString() !== text || value < INT32_MIN || value > INT32_MAX) {
+		throw new Error(module + ": the host sent a malformed " + field + ": " + text);
+	}
+	return value as int32;
+}
+
+export function wireFields(module: string, text: string, minimum: int32): string[] {
+	const fields = text.split(FIELD);
+	if (fields.length < minimum) { throw new Error(module + ": the host sent " + fields.length.toString() + " fields where " + minimum.toString() + " are needed: " + text); }
+	return fields;
+}
+
+export function wireId(module: string, value: string): int32 {
+	const split = value.indexOf(FIELD);
+	return wireInt(module, "request id", split < 0 ? value : value.substring(0, split));
+}
+
+export function wirePayload(value: string): string {
+	const split = value.indexOf(FIELD);
+	return split < 0 ? "" : value.substring(split + 1, value.length);
 }
 
 interface EventHandler {
@@ -70,7 +104,7 @@ export function requestReply(command: AppCommand, name: string, arg: string, don
 	const id = nextReply;
 	nextReply += 1;
 	const reply = command(name, id.toString() + FIELD + arg);
-	if (reply !== "") {
+	if (reply !== PENDING_REPLY) {
 		done(reply);
 		return;
 	}
@@ -84,20 +118,22 @@ export async function ask(command: AppCommand, name: string, arg: string): Promi
 }
 
 function onReplyEvent(value: string): void {
-	const split = value.indexOf(FIELD);
-	const id = parseInt(split < 0 ? value : value.substring(0, split)) as int32;
-	const reply = split < 0 ? "" : value.substring(split + 1, value.length);
+	const id = wireId("App bridge", value);
 	for (let i = 0; i < replies.length; i += 1) {
 		if (replies[i].id === id) {
 			const pending = replies[i];
 			replies.splice(i, 1);
-			pending.done(reply);
+			pending.done(wirePayload(value));
 			return;
 		}
 	}
 }
 
 onNativeAppEvent(AppEvent.Reply, onReplyEvent);
+
+export function presentValue(reply: string): string | null {
+	return reply.startsWith("=") ? reply.substring(1, reply.length) : null;
+}
 
 export function refusal(reply: string): string {
 	return reply.startsWith("!") ? reply.substring(1, reply.length) : "";

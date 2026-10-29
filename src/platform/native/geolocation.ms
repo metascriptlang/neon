@@ -1,5 +1,5 @@
 import { LocationFix, LocationRequest, LocationServices, installLocationServices } from "../../api/locationServices";
-import { AppEvent, FIELD, appCall, onNativeAppEvent, requestReply } from "./appBridge";
+import { AppCommand, AppEvent, FIELD, appCall, onNativeAppEvent, requestReply, wireId, wireInt, wirePayload } from "./appBridge";
 import { niLocationCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -13,13 +13,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niLocationCommand(name, arg);
-		return reply;
+		return niLocationCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 function measured(text: string): number {
@@ -30,7 +27,7 @@ function decodeFix(value: string): LocationFix {
 	const fields = value.split(FIELD);
 	if (fields[0] === "error" && fields.length === 3) {
 		return {
-			code: parseInt(fields[1]) as int32,
+			code: wireInt("Geolocation", "error code", fields[1]),
 			message: fields[2],
 			latitude: 0,
 			longitude: 0,
@@ -91,10 +88,9 @@ function locationClear(id: int32): void {
 }
 
 function onLocationEvent(value: string): void {
-	const split = value.indexOf(FIELD);
-	const id = parseInt(value.substring(0, split)) as int32;
+	const id = wireId("Geolocation", value);
 	for (const watch of watches.slice(0, watches.length)) {
-		if (watch.id === id) { watch.update(decodeFix(value.substring(split + 1, value.length))); }
+		if (watch.id === id) { watch.update(decodeFix(wirePayload(value))); }
 	}
 }
 

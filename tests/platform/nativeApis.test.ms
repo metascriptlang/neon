@@ -21,6 +21,7 @@ import { installVibrationServices } from "../../src/api/vibrationServices";
 import { nativeVibrationServices } from "../../src/platform/native/vibration";
 import { installAccessibilityServices } from "../../src/api/accessibilityServices";
 import { nativeAccessibilityServices } from "../../src/platform/native/accessibilityInfo";
+import { AppEvent, appEventOf, wireFields, wireId, wireInt } from "../../src/platform/native/appBridge";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown, nmTextWidth } from "./nativeBridgeMock.h";
 
 const STATE: int32 = 0;
@@ -251,4 +252,37 @@ test "the reduce motion event from the native side reaches reduceMotionChanged l
 	subscription.remove();
 	assert seen.join(",") === "true,false", seen.join(",");
 	nmTeardown();
+}
+
+function failureOf(run: () => void): string {
+	try {
+		run();
+	} catch (e) {
+		return (e as Error).message;
+	}
+	return "";
+}
+
+test "the bridge decodes a host event kind only inside the NI_APP_* range" {
+	assert appEventOf(0) === AppEvent.State;
+	assert appEventOf(17) === AppEvent.Settings;
+	assert failureOf((): void => { appEventOf(18); }) === "App bridge: the host sent the unknown event kind 18";
+	assert failureOf((): void => { appEventOf(-1); }) === "App bridge: the host sent the unknown event kind -1";
+}
+
+test "a wire int is exact text of an int32 and anything else names the module and field" {
+	assert wireInt("Alert", "request id", "-7") === -7;
+	assert wireInt("Alert", "request id", "2147483647") === 2147483647;
+	assert failureOf((): void => { wireInt("Alert", "request id", "abc"); }) === "Alert: the host sent a malformed request id: abc";
+	assert failureOf((): void => { wireInt("Alert", "request id", "12x"); }) === "Alert: the host sent a malformed request id: 12x";
+	assert failureOf((): void => { wireInt("Alert", "request id", ""); }) === "Alert: the host sent a malformed request id: ";
+	assert failureOf((): void => { wireInt("Alert", "request id", "2147483648"); }) === "Alert: the host sent a malformed request id: 2147483648";
+}
+
+test "wire fields and ids reject a record that is too short" {
+	assert wireFields("Alert", "1" + FIELD + "2", 2).length === 2;
+	assert failureOf((): void => { wireFields("Alert", "1", 2); }).startsWith("Alert: the host sent 1 fields where 2 are needed");
+	assert wireId("Sound", "4" + FIELD + "status") === 4;
+	assert wireId("Sound", "4") === 4;
+	assert failureOf((): void => { wireId("Sound", "x" + FIELD + "status"); }) === "Sound: the host sent a malformed request id: x";
 }

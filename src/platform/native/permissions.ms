@@ -1,5 +1,5 @@
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../api/permissionServices";
-import { FIELD, appCall, ask, refusal } from "./appBridge";
+import { AppCommand, FIELD, appCall, ask, refusal, wireFields } from "./appBridge";
 import { niPermissionCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -16,13 +16,10 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		const reply: string = niPermissionCommand(name, arg);
-		return reply;
+		return niPermissionCommand(name, arg);
 	}
 } else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+	const command: AppCommand = appCall;
 }
 
 function permissionReply(reply: string): PermissionReply {
@@ -52,10 +49,9 @@ async function androidRequestPermissions(permissions: string[]): Promise<Permiss
 	const reply = await ask(command, "permissionsAndroid.request", permissions.join(","));
 	const error = refusal(reply);
 	const results: PermissionReply[] = [];
-	const fields = reply.split(FIELD);
+	const fields = error === "" ? wireFields("Permissions", reply, permissions.length) : [];
 	for (let i = 0; i < permissions.length; i += 1) {
-		const status = error === "" && i < fields.length ? fields[i] : "";
-		results.push({ status, canAskAgain: false, error });
+		results.push({ status: error === "" ? fields[i] : "", canAskAgain: false, error });
 	}
 	return results;
 }
