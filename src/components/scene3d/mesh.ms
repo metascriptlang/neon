@@ -11,7 +11,7 @@ import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../.
 import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
 import { PointerProps, bindPointer } from "./pointer";
-import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf } from "./core";
+import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf, whiteMaterialBlock } from "./core";
 
 export interface MeshProps extends PointerProps {
 	geometry?: Accessor<MeshData> | null;
@@ -31,7 +31,7 @@ function shadowMaterialOf(state: SceneState, cast: boolean, receive: boolean): M
 	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
 	const block = reserved.value;
 	try {
-		const written = writeUniforms(context, block, [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+		const written = writeUniforms(context, block, whiteMaterialBlock());
 		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
 		const plain = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 		const added = addMaterial(context, {

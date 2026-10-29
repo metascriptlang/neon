@@ -11,7 +11,7 @@ import { Style } from "../../render/style";
 import { place } from "../../render/reconcile";
 import { Vec3, Quat, vec3 } from "../../../../void/src/math/math3d";
 import { RenderState } from "../../../../void/src/gpu/state";
-import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
+import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, MATERIAL_COLOR } from "../../../../void/src/void3d/gpu3d";
 import { Material, Phase } from "../../../../void/src/void3d/material";
 import { MeshId } from "../../../../void/src/void3d/draw";
 import { DrawContext, MaterialId, addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
@@ -406,6 +406,12 @@ export function useSceneNode(): NodeId3D {
 	return requireScene("useSceneNode").parent;
 }
 
+export function whiteMaterialBlock(length: int32 = MATERIAL_UNIFORM_LENGTH): Vec<float32> {
+	let values: Vec<float32> = new Array(length);
+	for (let i: int32 = 0; i < 4; i += 1) { values[MATERIAL_COLOR + i] = 1.0; }
+	return values;
+}
+
 export function defaultMaterialOf(state: SceneState): MaterialId {
 	const existing = state.defaultMaterial;
 	if (existing !== null) { return existing; }
@@ -414,8 +420,7 @@ export function defaultMaterialOf(state: SceneState): MaterialId {
 	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
 	const block = reserved.value;
 	try {
-		const values: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
-		const written = writeUniforms(context, block, values);
+		const written = writeUniforms(context, block, whiteMaterialBlock());
 		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
 		const added = addMaterial(context, {
 			...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),

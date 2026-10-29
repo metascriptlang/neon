@@ -12,7 +12,7 @@ import {
 } from "../../../../void/src/void3d/gltfScene";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { PointerProps, bindPointer } from "./pointer";
-import { mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
+import { mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, whiteMaterialBlock } from "./core";
 
 // The imported subtree of one Gltf; `root` changes on every reload, so a reader inside an effect follows it.
 export interface GltfGraph {
@@ -78,7 +78,7 @@ function borrowedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, ass
 }
 
 function plainSetup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
+	return { pass: RenderState.defaults(), block: whiteMaterialBlock() };
 }
 
 export function Gltf(props: GltfProps): NeonNode {

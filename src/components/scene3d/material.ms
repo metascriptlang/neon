@@ -40,7 +40,7 @@ import { TextureId, NO_TEXTURE } from "../../../../void/src/void3d/texture";
 import {
 	DrawContext, MaterialId, addMaterial, releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms,
 } from "../../../../void/src/void3d/draw";
-import { requireScene } from "./core";
+import { requireScene, whiteMaterialBlock } from "./core";
 
 export interface MaterialProps {
 	unlit?: Accessor<boolean> | null;
@@ -168,17 +168,13 @@ function blockOf(material: Material, props: MaterialProps): Vec<float32> {
 	}
 	const dissolves = props.dissolve !== null || props.dissolveEdgeWidth !== null || props.dissolveEdgeColor !== null;
 	if (dissolves && !key.dissolve) { throw refuse("dissolve values need a dissolveTexture"); }
-	let values: Vec<float32> = new Array(emissiveBase(key) + (key.emissive ? EMISSIVE_LENGTH : 0));
+	let values: Vec<float32> = whiteMaterialBlock(emissiveBase(key) + (key.emissive ? EMISSIVE_LENGTH : 0));
 	values[MATERIAL_SATURATION] = floatOf(props.saturation, 0.0);
 	values[MATERIAL_DOUBLE_SIDED] = material.pass.culling == Face.None ? 1.0 : 0.0;
 	const kill = floatOf(props.alphaKill, key.cutout ? DEFAULT_ALPHA_KILL : 0.0);
 	if (key.cutout && !(kill > 0.0)) { throw refuse("alphaKill must be above 0 for MaterialKind.AlphaKill"); }
 	values[MATERIAL_ALPHA_KILL] = kill;
-	if (key.program == Program.UnlitTextured) {
-		writeColor(values, UNLIT_MATERIAL_COLOR, props.color === null ? { r: 1.0, g: 1.0, b: 1.0, a: 1.0 } : (props.color as () => Color)());
-	} else {
-		writeColor(values, MATERIAL_COLOR, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-	}
+	if (props.color !== null) { writeColor(values, UNLIT_MATERIAL_COLOR, (props.color as () => Color)()); }
 	if (key.pbr) {
 		const checked = PbrProperties.heapsValues(floatOf(props.metalness, 0.0), floatOf(props.roughness, 1.0), 1.0);
 		if (!checked.ok) { throw refuse("metalness and roughness: " + checked.error.toString()); }
