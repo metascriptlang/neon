@@ -1618,6 +1618,7 @@ void nimFrame(void) {
 		if (s_frame.fn) invoke(s_frame);
 	}
 	g_inFrame = NO;
+	if (g_frameWanted) requestHostFrame();
 }
 
 void nimSetFrameRequester(msClosure requester) { s_requester = requester; }
