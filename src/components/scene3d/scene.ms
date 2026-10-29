@@ -14,7 +14,7 @@ import {
 	ForwardRenderer, ForwardError, create, createHdrWhere, prepareFrame, drawOverScreen, closeForward,
 	setOutlineBlend, setOutlineSettings, setBloom,
 } from "../../../../void/src/void3d/forwardRenderer";
-import { ToneMode, setToneMode, setExposure, setElapsedTime, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
+import { ToneMode, setToneMode, setCameraView, setExposure, setElapsedTime, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
 import { BloomSettings } from "../../../../void/src/void3d/bloom";
 import { DirShadowMap, closeDirShadow } from "../../../../void/src/void3d/dirShadowMap";
 import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../../void/src/void3d/forwardOutline";
@@ -146,6 +146,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					const view = world.value.resolve(pixelWidth, pixelHeight);
 					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
 					view.value.writeCameraBlock(cameraBlock);
+					setCameraView(renderer.core, view.value);
 					const buried = buryDoomed(context, contextGeneration());
 					setElapsedTime(renderer.core, unspentSeconds);
 					unspentSeconds = 0.0;
