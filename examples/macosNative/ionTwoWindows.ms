@@ -101,17 +101,6 @@ steps.push((): void => {
 });
 steps.push((): void => {
 	expect("typing reaches the main field", mainValue === "m" && mainFocuses === 1, `"${mainValue}", focuses ${mainFocuses}`);
-	const options = defaultOptions(PANEL, 340 as int32, 72 as int32);
-	options.panel = true;
-	options.alwaysOnTop = true;
-	options.resizable = false;
-	const created = createWindow("launcher", options);
-	if (created === null) {
-		expect("the panel window opens", false, "createWindow returned null");
-		return;
-	}
-	panelWindow = created;
-	mountNativeWindow(panel(), Launcher);
 	show(panel());
 	focus(panel());
 });
@@ -182,5 +171,14 @@ const options = nativeWindowOptions(MAIN, 480, 320);
 options.topmost = check;
 exit(runNativeWindow(options, Board, check ? (win: Window): void => {
 	mainWindow = win;
+	const panelOptions = defaultOptions(PANEL, 340 as int32, 72 as int32);
+	panelOptions.panel = true;
+	panelOptions.visible = false;
+	panelOptions.alwaysOnTop = true;
+	panelOptions.resizable = false;
+	const created = createWindow("launcher", panelOptions);
+	if (created === null) { throw new Error("ionTwoWindows: the panel window did not open"); }
+	panelWindow = created;
+	mountNativeWindow(panel(), Launcher);
 	setTimeout((): void => { run(0); }, 700);
 } : null));
