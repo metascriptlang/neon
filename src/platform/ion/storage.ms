@@ -10,8 +10,7 @@ function failure(action: string, path: string, message: string): Error {
 
 export function createIonStorage(directory: string): StorageServices {
 	const manifest = directory + "/" + MANIFEST;
-	let keys: string[] = [];
-	let values: string[] = [];
+	const entries = new Map<string, string>();
 	let loaded = false;
 
 	function load(): void {
@@ -26,8 +25,7 @@ export function createIonStorage(directory: string): StorageServices {
 			for (let i = 0; i < root.keys.length; i += 1) {
 				const value = root.values[i];
 				if (value.kind !== JsonKind.String) { throw failure("parse", manifest, "the value of " + root.keys[i] + " is not a string"); }
-				keys.push(root.keys[i]);
-				values.push(value.asString());
+				entries.set(root.keys[i], value.asString());
 			}
 		}
 		loaded = true;
@@ -37,22 +35,20 @@ export function createIonStorage(directory: string): StorageServices {
 		const made = ensureDir(directory);
 		if (!made.ok) { throw failure("create", directory, made.error.message); }
 		const json: JsonValue[] = [];
-		for (const value of values) { json.push(jsonString(value)); }
+		for (const value of entries.values()) { json.push(jsonString(value)); }
 		const temp = manifest + ".tmp";
-		const written = writeFile(temp, stringify(jsonObject(keys, json)));
+		const written = writeFile(temp, stringify(jsonObject(entries.keys(), json)));
 		if (!written.ok) { throw failure("write", temp, written.error.message); }
 		const moved = rename(temp, manifest);
 		if (!moved.ok) { throw failure("replace", manifest, moved.error.message); }
 	}
 
-	// A failed save leaves memory ahead of disk, so the next call reloads from the manifest.
 	function persist(): void {
 		try {
 			save();
 		} catch (e) {
 			loaded = false;
-			keys = [];
-			values = [];
+			entries.clear();
 			throw e;
 		}
 	}
@@ -60,37 +56,26 @@ export function createIonStorage(directory: string): StorageServices {
 	return {
 		storageGet: (key: string): string | null => {
 			load();
-			const at = keys.indexOf(key);
-			return at < 0 ? null : values[at];
+			return entries.get(key);
 		},
 		storageSet: (key: string, value: string): void => {
 			load();
-			const at = keys.indexOf(key);
-			if (at < 0) {
-				keys.push(key);
-				values.push(value);
-			} else {
-				values[at] = value;
-			}
+			entries.set(key, value);
 			persist();
 		},
 		storageRemove: (key: string): void => {
 			load();
-			const at = keys.indexOf(key);
-			if (at < 0) { return; }
-			keys.splice(at, 1);
-			values.splice(at, 1);
+			if (!entries.delete(key)) { return; }
 			persist();
 		},
 		storageClear: (): void => {
 			load();
-			keys = [];
-			values = [];
+			entries.clear();
 			persist();
 		},
 		storageKeys: (): string[] => {
 			load();
-			return keys.slice(0, keys.length);
+			return entries.keys();
 		},
 	};
 }
@@ -101,8 +86,12 @@ function appDataDirectory(): string {
 	if (appName === "") { throw new Error("AsyncStorage: the app name is not set; the host names it before the first call"); }
 	when (windows) {
 		return homeDir() + "/AppData/Local/" + appName + "/AsyncStorage";
-	} else {
+	} else when (macos) {
 		return homeDir() + "/Library/Application Support/" + appName + "/AsyncStorage";
+	} else when (linux) {
+		return homeDir() + "/.local/share/" + appName + "/AsyncStorage";
+	} else {
+		throw new Error("AsyncStorage: Ion has no app data directory on this host");
 	}
 }
 
