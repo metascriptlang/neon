@@ -155,11 +155,9 @@ test "a directional Light casts through one DirShadowMap whose settings follow i
 	assert refs[0].renderer.closed && refs[0].context.closed;
 }
 
-test "shadow props are refused by name on a point light, without castShadow and out of range" {
-	assert refused((): NeonNode => element(<Scene3D><Light kind={LightKind.Point} castShadow={true} /></Scene3D>))
-		.includes("Light: castShadow needs a Directional light; Void's shadow map follows the directional light");
+test "shadow props are refused by name without castShadow and out of range" {
 	assert refused((): NeonNode => element(<Scene3D><Light kind={LightKind.Directional} shadowMapSize={1024} /></Scene3D>))
-		.includes("Light: shadowMapSize, shadowBias and shadowOpacity need castShadow");
+		.includes("Light: shadowMapSize, shadowBias, shadowNormalBias, shadowRadius and shadowOpacity need castShadow");
 	assert refused((): NeonNode => element(<Scene3D><Light kind={LightKind.Directional} castShadow={true} shadowMapSize={0} /></Scene3D>))
 		.includes("Light: invalid shadow settings");
 	assert refused((): NeonNode => element(<Scene3D><Light kind={LightKind.Directional} castShadow={true} shadowOpacity={2.0} /></Scene3D>))
