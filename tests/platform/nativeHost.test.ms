@@ -546,6 +546,16 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 	}
 }
 
+test "native percent dimensions lay out against the parent" {
+	const app = (): NeonNode => <View style={{ width: 200, height: 100 }}>
+		<Pressable style={{ width: "50%", height: "100%", maxHeight: "40%" }} onPress={() => {}} />
+	</View>;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40, `percent sizes resolve against the 200x100 parent: ${nmLayoutWidth(tag)}x${nmLayoutHeight(tag)}`;
+	nmTeardown();
+}
+
 test "native materialized string labels participate in paint order and reuse their views when moved" {
 	const native = createNativeHost();
 	const host = native.host;

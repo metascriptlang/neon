@@ -337,7 +337,7 @@ export macro asFlexStyleBody(node: Node): Node {
 		const value: Node = how === "enum" ? read : {
 			kind: NodeKind.CallExpr, line: L, column: C,
 			callee: { kind: NodeKind.Identifier, line: L, column: C, name: how },
-			arguments: how === "dim" ? [read, { kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }] : [read],
+			arguments: [read],
 			isDirectCall: false, resolvedOverloadIdx: -1,
 		};
 		// Null-guard every projection: an unset Style field must stay UNSET on

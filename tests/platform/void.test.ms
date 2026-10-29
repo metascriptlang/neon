@@ -163,14 +163,13 @@ test "setStyle: min and max constraints reach yoga" {
 	assert flexOf(n).aspectRatio === 2, "aspectRatio reached yoga";
 }
 
-test "setStyle: a percent dimension is refused and names the field" {
+test "setStyle: percent and auto dimensions reach yoga" {
 	const vh = createVoidHost();
 	const node = vh.host.createElement("div");
-	let caught = "";
-	try {
-		vh.host.setStyle(node, { maxHeight: "50%" } as Style);
-	} catch (e) { caught = e.toString(); }
-	assert caught.includes("maxHeight") && caught.includes("50%"), "error names field and value: " + caught;
+	const n = node as VoidNode;
+	vh.host.setStyle(node, { width: "100%", maxHeight: "50%", marginLeft: "auto" } as Style);
+	assert flexOf(n).width === "100%" && flexOf(n).maxHeight === "50%", "percent reached yoga";
+	assert flexOf(n).marginLeft === "auto", "auto reached yoga";
 }
 
 test "setStyle: flex shorthand, basis, wrap and self-alignment reach yoga" {

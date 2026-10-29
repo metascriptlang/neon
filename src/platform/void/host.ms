@@ -372,11 +372,10 @@ function num(v: number | null): float32 | null {
 	return n as float32;
 }
 
-function dim(v: number | string | null, field: string): float32 | null {
+function dim(v: number | string | null): float32 | string | null {
 	if (v === null) { return null; }
-	if (typeof v === "string") { throw `void host: ${field} "${v as string}" is not supported, yoga takes points only`; }
-	const n = v as number;
-	return n as float32;
+	if (typeof v === "string") { return v as string; }
+	return (v as number) as float32;
 }
 
 function position(v: StylePositionType | null): PositionType | null {
