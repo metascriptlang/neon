@@ -9,7 +9,7 @@ import { Vec3 } from "../../../../void/src/math/math3d";
 import { Ray } from "../../../../void/src/void3d/ray";
 import { Uv } from "../../../../void/src/void3d/meshData";
 import { LowResView } from "../../../../void/src/void3d/blit";
-import { rayFromScreen, resolve } from "../../../../void/src/void3d/camera";
+import { Camera3D, CameraView, rayFromScreen, resolve } from "../../../../void/src/void3d/camera";
 import { PickHit, PickError, pickNearestOn } from "../../../../void/src/void3d/pick";
 import { DEFAULT_LAYERS } from "../../../../void/src/void3d/layers";
 import { NodeId3D, NodeFlag, NO_NODE_3D, NO_NODE_ID, setPickable, syncWorld, cameraLayersOf } from "../../../../void/src/void3d/scene";
@@ -127,7 +127,24 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		}
 	};
 
-	// The hit's path into `scratch`.
+	// The view of the last pick, kept while the camera and the area size are the ones it was resolved for.
+	let seenCamera: Camera3D | null = null;
+	let seenView: CameraView | null = null;
+	let screen: LowResView = { width: 0, height: 0, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	const resolvedView = (width: int32, height: int32): CameraView => {
+		const world = viewCamera(state.handle);
+		if (!world.ok) { throw new Error("Scene3D: the active camera has no world pose: " + world.error.toString()); }
+		const held = seenView;
+		if (held !== null && screen.width === width && screen.height === height && world.value == seenCamera) { return held; }
+		const view = world.value.resolve(width, height);
+		if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
+		seenCamera = world.value;
+		seenView = view.value;
+		screen = { width, height, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+		return view.value;
+	};
+
+	// The hit's path into `scratch`; an area without a size has nothing to pick from yet.
 	const aim = (x: float32, y: float32): void => {
 		scratch.length = 0;
 		aimed = NO_HIT;
@@ -135,13 +152,9 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		const height = area.pixelHeight();
 		if (width <= 0 || height <= 0) { return; }
 		const synced = syncWorld(scene);
-		const world = viewCamera(state.handle);
-		if (!world.ok) { return; }
-		const view = world.value.resolve(width, height);
-		if (!view.ok) { return; }
+		const view = resolvedView(width, height);
 		const dpi = area.scale();
-		const screen: LowResView = { width, height, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-		ray = view.value.rayFromScreen(x * dpi, y * dpi, screen, true);
+		ray = view.rayFromScreen(x * dpi, y * dpi, screen, true);
 		const eye = scene.activeCamera;
 		const layers = eye === null ? DEFAULT_LAYERS : cameraLayersOf(scene, eye as NodeId3D);
 		const picked = pickNearestOn(scene, ray, layers);

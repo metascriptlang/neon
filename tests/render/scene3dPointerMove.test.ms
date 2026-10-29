@@ -1,5 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
@@ -7,7 +7,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../
 import { NeonEvent, neonEvent, stopPropagation } from "../../src/render/event";
 import { AreaLayer, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Group, Mesh, Node, Pointer3DEvent } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Group, Mesh, Node, Camera3D, Pointer3DEvent } from "../../src/components/scene3d";
 import { NodeId3D, NodeFlag, Transform3D, addGroup, syncWorld, setLocal } from "../../../void/src/void3d/scene";
 import { MeshId, NO_MESH } from "../../../void/src/void3d/draw";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
@@ -228,4 +228,50 @@ test "wheel reaches the hit mesh with its delta, bubbles, and a miss is not take
 	assert got[0].type === "wheel" && got[0].deltaY === 3.0, "delta " + got[0].deltaY.toString();
 	assert !wheel(layer, OFF, OFF, 3.0), "empty space is left to the layers below";
 	assert log.length === 2, "a miss wheels nothing";
+}
+
+function layerOfSize(root: MockNode, pixelWidth: int32, pixelHeight: int32): AreaLayer {
+	const hub = mockAreaHub(root.children[0]);
+	if (pixelWidth > 0) { hub.resize({ pixelWidth, pixelHeight, scale: 1.0 }); }
+	return hub.layers()[0];
+}
+
+test "a move before the area has a size picks nothing and says nothing" {
+	const log: string[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { mesh = squareMesh(value); }}>
+			<Mesh mesh={mesh} onPointerMove={note(log, "mesh")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOfSize(root, 0, 0);
+	assert !hover(layer, CENTER, CENTER) && log.length === 0, "no size, no pick";
+	const sized = layerOfSize(root, 200, 200);
+	assert hover(sized, CENTER, CENTER) && log.length === 1, "once sized the same move picks";
+}
+
+test "a pick follows the camera and refuses a camera without a world pose by name" {
+	const log: string[] = [];
+	const cameras: NodeId3D[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const [x, setX] = createSignal<float32>(0.0);
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Camera3D active={true} position={vec3(x(), 0.0, 5.0)} ref={(id: NodeId3D): void => { cameras.push(id); }} />
+			<Mesh mesh={mesh} onPointerMove={note(log, "mesh")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOf(root);
+	assert hover(layer, CENTER, CENTER) && log.length === 1, "the camera looks at the square";
+	assert hover(layer, CENTER, CENTER) && log.length === 2, "a second move under the same camera picks again";
+	setX(50.0);
+	flush();
+	assert !hover(layer, CENTER, CENTER) && log.length === 2, "a moved camera is not answered from the old view";
+	setLocal(refs[0].scene, cameras[0], { ...Transform3D.identity(), scale: vec3(0.0, 0.0, 0.0) });
+	let message = "";
+	try { hover(layer, CENTER, CENTER); } catch (error) { message = error.toString(); } finally { resetErrorHalt(); }
+	assert message.includes("Scene3D: the active camera has no world pose"), "names the failure: " + message;
 }
