@@ -10,7 +10,7 @@ import { mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Camera3D, Lod } from "../../src/components/scene3d";
 import { SceneState, sceneScope, runBeforeRefresh } from "../../src/components/scene3d/core";
-import { NodeId3D } from "../../../void/src/void3d/scene";
+import { NodeId3D, setVisible } from "../../../void/src/void3d/scene";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
 function Capture(states: SceneState[]): NeonNode {
@@ -94,11 +94,11 @@ test "Lod world scale grows the projected size and forcedLevel overrides the sel
 	assert shownLevels(handle, levels) === "00", "a forced level past the last one culls: " + shownLevels(handle, levels);
 }
 
-test "Lod hides children beyond its thresholds and follows changed thresholds" {
+test "Lod follows changed thresholds and leaves no hook behind" {
 	const refs: Scene3DHandle[] = [];
 	const states: SceneState[] = [];
 	const levels: NodeId3D[] = [];
-	const [thresholds, setThresholds] = createSignal<float32[]>([0.5]);
+	const [thresholds, setThresholds] = createSignal<float32[]>([0.5, 0.45]);
 	const [shown, setShown] = createSignal(true);
 	render(element(<Void>
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
@@ -115,7 +115,7 @@ test "Lod hides children beyond its thresholds and follows changed thresholds" {
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
 	const handle = refs[0];
 	runBeforeRefresh(states[0], 320, 240);
-	assert shownLevels(handle, levels) === "010", "a level without a threshold is never selected: " + shownLevels(handle, levels);
+	assert shownLevels(handle, levels) === "001", "0.35 is below both thresholds, so the last level shows: " + shownLevels(handle, levels);
 	setThresholds([0.3, 0.1]);
 	flush();
 	runBeforeRefresh(states[0], 320, 240);
@@ -142,4 +142,52 @@ test "Lod refuses a MeshLod config Void refuses and a radius that is not a size"
 	assert culling.includes("Lod") && culling.includes("cullingRatio"), "names the rule: " + culling;
 	const radius = refusal((): NeonNode => element(<Void><Scene3D><Lod radius={-1.0} thresholds={[0.5]} /></Scene3D></Void>));
 	assert radius.includes("Lod") && radius.includes("radius"), "names the rule: " + radius;
+}
+
+test "Lod refuses a child count its thresholds do not name instead of overwriting the level count" {
+	const states: SceneState[] = [];
+	let message = "";
+	createRoot((dispose: () => void): void => {
+		try {
+			render(element(<Void>
+				<Scene3D>
+					{Capture(states)}
+					<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} />
+					<Lod radius={1.0} thresholds={[0.5]}>
+						<Group />
+						<Group />
+						<Group />
+					</Lod>
+				</Scene3D>
+			</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+			runBeforeRefresh(states[0], 320, 240);
+		} catch (error) { message = error.toString(); } finally { dispose(); resetErrorHalt(); }
+	});
+	assert message.includes("Lod") && message.includes("1 thresholds name 2 levels") && message.includes("3 children"), "names the mismatch: " + message;
+}
+
+test "Lod reads Void's meshLodScale, and repeats its selection only when an input moved" {
+	const refs: Scene3DHandle[] = [];
+	const states: SceneState[] = [];
+	const levels: NodeId3D[] = [];
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			{Capture(states)}
+			<Camera3D active={true} position={vec3(0.0, 0.0, 0.0)} />
+			<Lod radius={1.0} thresholds={[0.5]} position={vec3(0.0, 0.0, -5.0)}>
+				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
+				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
+			</Lod>
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	const handle = refs[0];
+	const frame = (): void => { runBeforeRefresh(states[0], 320, 240); };
+	frame();
+	assert shownLevels(handle, levels) === "01", "radius 1 at 5 covers 0.35: " + shownLevels(handle, levels);
+	setVisible(handle.scene, levels[0], true);
+	frame();
+	assert shownLevels(handle, levels) === "11", "an unchanged frame does not run the selection again: " + shownLevels(handle, levels);
+	handle.renderer.core.meshLodScale = 2.0;
+	frame();
+	assert shownLevels(handle, levels) === "10", "meshLodScale 2 doubles the ratio to 0.7: " + shownLevels(handle, levels);
 }

@@ -5,8 +5,8 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { CameraView } from "../../../../void/src/void3d/camera";
 import { NodeId3D, addGroup, setVisible, worldOf } from "../../../../void/src/void3d/scene";
 import { MeshLod, MeshLodProjectedSize } from "../../../../void/src/void3d/meshLod";
-import { Mat4, vec3, position, length, determinant3x3, inverse } from "../../../../void/src/math/math3d";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, viewCamera } from "./core";
+import { Mat4, Vec3, vec3, identity, position, length, determinant3x3 } from "../../../../void/src/math/math3d";
+import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh } from "./core";
 
 export interface LodProps extends NodeProps {
 	radius: Accessor<float32>;
@@ -19,13 +19,13 @@ function configOf(thresholds: float32[], cullingRatio: float32): MeshLod {
 	const ratios: float64[] = [];
 	for (const threshold of thresholds) { ratios.push(threshold as float64); }
 	if (!Number.isFinite(cullingRatio) || cullingRatio < 0.0) { throw new Error("Lod: cullingRatio must be finite and non-negative"); }
-	const made = MeshLod.create(1, ratios, cullingRatio as float64);
+	const made = MeshLod.create(thresholds.length as int32 + 1, ratios, cullingRatio as float64);
 	if (!made.ok) { throw new Error("Lod: thresholds must be finite, non-negative and descending"); }
 	return made.value;
 }
 
-function projectedSize(view: CameraView, world: Mat4, radius: float32, nearPlane: float32): MeshLodProjectedSize {
-	const projection = view.basis.makeCameraMatrix(view.eye).inverse() * view.viewProj;
+// Void's renderer hands MeshLod the projection diagonals, the near plane and `meshLodScale` as they are (renderer.ms:720-721).
+function projectedSize(view: CameraView, world: Mat4, radius: float32, meshLodScale: float64): MeshLodProjectedSize {
 	return {
 		localOriginRadius: radius as float64,
 		worldScaleX: vec3(world.m11, world.m12, world.m13).length() as float64,
@@ -33,10 +33,10 @@ function projectedSize(view: CameraView, world: Mat4, radius: float32, nearPlane
 		worldScaleZ: vec3(world.m31, world.m32, world.m33).length() as float64,
 		worldMirrored: world.determinant3x3() < 0.0,
 		cameraDistanceFromWorldOrigin: (view.eye - world.position()).length() as float64,
-		projectionDiagonalX: projection.m11 as float64,
-		projectionDiagonalY: projection.m22 as float64,
-		nearPlane: nearPlane as float64,
-		meshLodScale: 1.0,
+		projectionDiagonalX: view.projectionX as float64,
+		projectionDiagonalY: view.projectionY as float64,
+		nearPlane: view.nearPlane as float64,
+		meshLodScale: meshLodScale,
 	};
 }
 
@@ -53,6 +53,15 @@ export function Lod(props: LodProps): NeonNode {
 			let lod: MeshLod = configOf([], 0.0);
 			let radius: float32 = 0.0;
 			let forced: int32 = -1;
+			// What the last selection read; the next frame repeats it only when one of these moved.
+			let settled = false;
+			let settledWorld = identity();
+			let settledEye: Vec3 = vec3(0.0, 0.0, 0.0);
+			let settledX: float32 = 0.0;
+			let settledY: float32 = 0.0;
+			let settledNear: float32 = 0.0;
+			let settledScale: float64 = 0.0;
+			const settledLevels: int32[] = [];
 			createRenderEffect<[float32[], float32, float32, int32 | null]>(
 				(prev: [float32[], float32, float32, int32 | null] | null): [float32[], float32, float32, int32 | null] => [
 					props.thresholds(),
@@ -66,6 +75,7 @@ export function Lod(props: LodProps): NeonNode {
 					lod = configOf(value[0], value[1]);
 					radius = value[2];
 					forced = value[3] === null ? -1 : value[3] as int32;
+					settled = false;
 					state.invalidate();
 					return null;
 				},
@@ -74,19 +84,36 @@ export function Lod(props: LodProps): NeonNode {
 				if (scene.nodes[level.index].isVisible() !== shown) { setVisible(scene, level, shown); }
 			};
 			onBeforeRefresh(state, (view: CameraView): void => {
-				const count = scene.nodes[node.index].children.length as int32;
+				const children = scene.nodes[node.index].children;
+				const count = children.length as int32;
 				if (count === 0) { return; }
+				if (count !== lod.lodCount) {
+					throw new Error("Lod: " + (lod.lodCount - 1).toString() + " thresholds name " + lod.lodCount.toString()
+						+ " levels, but " + count.toString() + " children are mounted");
+				}
 				const world = worldOf(scene, node);
-				const camera = viewCamera(state.handle);
-				if (!world.ok || !camera.ok) { return; }
-				const ratio = projectedSize(view, world.value, radius, camera.value.nearPlane).referenceScreenRatioHeuristic();
+				if (!world.ok) { throw new Error("Lod: no world pose: " + world.error.toString()); }
+				const meshLodScale = state.handle.renderer.core.meshLodScale;
+				let same = settled && world.value == settledWorld && view.eye == settledEye && view.projectionX == settledX
+					&& view.projectionY == settledY && view.nearPlane == settledNear && meshLodScale == settledScale;
+				for (let i = 0; same && i < count; i++) { same = children[i] === settledLevels[i]; }
+				if (same) { return; }
+				const ratio = projectedSize(view, world.value, radius, meshLodScale).referenceScreenRatioHeuristic();
 				if (!ratio.ok) { throw new Error("Lod: no projected size: " + ratio.error.toString()); }
-				lod.lodCount = count;
 				const selected = lod.select(ratio.value, forced);
 				if (!selected.ok) { throw new Error("Lod: MeshLod.select failed: " + selected.error.toString()); }
+				settledLevels.length = 0;
 				for (let i = 0; i < count; i++) {
-					show(scene.nodeIdAt(scene.nodes[node.index].children[i]), !selected.value.culled && i === selected.value.lod);
+					settledLevels.push(children[i]);
+					show(scene.nodeIdAt(children[i]), !selected.value.culled && i === selected.value.lod);
 				}
+				settledWorld = world.value;
+				settledEye = view.eye;
+				settledX = view.projectionX;
+				settledY = view.projectionY;
+				settledNear = view.nearPlane;
+				settledScale = meshLodScale;
+				settled = true;
 			});
 			mountNodeChildren(scope, node, props, host, parent, before);
 		});
