@@ -1,4 +1,5 @@
 import { LocationFix, LocationRequest, locationServices } from "./locationServices";
+import { INT32_MAX, checkedInt32, finiteOrNull } from "./hostCodec";
 import { Permissions, PermissionResponse } from "./permissions";
 
 when (js && !server) {
@@ -57,8 +58,8 @@ const FOREVER = -1;
 
 let skipPermissionRequests = false;
 let nextWatch: int32 = 1;
-const cleared: int32[] = [];
-const started: int32[] = [];
+const live = new Set<int32>();
+const started = new Set<int32>();
 
 function present(value: number): number | null {
 	return Number.isNaN(value) ? null : value;
@@ -84,9 +85,7 @@ export function positionOf(fix: LocationFix): GeolocationResponse {
 }
 
 function finiteOr(value: number | null, fallback: number): number {
-	if (value === null) { return fallback; }
-	const given = value as number;
-	return Number.isFinite(given) ? given : fallback;
+	return finiteOrNull(value) ?? fallback;
 }
 
 export function locationRequest(options: GeolocationOptions, watching: boolean): LocationRequest {
@@ -146,14 +145,14 @@ async function readCurrent(request: LocationRequest, success: GeolocationSuccess
 
 async function startWatch(id: int32, request: LocationRequest, success: GeolocationSuccess, error: GeolocationFailure | null): Promise<void> {
 	const allowed = await authorized();
-	if (cleared.indexOf(id) >= 0) { return; }
+	if (!live.has(id)) { return; }
 	if (!allowed) {
 		report(deniedFix(), success, error);
 		return;
 	}
-	started.push(id);
+	started.add(id);
 	locationServices("Geolocation.watchPosition").locationWatch(id, request, (fix: LocationFix): void => {
-		if (cleared.indexOf(id) < 0) { report(fix, success, error); }
+		if (live.has(id)) { report(fix, success, error); }
 	});
 }
 
@@ -190,22 +189,20 @@ export class Geolocation {
 	): number {
 		const id = nextWatch;
 		nextWatch += 1;
+		live.add(id);
 		startWatch(id, locationRequest(options, true), success, error);
 		return id as number;
 	}
 
 	static clearWatch(watchId: number): void {
-		const id = watchId as int32;
-		if (cleared.indexOf(id) >= 0) { return; }
-		cleared.push(id);
-		const at = started.indexOf(id);
-		if (at < 0) { return; }
-		started.splice(at, 1);
+		const id = checkedInt32("Geolocation.clearWatch", "watchId", watchId, 0, INT32_MAX);
+		if (!live.delete(id)) { return; }
+		if (!started.delete(id)) { return; }
 		locationServices("Geolocation.clearWatch").locationClear(id);
 	}
 
 	static stopObserving(): void {
-		for (const id of started.slice(0, started.length)) { Geolocation.clearWatch(id as number); }
+		for (const id of [...started]) { Geolocation.clearWatch(id as number); }
 	}
 }
 
@@ -301,10 +298,14 @@ export class Location {
 	): Promise<LocationSubscription> {
 		const id = nextWatch;
 		nextWatch += 1;
-		if (!(await authorized())) { throw new Error("Location permission was not granted."); }
-		started.push(id);
+		live.add(id);
+		if (!(await authorized())) {
+			live.delete(id);
+			throw new Error("Location permission was not granted.");
+		}
+		started.add(id);
 		locationServices("Location.watchPositionAsync").locationWatch(id, expoRequest(options, true), (fix: LocationFix): void => {
-			if (fix.code === 0 && cleared.indexOf(id) < 0) { callback(locationObject(fix)); }
+			if (fix.code === 0 && live.has(id)) { callback(locationObject(fix)); }
 		});
 		return { remove: (): void => { Geolocation.clearWatch(id as number); } };
 	}
