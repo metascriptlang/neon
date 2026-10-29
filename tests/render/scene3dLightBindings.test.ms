@@ -24,19 +24,18 @@ function frameRequests(outer: MockNode): int32 {
 	return count;
 }
 
-test "Light color radius priority power and pose update retained nodes and collected slots" {
+test "Light color radius power and pose update retained nodes and collected slots" {
 	const refs: Scene3DHandle[] = [];
 	const nodes: NodeId3D[] = [];
 	const [value, setValue] = createSignal<float32>(1.0);
-	const [priority, setPriority] = createSignal(5);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		<Light kind={LightKind.Point} color={vec3(value(), 0.2, 0.3)} radius={value() + 2.0}
-			priority={priority()} power={value() * 2.0} position={vec3(value(), 0.0, 0.0)}
+			power={value() * 2.0} position={vec3(value(), 0.0, 0.0)}
 			ref={(node: NodeId3D): void => { nodes.push(node); }} />
 		<Light kind={LightKind.Point} color={vec3(0.4, 0.5, 0.6)} radius={8.0}
-			priority={3} power={4.0} position={vec3(20.0, 0.0, 0.0)}
+			power={4.0} position={vec3(20.0, 0.0, 0.0)}
 			ref={(node: NodeId3D): void => { nodes.push(node); }} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	const outer = root.children[0];
@@ -51,23 +50,22 @@ test "Light color radius priority power and pose update retained nodes and colle
 		assert block.length === LIGHT_UNIFORM_LENGTH + 2 * LIGHT_RECORD_LENGTH;
 		assert approx(block[first], 1.0) && approx(block[first + 3], 2.0);
 		const requests = frameRequests(root.children[0]);
-		setValue(7.0); setPriority(0); flush();
+		setValue(7.0); flush();
 		assert nodes.length === 2 && scene.nodeCount() === 3;
 		assert collectLights(scene, block).ok;
 		assert approx(block[first], 7.0) && approx(block[first + 3], 14.0);
 		assert approx(block[firstColor], 7.0) && approx(block[firstColor + 3], 9.0);
 		assert approx(block[second], 20.0) && approx(block[second + 3], 4.0);
 		assert approx(block[secondColor], 0.4) && approx(block[secondColor + 3], 8.0);
-		assert scene.lights[scene.nodes[nodes[1].index].payload].priority === 3;
 		assert frameRequests(root.children[0]) > requests;
-		setValue(2.0); setPriority(9); flush();
+		setValue(2.0); flush();
 		assert collectLights(scene, block).ok;
 		assert approx(block[first], 2.0) && approx(block[first + 3], 4.0);
 		assert approx(block[firstColor], 2.0) && approx(block[firstColor + 3], 4.0);
-		assert approx(block[second], 20.0), "priority does not reorder the records";
+		assert approx(block[second], 20.0);
 	} finally { dispose(); resetErrorHalt(); }
 	const requests = frameRequests(outer);
-	setValue(3.0); setPriority(1); flush();
+	setValue(3.0); flush();
 	assert refs[0].context.closed && refs[0].scene.nodeCount() === 0;
 	assert frameRequests(outer) === requests;
 }
@@ -76,12 +74,11 @@ test "Light parameter binders each invalidate only their own area" {
 	const refs: Scene3DHandle[] = [];
 	const [color, setColor] = createSignal<float32>(0.2);
 	const [radius, setRadius] = createSignal<float32>(2.0);
-	const [priority, setPriority] = createSignal(0);
 	const root = mockNode("root");
 	const dispose = render(element(<View>
 		<Void><Scene3D ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 			<Light kind={LightKind.Point} color={vec3(color(), 0.3, 0.4)}
-				radius={radius()} priority={priority()} />
+				radius={radius()} />
 		</Scene3D></Void>
 		<Void><Scene3D ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 			<Light kind={LightKind.Point} />
@@ -97,16 +94,11 @@ test "Light parameter binders each invalidate only their own area" {
 		requested = frameRequests(first);
 		setRadius(9.0); flush();
 		assert frameRequests(first) > requested;
-		requested = frameRequests(first);
-		setPriority(7); flush();
-		assert frameRequests(first) > requested;
 		assert frameRequests(sibling) === siblingRequests;
 		assert refs[0].scene.lights[0].color === vec3(0.8, 0.3, 0.4);
 		assert approx(refs[0].scene.lights[0].radius, 9.0);
-		assert refs[0].scene.lights[0].priority === 7;
 		assert refs[1].scene.lights[0].color === vec3(1.0, 1.0, 1.0);
 		assert approx(refs[1].scene.lights[0].radius, 10.0);
-		assert refs[1].scene.lights[0].priority === 0;
 	} finally { dispose(); resetErrorHalt(); }
 }
 
@@ -136,7 +128,7 @@ test "Light keeps named kind refusal and applies other parameters after reset an
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		<Light kind={directional() ? LightKind.Directional : LightKind.Point}
-			color={vec3(radius(), 0.0, 0.0)} radius={radius()} priority={4}
+			color={vec3(radius(), 0.0, 0.0)} radius={radius()}
 			ref={(value: NodeId3D): void => { node = value; }} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
@@ -154,7 +146,7 @@ test "Light keeps named kind refusal and applies other parameters after reset an
 		assert scene.lights[row].kind === LightKind.Point;
 		assert approx(scene.lights[row].radius, 5.0);
 		assert scene.lights[row].color === vec3(5.0, 0.0, 0.0);
-		assert scene.lights[row].priority === 4 && approx(scene.lights[row].power, 1.0);
+		assert approx(scene.lights[row].power, 1.0);
 	} finally { dispose(); resetErrorHalt(); }
 }
 
@@ -165,7 +157,7 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		<DirectionalLight color={vec3(value(), 0.3, 0.4)} power={0.5} castShadow={true} shadowOpacity={0.5} />
-		<PointLight color={vec3(0.4, 0.5, 0.6)} radius={value() + 2.0} power={3.0} priority={2} position={vec3(4.0, 0.0, 0.0)} />
+		<PointLight color={vec3(0.4, 0.5, 0.6)} radius={value() + 2.0} power={3.0} position={vec3(4.0, 0.0, 0.0)} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		const scene = refs[0].scene;
@@ -179,7 +171,6 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 		assert approx(block[7], 0.5) && approx(block[8], 0.8);
 		assert approx(block[recordAt(0)], 4.0) && approx(block[recordAt(0) + 3], 3.0);
 		assert approx(block[recordAt(0) + LIGHT_RECORD_COLOR + 3], 2.8);
-		assert scene.lights[1].priority === 2;
 	} finally { dispose(); resetErrorHalt(); }
 	assert refs[0].renderer.closed && refs[0].scene.nodeCount() === 0;
 }
