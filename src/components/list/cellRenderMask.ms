@@ -14,7 +14,7 @@ export class CellRenderMask {
 	private regions: CellRegion[];
 
 	constructor(numCells: int32) {
-		if (numCells < 0) { throw `CellRenderMask needs a non-negative number of cells, got ${numCells}`; }
+		if (numCells < 0) { throw new Error(`CellRenderMask needs a non-negative number of cells, got ${numCells}`); }
 		this.numCells = numCells;
 		this.regions = numCells === 0 ? [] : [{ first: 0, last: numCells - 1, isSpacer: true }];
 	}
@@ -25,7 +25,7 @@ export class CellRenderMask {
 
 	addCells(cells: CellRange): void {
 		if (cells.first < 0 || cells.first >= this.numCells || cells.last < -1 || cells.last >= this.numCells || cells.last < cells.first - 1) {
-			throw `CellRenderMask.addCells: invalid cell range ${cells.first}..${cells.last} for ${this.numCells} cells`;
+			throw new Error(`CellRenderMask.addCells: invalid cell range ${cells.first}..${cells.last} for ${this.numCells} cells`);
 		}
 		if (cells.last < cells.first) { return; }
 
@@ -87,6 +87,6 @@ export class CellRenderMask {
 				firstIdx = middleIdx + 1;
 			}
 		}
-		throw `CellRenderMask: no region contains cell ${cell}`;
+		throw new Error(`CellRenderMask: no region contains cell ${cell}`);
 	}
 }

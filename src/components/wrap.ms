@@ -29,7 +29,7 @@ export function wrapRunAlign(alignment: WrapAlignment): Align {
 	if (alignment === "start") { return "flex-start"; }
 	if (alignment === "end") { return "flex-end"; }
 	if (alignment === "center") { return "center"; }
-	throw `Wrap: runAlignment "${alignment}" needs a space-* alignContent, which Neon's Style does not carry`;
+	throw new Error(`Wrap: runAlignment "${alignment}" needs a space-* alignContent, which Neon's Style does not carry`);
 }
 
 export function wrapCrossAlign(alignment: WrapCrossAlignment): Align {
@@ -70,14 +70,14 @@ export function Wrap(props: {
 	const userStyle = props.style;
 	const style = accessor((): Style => {
 		const base = wrapStyle(
-			directionProp === null ? "horizontal" : (directionProp as Accessor<WrapDirection>)(),
-			alignmentProp === null ? "start" : (alignmentProp as Accessor<WrapAlignment>)(),
-			runProp === null ? "start" : (runProp as Accessor<WrapAlignment>)(),
-			crossProp === null ? "start" : (crossProp as Accessor<WrapCrossAlignment>)(),
-			spacingProp === null ? 0 : (spacingProp as Accessor<number>)(),
-			runSpacingProp === null ? 0 : (runSpacingProp as Accessor<number>)(),
+			directionProp === null ? "horizontal" : directionProp(),
+			alignmentProp === null ? "start" : alignmentProp(),
+			runProp === null ? "start" : runProp(),
+			crossProp === null ? "start" : crossProp(),
+			spacingProp === null ? 0 : spacingProp(),
+			runSpacingProp === null ? 0 : runSpacingProp(),
 		);
-		return userStyle === null ? base : mergeStyle(base, (userStyle as Accessor<Style>)());
+		return userStyle === null ? base : mergeStyle(base, userStyle());
 	});
 	return View({ style, children: props.children });
 }

@@ -127,7 +127,7 @@ export function computeWindowedRenderLimits(itemCount: int32, maxToRenderPerBatc
 		}
 	}
 	if (!(last >= first && first >= 0 && last < itemCount && first >= overscanFirst && last <= overscanLast && first <= visible.first && last >= visible.last)) {
-		throw `computeWindowedRenderLimits: bad window ${first}..${last} for ${itemCount} items, overscan ${overscanFirst}..${overscanLast}, visible ${visible.first}..${visible.last}`;
+		throw new Error(`computeWindowedRenderLimits: bad window ${first}..${last} for ${itemCount} items, overscan ${overscanFirst}..${overscanLast}, visible ${visible.first}..${visible.last}`);
 	}
 	return { first, last };
 }

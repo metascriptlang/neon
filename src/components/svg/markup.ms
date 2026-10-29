@@ -94,7 +94,6 @@ class MarkupWriter {
 		return out;
 	}
 
-	// A paint's attribute pair: `name="…" name-opacity="…"`.
 	paint(name: string): string {
 		const kind = this.next();
 		if (kind === "n") { return `${name}="none"`; }
@@ -213,7 +212,7 @@ class MarkupWriter {
 			} else if (op === "T") {
 				this.textRuns();
 			} else {
-				throw `svg markup: unknown display-list op "${op}"`;
+				throw new Error(`svg markup: unknown display-list op "${op}"`);
 			}
 		}
 		return { viewBox, preserveAspectRatio: aspect, body: this.body };

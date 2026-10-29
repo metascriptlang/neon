@@ -32,7 +32,7 @@ export interface GridRenderItemInfo<T> {
 }
 
 function spacingOf(prop: Accessor<number> | null): number {
-	return prop === null ? 0 : (prop as Accessor<number>)();
+	return prop === null ? 0 : prop();
 }
 
 export function GridList<T>(props: {
@@ -55,7 +55,7 @@ export function GridList<T>(props: {
 }): NeonNode {
 	const maxProp = props.maxItemWidth;
 	const columnsProp = props.numColumns;
-	if (maxProp === null && columnsProp === null) { throw "GridList: maxItemWidth or numColumns is required"; }
+	if (maxProp === null && columnsProp === null) { throw new Error("GridList: maxItemWidth or numColumns is required"); }
 	const spacingProp = props.itemSpacing;
 	const rowSpacingProp = props.rowSpacing;
 	const ratioProp = props.childAspectRatio;
@@ -79,8 +79,8 @@ export function GridList<T>(props: {
 		const spacing = spacingOf(spacingProp);
 		const column = (index() as int32) % m.columns;
 		let height: number | null = null;
-		if (heightProp !== null) { height = (heightProp as Accessor<number>)(); }
-		else if (ratioProp !== null) { height = m.itemWidth / (ratioProp as Accessor<number>)(); }
+		if (heightProp !== null) { height = heightProp(); }
+		else if (ratioProp !== null) { height = m.itemWidth / ratioProp(); }
 		return { width: m.itemWidth, height, marginLeft: column === 0 ? 0 : spacing, flexShrink: 0 };
 	});
 	const renderCell = (info: ListRenderItemInfo<T>): NeonNode => {
@@ -108,7 +108,7 @@ export function GridList<T>(props: {
 	});
 	const userStyle = props.style;
 	return View({
-		style: accessor((): Style => mergeStyle({ flex: 1 }, userStyle === null ? {} : (userStyle as Accessor<Style>)())),
+		style: accessor((): Style => mergeStyle({ flex: 1 }, userStyle === null ? {} : userStyle())),
 		onLayout: (e: NeonEvent): void => { if (e.width !== untrack<number>(width)) { setWidth(e.width); } },
 		children: grid,
 	});
@@ -154,7 +154,7 @@ export function MasonryList<T>(props: {
 }): NeonNode {
 	const maxProp = props.maxItemWidth;
 	const columnsProp = props.numColumns;
-	if (maxProp === null && columnsProp === null) { throw "MasonryList: maxItemWidth or numColumns is required"; }
+	if (maxProp === null && columnsProp === null) { throw new Error("MasonryList: maxItemWidth or numColumns is required"); }
 	const spacingProp = props.itemSpacing;
 	const estimate = props.getItemHeight;
 	const userRender = props.renderItem;
@@ -190,7 +190,7 @@ export function MasonryList<T>(props: {
 				const item = items[i];
 				let placed: MasonryPlacement | null = placements.has(item) ? placements.get(item) as MasonryPlacement : null;
 				if (placed === null) {
-					const guess = estimate === null ? 1 : (estimate as (item: T, index: number, columnWidth: number) => number)(item, i as number, m.itemWidth);
+					const guess = estimate === null ? 1 : estimate(item, i as number, m.itemWidth);
 					placed = new MasonryPlacement(shortestColumn(totals), guess);
 				}
 				const p = placed as MasonryPlacement;
@@ -240,7 +240,7 @@ export function MasonryList<T>(props: {
 		children: For<number>({ each: columnIndices, children: column }),
 	});
 	return ScrollView({
-		style: accessor((): Style => mergeStyle({ flex: 1 }, userStyle === null ? {} : (userStyle as Accessor<Style>)())),
+		style: accessor((): Style => mergeStyle({ flex: 1 }, userStyle === null ? {} : userStyle())),
 		contentContainerStyle: props.contentContainerStyle,
 		onScroll: props.onScroll,
 		onLayout: (e: NeonEvent): void => { if (e.width !== untrack<number>(width)) { setWidth(e.width); } },

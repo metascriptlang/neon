@@ -20,7 +20,7 @@ struct XmlCursor {
 }
 
 function fail(c: XmlCursor, what: string): void {
-	throw `SvgXml: ${what} at ${c.at}`;
+	throw new Error(`SvgXml: ${what} at ${c.at}`);
 }
 
 function isNameChar(code: int32): boolean {
@@ -197,7 +197,6 @@ function readChildren(ref c: XmlCursor, parent: SvgNode): void {
 	if (parent.tag !== "#document") { fail(c, `<${parent.tag}> is not closed`); }
 }
 
-// The document's root <svg> element with its subtree.
 export function parseSvgXml(text: string): SvgNode {
 	const doc = new SvgNode("#document");
 	let c: XmlCursor = { text, at: 0 };
@@ -208,7 +207,7 @@ export function parseSvgXml(text: string): SvgNode {
 			return child;
 		}
 	}
-	throw "SvgXml: the document has no <svg> element";
+	throw new Error("SvgXml: the document has no <svg> element");
 }
 
 // The parsed document's children, placed into the scene <Svg> gives them; the document

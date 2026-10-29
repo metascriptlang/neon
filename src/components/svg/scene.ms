@@ -54,10 +54,9 @@ export function sceneChanged(scene: SvgScene): void {
 		return;
 	}
 	const l = scene.listener;
-	if (l !== null) { (l as () => void)(); }
+	if (l !== null) { l(); }
 }
 
-// Holds re-encoding while `fn` makes several changes, then encodes once.
 export function holdScene(scene: SvgScene, fn: () => void): void {
 	scene.held += 1;
 	try {
@@ -119,7 +118,7 @@ export function sceneHost(scene: SvgScene): Host {
 		setStyleProp: null,
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-			throw `<Svg>: shapes take no events yet (${name} on <${asNode(node).tag}>)`;
+			throw new Error(`<Svg>: shapes take no events yet (${name} on <${asNode(node).tag}>)`);
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			const c = asNode(child);
@@ -136,7 +135,7 @@ export function sceneHost(scene: SvgScene): Host {
 			let at: int32 = p.children.length as int32;
 			if (ref !== null) {
 				at = indexIn(p, asNode(ref as HostNode));
-				if (at < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
+				if (at < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
 			}
 			n.parent = p;
 			p.children.splice(at, 0, n);
@@ -145,7 +144,7 @@ export function sceneHost(scene: SvgScene): Host {
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = asNode(parent);
 			const at = indexIn(p, asNode(node));
-			if (at < 0) { throw "removeChild: the node is not a child of the parent"; }
+			if (at < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
 			p.children.splice(at, 1);
 			asNode(node).parent = null;
 			sceneChanged(scene);
@@ -156,7 +155,7 @@ export function sceneHost(scene: SvgScene): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if (asNode(node).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+			if (asNode(node).parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = asNode(node);
@@ -177,7 +176,6 @@ export function sceneHost(scene: SvgScene): Host {
 	};
 }
 
-// ---- numbers, transforms ----
 
 export struct Affine {
 	a: float64;
@@ -192,7 +190,6 @@ export function identity(): Affine {
 	return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 }
 
-// m after n: a point goes through n first.
 export function multiply(m: Affine, n: Affine): Affine {
 	return {
 		a: m.a * n.a + m.c * n.b,
@@ -214,7 +211,6 @@ function rotationAbout(degrees: float64, x: float64, y: float64): Affine {
 	return multiply(translation(x, y), multiply(turn, translation(-x, -y)));
 }
 
-// A length, a percentage of `reference`, or `fallback` when absent or unreadable.
 export function lengthValue(text: string, fallback: float64, reference: float64): float64 {
 	const t = text.trim();
 	if (t === "") { return fallback; }
@@ -239,7 +235,6 @@ export function numberList(text: string): float64[] {
 	return out;
 }
 
-// The SVG transform list: matrix, translate, scale, rotate, skewX, skewY.
 export function parseTransform(text: string): Affine {
 	let m = identity();
 	let rest = text;
@@ -264,7 +259,7 @@ export function parseTransform(text: string): Affine {
 		} else if (name === "skewY" && args.length === 1) {
 			step = { a: 1, b: Math.tan(args[0] * Math.PI / 180), c: 0, d: 1, e: 0, f: 0 };
 		} else {
-			throw `<Svg>: unsupported transform "${text}"`;
+			throw new Error(`<Svg>: unsupported transform "${text}"`);
 		}
 		m = multiply(m, step);
 	}
@@ -308,7 +303,6 @@ export function transformGeometry(g: Geometry, m: Affine): Geometry {
 	return out;
 }
 
-// ---- shapes ----
 
 export struct Viewport {
 	width: float64;
@@ -409,7 +403,6 @@ export function shapeGeometry(n: SvgNode, v: Viewport): Geometry {
 	return g;
 }
 
-// ---- inherited presentation ----
 
 struct Presentation {
 	fill: string;
@@ -542,7 +535,6 @@ function textContent(n: SvgNode): string {
 	return s;
 }
 
-// The url(#id) a paint or clip-path names, "" when it names none.
 export function urlTarget(value: string): string {
 	const t = value.trim();
 	if (!t.startsWith("url(")) { return ""; }
@@ -557,7 +549,6 @@ function urlFallback(value: string): string {
 	return close < 0 ? "" : value.substring(close + 1, value.length).trim();
 }
 
-// ---- the encoder ----
 
 class Encoder {
 	out: string = "";
@@ -610,7 +601,7 @@ class Encoder {
 		const t = text.trim();
 		if (t === "" || t === "none") { return null; }
 		const r = parseColor(t === "currentColor" ? p.color : t);
-		if (!r.ok) { throw `<Svg>: unknown colour "${t}"`; }
+		if (!r.ok) { throw new Error(`<Svg>: unknown colour "${t}"`); }
 		return r.value;
 	}
 
@@ -819,7 +810,7 @@ class Encoder {
 				const href = attrOf(n, "href");
 				const id = href.startsWith("#") ? href.substring(1, href.length) : href;
 				if (this.ids.has(id)) {
-					if (this.useDepth > 16) { throw `<Svg>: <Use href="${href}"> refers to itself`; }
+					if (this.useDepth > 16) { throw new Error(`<Svg>: <Use href="${href}"> refers to itself`); }
 					this.useDepth += 1;
 					m = multiply(m, translation(lenX(n, "x", this.viewport), lenY(n, "y", this.viewport)));
 					const target = this.ids.get(id) as SvgNode;

@@ -73,7 +73,7 @@ export class ListMetricsAggregator<K> {
 		const frame = this.getCellMetrics(index, source);
 		if (frame !== null && (frame as CellMetrics).index === index) { return frame as CellMetrics; }
 		if (index < 0 || index >= source.count()) {
-			throw `ListMetricsAggregator: cell index ${index} is outside the ${source.count()} cells`;
+			throw new Error(`ListMetricsAggregator: cell index ${index} is outside the ${source.count()} cells`);
 		}
 		let offset = this.averageCellLength * (index as float64);
 		const highest = this.highestMeasuredCellIndex;
@@ -89,7 +89,7 @@ export class ListMetricsAggregator<K> {
 
 	getCellMetrics(index: int32, source: CellSource<K>): CellMetrics | null {
 		if (index < 0 || index >= source.count()) {
-			throw `ListMetricsAggregator: cell index ${index} is outside the ${source.count()} cells`;
+			throw new Error(`ListMetricsAggregator: cell index ${index} is outside the ${source.count()} cells`);
 		}
 		const key = source.keyAt(index);
 		if (this.cellMetrics.has(key)) {
@@ -122,7 +122,7 @@ export class ListMetricsAggregator<K> {
 		if (this.orientation.horizontal && this.orientation.rtl) {
 			const contentLength = referenceContentLength ?? this.contentLength;
 			if (contentLength === null) {
-				throw "ListMetricsAggregator needs the list's content layout before it resolves right-to-left offsets";
+				throw new Error("ListMetricsAggregator needs the list's content layout before it resolves right-to-left offsets");
 			}
 			return (contentLength as float64) - (this.selectOffset(layout.x, layout.y) + this.selectLength(layout.width, layout.height));
 		}
@@ -132,7 +132,7 @@ export class ListMetricsAggregator<K> {
 	cartesianOffset(flowRelativeOffset: float64): float64 {
 		if (this.orientation.horizontal && this.orientation.rtl) {
 			if (this.contentLength === null) {
-				throw "ListMetricsAggregator needs the list's content layout before it resolves right-to-left offsets";
+				throw new Error("ListMetricsAggregator needs the list's content layout before it resolves right-to-left offsets");
 			}
 			return (this.contentLength as float64) - flowRelativeOffset;
 		}
