@@ -34,6 +34,8 @@ let boardWidth: number = 0;
 let boardLayouts = 0;
 let panelValue = "";
 let panelFocuses = 0;
+let panelKeys = "";
+let panelBlurs = 0;
 let panelLayouts = 0;
 let panelDisposed = false;
 let boardSize: Accessor<WindowDimensions> | null = null;
@@ -58,7 +60,8 @@ function Launcher(): NeonNode {
 	panelSize = useWindowDimensions();
 	return <View style={styles.panel} onLayout={(e: NeonEvent): void => { panelLayouts += 1; }}>
 		<TextInput style={styles.panelField} onChangeText={(t: string): void => { panelValue = t; }}
-			onFocus={(e: NeonEvent): void => { panelFocuses += 1; }} />
+			onFocus={(e: NeonEvent): void => { panelFocuses += 1; }} onBlur={(e: NeonEvent): void => { panelBlurs += 1; }}
+			onKeyPress={(e: NeonEvent): void => { panelKeys += e.key + ";"; }} />
 	</View>;
 }
 
@@ -119,6 +122,11 @@ steps.push((): void => {
 	expect("typing reaches the panel field", panelValue === "abc" && panelFocuses === 1, `"${panelValue}", focuses ${panelFocuses}`);
 	expect("the main field's value is unchanged", mainValue === "m" && mainChanges === 1, `"${mainValue}" after ${mainChanges} changes`);
 	expect("the main field keeps its focus", mainBlurs === 0 && harnessFocusedText(MAIN) === 1, `blurs ${mainBlurs}, focused text ${harnessFocusedText(MAIN)}`);
+	harnessPostKeys(PANEL, "\u001b");
+});
+steps.push((): void => {
+	expect("Escape in the panel field reaches onKeyPress and blurs it", panelKeys === "Escape;" && panelBlurs === 1 && harnessFocusedText(PANEL) === 0, `keys "${panelKeys}", blurs ${panelBlurs}, focused text ${harnessFocusedText(PANEL)}`);
+	expect("Escape leaves the panel's text", panelValue === "abc", `"${panelValue}"`);
 	hide(panel());
 });
 steps.push((): void => {
