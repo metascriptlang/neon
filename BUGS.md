@@ -32,6 +32,11 @@ and the invariants that outlived them were moved to the head of the test that pi
   prints `timed out waiting for 12 products; texts ['Catalog', 'Search products', 'Offline', 'Loading products']`. Same
   on main 76d8efa1 and on 1e1b8dc4; the emulator reaches 8.8.8.8, so catalog's `Offline` is not the host network. media
   and svg pass in the same run. Not diagnosed.
+- **OPEN 2026-10-29 — `examples/macosNative/ionMeasure.ms --check` is red on main.** `MAC_ONLY=1 msc build
+  examples/macosNative/ionMeasure.ms --output=/tmp/ionMeasureMain && /tmp/ionMeasureMain --check` on main ec79ab7b
+  prints three FAILs: `disposal ran: false`, `window query after unmount answers zeros: 200,200,20,20, want 0,0,0,0`,
+  `layout query after unmount calls onFail: unexpected bounds 200,200,20,20`. The other `ion*.ms --check` examples pass;
+  `tests/run.sh` does not run it. Not diagnosed.
 - **OPEN 2026-10-20 — the size check of `tests/apps/run.sh` measures the checkout's path.** The JS
   bundle's mangled names carry the source path, so the same tree measures a different size in a
   worktree than in the main checkout. `msc build --target=js tests/apps/bundlePlainApp.ms` at Neon
