@@ -115,18 +115,35 @@ static NSColor *rgba(float r, float g, float b, float a) {
 
 static NeonView *as(void *view) { return (__bridge NeonView *)view; }
 
-static NeonView *g_root = nil;
+@interface NeonRoot : NeonView
+@property(nonatomic, weak) NSResponder *restingResponder;
+@end
+
+static NSMutableArray<NeonRoot *> *g_roots = nil;
+
+static NeonRoot *defaultRoot(void) { return g_roots.firstObject; }
 
 static void requireAttached(const char *what) {
-	if (g_root) return;
+	if (g_roots.count) return;
 	char message[192];
 	snprintf(message, sizeof message, "%s before nimAttach", what);
 	fail(message);
 }
 
-NeonView *neonRequireRoot(const char *what) {
-	requireAttached(what);
-	return g_root;
+void neonRequireRoot(const char *what) { requireAttached(what); }
+
+static NeonRoot *rootOf(NSView *view) {
+	for (NSView *at = view; at; at = at.superview) {
+		if ([at isKindOfClass:NeonRoot.class]) return (NeonRoot *)at;
+	}
+	return nil;
+}
+
+NeonView *neonRootInWindow(NSWindow *window) {
+	for (NeonRoot *root in g_roots) {
+		if (window && root.window == window) return root;
+	}
+	return nil;
 }
 
 // --- pointer: Neon's own hit test, the one bridge.cpp ports from RNW, over the view tree ---
@@ -173,9 +190,9 @@ static NeonView *hitIn(NeonView *view, float px, float py, float *foundX, float 
 	return view;
 }
 
-static NeonView *hitTest(float x, float y, float *localX, float *localY) {
+static NeonView *hitTest(NeonRoot *root, float x, float y, float *localX, float *localY) {
 	float lx = 0, ly = 0;
-	for (NeonView *child in neonChildren(g_root).reverseObjectEnumerator) {
+	for (NeonView *child in neonChildren(root).reverseObjectEnumerator) {
 		NeonView *found = hitIn(child, x, y, &lx, &ly);
 		if (found) {
 			if (localX) *localX = lx;
@@ -225,14 +242,14 @@ static void endTouch(void) {
 	g_touch.chain = nil;
 }
 
-static void pointerDown(float x, float y, double time) {
+static void pointerDown(NeonRoot *root, float x, float y, double time) {
 	if (g_touch.active || !s_touch.fn) return;
 	float lx = 0, ly = 0;
-	NeonView *top = hitTest(x, y, &lx, &ly);
+	NeonView *top = hitTest(root, x, y, &lx, &ly);
 	g_touch.spanTag = spanTagAt(top, lx, ly);
 	g_touch.spanLabel = g_touch.spanTag != 0 ? top : nil;
 	g_touch.chain = [NSMutableArray array];
-	for (NeonView *at = top; at && at != g_root; at = parentOf(at)) {
+	for (NeonView *at = top; at && at != root; at = parentOf(at)) {
 		if (at.neonTag != 0) [g_touch.chain addObject:at];
 	}
 	g_touch.active = g_touch.chain.count > 0 || g_touch.spanTag != 0;
@@ -247,10 +264,10 @@ static void pointerMove(float x, float y, double time) {
 	for (NeonView *view in [g_touch.chain copy]) reportTag(view.neonTag, 4, x, y, time);
 }
 
-static void pointerUp(float x, float y, double time) {
+static void pointerUp(NeonRoot *root, float x, float y, double time) {
 	if (!g_touch.active) return;
 	float lx = 0, ly = 0;
-	NeonView *at = hitTest(x, y, &lx, &ly);
+	NeonView *at = hitTest(root, x, y, &lx, &ly);
 	if (g_touch.spanTag != 0) {
 		if (at == g_touch.spanLabel && spanTagAt(at, lx, ly) == g_touch.spanTag) {
 			reportTag(g_touch.spanTag, 1, x, y, time);
@@ -279,19 +296,16 @@ static void pointerCancel(void) {
 
 // The root takes every mouse event over Neon's views and routes it through hitTest above; a view
 // AppKit edits itself (a text field) gets its own events.
-@interface NeonRoot : NeonView
-@end
-
-static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot);
-static void routeWheel(NSEvent *event, NSPoint pointInRoot);
+static NSView *nativeTarget(NeonRoot *root, NeonView *view, NSPoint pointInRoot);
+static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 
 @implementation NeonRoot
 - (NSView *)hitTest:(NSPoint)point {
 	NSPoint local = [self convertPoint:point fromView:self.superview];
 	if (!NSPointInRect(local, self.bounds)) return nil;
-	NeonView *top = hitTest((float)local.x, (float)local.y, NULL, NULL);
+	NeonView *top = hitTest(self, (float)local.x, (float)local.y, NULL, NULL);
 	if (!top) return nil;
-	NSView *native = nativeTarget(top, local);
+	NSView *native = nativeTarget(self, top, local);
 	return native ? native : self;
 }
 
@@ -301,7 +315,7 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot);
 
 - (void)mouseDown:(NSEvent *)event {
 	NSPoint p = [self neonPoint:event];
-	pointerDown((float)p.x, (float)p.y, event.timestamp * 1000.0);
+	pointerDown(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
 }
 
@@ -313,11 +327,11 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot);
 
 - (void)mouseUp:(NSEvent *)event {
 	NSPoint p = [self neonPoint:event];
-	pointerUp((float)p.x, (float)p.y, event.timestamp * 1000.0);
+	pointerUp(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
 }
 
-- (void)scrollWheel:(NSEvent *)event { routeWheel(event, [self neonPoint:event]); }
+- (void)scrollWheel:(NSEvent *)event { routeWheel(self, event, [self neonPoint:event]); }
 @end
 
 // --- text: one NSLayoutManager per label, the shape RN macOS's RCTTextLayoutManager keeps ---
@@ -708,7 +722,7 @@ static NSArray<NSView *> *axChildren(NSView *view);
 	if (![self isAccessibilityEnabled]) return NO;
 	if ([self neonPerformAction:@"activate"]) return YES;
 	if (!self.pressable || self.neonTag == 0) return NO;
-	NSPoint at = [self convertPoint:NSMakePoint(NSMidX(self.bounds), NSMidY(self.bounds)) toView:g_root];
+	NSPoint at = [self convertPoint:NSMakePoint(NSMidX(self.bounds), NSMidY(self.bounds)) toView:rootOf(self)];
 	double time = NSProcessInfo.processInfo.systemUptime * 1000.0;
 	reportTag(self.neonTag, 0, (float)at.x, (float)at.y, time);
 	reportTag(self.neonTag, 1, (float)at.x, (float)at.y, time);
@@ -948,9 +962,9 @@ static NSPoint childOffset(NeonView *view) {
 // through its responder chain to the root, which carries it on from the ScrollView above.
 static NeonView *g_wheelFrom = nil;
 
-static void routeWheel(NSEvent *event, NSPoint pointInRoot) {
-	NeonView *start = g_wheelFrom ? parentOf(g_wheelFrom) : hitTest((float)pointInRoot.x, (float)pointInRoot.y, NULL, NULL);
-	for (NeonView *at = start; at && at != g_root; at = parentOf(at)) {
+static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot) {
+	NeonView *start = g_wheelFrom ? parentOf(g_wheelFrom) : hitTest(root, (float)pointInRoot.x, (float)pointInRoot.y, NULL, NULL);
+	for (NeonView *at = start; at && at != root; at = parentOf(at)) {
 		if (![at isKindOfClass:NeonScroll.class]) continue;
 		NeonView *previous = g_wheelFrom;
 		g_wheelFrom = at;
@@ -962,8 +976,6 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot) {
 
 // --- TextInput: RN macOS's RCTUITextField (an NSTextField over the window's field editor, a secure cell
 // for secureTextEntry) and RCTUITextView (an NSTextView in an NSScrollView) inside a NeonView ---
-
-static __weak NSResponder *g_restingResponder = nil;
 
 static void emitControlSized(int32_t tag, int phase, NSString *value, float width, float height) {
 	if (tag == 0 || !s_control.fn) return;
@@ -1228,7 +1240,7 @@ static BOOL flagValue(const char *value, const char *name) {
 	if (focused) {
 		if (![self editor]) [window makeFirstResponder:[self editingView]];
 	} else if ([self editor]) {
-		[window makeFirstResponder:g_restingResponder];
+		[window makeFirstResponder:rootOf(self).restingResponder];
 	}
 }
 
@@ -1571,39 +1583,66 @@ static NeonInput *inputOf(void *view, const char *what) {
 }
 
 // A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing.
-static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) {
+static NSView *nativeTarget(NeonRoot *root, NeonView *view, NSPoint pointInRoot) {
 	NSView *target = isInput(view) ? [(NeonInput *)view editingView] :
 		[view respondsToSelector:@selector(neonNativeTarget)] ? [(id<NeonComponentView>)view neonNativeTarget] : nil;
 	if (!target) return nil;
-	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:g_root]];
+	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:root]];
 	return hit ? hit : target;
 }
 
 // --- handoff ---
 
-void nimAttach(void *root, float scale, float logicalWidth, float logicalHeight) {
-	if (g_root) fail("nimAttach called twice");
-	if (!root) fail("nimAttach without a root view");
-	NSView *parent = (__bridge NSView *)root;
-	g_root = [[NeonRoot alloc] initWithFrame:parent.bounds];
-	g_root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-	g_root.w = (float)parent.bounds.size.width;
-	g_root.h = (float)parent.bounds.size.height;
-	[parent addSubview:g_root positioned:NSWindowAbove relativeTo:nil];
-	g_restingResponder = parent.window.firstResponder;
-	g_scale = scale;
-	g_width = logicalWidth;
-	g_height = logicalHeight;
+static NeonRoot *attachedRoot(void *handle, const char *what) {
+	for (NeonRoot *root in g_roots) {
+		if ((__bridge void *)root == handle) return root;
+	}
+	char message[192];
+	snprintf(message, sizeof message, "%s on a handle nimAttach did not return or nimDetach released", what);
+	fail(message);
+	return nil;
 }
 
-void nimResize(float scale, float logicalWidth, float logicalHeight) {
-	requireAttached("nimResize");
-	g_scale = scale;
-	g_width = logicalWidth;
-	g_height = logicalHeight;
-	g_root.w = logicalWidth;
-	g_root.h = logicalHeight;
-	if (s_resize.fn) invoke(s_resize);
+void *nimAttach(void *root, float scale, float logicalWidth, float logicalHeight) {
+	if (!root) fail("nimAttach without a root view");
+	NSView *parent = (__bridge NSView *)root;
+	for (NeonRoot *held in g_roots) {
+		if (held.superview == parent) fail("nimAttach on a view that already holds a Neon root");
+	}
+	if (!g_roots) g_roots = [NSMutableArray array];
+	NeonRoot *attached = [[NeonRoot alloc] initWithFrame:parent.bounds];
+	attached.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+	attached.w = (float)parent.bounds.size.width;
+	attached.h = (float)parent.bounds.size.height;
+	[parent addSubview:attached positioned:NSWindowAbove relativeTo:nil];
+	attached.restingResponder = parent.window.firstResponder;
+	[g_roots addObject:attached];
+	if (attached == defaultRoot()) {
+		g_scale = scale;
+		g_width = logicalWidth;
+		g_height = logicalHeight;
+	}
+	return (__bridge void *)attached;
+}
+
+void nimDetach(void *handle) {
+	NeonRoot *root = attachedRoot(handle, "nimDetach");
+	if (root == defaultRoot()) fail("nimDetach on the first root, which nimShutdown ends");
+	if (g_touch.active && within(g_touch.spanLabel ? g_touch.spanLabel : g_touch.chain.firstObject, root)) endTouch();
+	[root removeFromSuperview];
+	[g_roots removeObject:root];
+}
+
+void nimResize(void *handle, float scale, float logicalWidth, float logicalHeight) {
+	NeonRoot *root = attachedRoot(handle, "nimResize");
+	root.w = logicalWidth;
+	root.h = logicalHeight;
+	if (root == defaultRoot()) {
+		g_scale = scale;
+		g_width = logicalWidth;
+		g_height = logicalHeight;
+		if (s_resize.fn) invoke(s_resize);
+	}
 	requestHostFrame();
 }
 
@@ -1631,7 +1670,9 @@ static int countStored(NeonView *view, NSString *name, NSString *value) {
 
 int nimStoredAccessibility(const char *name, const char *value) {
 	requireAttached("nimStoredAccessibility");
-	return countStored(g_root, @(name), @(value));
+	int count = 0;
+	for (NeonRoot *root in g_roots) count += countStored(root, @(name), @(value));
+	return count;
 }
 
 int nimLayoutsBuilt(void) { return g_layoutsBuilt; }
@@ -1739,15 +1780,16 @@ static NSPoint toParent(NeonView *view, NSPoint p) {
 
 int32_t niMeasureInWindow(void *view) {
 	NeonView *v = as(view);
-	if (!g_root || !v.window || !within(v, g_root)) return -1;
+	NeonRoot *root = rootOf(v);
+	if (!root || !v.window) return -1;
 	if (v.isHiddenOrHasHiddenAncestor) return 0;
 	NSPoint corners[4] = {NSMakePoint(0, 0), NSMakePoint(v.w, 0), NSMakePoint(0, v.h), NSMakePoint(v.w, v.h)};
 	NSView *content = v.window.contentView;
 	double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
 	for (int i = 0; i < 4; i++) {
 		NSPoint p = corners[i];
-		for (NeonView *at = v; at && at != g_root; at = parentOf(at)) p = toParent(at, p);
-		p = [g_root convertPoint:p toView:content];
+		for (NeonView *at = v; at && at != root; at = parentOf(at)) p = toParent(at, p);
+		p = [root convertPoint:p toView:content];
 		if (!content.isFlipped) p.y = content.bounds.size.height - p.y;
 		minX = MIN(minX, p.x);
 		minY = MIN(minY, p.y);
@@ -1796,7 +1838,7 @@ int niRunApp(void) {
 
 void *niContainerView(void) {
 	requireAttached("niContainerView");
-	return (__bridge void *)g_root;
+	return (__bridge void *)defaultRoot();
 }
 
 float niScreenWidth(void) { return g_width; }

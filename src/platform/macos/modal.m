@@ -13,10 +13,8 @@
 @property(nonatomic, copy) NSString *animation;
 @end
 
-static NeonView *g_root = nil;
-
-static NeonModal *topModal(void) {
-	for (NSView *child in g_root.subviews.reverseObjectEnumerator) {
+static NeonModal *topModal(NSWindow *window) {
+	for (NSView *child in neonRootInWindow(window).subviews.reverseObjectEnumerator) {
 		if ([child isKindOfClass:NeonModal.class]) return (NeonModal *)child;
 	}
 	return nil;
@@ -26,7 +24,7 @@ static void watchEscape(void) {
 	static id monitor = nil;
 	if (monitor) return;
 	monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-		NeonModal *modal = event.keyCode == 53 && event.window == g_root.window ? topModal() : nil;
+		NeonModal *modal = event.keyCode == 53 ? topModal(event.window) : nil;
 		if (!modal || modal.neonTag == 0) return event;
 		neonEmitControl(modal.neonTag, 7, @"", 0, 0);
 		return nil;
@@ -65,7 +63,7 @@ static void watchEscape(void) {
 @end
 
 void *niModalCreate(void) {
-	g_root = neonRequireRoot("niModalCreate");
+	neonRequireRoot("niModalCreate");
 	watchEscape();
 	return (void *)CFBridgingRetain([[NeonModal alloc] initWithFrame:NSZeroRect]);
 }
