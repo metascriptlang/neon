@@ -7,7 +7,7 @@ import { NeonNode } from "../../src/render/node";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Light, SpotLight, DirectionalLight, PointLight } from "../../src/components/scene3d";
-import { NodeId3D, LightKind, LightShape, collectLights } from "../../../void/src/void3d/scene";
+import { NodeId3D, LightKind, LightShape, LightError, collectLights } from "../../../void/src/void3d/scene";
 import { LIGHT_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
 import { TextureId, NO_TEXTURE } from "../../../void/src/void3d/texture";
 import { vec3 } from "../../../void/src/math/math3d";
@@ -125,44 +125,43 @@ test "a SpotLight map is the light's cookie, follows its prop, and is refused on
 		.includes("Light: cookie needs a Spot light, not Directional");
 }
 
-test "a second spot with a map is refused by name, and takes the map once the first lets it go" {
+test "two seen spots with a map are refused per frame, and the second takes the map once the first lets it go" {
 	const [first, setFirst] = createSignal<TextureId>(COOKIE_A);
-	assert refused((): NeonNode => element(<Scene3D>
-		<SpotLight angle={QUARTER} penumbra={0.5} distance={8.0} map={COOKIE_A} />
-		<SpotLight angle={QUARTER} penumbra={0.5} distance={8.0} map={COOKIE_B} />
-	</Scene3D>)).includes("Light: only one Spot light carries a map in a Scene3D");
 	const refs: Scene3DHandle[] = [];
-	const [second, setSecond] = createSignal<TextureId>(NO_TEXTURE);
+	const [second, setSecond] = createSignal<TextureId>(COOKIE_B);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		<SpotLight angle={QUARTER} penumbra={0.5} distance={8.0} map={first()} />
 		<SpotLight angle={QUARTER} penumbra={0.5} distance={8.0} map={second()} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
-		setFirst(NO_TEXTURE); setSecond(COOKIE_B); flush();
+		let both: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const twice = collectLights(refs[0].scene, both);
+		assert !twice.ok && twice.error === LightError.TooManyCookieSpots;
+		setFirst(NO_TEXTURE); flush();
 		assert refs[0].scene.lights[1].cookie === COOKIE_B && !refs[0].scene.lights[0].cookie.isTexture();
 		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		assert collectLights(refs[0].scene, block).ok;
 	} finally { dispose(); resetErrorHalt(); }
 }
 
-test "a second Directional light is refused at mount by name, and a PointLight beside the first is not" {
-	assert refused((): NeonNode => element(<Scene3D><DirectionalLight /><DirectionalLight /></Scene3D>))
-		.includes("Light: only one Directional light in a Scene3D");
-	assert refused((): NeonNode => element(<Scene3D><DirectionalLight /><Light kind={LightKind.Directional} /></Scene3D>))
-		.includes("Light: only one Directional light in a Scene3D");
+test "two seen Directional lights are refused per frame, and removing one lets the frame through beside a PointLight" {
 	const refs: Scene3DHandle[] = [];
 	const [shown, setShown] = createSignal(true);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		{Show({ when: accessor(() => shown()), children: element(<DirectionalLight />) })}
+		<Light kind={LightKind.Directional} />
 		<PointLight />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-		assert collectLights(refs[0].scene, block).ok;
+		const twice = collectLights(refs[0].scene, block);
+		assert !twice.ok && twice.error === LightError.TooManyDirectionalLights;
 		setShown(false); flush();
+		assert collectLights(refs[0].scene, block).ok;
 		setShown(true); flush();
-		assert collectLights(refs[0].scene, block).ok, "a removed Directional lets the next mount";
+		const again = collectLights(refs[0].scene, block);
+		assert !again.ok && again.error === LightError.TooManyDirectionalLights;
 	} finally { dispose(); resetErrorHalt(); }
 }

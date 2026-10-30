@@ -131,13 +131,7 @@ export function Light(props: LightProps): NeonNode {
 			};
 			const node = addLightNode(scene, scope.parent, local, light);
 			ownNode(state, node);
-			onCleanup((): void => {
-				state.releaseLight(LightSlot.Directional, node);
-				state.releaseLight(LightSlot.Cookie, node);
-			});
 			bindNode(state, node, props, local);
-			if (kind === LightKind.Directional) { state.claimLight(LightSlot.Directional, node); }
-			if (cookie.isTexture()) { state.claimLight(LightSlot.Cookie, node); }
 			createRenderEffect<LightKind>(
 				(prev: LightKind | null): LightKind => props.kind(),
 				(value: LightKind, prev: LightKind | null): Cleanup | null => {
@@ -165,7 +159,6 @@ export function Light(props: LightProps): NeonNode {
 			}
 			if (props.cookie !== null) {
 				bindLight<TextureId>(state, props.cookie as () => TextureId, cookie, (value: TextureId): void => {
-					if (value.isTexture()) { state.claimLight(LightSlot.Cookie, node); } else { state.releaseLight(LightSlot.Cookie, node); }
 					setLightCookie(scene, node, value);
 				});
 			}

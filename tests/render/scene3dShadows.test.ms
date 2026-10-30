@@ -96,7 +96,7 @@ test "a second caster of one kind is refused by name, and another kind is not" {
 	assert refused((): NeonNode => element(<Scene3D>
 		<DirectionalLight castShadow={true} />
 		<Light kind={LightKind.Directional} castShadow={true} />
-	</Scene3D>)).includes("Light: only one Directional light in a Scene3D");
+	</Scene3D>)).includes("Light: only one directional Light casts shadows in a Scene3D");
 }
 
 test "a point light's castShadow is fixed at mount, as Void has no light-shadows binder" {

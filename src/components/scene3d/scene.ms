@@ -50,8 +50,6 @@ function slotIndex(slot: LightSlot): int32 {
 		LightSlot.Sun => 0,
 		LightSlot.Spot => 1,
 		LightSlot.Cube => 2,
-		LightSlot.Directional => 3,
-		LightSlot.Cookie => 4,
 	};
 }
 
@@ -60,8 +58,6 @@ function slotRefusal(slot: LightSlot): string {
 		LightSlot.Sun => "Light: only one directional Light casts shadows in a Scene3D",
 		LightSlot.Spot => "Light: only one spot Light casts shadows in a Scene3D; Void has one spot shadow map (LightError.TooManyShadowedSpots)",
 		LightSlot.Cube => "Light: only one point, rectangle or capsule Light casts shadows in a Scene3D; Void has one cube shadow map (LightError.TooManyCubeCasters)",
-		LightSlot.Directional => "Light: only one Directional light in a Scene3D; Void has one sun (LightError.TooManyDirectionalLights)",
-		LightSlot.Cookie => "Light: only one Spot light carries a map in a Scene3D; Void projects one cookie per frame (LightError.TooManyCookieSpots)",
 	};
 }
 
@@ -104,15 +100,12 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			const handle: Scene3DHandle = { context: context, scene: scene, camera: null, renderer: renderer, invalidate: invalidate };
 			const maps: (DirShadowMap | null)[] = [null, null, null];
-			const claims: NodeId3D[] = [NO_NODE_ID, NO_NODE_ID, NO_NODE_ID, NO_NODE_ID, NO_NODE_ID];
+			const claims: NodeId3D[] = [NO_NODE_ID, NO_NODE_ID, NO_NODE_ID];
 			const claimed = (slot: LightSlot, light: NodeId3D): boolean => claims[slotIndex(slot)] === light;
 			const claimLight = (slot: LightSlot, light: NodeId3D): void => {
 				const at = slotIndex(slot);
 				if (claims[at] !== NO_NODE_ID && claims[at] !== light) { throw new Error(slotRefusal(slot)); }
 				claims[at] = light;
-			};
-			const releaseLight = (slot: LightSlot, light: NodeId3D): void => {
-				if (claimed(slot, light)) { claims[slotIndex(slot)] = NO_NODE_ID; }
 			};
 			const dropShadow = (slot: LightSlot): void => {
 				const at = slotIndex(slot);
@@ -159,7 +152,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			};
 			const state: SceneState = {
 				handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: invalidate, beforeRefresh: [],
-				shadowMaterials: [null, null, null, null], shadowOf: shadowOf, claimLight: claimLight, releaseLight: releaseLight,
+				shadowMaterials: [null, null, null, null], shadowOf: shadowOf,
 			};
 			if (hdr) { setToneMode(renderer.core, ToneMode.Filmic); }
 			let items: Vec<DrawItem> = [];

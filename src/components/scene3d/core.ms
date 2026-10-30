@@ -49,8 +49,6 @@ export enum LightSlot {
 	Sun,
 	Spot,
 	Cube,
-	Directional,
-	Cookie,
 }
 
 export interface CameraEntry {
@@ -73,8 +71,6 @@ export interface SceneState {
 	limbo?: NodeId3D | null;
 	shadowMaterials: Vec<MaterialId | null>;
 	shadowOf: (light: NodeId3D, slot: LightSlot, shadow: LightShadow | null) => void;
-	claimLight: (slot: LightSlot, light: NodeId3D) => void;
-	releaseLight: (slot: LightSlot, light: NodeId3D) => void;
 	beforeRefresh: FrameHook[];
 }
 
