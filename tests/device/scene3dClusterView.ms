@@ -46,7 +46,7 @@ function floor(): MeshData {
 
 const ground = floor();
 
-function init(): void {
+function mount(): void {
 	gfxSetup();
 	baseImages = liveImages(); baseViews = liveViews();
 	const roughness = createMaterialHolder();
@@ -71,7 +71,7 @@ function near(a: float32, b: float32): boolean {
 	return Math.abs(a - b) < 0.0001;
 }
 
-function frame(): void {
+function step(): void {
 	clock.advance(16.0);
 	const layers = mockAreaHub(root.children[0]).layers();
 	if (layers.length !== 1) { fail("one Scene3D layer"); return; }
@@ -99,6 +99,14 @@ function frame(): void {
 		console.log("PASS Scene3D cluster view device: 6 frames, 2 point lights, pbr mesh, camera followed its props, closed GPU resources");
 		process.exit(0);
 	}
+}
+
+function init(): void {
+	try { mount(); } catch (error) { fail("mount threw: " + error.message); }
+}
+
+function frame(): void {
+	try { step(); } catch (error) { fail("frame " + frames.toString() + " threw: " + error.message); }
 }
 
 voidRun(320, 240, init, frame);
