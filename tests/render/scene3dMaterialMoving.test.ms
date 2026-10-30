@@ -1,4 +1,6 @@
 import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { onCleanup } from "../../src/core/cleanup";
+import { contextGeneration } from "../../../void/src/gpu/door";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -9,7 +11,7 @@ import { Scene3D } from "../../src/components/scene3d/scene";
 import {
 	createMaterial, DistanceFade, Flipbook, MaterialProps,
 } from "../../src/components/scene3d/material";
-import { DrawContext, MaterialId, releaseTexture } from "../../../void/src/void3d/draw";
+import { DrawContext, MaterialId, releaseTexture, buryDoomed } from "../../../void/src/void3d/draw";
 import { MaterialKind } from "../../../void/src/void3d/material";
 import { TextureId } from "../../../void/src/void3d/texture";
 import { Texture } from "../../../void/src/gpu/texture";
@@ -22,11 +24,12 @@ import {
 import { Color, rgba } from "../../../void/src/void2d/types";
 import { addedOwner } from "../../../void/src/test/drawHelpers";
 
-const held: TextureId[] = [];
-
 function fixed(context: DrawContext): Accessor<TextureId> {
 	const id = addedOwner(context, Texture.adopt(0, 77, 1, 1));
-	held.push(id);
+	onCleanup((): void => {
+		if (!releaseTexture(context, id).ok) { throw new Error("fixture: a held texture did not release"); }
+		buryDoomed(context, contextGeneration() + 1);
+	});
 	return accessor((): TextureId => id);
 }
 
@@ -57,10 +60,6 @@ function mounted(
 			props = build(handle.context);
 		}}>{painted}</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
-	for (const id of held) {
-		if (!releaseTexture(refs[0].context, id).ok) { throw new Error("fixture: a held texture did not release"); }
-	}
-	held.splice(0, held.length);
 	return [refs[0], made, dispose];
 }
 
@@ -70,7 +69,7 @@ function refusal(build: (context: DrawContext) => MaterialProps): string {
 		const [handle, made, dispose] = mounted(build);
 		dispose();
 	} catch (error) { message = error.message; }
-	finally { held.splice(0, held.length); resetErrorHalt(); }
+	finally { resetErrorHalt(); }
 	return message;
 }
 

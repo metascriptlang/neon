@@ -1,4 +1,6 @@
 import { Accessor, accessor } from "../../src/core/signal";
+import { onCleanup } from "../../src/core/cleanup";
+import { contextGeneration } from "../../../void/src/gpu/door";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
@@ -9,13 +11,18 @@ import { Scene3DHandle } from "../../src/components/scene3d/core";
 import { Scene3D } from "../../src/components/scene3d/scene";
 import { Decal, DecalProps, DecalNormalFade } from "../../src/components/scene3d/decal";
 import { NodeId3D, NO_NODE_ID } from "../../../void/src/void3d/scene";
-import { DrawContext } from "../../../void/src/void3d/draw";
+import { DrawContext, releaseTexture, buryDoomed } from "../../../void/src/void3d/draw";
 import { TextureId, NO_TEXTURE } from "../../../void/src/void3d/texture";
 import { Texture } from "../../../void/src/gpu/texture";
 import { addedOwner } from "../../../void/src/test/drawHelpers";
 
 function texture(context: DrawContext, view: uint32): TextureId {
-	return addedOwner(context, Texture.adopt(0, view, 1, 1));
+	const id = addedOwner(context, Texture.adopt(0, view, 1, 1));
+	onCleanup((): void => {
+		if (!releaseTexture(context, id).ok) { throw new Error("fixture: a held texture did not release"); }
+		buryDoomed(context, contextGeneration() + 1);
+	});
+	return id;
 }
 
 function mountedWith(build: (context: DrawContext) => DecalProps): [Scene3DHandle, NodeId3D[], () => void] {
