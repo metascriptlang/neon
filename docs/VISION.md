@@ -125,7 +125,7 @@ Which of these exist is recorded in `PORT-STATUS.md` and `ROADMAP.md`, not here.
    `--target=js`, not wasm. Neon's DOM host and Void then share one JS runtime, so signals, context
    and owners reach inside a `<Void>` exactly as they reach any other child, and no call crosses a
    JS↔wasm boundary. This path is not built yet. Today's web build is wasm: sokol and the bridge
-   compiled by emscripten (`void/src/sokol/gpu.wms`, `--os=emcc`), shipped as a WebGPU artifact and a
+   compiled by emscripten (`void/src/host/gpu.wms`, `--os=emcc`), shipped as a WebGPU artifact and a
    WebGL2 artifact (`void/README.md`). Getting to JS needs:
    - a GPU layer for the JS target, written in MetaScript over WebGPU, because sokol is C;
    - JS versions of the C pieces under the text stack (fontstash, stb_truetype, the shaper void2d P3

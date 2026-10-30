@@ -90,7 +90,7 @@ removed; absence means not started, not work-in-progress. Yoga itself is done: t
 `~/metascript/yoga` and `deps/yoga` symlinks a real checkout.
 ⚠ **iOS/Android are NOT blocked on `@target`/`@platform`** — both were retired 2026-08-09 and now
 raise an error. Gate with `when (ios) { … }` around `@compile`/`@passC`/`@passL`/`@link` over one
-backend-agnostic extern surface, the shape `void/src/sokol/gpu.ms` already ships. Unlike the old
+backend-agnostic extern surface, the shape `void/src/host/gpu.ms` already ships. Unlike the old
 `@platform`, `when` gates arbitrary code, and an untaken branch is never type-checked.
 
 ---
