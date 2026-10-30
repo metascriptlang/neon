@@ -4,7 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Rect, Label, Mask } from "../../src/components/scene2d";
-import { Scene2D as VoidScene2D, NodeRef, local, filter, textStyle, text, content, scroll } from "../../../void/src/void2d/node";
+import { Scene2D as VoidScene2D, NodeRef, local, filterChain, textStyle, text, content, scroll } from "../../../void/src/void2d/node";
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { rgba, Camera, Filter, FilterKind, blurFilter, glowFilter, dropShadowFilter, noFilter } from "../../../void/src/void2d/types";
 import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
@@ -14,6 +14,12 @@ import { setup2d, drawCallCount, glyphPageCount } from "../../../void/src/void2d
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
+
+function soleFilter(n: NodeRef): Filter {
+	const steps = n.filterChain().steps;
+	if (steps.length > 1) { throw new Error(`a filter prop sets one step, and this node holds ${steps.length}`); }
+	return steps.length === 0 ? noFilter() : steps[0];
+}
 
 @include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
@@ -97,10 +103,10 @@ function frame(): void {
 		fail("consumer lost its reactive Rect"); return;
 	}
 	if (scene.cam.x !== (frames < 5 ? 0.0 : 4.0) ||
-		nodes[0].filter().radius !== (frames >= 9 ? 0.0 : (frames < 5 ? 2.0 : 3.0))) {
+		soleFilter(nodes[0]).radius !== (frames >= 9 ? 0.0 : (frames < 5 ? 2.0 : 3.0))) {
 		fail("consumer lost its reactive camera or filter"); return;
 	}
-	const active = nodes[0].filter();
+	const active = soleFilter(nodes[0]);
 	const expected = frames < 3 ? FilterKind.Blur : (frames < 6 ? FilterKind.Glow :
 		(frames < 9 ? FilterKind.DropShadow : FilterKind.None));
 	if (active.kind !== expected || (frames >= 3 && frames < 6 &&

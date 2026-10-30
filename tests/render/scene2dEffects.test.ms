@@ -6,7 +6,7 @@ import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Group, Rect } from "../../src/components/scene2d";
 import {
-	NodeRef, Scene2D as VoidScene2D, filter, paint, colorMatrix, isLive,
+	NodeRef, Scene2D as VoidScene2D, filterChain, paint, colorMatrix, isLive,
 } from "../../../void/src/void2d/node";
 import {
 	Filter, FilterKind, rgba, noFilter, blurFilter, glowFilter, dropShadowFilter,
@@ -15,6 +15,12 @@ import { Mat4 } from "../../../void/src/math/math3d";
 import {
 	NO_COLOR_MATRIX, colorMatrixGrayscale, colorMatrixAlphaOnly,
 } from "../../../void/src/void2d/effect";
+
+function soleFilter(n: NodeRef): Filter {
+	const steps = n.filterChain().steps;
+	if (steps.length > 1) { throw new Error(`a filter prop sets one step, and this node holds ${steps.length}`); }
+	return steps.length === 0 ? noFilter() : steps[0];
+}
 
 test "raw filters replace every Void kind without remounting or changing sibling filters" {
 	const scenes: VoidScene2D[] = [];
@@ -38,25 +44,25 @@ test "raw filters replace every Void kind without remounting or changing sibling
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		const id = nodes[0].id;
-		assert nodes[0].filter().kind === FilterKind.Blur;
-		assert nodes[0].filter() === blurFilter(2.0);
-		let copy = nodes[0].filter();
+		assert soleFilter(nodes[0]).kind === FilterKind.Blur;
+		assert soleFilter(nodes[0]) === blurFilter(2.0);
+		let copy = soleFilter(nodes[0]);
 		copy.radius = 99.0;
-		assert nodes[0].filter().radius === 2.0;
+		assert soleFilter(nodes[0]).radius === 2.0;
 		setValue(glowFilter(rgba(0.2, 0.4, 0.6, 0.8), 7.0, 0.5));
 		flush();
-		assert nodes[0].filter().kind === FilterKind.Glow;
-		assert nodes[0].filter() === value();
+		assert soleFilter(nodes[0]).kind === FilterKind.Glow;
+		assert soleFilter(nodes[0]) === value();
 		setValue(dropShadowFilter(rgba(0.1, 0.3, 0.5, 0.7), 4.0, -6.0, 8.0));
 		flush();
-		assert nodes[0].filter().kind === FilterKind.DropShadow;
-		assert nodes[0].filter() === value();
+		assert soleFilter(nodes[0]).kind === FilterKind.DropShadow;
+		assert soleFilter(nodes[0]) === value();
 		assert nodes[0].id === id && nodes.length === 3;
-		assert nodes[1].filter() === noFilter() && nodes[2].filter() === noFilter();
+		assert soleFilter(nodes[1]) === noFilter() && soleFilter(nodes[2]) === noFilter();
 		setValue(noFilter());
 		flush();
-		assert nodes[0].filter().kind === FilterKind.None;
-		assert nodes[0].filter() === noFilter();
+		assert soleFilter(nodes[0]).kind === FilterKind.None;
+		assert soleFilter(nodes[0]) === noFilter();
 		setShown(false);
 		flush();
 		assert !nodes[0].isLive() && !nodes[1].isLive() && nodes[2].isLive();
@@ -66,8 +72,8 @@ test "raw filters replace every Void kind without remounting or changing sibling
 		assert reads === stopped;
 		setShown(true);
 		flush();
-		assert nodes.length === 5 && nodes[3].filter() === value();
-		assert nodes[4].filter() === noFilter();
+		assert nodes.length === 5 && soleFilter(nodes[3]) === value();
+		assert soleFilter(nodes[4]) === noFilter();
 	} finally { dispose(); }
 	const stopped = reads;
 	setValue(blurFilter(11.0)); setShown(false);
@@ -100,20 +106,20 @@ test "filter replacement preserves independent color matrix rows and releases th
 		const second = nodes[1].paint().colorMatrixRow;
 		assert first >= 0 && second >= 0 && first !== second;
 		assert scene.colorMatrices.length === 2;
-		assert nodes[0].filter() === blurFilter(3.0);
+		assert soleFilter(nodes[0]) === blurFilter(3.0);
 		setValue(dropShadowFilter(rgba(0.1, 0.2, 0.3, 0.4), 6.0, 7.0, -8.0));
 		flush();
-		assert nodes[0].filter() === value();
+		assert soleFilter(nodes[0]) === value();
 		assert nodes[0].paint().colorMatrixRow === first;
 		assert nodes[0].colorMatrix() === colorMatrixGrayscale(1.0);
 		setMatrix(colorMatrixAlphaOnly(0.25));
 		flush();
 		assert nodes[0].paint().colorMatrixRow === first;
 		assert nodes[0].colorMatrix() === colorMatrixAlphaOnly(0.25);
-		assert nodes[0].filter() === value();
+		assert soleFilter(nodes[0]) === value();
 		assert nodes[1].paint().colorMatrixRow === second;
 		assert nodes[1].colorMatrix() === colorMatrixAlphaOnly(0.75);
-		assert nodes[1].filter() === noFilter();
+		assert soleFilter(nodes[1]) === noFilter();
 		setMatrix(NO_COLOR_MATRIX);
 		flush();
 		assert nodes[0].paint().colorMatrixRow === -1;
@@ -130,7 +136,7 @@ test "filter replacement preserves independent color matrix rows and releases th
 		flush();
 		assert nodes[2].paint().colorMatrixRow === first;
 		assert nodes[2].colorMatrix() === colorMatrixAlphaOnly(0.5);
-		assert nodes[2].filter() === noFilter();
+		assert soleFilter(nodes[2]) === noFilter();
 	} finally { dispose(); }
 	setMatrix(colorMatrixGrayscale(1.0)); setValue(blurFilter(8.0));
 	flush();
