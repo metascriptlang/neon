@@ -256,15 +256,15 @@ test "fontSizeAdjust picks void2d's size adjust, a span takes its Text's, and th
 		]} />
 	</View>), vh.host, vh.root);
 	const view = top(vh);
-	const icWidth = paragraph(view.children[0]).textStyle().font;
-	const plain = paragraph(view.children[1]).textStyle().font;
+	const icWidth = paragraph(vh.tree.childrenOf(view)[0]).textStyle().font;
+	const plain = paragraph(vh.tree.childrenOf(view)[1]).textStyle().font;
 	assert icWidth === listFace(400, SizeAdjust.IcWidth), "ic-width from-font resolves IcWidth";
 	assert plain === listFace(400, SizeAdjust.None), "no fontSizeAdjust resolves None";
-	assert paragraph(view.children[2]).textStyle().font === plain, "none resolves None";
+	assert paragraph(vh.tree.childrenOf(view)[2]).textStyle().font === plain, "none resolves None";
 	assert icWidth !== plain, "fonts differing only in size adjust are different fonts";
 	assert hanScale(plain) === 1.0 && hanScale(icWidth) !== 1.0, `the fallback hanzi scales by ${hanScale(icWidth)} under ic-width`;
-	const runs = runsOf(vh, paragraph(view.children[3]));
-	assert paragraph(view.children[3]).textStyle().font === listFace(400, SizeAdjust.CapHeight), "cap-height from-font resolves CapHeight";
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(view)[3]));
+	assert paragraph(vh.tree.childrenOf(view)[3]).textStyle().font === listFace(400, SizeAdjust.CapHeight), "cap-height from-font resolves CapHeight";
 	assert runs[1].font === listFace(700, SizeAdjust.CapHeight), "a bold span keeps its Text's size adjust";
 	assert runs[2].font === listFace(400, SizeAdjust.ExHeight), "from-font alone is ex-height";
 	assert runs[3].font === runs[2].font, "ex-height from-font is ex-height";
