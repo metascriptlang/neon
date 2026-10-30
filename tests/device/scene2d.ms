@@ -11,11 +11,11 @@ import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { TextStyle, Align } from "../../../void/src/void2d/textLayout";
 import { setup2d, drawCallCount, glyphPageCount } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let subject: VoidScene2D | null = null;

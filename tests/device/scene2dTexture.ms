@@ -10,11 +10,11 @@ import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { Tile, tile } from "../../../void/src/void2d/types";
 import { Texture, fromPixels, close } from "../../../void/src/gpu/texture";
 import { setup2d, drawCallCount } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, imageAlive, viewAlive } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let subject: VoidScene2D | null = null;

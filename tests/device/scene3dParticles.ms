@@ -19,11 +19,11 @@ import { MaterialId, addMaterial, releaseMaterial } from "../../../void/src/void
 import { Material, MaterialKind } from "../../../void/src/void3d/material";
 import { Program } from "../../../void/src/void3d/gpu3d";
 import { vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveBuffers } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const clock = useManualFrames();

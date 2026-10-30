@@ -24,11 +24,11 @@ import { Scene2D as VoidScene2D } from "../../../void/src/void2d/node";
 import { glyphAtlas } from "../../../void/src/void2d/labelText";
 import { pageCount } from "../../../void/src/void2d/glyphAtlas";
 import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews, originTopLeft } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;

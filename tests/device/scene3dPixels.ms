@@ -12,12 +12,12 @@ import { Scene3D, Light, Mesh, Camera3D } from "../../src/components/scene3d";
 import { LightKind } from "../../../void/src/void3d/scene";
 import { MeshData, addBox } from "../../../void/src/void3d/meshData";
 import { vec3, quatBetween } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
 import { voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit } from "../../../void/tests/capture/capture.h";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

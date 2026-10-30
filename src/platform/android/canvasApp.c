@@ -1,4 +1,4 @@
-#include "../../../../void/src/sokol/androidApp.h"
+#include "../../../../void/src/host/androidApp.h"
 #include "../native/app.h"
 #include <android/log.h>
 #include <jni.h>

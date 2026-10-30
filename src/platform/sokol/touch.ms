@@ -1,7 +1,7 @@
 import { AreaKeyMod, AreaPointerKind } from "../../render/voidAreaHandle";
 import { DOM_DELTA_PIXEL } from "../../render/event";
 import { WindowArea, deliverPointer } from "../void/windowHost";
-import { AppEventType, AppTouch } from "../../../../void/src/sokol/window";
+import { AppEventType, AppTouch } from "../../../../void/src/host/window";
 import { requestFrame, cancelFrame, frameNow } from "../../animation/frame";
 
 // Flutter's touch gestures on iOS: gestures/constants.dart, BouncingScrollPhysics and

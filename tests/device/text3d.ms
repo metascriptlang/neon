@@ -17,14 +17,14 @@ import { Mat4, Vec3, vec3 } from "../../../void/src/math/math3d";
 import { rgba } from "../../../void/src/void2d/types";
 import { liveTextures, liveMaterials, liveMeshes } from "../../../void/src/void3d/draw";
 import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
 import { glyphAtlas } from "../../../void/src/void2d/labelText";
 import { defaultFontBytes } from "../../../void/src/void2d/font";
 import { pageCount } from "../../../void/src/void2d/glyphAtlas";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;

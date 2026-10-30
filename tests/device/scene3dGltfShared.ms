@@ -12,11 +12,11 @@ import { DrawItem, liveMeshes, liveMaterials, hasMesh } from "../../../void/src/
 import { refresh } from "../../../void/src/void3d/scene";
 import { RenderState } from "../../../void/src/gpu/state";
 import { vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { gfxSetup } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveBuffers } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;

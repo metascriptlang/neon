@@ -9,7 +9,7 @@ import {
 	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName, setTitle,
 	setOptionAsAlt as ionSetOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
 } from "../../../../ion/src/index";
-import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
+import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/host/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { commit as commitFrame } from "../../../../void/src/gpu/door";
 import { addFont, registerFace, setFaceResolver, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";

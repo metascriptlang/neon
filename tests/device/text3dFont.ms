@@ -10,9 +10,9 @@ import { AreaWindow, WindowArea, windowHost, windowNode } from "../../src/platfo
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { gfxSetup } from "../../../void/src/host/gpu";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const FONT_PATH = "../void/assets/font.ttf";

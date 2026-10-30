@@ -11,11 +11,11 @@ import { whiteTile, rgba } from "../../../void/src/void2d/types";
 import { BoxStyle, create, dashed, castShadow, castInsetShadow, uniformRadii, uniformBorders, boxStyles } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle, ObjectFit, imageStyle, imageStyles } from "../../../void/src/void2d/imageStyle";
 import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let scene: VoidScene2D | null = null;

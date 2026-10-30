@@ -12,9 +12,9 @@ import { Scene2D, Rect } from "../../src/components/scene2d";
 import { Scene3D, RenderTexture } from "../../src/components/scene3d";
 import { rgba } from "../../../void/src/void2d/types";
 import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { gfxSetup } from "../../../void/src/host/gpu";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 function mounted(app: () => NeonNode): string {

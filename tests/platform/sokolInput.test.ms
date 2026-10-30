@@ -14,7 +14,7 @@ import {
 } from "../../src/platform/sokol/input";
 import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
 import { FontId, addFont } from "../../../void/src/void2d/font";
-import { AppEvent, AppEventType, AppTouch } from "../../../void/src/sokol/window";
+import { AppEvent, AppEventType, AppTouch } from "../../../void/src/host/window";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
