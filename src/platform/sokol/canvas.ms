@@ -1,5 +1,6 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/host/gpu";
-import { setup2d } from "../../../../void/src/void2d/draw";
+import { setup2d, preparePipelines } from "../../../../void/src/void2d/draw";
+import { BlendMode } from "../../../../void/src/gpu/state";
 import { FontId } from "../../../../void/src/void2d/font";
 import { AppEvent, onAppEvent, setTextInput, setImeRect, safeArea, keyboardHeight } from "../../../../void/src/host/window";
 import { publishKeyboard, publishSafeArea } from "../../render/environment";
@@ -114,6 +115,7 @@ function initCanvas(): void {
 	const c = running();
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	const app = c.app;
 	c.dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, canvasHost(c), windowNode("window"));
 	onAppEvent((e: AppEvent): void => {
