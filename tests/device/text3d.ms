@@ -3,7 +3,7 @@
 // Exits 0 once a label redrew, rescaled, faced the camera, was replaced and released its GPU resources;
 // glyph atlas pages are process-wide and stay.
 
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { accessor, createSignal } from "../../src/core/signal";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
@@ -63,8 +63,8 @@ function near(a: float32, b: float32): boolean {
 }
 
 function init(): void {
-	const file = readFile(FONT_PATH);
-	if (!file.ok || !defaultFontBytes([...file.value.asBytes()]).ok) { fail("the default font did not load from " + FONT_PATH); return; }
+	const file = readFileBytes(FONT_PATH);
+	if (!file.ok || !defaultFontBytes([...file.value]).ok) { fail("the default font did not load from " + FONT_PATH); return; }
 	gfxSetup();
 	setup2d();
 	baseImages = liveImages(); baseViews = liveViews(); basePages = glyphAtlas.pageCount();

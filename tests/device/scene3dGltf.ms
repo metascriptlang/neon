@@ -1,4 +1,4 @@
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { createSignal, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { resetErrorHalt, flush } from "../../src/core/runtime";
@@ -50,9 +50,9 @@ function fail(message: string): void {
 }
 
 function decoded(): GltfData {
-	const file = readFile("../void/tests/fixtures/gltf/texturedScene.glb");
+	const file = readFileBytes("../void/tests/fixtures/gltf/texturedScene.glb");
 	if (!file.ok) { fail("fixture read"); unreachable; }
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	const loaded = loadGlb(bytes);
 	if (!loaded.ok) { fail("fixture decode"); unreachable; }
 	return loaded.value;
