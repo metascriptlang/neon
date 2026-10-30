@@ -16,7 +16,8 @@ import { NodeId3D, Object3D, syncWorld } from "../../../void/src/void3d/scene";
 import { Mat4, Vec3, vec3 } from "../../../void/src/math/math3d";
 import { rgba } from "../../../void/src/void2d/types";
 import { liveTextures, liveMaterials, liveMeshes } from "../../../void/src/void3d/draw";
-import { setup2d } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
@@ -67,6 +68,7 @@ function init(): void {
 	if (!file.ok || !defaultFontBytes([...file.value]).ok) { fail("the default font did not load from " + FONT_PATH); return; }
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	baseImages = liveImages(); baseViews = liveViews(); basePages = glyphAtlas.pageCount();
 	const root: MockNode = mockNode("root");
 	cleanup = render(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {

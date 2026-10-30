@@ -14,7 +14,8 @@ import {
 	GRAPHICS_OP_FLOATS, GFX_OP_MIDDLE, GFX_OP_SPACE, GFX_OP_PARAMS,
 	fillGradientRectStops, fillGradientPolygonOklab, fillRadialGradientOklab, fillSlashRect, fillCheckerRect,
 } from "../../../void/src/void2d/graphics";
-import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
@@ -78,7 +79,7 @@ function operations(): GraphicsOp[] {
 }
 
 function init(): void {
-	gfxSetup(); setup2d();
+	gfxSetup(); setup2d(); preparePipelines([BlendMode.Alpha]);
 	cleanup = render(element(<Void><Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
 		{Show({ when: accessor(() => shown()), children: element(
 			<Graphics operations={operations()} ref={(node: NodeRef): void => { nodes.push(node); }} />

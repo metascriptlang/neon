@@ -10,7 +10,8 @@ import { rgba, Camera, Filter, FilterKind, blurFilter, glowFilter, dropShadowFil
 import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { TextStyle, Align } from "../../../void/src/void2d/textLayout";
-import { setup2d, drawCallCount, glyphPageCount } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines, drawCallCount, glyphPageCount } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
@@ -66,7 +67,7 @@ function viewport(): Camera {
 }
 
 function init(): void {
-	gfxSetup(); setup2d();
+	gfxSetup(); setup2d(); preparePipelines([BlendMode.Alpha]);
 	const font = loadedFont();
 	const root = mockNode("root");
 	dispose = render(element(<Void><Scene2D camera={viewport()}

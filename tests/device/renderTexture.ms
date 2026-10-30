@@ -23,7 +23,8 @@ import { Color, rgba } from "../../../void/src/void2d/types";
 import { Scene2D as VoidScene2D } from "../../../void/src/void2d/node";
 import { glyphAtlas } from "../../../void/src/void2d/labelText";
 import { pageCount } from "../../../void/src/void2d/glyphAtlas";
-import { setup2d } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews, originTopLeft } from "../../../void/src/gpu/door";
@@ -63,6 +64,7 @@ function quad(): MeshData {
 function init(): void {
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	baseImages = liveImages(); baseViews = liveViews(); basePages = glyphAtlas.pageCount();
 	const root: MockNode = mockNode("root");
 	cleanup = render(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {

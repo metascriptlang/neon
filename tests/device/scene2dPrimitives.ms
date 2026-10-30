@@ -10,7 +10,8 @@ import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { whiteTile, rgba } from "../../../void/src/void2d/types";
 import { BoxStyle, create, dashed, castShadow, castInsetShadow, uniformRadii, uniformBorders, boxStyles } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle, ObjectFit, imageStyle, imageStyles } from "../../../void/src/void2d/imageStyle";
-import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
@@ -48,7 +49,7 @@ function styledImage(): ImageStyle {
 }
 
 function init(): void {
-	gfxSetup(); setup2d();
+	gfxSetup(); setup2d(); preparePipelines([BlendMode.Alpha]);
 	cleanup = render(element(<Void><Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
 		{Show({ when: accessor(() => phase() === 0), children: element(
 			<ScaleGrid tile={whiteTile(32.0, 32.0)} width={changed() ? 80.0 : 64.0} height={48.0}

@@ -9,7 +9,8 @@ import { Scene3D, Text3D } from "../../src/components/scene3d";
 import { AreaWindow, WindowArea, windowHost, windowNode } from "../../src/platform/void/windowHost";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 import { labelTexts } from "../../../void/src/void2d/labelText";
-import { setup2d } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup } from "../../../void/src/host/gpu";
 
 @include("../../../void/src/host/bridge.h");
@@ -34,6 +35,7 @@ function fontOf(text: string): FontId {
 function init(): void {
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	const loaded = addFont(FONT_PATH);
 	if (!loaded.ok) { fail("the test font did not load from " + FONT_PATH); return; }
 	font = loaded.value;

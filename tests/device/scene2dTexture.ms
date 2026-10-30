@@ -9,7 +9,8 @@ import { Scene2D as VoidScene2D, NodeRef, content, isLive } from "../../../void/
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { Tile, tile } from "../../../void/src/void2d/types";
 import { Texture, fromPixels, close } from "../../../void/src/gpu/texture";
-import { setup2d, drawCallCount } from "../../../void/src/void2d/draw";
+import { setup2d, preparePipelines, drawCallCount } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, imageAlive, viewAlive } from "../../../void/src/gpu/door";
@@ -39,7 +40,7 @@ function selectedTile(): Tile {
 }
 
 function init(): void {
-	gfxSetup(); setup2d();
+	gfxSetup(); setup2d(); preparePipelines([BlendMode.Alpha]);
 	const red: Vec<uint32> = [0xFF0000FF as uint32, 0xFF0000FF as uint32,
 		0xFF0000FF as uint32, 0xFF0000FF as uint32];
 	const green: Vec<uint32> = [0xFF00FF00 as uint32, 0xFF00FF00 as uint32,
