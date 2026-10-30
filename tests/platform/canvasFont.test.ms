@@ -1,13 +1,13 @@
 import { canvasFont } from "../../src/platform/sokol/canvasFont";
 import { DEFAULT_FONT, fontFace } from "../../../void/src/void2d/font";
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 
 const VOID_FONT = "../void/assets/font.ttf";
 
 function bytesOf(path: string): uint8[] {
-	const read = readFile(path);
+	const read = readFileBytes(path);
 	if (!read.ok) { throw new Error(`${path} did not read; run from the Neon checkout root beside ../void`); }
-	return read.value.asBytes().slice(0);
+	return read.value;
 }
 
 test "a canvas font and the default font load from bytes under a name no file has" {

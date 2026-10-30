@@ -113,6 +113,16 @@ The native hosts refuse every line style but `solid`, an `overline`, and `textDe
 Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
 a device lane proves them.
 
+`fontSizeAdjust` sizes a fallback face to the primary one, so a hanzi or symbol drawn from a later family in
+`fontFamily` matches the first family's proportions. It takes CSS Fonts 5 `font-size-adjust` with the metric
+`from-font`, the subset void2d draws: `none`, `ex-height from-font` (and `from-font`, which CSS reads as ex-height),
+`cap-height from-font` and `ic-width from-font`, mapped onto void2d's `Font.sizeAdjust` (`sizeAdjustOf` in
+`src/platform/void/host.ms`). void2d's `LineHeight` has no CSS spelling and is not offered; a numeric factor is not
+drawn by void2d and the type refuses it. `ic-width` suits a terminal cell and `ex-height` UI text
+(`~/metascript/void/docs/VOID2D.md` "Fonts"); `familyFont` takes the same `SizeAdjust` as a trailing parameter for
+a caller that measures cells itself. The browser passes the value through as `font-size-adjust`; the native and
+terminal hosts accept it and draw without it.
+
 A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`, the span's `onTouch`): the point's
 grapheme comes from void2d `indexAt` and `xForIndex`, and a point past a line's end hits no span. Like every Void Text,
 a Text that takes presses needs a height until yoga has its measure hook.

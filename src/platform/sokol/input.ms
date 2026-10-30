@@ -13,7 +13,7 @@ import {
 	deliverFocus,
 	deliverPreedit,
 } from "../void/windowHost";
-import { AppEvent, AppEventType } from "../../../../void/src/sokol/window";
+import { AppEvent, AppEventType } from "../../../../void/src/host/window";
 import { TouchGesture } from "./touch";
 
 export struct KeyName {

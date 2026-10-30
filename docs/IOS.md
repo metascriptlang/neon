@@ -368,7 +368,7 @@ measurements are not claimed.
   per-node closures inside the host with one `NeonSet*Callback` registration at init.
 - **Extern surface gated, not branched**: one backend-agnostic extern block over the
   bridge header, `when (ios) { @passL "-framework UIKit" … }` around it — the shape
-  `void/src/sokol/gpu.ms` ships; an untaken branch is never type-checked.
+  `void/src/host/gpu.ms` ships; an untaken branch is never type-checked.
 - **Cleanup follows discarded host rows**: owner disposal removes reactive wiring;
   `Host.removeChild` then drops native event routes, frees the detached Yoga subtree
   and releases each UIKit view retained across the C boundary.

@@ -11,10 +11,11 @@ import { Void, View, Text } from "../../src/components/primitives";
 import { Scene2D, Rect } from "../../src/components/scene2d";
 import { Scene3D, RenderTexture } from "../../src/components/scene3d";
 import { rgba } from "../../../void/src/void2d/types";
-import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
+import { gfxSetup } from "../../../void/src/host/gpu";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 function mounted(app: () => NeonNode): string {
@@ -39,6 +40,7 @@ function expect(what: string, actual: string, wanted: string): void {
 function init(): void {
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	expect("a Scene2D mounts into the texture and leaves the outer UI empty",
 		mounted((): NeonNode => element(<Void><Scene3D><RenderTexture width={8} height={8}><Scene2D><Rect width={4.0} height={4.0} color={rgba(1.0, 0.0, 0.0, 1.0)} /></Scene2D></RenderTexture></Scene3D></Void>)),
 		"<voidroot></voidroot></void></root>");

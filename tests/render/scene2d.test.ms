@@ -16,11 +16,11 @@ import { Scene3D } from "../../src/components/scene3d";
 import { getVoidScopeContext, VoidSpace } from "../../src/render/voidScope";
 import {
 	Scene2D as VoidScene2D, NodeRef, NodeId2D, DrawKind, Local2D, nodeCount, kind, local,
-	content, text, textStyle, paint, order, filter, colorMatrix, numChildren, parent, isLive,
+	content, text, textStyle, paint, order, filterChain, colorMatrix, numChildren, parent, isLive,
 	TileCell, ALL_TILES,
 } from "../../../void/src/void2d/node";
 import {
-	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode, Bounds2D, Tile,
+	rgba, whiteTile, camera, glowFilter, Filter, noFilter, Smooth, ScaleMode, Bounds2D, Tile,
 } from "../../../void/src/void2d/types";
 import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
@@ -31,6 +31,12 @@ import {
 import {
 	imageStyle, imageStyles, ObjectFit, fitImage,
 } from "../../../void/src/void2d/imageStyle";
+
+function soleFilter(n: NodeRef): Filter {
+	const steps = n.filterChain().steps;
+	if (steps.length > 1) { throw new Error(`a filter prop sets one step, and this node holds ${steps.length}`); }
+	return steps.length === 0 ? noFilter() : steps[0];
+}
 
 const Scope = getVoidScopeContext();
 
@@ -740,7 +746,7 @@ test "raw 2D paint order filter and label size update through Void binders" {
 	setAlpha(0.5); setVisible(false); setRadius(5.0); setSize(20.0);
 	flush();
 	assert nodes[0].order().name === "label" && !nodes[0].order().visible;
-	assert nodes[0].filter().radius === 5.0 && nodes[0].textStyle().size === 20.0;
+	assert soleFilter(nodes[0]).radius === 5.0 && nodes[0].textStyle().size === 20.0;
 	assert nodes[1].paint().alpha === 0.5;
 	assert nodes[1].paint().color.r === 1.0 && nodes[1].paint().color.g === 0.0;
 	dispose();

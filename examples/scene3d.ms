@@ -4,7 +4,7 @@
 //   msc run examples/scene3d.ms -- --frames=60  exits 0 after 60 frames
 
 import { argv, exit } from "std/process";
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { createSignal } from "../src/core/signal";
 import { element } from "../src/macros/ui/element";
 import { Show } from "../src/macros/ui/flow";
@@ -34,9 +34,9 @@ function ground(): MeshData {
 const MODEL = "../void/tests/fixtures/gltf/texturedScene.glb";
 
 function model(): GltfData {
-	const file = readFile(MODEL);
+	const file = readFileBytes(MODEL);
 	if (!file.ok) { throw new Error("model: " + file.error.toString()); }
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	return gltfData(loadGlbDetailed(bytes, MODEL));
 }
 

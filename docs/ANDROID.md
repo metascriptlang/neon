@@ -206,7 +206,7 @@ the script fails on all four counts.
   inside the host, one `NeonSet*Callback` registration at init.
 - **Extern surface gated, not branched**: one backend-agnostic extern block, the platform
   directives gated around it with `when (android) { @passL … }` — the shape
-  `void/src/sokol/gpu.ms` ships; an untaken branch is never type-checked.
+  `void/src/host/gpu.ms` ships; an untaken branch is never type-checked.
 - **Nested Text**: port RN's paragraph model (flatten to one TextView + Spannable runs at
   the `Text` component level, measure func + cache) — decision to make when `Text` grows
   nested styles, until then the merge-with-static-loss must NOT be copied silently.

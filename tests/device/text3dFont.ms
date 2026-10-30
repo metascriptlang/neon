@@ -9,10 +9,11 @@ import { Scene3D, Text3D } from "../../src/components/scene3d";
 import { AreaWindow, WindowArea, windowHost, windowNode } from "../../src/platform/void/windowHost";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 import { labelTexts } from "../../../void/src/void2d/labelText";
-import { setup2d } from "../../../void/src/void2d/draw";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
+import { gfxSetup } from "../../../void/src/host/gpu";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const FONT_PATH = "../void/assets/font.ttf";
@@ -34,6 +35,7 @@ function fontOf(text: string): FontId {
 function init(): void {
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	const loaded = addFont(FONT_PATH);
 	if (!loaded.ok) { fail("the test font did not load from " + FONT_PATH); return; }
 	font = loaded.value;

@@ -20,7 +20,7 @@ import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scen
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
-import { Style, FontWeight, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { Style, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
@@ -666,10 +666,22 @@ function decorated(s: Style): boolean {
 	return d !== null && d !== "none";
 }
 
+function sizeAdjustOf(adjust: FontSizeAdjust | null): SizeAdjust {
+	if (adjust === null) { return SizeAdjust.None; }
+	return match (adjust as FontSizeAdjust) {
+		"none" => SizeAdjust.None,
+		"from-font" => SizeAdjust.ExHeight,
+		"ex-height from-font" => SizeAdjust.ExHeight,
+		"cap-height from-font" => SizeAdjust.CapHeight,
+		"ic-width from-font" => SizeAdjust.IcWidth,
+	};
+}
+
 interface ResolvedFont {
 	family: string;
 	weight: int32;
 	italic: boolean;
+	sizeAdjust: SizeAdjust;
 	id: FontId;
 }
 
@@ -686,11 +698,16 @@ function familyName(families: string, part: string): string {
 	return name;
 }
 
-export function familyFont(families: string, weight: int32, italic: boolean): Result<FontId, FontError> {
+export function familyFont(
+	families: string,
+	weight: int32,
+	italic: boolean,
+	sizeAdjust: SizeAdjust = SizeAdjust.None,
+): Result<FontId, FontError> {
 	const names: string[] = [];
 	for (const part of families.split(",")) { names.push(familyName(families, part)); }
 	return resolveFont({
-		family: names[0], weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: names.slice(1), sizeAdjust: SizeAdjust.None,
+		family: names[0], weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: names.slice(1), sizeAdjust,
 	});
 }
 
@@ -892,23 +909,26 @@ export function createVoidHostWith(
 		const weight = weightOf(own.fontWeight !== null ? own.fontWeight : base.fontWeight);
 		const slant = own.fontStyle !== null ? own.fontStyle : base.fontStyle;
 		const italic = slant === "italic";
-		if (named === null && weight === 400 && !italic) { return font; }
+		const adjust = own.fontSizeAdjust !== null ? own.fontSizeAdjust : base.fontSizeAdjust;
+		const sizeAdjust = sizeAdjustOf(adjust);
+		if (named === null && weight === 400 && !italic && sizeAdjust === SizeAdjust.None) { return font; }
 		const fam = named !== null ? named as string : defaultFamily;
 		if (fam === null) {
-			throw new Error(`void host: a Text asks for weight ${weight}${italic ? " italic" : ""} and names no fontFamily, and this host has no default family`);
+			const adjusted = sizeAdjust !== SizeAdjust.None ? ` with fontSizeAdjust "${adjust as string}"` : "";
+			throw new Error(`void host: a Text asks for weight ${weight}${italic ? " italic" : ""}${adjusted} and names no fontFamily, and this host has no default family`);
 		}
 		const family = fam as string;
 		for (const r of resolved) {
-			if (r.weight === weight && r.italic === italic && r.family === family) { return r.id; }
+			if (r.weight === weight && r.italic === italic && r.sizeAdjust === sizeAdjust && r.family === family) { return r.id; }
 		}
-		const got = familyFont(family, weight, italic);
+		const got = familyFont(family, weight, italic, sizeAdjust);
 		if (!got.ok && got.error === FontError.NoFallbackFamily) {
 			throw new Error(`void host: a fallback family in fontFamily "${family}" has no registered face; register its files with registerFace`);
 		}
 		if (!got.ok) {
 			throw new Error(`void host: font family "${family}" has no registered face (${got.error.toString()}); register its files with registerFace`);
 		}
-		resolved.push({ family, weight, italic, id: got.value });
+		resolved.push({ family, weight, italic, sizeAdjust, id: got.value });
 		return got.value;
 	};
 

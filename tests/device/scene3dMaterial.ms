@@ -14,11 +14,11 @@ import { TextureId, NO_TEXTURE } from "../../../void/src/void3d/texture";
 import { FilterMode, Wrap } from "../../../void/src/gpu/state";
 import { Color, Vec2, rgba } from "../../../void/src/void2d/types";
 import { vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { gfxSetup } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;

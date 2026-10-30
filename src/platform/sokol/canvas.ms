@@ -1,7 +1,8 @@
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
-import { setup2d } from "../../../../void/src/void2d/draw";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/host/gpu";
+import { setup2d, preparePipelines } from "../../../../void/src/void2d/draw";
+import { BlendMode } from "../../../../void/src/gpu/state";
 import { FontId } from "../../../../void/src/void2d/font";
-import { AppEvent, onAppEvent, setTextInput, setImeRect, safeArea, keyboardHeight } from "../../../../void/src/sokol/window";
+import { AppEvent, onAppEvent, setTextInput, setImeRect, safeArea, keyboardHeight } from "../../../../void/src/host/window";
 import { publishKeyboard, publishSafeArea } from "../../render/environment";
 import { canvasFont } from "./canvasFont";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
@@ -22,12 +23,12 @@ when (hcr) {
 }
 import { androidLibrary } from "../../../../ion/src/android";
 
-@include("../../../../void/src/sokol/bridge.h");
+@include("../../../../void/src/host/bridge.h");
 
 when (android) {
-	@compile("../../../../void/src/sokol/androidAppEntry.c");
+	@compile("../../../../void/src/host/androidAppEntry.c");
 	@compile("../android/canvasApp.c");
-	androidLibrary("../../../../void/src/sokol/android/app");
+	androidLibrary("../../../../void/src/host/android/app");
 }
 
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
@@ -114,6 +115,7 @@ function initCanvas(): void {
 	const c = running();
 	gfxSetup();
 	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	const app = c.app;
 	c.dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, canvasHost(c), windowNode("window"));
 	onAppEvent((e: AppEvent): void => {

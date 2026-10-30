@@ -243,7 +243,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   test file. Not yet known whether msc moved it on purpose.
 
 - **OPEN 2026-10-07 — the Ion window host builds on Windows only.** Void exports its embed view
-  (`embedRegister`, `viewCreate` in `void/src/sokol/gpu.ms`) only under `windows || ios || android`,
+  (`embedRegister`, `viewCreate` in `void/src/host/gpu.ms`) only under `windows || ios || android`,
   so `src/platform/ion/window.ms` cannot build on macOS or Linux whatever Neon does. On Windows it
   builds and runs again. Measured 2026-10-13 with `examples/voidWindow.ms` on void `5dbcb662` and
   ion `7463096`, at 96 DPI, driven by window messages posted to the Ion window: three clicks logged

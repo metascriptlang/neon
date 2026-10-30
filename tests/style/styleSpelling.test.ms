@@ -31,6 +31,7 @@ const sheet = createStyles({
 		transformOrigin: "top left", userSelect: "none", textTransform: "uppercase", whiteSpace: "nowrap",
 		textDecorationThickness: 2, textUnderlineOffset: "0.2em", objectFit: "cover", listStyleType: "disc",
 		borderCollapse: "collapse", borderSpacing: 4, overflowX: "clip", overflowY: "auto",
+		fontSizeAdjust: "ic-width from-font",
 	},
 	lengthsAsText: { flexBasis: "auto", width: "50%", margin: "auto", top: "10%" },
 	emptyValues: { color: "", width: "", opacity: 0.5 },
@@ -71,6 +72,10 @@ function sameDeclarations(s: Style): string {
 
 test "the sweep entry sets every row of the style table" {
 	assert declarations(styleToCss(sheet.every)).length === styleTable().length, styleToCss(sheet.every);
+}
+
+test "fontSizeAdjust reaches CSS as font-size-adjust, its value unchanged" {
+	assert styleToCss(sheet.every).indexOf("font-size-adjust:ic-width from-font;") >= 0, styleToCss(sheet.every);
 }
 
 test "the baked rule spells every table field as the runtime does" {

@@ -1,4 +1,4 @@
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { createSignal, accessor } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
@@ -12,11 +12,11 @@ import { DrawItem, liveMeshes, liveMaterials, hasMesh } from "../../../void/src/
 import { refresh } from "../../../void/src/void3d/scene";
 import { RenderState } from "../../../void/src/gpu/state";
 import { vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup } from "../../../void/src/sokol/gpu";
+import { gfxSetup } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveBuffers } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;
@@ -36,9 +36,9 @@ function fail(message: string): void {
 }
 
 function decoded(): GltfData {
-	const file = readFile("../void/tests/fixtures/gltf/texturedScene.glb");
+	const file = readFileBytes("../void/tests/fixtures/gltf/texturedScene.glb");
 	if (!file.ok) { fail("fixture read"); unreachable; }
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	const loaded = loadGlb(bytes);
 	if (!loaded.ok) { fail("fixture decode"); unreachable; }
 	return loaded.value;

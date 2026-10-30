@@ -19,7 +19,7 @@ import { FontId } from "../../../../void/src/void2d/font";
 import { Scene2D, NodeRef } from "../../../../void/src/void2d/node";
 import { SPAN_HOST } from "../../render/spanHost";
 import { create, close, present, prepare, drawScreen, drawScreenUntil, paintedSlots, isClosed } from "../../../../void/src/void2d/scene";
-import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
+import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";

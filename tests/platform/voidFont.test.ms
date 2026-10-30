@@ -7,7 +7,7 @@ import { TextRun, TextLayout, UnderlineStyle, calcTextWidth } from "../../../voi
 import { create } from "../../../void/src/void2d/scene";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
-import { FontId, addFont, registerFace, resolveFont, faceForCodepoint, fontFace, FontStyle as FaceStyle, SizeAdjust } from "../../../void/src/void2d/font";
+import { FontId, addFont, registerFace, resolveFont, faceForCodepoint, codepointFace, fontFace, FontStyle as FaceStyle, SizeAdjust } from "../../../void/src/void2d/font";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -225,4 +225,66 @@ test "a fallback family the host cannot find, or a family list it cannot read, i
 		render(element(<Text style={{ fontFamily: `${PROBE_FAMILY},, ${CJK_FAMILY}` }}>x</Text>), c.host, c.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("names an empty family") >= 0, "empty name: " + message;
+}
+
+function listFace(weight: int32, sizeAdjust: SizeAdjust): FontId {
+	const got = resolveFont({
+		family: PROBE_FAMILY, weight, style: FaceStyle.Normal, features: [], fallbacks: [CJK_FAMILY], sizeAdjust,
+	});
+	if (!got.ok) { throw new Error("the probe list did not resolve: " + got.error.toString()); }
+	return got.value;
+}
+
+function hanScale(font: FontId): float32 {
+	return codepointFace(font, HAN).scale;
+}
+
+test "fontSizeAdjust picks void2d's size adjust, a span takes its Text's, and the fallback face is scaled to the primary" {
+	registerProbeFamilyWithoutItalicFaces();
+	registerCjk();
+	const list = `${PROBE_FAMILY}, ${CJK_FAMILY}`;
+	const vh = host();
+	render(element(<View style={{ width: 300 }}>
+		<Text style={{ fontFamily: list, fontSizeAdjust: "ic-width from-font" }}>a中</Text>
+		<Text style={{ fontFamily: list }}>a中</Text>
+		<Text style={{ fontFamily: list, fontSizeAdjust: "none" }}>a中</Text>
+		<Text style={{ fontFamily: list, fontSizeAdjust: "cap-height from-font" }} spans={[
+			{ text: "b" },
+			{ text: "中", style: { fontWeight: "bold" } },
+			{ text: "x", style: { fontSizeAdjust: "from-font" } },
+			{ text: "y", style: { fontSizeAdjust: "ex-height from-font" } },
+		]} />
+	</View>), vh.host, vh.root);
+	const view = top(vh);
+	const icWidth = paragraph(vh.tree.childrenOf(view)[0]).textStyle().font;
+	const plain = paragraph(vh.tree.childrenOf(view)[1]).textStyle().font;
+	assert icWidth === listFace(400, SizeAdjust.IcWidth), "ic-width from-font resolves IcWidth";
+	assert plain === listFace(400, SizeAdjust.None), "no fontSizeAdjust resolves None";
+	assert paragraph(vh.tree.childrenOf(view)[2]).textStyle().font === plain, "none resolves None";
+	assert icWidth !== plain, "fonts differing only in size adjust are different fonts";
+	assert hanScale(plain) === 1.0 && hanScale(icWidth) !== 1.0, `the fallback hanzi scales by ${hanScale(icWidth)} under ic-width`;
+	const runs = runsOf(vh, paragraph(vh.tree.childrenOf(view)[3]));
+	assert paragraph(vh.tree.childrenOf(view)[3]).textStyle().font === listFace(400, SizeAdjust.CapHeight), "cap-height from-font resolves CapHeight";
+	assert runs[1].font === listFace(700, SizeAdjust.CapHeight), "a bold span keeps its Text's size adjust";
+	assert runs[2].font === listFace(400, SizeAdjust.ExHeight), "from-font alone is ex-height";
+	assert runs[3].font === runs[2].font, "ex-height from-font is ex-height";
+}
+
+test "familyFont takes a size adjust, None when it is left out" {
+	registerProbeFamilyWithoutItalicFaces();
+	registerCjk();
+	const list = `${PROBE_FAMILY}, ${CJK_FAMILY}`;
+	const plain = familyFont(list, 400, false);
+	const cell = familyFont(list, 400, false, SizeAdjust.IcWidth);
+	assert plain.ok && cell.ok, "both resolve";
+	assert plain.value === listFace(400, SizeAdjust.None) && cell.value === listFace(400, SizeAdjust.IcWidth), "the trailing parameter reaches the font";
+}
+
+test "a fontSizeAdjust with no family to resolve it in is refused by name" {
+	let message = "";
+	const vh = host();
+	try {
+		render(element(<Text style={{ fontSizeAdjust: "ic-width from-font" }}>x</Text>), vh.host, vh.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf(`with fontSizeAdjust "ic-width from-font" and names no fontFamily`) >= 0, "no family: " + message;
 }

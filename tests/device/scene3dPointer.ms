@@ -8,9 +8,9 @@ import { AreaWindow, WindowArea, windowHost, windowNode, deliverPointer, deliver
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };

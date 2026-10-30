@@ -9,12 +9,13 @@ import { Scene2D as VoidScene2D, NodeRef, GraphicsMesh } from "../../../void/src
 import { create, prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { fillTriangle, fillRoundedRect } from "../../../void/src/void2d/graphics";
 import { rgba, vec2 } from "../../../void/src/void2d/types";
-import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
+import { setup2d, preparePipelines, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let subject: VoidScene2D | null = null;
@@ -50,7 +51,7 @@ function operations(): GraphicsOp[] {
 }
 
 function init(): void {
-	gfxSetup(); setup2d();
+	gfxSetup(); setup2d(); preparePipelines([BlendMode.Alpha]);
 	cleanup = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { subject = scene; }}>
 		<Graphics operations={operations()}
