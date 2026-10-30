@@ -7,7 +7,7 @@ import { NeonNode, VAttr, VEvent, hostElement } from "./node";
 import { Host, HostNode } from "./hostTypes";
 import { createContext, setContext, useContext } from "./context";
 import { unclaimed } from "./claim";
-import { makeRow, mountAt } from "./reconcile";
+import { makeRow, mountApart } from "./reconcile";
 
 interface PortalProps {
 	mount?: HostNode | null;
@@ -61,7 +61,7 @@ export function portalNode(
 		let container: HostNode | null = null;
 		const grab = (node: HostNode): void => { container = node; };
 		const physical = makeRow(hostElement(tag, attrs, events, content, style, grab));
-		unclaimed(host, (): void => { mountAt(host, target, null, physical); });
+		unclaimed(host, (): void => { mountApart(host, target, null, physical); });
 		onCleanup((): void => {
 			if (container !== null) { host.removeChild(target, container as HostNode); }
 		});

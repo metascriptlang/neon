@@ -43,11 +43,11 @@ never() {
 	done
 }
 
-ROUTING="./routing ./routingHistory ./route ./routeMatcher"
-MODELS="./children ./childStack ./childPages ./childSlot ./childPanels ./webNavigation"
+ROUTING="./routing ./routingHistory ./route ./routeMatcher ./queryParams"
+MODELS="./children ./childStack ./childPages ./childSlot ./childPanels ./webNavigation ./queryParams"
 
-only routing "../core/* $ROUTING" routing routingHistory route routeMatcher
-only navigation "../core/* $MODELS" children childStack childPages childSlot childPanels webNavigation
+only routing "../core/* $ROUTING" routing routingHistory route routeMatcher queryParams
+only navigation "../core/* $MODELS" children childStack childPages childSlot childPanels webNavigation queryParams
 never rendering "$ROUTING ./linking" navigatorMotion header layout childView tabBar
 
 sh tests/navigation/rejects.sh || fail=1

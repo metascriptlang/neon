@@ -1,5 +1,6 @@
 import { Accessor, accessor, createSignal } from "../core/signal";
-import { flush } from "../core/runtime";
+import { flush, getOwner } from "../core/runtime";
+import { createContext, setContext, useContext } from "./context";
 
 export type ColorScheme = "light" | "dark";
 
@@ -18,14 +19,23 @@ const [windowHeight, setWindowHeight] = createSignal<number>(0);
 const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
 const [dark, setDark] = createSignal<boolean>(false);
 
-when (server) {
-	import { getOwner } from "../core/runtime";
-	import { createContext, setContext, useContext } from "./context";
+const rootWindow = createContext<Accessor<WindowDimensions> | null>(null);
 
+when (server) {
 	const renderWindow = createContext<WindowDimensions | null>(null);
 }
 
 export function useWindowDimensions(): Accessor<WindowDimensions> {
+	const root = getOwner() === null ? null : useContext(rootWindow);
+	if (root !== null) { return root as Accessor<WindowDimensions>; }
+	return useMainWindowDimensions();
+}
+
+export function publishRootWindow(size: Accessor<WindowDimensions>): void {
+	setContext<Accessor<WindowDimensions> | null>(rootWindow, size);
+}
+
+export function useMainWindowDimensions(): Accessor<WindowDimensions> {
 	when (server) {
 		const published = getOwner() === null ? null : useContext(renderWindow);
 		if (published !== null) {
@@ -42,14 +52,8 @@ export function useWindowDimensions(): Accessor<WindowDimensions> {
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
 }
 
-when (server) {
-	export function mediaWidth(): number {
-		return useWindowDimensions()().width;
-	}
-} else {
-	export function mediaWidth(): number {
-		return windowWidth();
-	}
+export function mediaWidth(): number {
+	return useWindowDimensions()().width;
 }
 
 export function useColorScheme(): Accessor<ColorScheme> {

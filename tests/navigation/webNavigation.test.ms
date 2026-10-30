@@ -1,3 +1,4 @@
+import { QueryParams } from "../../src/navigation/routing";
 import { flush } from "../../src/core/runtime";
 import { Accessor, Signal, accessor } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
@@ -137,7 +138,7 @@ function fixedOwner(key: string): WebNavigationOwner {
 	const navigation: WebNavigation<string> = {
 		serializer: prefixed(""),
 		history: accessor((): WebHistoryItem<string>[] => {
-			return [{ key, path: key, parameters: new Map<string, string>(), child: null }];
+			return [{ key, path: key, parameters: new QueryParams(), child: null }];
 		}),
 		onBeforeNavigate: (): boolean => true,
 		navigate: (history: string[]): void => {},
@@ -172,7 +173,7 @@ test "a navigation erases to serialized keys and applies only a fully decoded tr
 		history: accessor((): WebHistoryItem<string>[] => {
 			const items: WebHistoryItem<string>[] = [];
 			for (const key of entries.get()) {
-				items.push({ key, path: key, parameters: new Map<string, string>(), child: null });
+				items.push({ key, path: key, parameters: new QueryParams(), child: null });
 			}
 			return items;
 		}),
@@ -212,11 +213,11 @@ test "a stack publishes every entry with the last active and follows the model" 
 		},
 		parametersMapper: (
 			child: NavigationChild<Screen, ScreenInstance>,
-		): Map<string, string> | null => {
+		): QueryParams | null => {
 			const detail = child.configuration().detail;
 			if (detail === "") { return null; }
-			const parameters = new Map<string, string>();
-			parameters.set("id", detail);
+			const parameters = new QueryParams();
+			parameters.append("id", detail);
 			return parameters;
 		},
 	});

@@ -1,4 +1,4 @@
-import { RoutingError } from "../../src/navigation/routing";
+import { RoutingError, QueryParams } from "../../src/navigation/routing";
 import {
 	ParamsCodec,
 	GuardDecision,
@@ -55,6 +55,18 @@ function text(values: Map<string, string>): string {
 	const shown: string[] = [];
 	for (const [key, value] of values) { shown.push(key + "=" + value); }
 	return shown.join(";");
+}
+
+function queryOf(items: string[]): QueryParams {
+	const values = new QueryParams();
+	for (let i: int32 = 0; i + 1 < items.length; i += 2) { values.append(items[i], items[i + 1]); }
+	return values;
+}
+
+function shown(values: QueryParams): string {
+	const parts: string[] = [];
+	for (const [key, value] of values.entries()) { parts.push(key + "=" + value); }
+	return parts.join(";");
 }
 
 function leaf(node: RouteDef<Map<string, string>>): RouteEntry {
@@ -305,7 +317,7 @@ test "typed and untyped hrefs round-trip through the tree" {
 		leaf(blog),
 		leaf(files),
 	]);
-	const typed = hrefOf<UserParams, void>(tree, user, { id: 42 }, pairs(["tab", "a b"]));
+	const typed = hrefOf<UserParams, void>(tree, user, { id: 42 }, queryOf(["tab", "a b"]));
 	assert typed.ok;
 	if (typed.ok) {
 		assert typed.value === "/users/42?tab=a%20b";
@@ -318,45 +330,75 @@ test "typed and untyped hrefs round-trip through the tree" {
 		tree,
 		slug,
 		pairs(["slug", "ada lovelace/1"]),
-		pairs([]),
+		queryOf([]),
 	);
 	assert untyped.ok;
 	if (untyped.ok) {
 		assert untyped.value === "/users/ada%20lovelace%2F1";
 		assert text(matched(tree, untyped.value).chain[1].params) === "slug=ada lovelace/1";
 	}
-	const first = hrefOf<Map<string, string>, void>(tree, blog, pairs([]), pairs([]));
+	const first = hrefOf<Map<string, string>, void>(tree, blog, pairs([]), queryOf([]));
 	assert first.ok;
 	if (first.ok) { assert first.value === "/blog"; }
-	const second = hrefOf<Map<string, string>, void>(tree, blog, pairs(["page", "2"]), pairs([]));
+	const second = hrefOf<Map<string, string>, void>(tree, blog, pairs(["page", "2"]), queryOf([]));
 	assert second.ok;
 	if (second.ok) { assert chainOf(tree, second.value) === "/blog/2{page=2}"; }
-	const nested = hrefOf<Map<string, string>, void>(tree, files, pairs(["path", "a b/c"]), pairs([]));
+	const nested = hrefOf<Map<string, string>, void>(tree, files, pairs(["path", "a b/c"]), queryOf([]));
 	assert nested.ok;
 	if (nested.ok) {
 		assert nested.value === "/files/a%20b/c";
 		assert chainOf(tree, nested.value) === "/files{path=a b/c}";
 	}
-	const missing = hrefOf<Map<string, string>, void>(tree, slug, pairs([]), pairs([]));
+	const missing = hrefOf<Map<string, string>, void>(tree, slug, pairs([]), queryOf([]));
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error === RoutingError.InvalidParams; }
-	const outside = hrefOf<Map<string, string>, void>(tree, path("x"), pairs([]), pairs([]));
+	const outside = hrefOf<Map<string, string>, void>(tree, path("x"), pairs([]), queryOf([]));
 	assert !outside.ok;
 	if (!outside.ok) { assert outside.error === RoutingError.NoMatch; }
+}
+
+test "a repeated query key keeps every value in order, and get reads the first as URLSearchParams does" {
+	const tree = createRouteTree([leaf(path("search"))]);
+	const found = matched(tree, "/search?tag=a&q=x&tag=b&tag=").search;
+	assert found.get("tag") === "a";
+	assert found.getAll("tag").join(",") === "a,b,";
+	assert found.getAll("q").length === 1;
+	assert found.getAll("missing").length === 0;
+	assert found.get("missing") === null;
+	assert found.has("tag") && !found.has("missing");
+}
+
+test "a bare query key is present with the empty value" {
+	const tree = createRouteTree([leaf(path("search"))]);
+	const found = matched(tree, "/search?flag&other=1").search;
+	assert found.has("flag");
+	assert found.get("flag") === "";
+	assert found.getAll("flag").length === 1;
+}
+
+test "hrefOf writes a repeated query key once per value and the address parses back to the same values" {
+	const target = path("search");
+	const again = createRouteTree([leaf(target)]);
+	const href = hrefOf<Map<string, string>, void>(again, target, pairs([]), queryOf(["tag", "a", "q", "x y", "tag", "b"]));
+	assert href.ok;
+	if (href.ok) {
+		assert href.value === "/search?tag=a&q=x%20y&tag=b", href.value;
+		assert shown(matched(again, href.value).search) === "tag=a;q=x y;tag=b";
+	}
 }
 
 test "search parses the way URLSearchParams does and the hash is kept" {
 	const tree = createRouteTree([leaf(path("foo/bar")), leaf(path("search"))]);
 	const plain = matched(tree, "/foo/bar?hello=world&fizz=buzz");
-	assert text(plain.search) === "hello=world;fizz=buzz";
+	assert shown(plain.search) === "hello=world;fizz=buzz";
 	assert plain.hash === "";
 	const spaced = matched(tree, "/foo/bar?hello+world=bar+baz");
-	assert text(spaced.search) === "hello world=bar baz";
+	assert shown(spaced.search) === "hello world=bar baz";
 	const mixed = matched(tree, "/search?q=a+b&x=%2B1&q=second&flag&=empty&&#top?x=1");
-	assert text(mixed.search) === "q=a b;x=+1;flag=;=empty";
+	assert shown(mixed.search) === "q=a b;x=+1;q=second;flag=;=empty";
 	assert mixed.hash === "top?x=1";
 	assert chainOf(tree, "/search#a") === "/search";
-	assert text(matched(tree, "/search?x=%ZZ").search) === "x=%ZZ";
+	assert shown(matched(tree, "/search?x=%ZZ").search) === "x=%ZZ";
 	assert chainOf(tree, "/search/%E0") === "InvalidAddress";
 }
 

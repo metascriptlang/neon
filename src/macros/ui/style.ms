@@ -240,12 +240,49 @@ export macro createStyles(node: Node): Node {
 		return decls;
 	}
 
+	function spreadOut(v: Node, depth: number): Node {
+		let props: Node[] = [];
+		let keys: string[] = [];
+		let locs: SourceLocation[] = [];
+		for (let i = 0; i < v.properties.length; i += 1) {
+			const p = v.properties[i];
+			let from: Node = v;
+			let at = i;
+			let count = 1;
+			if (p.kind === NodeKind.SpreadExpr) {
+				const init = depth < 32 ? constInitializer(p.spreadArg) : null;
+				if (init === null || (init as Node).kind !== NodeKind.ObjectLiteral) {
+					error("a spread in a sheet entry must name a const style object the compiler can read: const BASE: Style = { ... }; then { ...BASE, ... }", p);
+				}
+				from = spreadOut(init as Node, depth + 1);
+				at = 0;
+				count = from.properties.length;
+			}
+			for (let k = at; k < at + count; k += 1) {
+				const existing = keys.indexOf(from.keys[k]);
+				if (existing >= 0) {
+					props[existing] = from.properties[k];
+					locs[existing] = from.keyLocations[k];
+				} else {
+					props.push(from.properties[k]);
+					keys.push(from.keys[k]);
+					locs.push(from.keyLocations[k]);
+				}
+			}
+		}
+		return {
+			kind: NodeKind.ObjectLiteral, line: v.line, column: v.column,
+			properties: props, keys: keys, keyLocations: locs,
+		};
+	}
+
 	let entries: Node[] = [];
 	for (let e = 0; e < sheet.properties.length; e += 1) {
-		const v = sheet.properties[e];
-		if (v.kind !== NodeKind.ObjectLiteral) {
-			error("a sheet entry must be a static style object literal", v);
+		const written = sheet.properties[e];
+		if (written.kind !== NodeKind.ObjectLiteral) {
+			error("a sheet entry must be a static style object literal", written);
 		}
+		const v = spreadOut(written, 0);
 		let fields: Node[] = [];
 		let names: string[] = [];
 		let locs: SourceLocation[] = [];

@@ -1,5 +1,8 @@
 import { flush } from "../core/runtime";
 import { Dispose } from "../core/types";
+import { QueryParams, encodeRouteComponent } from "./queryParams";
+
+export { QueryParams, encodeRouteComponent } from "./queryParams";
 
 export enum RoutingError {
 	NoMatch,
@@ -58,23 +61,6 @@ function hexValue(byte: int32): int32 {
 	if (byte >= 65 && byte <= 70) { return byte - 55; }
 	if (byte >= 97 && byte <= 102) { return byte - 87; }
 	return -1;
-}
-
-export function encodeRouteComponent(value: string): string {
-	const hex = "0123456789ABCDEF";
-	let encoded = "";
-	for (let i = 0; i < value.byteLength(); i += 1) {
-		const byte = value.byteAt(i);
-		if ((byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) ||
-			(byte >= 48 && byte <= 57) || byte === 45 || byte === 46 ||
-			byte === 95 || byte === 126) {
-			encoded += String.fromCharCode(byte);
-		} else {
-			encoded += "%" + hex.substring(byte / 16, byte / 16 + 1) +
-				hex.substring(byte % 16, byte % 16 + 1);
-		}
-	}
-	return encoded;
 }
 
 function utf8Run(bytes: uint8[], i: int32): int32 {
@@ -162,6 +148,20 @@ export function decodeQueryComponent(value: string): string {
 		}
 	}
 	return repaired.asString();
+}
+
+function withEmptyValues(address: string): string {
+	const queryAt = address.indexOf("?");
+	if (queryAt < 0) { return address; }
+	const pairs: string[] = [];
+	for (const pair of address.substring(queryAt + 1, address.length).split("&")) {
+		pairs.push(pair.indexOf("=") < 0 ? pair + "=" : pair);
+	}
+	return address.substring(0, queryAt) + "?" + pairs.join("&");
+}
+
+export function equivalentAddress(a: string, b: string): boolean {
+	return withEmptyValues(a) === withEmptyValues(b);
 }
 
 export struct RegionAddress {

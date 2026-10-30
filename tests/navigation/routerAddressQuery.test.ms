@@ -1,4 +1,4 @@
-import { RoutingError } from "../../src/navigation/routing";
+import { RoutingError, QueryParams } from "../../src/navigation/routing";
 import { createMemoryRoutingHistory, createRequestRoutingHistory } from "../../src/navigation/routingHistory";
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
@@ -10,7 +10,7 @@ function site(): Routes {
 	return createRoutes([{ path: "/docs/:slug", component: Doc }]);
 }
 
-function searchOf(url: string): Map<string, string> {
+function searchOf(url: string): QueryParams {
 	const opened = createRouter(site(), createRequestRoutingHistory(url));
 	if (!opened.ok) { throw new Error("router " + opened.error.toString() + " for " + url); }
 	const router: Router = opened.value;
@@ -44,4 +44,17 @@ test "a router opens on an address with a malformed query" {
 	const opened = createRouter(site(), createMemoryRoutingHistory({ url: "/docs/a?q=%zz#h", state: "" }));
 	assert opened.ok;
 	if (opened.ok) { opened.value.dispose(); }
+}
+
+test "a repeated query key reaches the router location with every value in order" {
+	const search = searchOf("/docs/a?tag=a&tag=b&q=1");
+	assert search.get("tag") === "a";
+	assert search.getAll("tag").join(",") === "a,b";
+	assert search.getAll("q").join(",") === "1";
+}
+
+test "a bare query key is present and empty on the router location" {
+	const search = searchOf("/docs/a?flag");
+	assert search.has("flag");
+	assert search.get("flag") === "";
 }

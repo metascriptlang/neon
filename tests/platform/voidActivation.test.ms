@@ -91,7 +91,7 @@ test "Void nested Text and data span physical presses carry producer provenance"
 			</Text>);
 		const dispose = render(element(<View style={{ width: 400 }}>{body}</View>), vh.host, vh.root);
 		vh.layout(400.0, 100.0);
-		const text = (vh.root as VoidNode).children[0].children[0];
+		const text = vh.tree.childrenOf(vh.tree.childrenOf(vh.root as VoidNode)[0])[0];
 		assert text.para !== null;
 		const label = text.para as NodeRef;
 		label.textWidth();

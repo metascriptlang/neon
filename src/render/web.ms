@@ -238,6 +238,7 @@ function ariaRole(role: string): string | null {
 		"adjustable" => "slider",
 		"summary" => "region",
 		"none" => "presentation",
+		"togglebutton" => "button",
 		"text" => null,
 		_ => role,
 	};
@@ -254,17 +255,25 @@ function inputMode(keyboardType: string): string {
 	};
 }
 
-export const ARIA_STATE_NAMES: string[] = ["aria-checked", "aria-selected", "aria-disabled", "aria-busy", "aria-expanded"];
+export const ARIA_STATE_NAMES: string[] = ["aria-checked", "aria-selected", "aria-disabled", "aria-busy", "aria-expanded", "aria-pressed"];
 
-export function ariaStateValues(state: string): (string | null)[] {
+export function ariaStateRole(role: string, html: string): string {
+	return role === "" && html === "button" ? "button" : role;
+}
+
+export function ariaStateValues(state: string, role: string): (string | null)[] {
 	const tokens: string[] = state === "" ? [] : state.split(",");
 	const has = (token: string): boolean => tokens.indexOf(token) >= 0;
+	const checked = has("checked") ? "true" : has("unchecked") ? "false" : has("mixed") ? "mixed" : null;
+	const toggles = role === "button" || role === "togglebutton";
+	const pressed = has("selected") ? "true" : checked !== null ? checked : role === "togglebutton" ? "false" : null;
 	return [
-		has("checked") ? "true" : has("unchecked") ? "false" : has("mixed") ? "mixed" : null,
-		has("selected") ? "true" : null,
+		toggles ? null : checked,
+		toggles || !has("selected") ? null : "true",
 		has("disabled") ? "true" : null,
 		has("busy") ? "true" : null,
 		has("expanded") ? "true" : has("collapsed") ? "false" : null,
+		toggles ? pressed : null,
 	];
 }
 
@@ -293,8 +302,8 @@ export function ariaGroupNames(name: string): string[] {
 	};
 }
 
-export function ariaGroupValues(name: string, value: string): (string | null)[] {
-	return name === "accessibilityValue" ? ariaValueValues(value) : ariaStateValues(value);
+export function ariaGroupValues(name: string, value: string, role: string): (string | null)[] {
+	return name === "accessibilityValue" ? ariaValueValues(value) : ariaStateValues(value, role);
 }
 
 export function domAttrValue(name: string, value: string): string | null {

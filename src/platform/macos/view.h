@@ -26,7 +26,8 @@
 
 // A control event to the host (bridge.h niSetControlHandler): tag, phase (src/platform/native/contract.ms), value, size.
 void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float height);
-NeonView *neonRequireRoot(const char *what);
+void neonRequireRoot(const char *what);
+NeonView *neonRootInWindow(NSWindow *window);
 void neonUnimplemented(const char *what);
 NSColor *neonCssColor(NSString *css);
 

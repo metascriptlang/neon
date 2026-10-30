@@ -1,18 +1,19 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
-import { Accessor } from "../../core/signal";
+import { Accessor, createSignal, untrack } from "../../core/signal";
+import { usePixelRatio } from "../../api/dimensions";
 import { Dispose } from "../../core/types";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { extractResponderTerminal } from "../../render/responder";
 import { I18nManager } from "../../api/i18nManager";
-import { FlexStyle, YGNode, Direction, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { FlexStyle, YGNode, Direction, freeLayoutTreeAt, layoutPassAt } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
-import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
+import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
@@ -86,13 +87,10 @@ class NativeNode {
 	multiline: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
 	sizesItself: boolean = false;
-	labelOwner: NativeNode | null = null;
-	spanData: TextSpan[] | null = null;
 	spanTags: int32[] = [];
 	pressable: boolean = false;
 	text: string = "";
-	children: NativeNode[] = [];
-	parent: NativeNode | null = null;
+	row: int32 = -1;
 	eventTag: int32 = 0;
 	styleCache: Style | null = null;
 	transformCss: string | null = null;
@@ -109,7 +107,6 @@ class NativeNode {
 	faded: boolean = false;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
-	paintOrder: NativeNode[] = [];
 	flex: FlexStyle | null = null;
 	lastFlex: FlexStyle | null = null;
 	yg: Ptr<YGNode> | null = null;
@@ -133,7 +130,6 @@ class NativeNode {
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
 	visibleContent: VisibleContentPosition | null = null;
-	anchor: NativeNode | null = null;
 	anchorX: float32 = 0.0;
 	anchorY: float32 = 0.0;
 
@@ -144,13 +140,136 @@ class NativeNode {
 	}
 }
 
+const NO_CHILDREN: NativeNode[] = [];
+
+// The host's node tree. A node holds no reference to another node, so NativeNode stays out of the cycle collector:
+// its parent, children, paint order and scroll anchor live here, in the row the node enters on its first append or
+// insert. A node that never entered has no parent and no children; a freed subtree leaves its rows, which later nodes reuse.
+class NativeTree {
+	nodes: (NativeNode | null)[] = [];
+	ups: (NativeNode | null)[] = [];
+	downs: NativeNode[][] = [];
+	stacks: NativeNode[][] = [];
+	anchors: (NativeNode | null)[] = [];
+	spans: (TextSpan[] | null)[] = [];
+	open: int32[] = [];
+
+	rowOf(n: NativeNode): int32 {
+		const at = n.row;
+		if (at < 0) { return -1; }
+		if (at >= this.nodes.length || this.nodes[at] !== n) { throw new Error("native host: a node's row belongs to another node"); }
+		return at;
+	}
+
+	enter(n: NativeNode): int32 {
+		const known = this.rowOf(n);
+		if (known >= 0) { return known; }
+		let at: int32;
+		if (this.open.length > 0) {
+			at = this.open[this.open.length - 1];
+			this.open.splice(this.open.length - 1, 1);
+			this.nodes[at] = n;
+			this.ups[at] = null;
+			this.downs[at] = [];
+			this.stacks[at] = [];
+			this.anchors[at] = null;
+			this.spans[at] = null;
+		} else {
+			at = this.nodes.length as int32;
+			this.nodes.push(n);
+			this.ups.push(null);
+			this.downs.push([]);
+			this.stacks.push([]);
+			this.anchors.push(null);
+			this.spans.push(null);
+		}
+		n.row = at;
+		return at;
+	}
+
+	parentOf(n: NativeNode): NativeNode | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.ups[at];
+	}
+
+	childrenOf(n: NativeNode): NativeNode[] {
+		const at = this.rowOf(n);
+		return at < 0 ? NO_CHILDREN : this.downs[at];
+	}
+
+	attach(c: NativeNode, p: NativeNode, at: int32): void {
+		const row = this.enter(c);
+		if (this.ups[row] !== null) { throw new Error("native host: attach a node that still has a parent"); }
+		const kids = this.downs[this.enter(p)];
+		if (at < 0) { kids.push(c); } else { kids.splice(at, 0, c); }
+		this.ups[row] = p;
+	}
+
+	detach(c: NativeNode): void {
+		const row = this.rowOf(c);
+		if (row < 0) { return; }
+		const up = this.ups[row];
+		if (up === null) { return; }
+		const kids = this.downs[this.rowOf(up as NativeNode)];
+		const at = kids.indexOf(c);
+		if (at < 0) { throw new Error("native host: a node is missing from its parent's children"); }
+		kids.splice(at, 1);
+		this.ups[row] = null;
+	}
+
+	paintOrderOf(n: NativeNode): NativeNode[] {
+		return this.stacks[this.enter(n)];
+	}
+
+	anchorOf(n: NativeNode): NativeNode | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.anchors[at];
+	}
+
+	setAnchor(n: NativeNode, anchor: NativeNode | null): void {
+		if (anchor === null) {
+			const at = this.rowOf(n);
+			if (at >= 0) { this.anchors[at] = null; }
+			return;
+		}
+		this.anchors[this.enter(n)] = anchor;
+	}
+
+	spansOf(n: NativeNode): TextSpan[] | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.spans[at];
+	}
+
+	setSpans(n: NativeNode, spans: TextSpan[] | null): void {
+		if (spans === null && this.rowOf(n) < 0) { return; }
+		this.spans[this.enter(n)] = spans;
+	}
+
+	drop(n: NativeNode): void {
+		const row = this.rowOf(n);
+		if (row < 0) { return; }
+		for (const c of this.downs[row]) { this.drop(c); }
+		this.nodes[row] = null;
+		this.ups[row] = null;
+		this.downs[row] = [];
+		this.stacks[row] = [];
+		this.anchors[row] = null;
+		this.spans[row] = null;
+		this.open.push(row);
+		n.row = -1;
+	}
+}
+
+const tree = new NativeTree();
+
 function nativeNode(view: Ptr<void> | null, isText: boolean, isString: boolean): NativeNode {
 	return new NativeNode(view, isText, isString);
 }
 
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
 
-export function layoutGetChildren(this n: NativeNode): NativeNode[] { return n.children; }
+export function layoutChildCount(this n: NativeNode): int32 { return tree.childrenOf(n).length as int32; }
+export function layoutChildAt(this n: NativeNode, i: int32): NativeNode { return tree.childrenOf(n)[i]; }
 export function layoutGetStyle(this n: NativeNode): FlexStyle | null { return n.flex; }
 export function layoutGetLastStyle(this n: NativeNode): FlexStyle | null { return n.lastFlex; }
 export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): void { n.lastFlex = s; }
@@ -159,7 +278,6 @@ export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { 
 let layoutPlan: LayoutAnimationPlan | null = null;
 let nextTween: int32 = 1;
 let layoutPassId: int32 = 0;
-let rootDirection: Direction = "ltr";
 
 function showFrame(n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.shownX = x; n.shownY = y; n.shownW = w; n.shownH = h;
@@ -199,7 +317,7 @@ function fadeIn(n: NativeNode, phase: LayoutPhase): void {
 export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	const moved = !n.framed || n.x !== x || n.y !== y || n.w !== w || n.h !== h;
 	n.x = x; n.y = y; n.w = w; n.h = h;
-	if (!moved || n.view === null || n === root) { return; }
+	if (!moved || n.view === null || isRootNode(n)) { return; }
 	const plan = layoutPlan;
 	if (plan !== null && n.framed && (plan as LayoutAnimationPlan).update !== null) {
 		tweenFrame(n, (plan as LayoutAnimationPlan).update as LayoutPhase);
@@ -210,7 +328,7 @@ export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: fl
 	n.tween = 0;
 	showFrame(n, x, y, w, h);
 	if (fresh && plan !== null && (plan as LayoutAnimationPlan).create !== null && !n.isString) {
-		const parent = n.parent;
+		const parent = tree.parentOf(n);
 		if (parent !== null && (parent as NativeNode).fadePass === layoutPassId) {
 			n.fadePass = layoutPassId;
 			return;
@@ -332,7 +450,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 				niSetOpacity(n.view, 1.0);
 				n.faded = false;
 			}
-			const clip = s.overflow === "hidden" ? "hidden" : "visible";
+			const clip = s.overflow === "hidden" || s.overflow === "clip" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;
 				niSetProp(n.view, "overflow", clip);
@@ -444,7 +562,7 @@ function horizontalInset(yg: Ptr<YGNode>, padding: boolean): float32 {
 }
 
 function availableTextWidth(n: NativeNode): float32 {
-	const p = n.parent;
+	const p = tree.parentOf(n);
 	if (p === null || p.yg === null || p.w <= 0) { return niScreenWidth(); }
 	let width = p.w - horizontalInset(p.yg as Ptr<YGNode>, true);
 	if (n.yg !== null) { width -= horizontalInset(n.yg as Ptr<YGNode>, false); }
@@ -464,11 +582,50 @@ function textNeedsRemeasure(n: NativeNode): boolean {
 let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
 const nodesByTag = new Map<int32, NativeNode>();
-let root: NativeNode = nativeNode(null, false, false);
-const scrollNodes: NativeNode[] = [];
-const layoutNodes: NativeNode[] = [];
-const textNodes: NativeNode[] = [];
-const inputNodes: NativeNode[] = [];
+
+class NativeRoot {
+	node: NativeNode;
+	followsScreen: boolean;
+	width: float32 = 0.0;
+	height: float32 = 0.0;
+	direction: Direction = "ltr";
+	scrollNodes: NativeNode[] = [];
+	layoutNodes: NativeNode[] = [];
+	textNodes: NativeNode[] = [];
+	inputNodes: NativeNode[] = [];
+	focusedInput: NativeNode | null = null;
+	layoutDirty: boolean = false;
+	mountedApp: (() => NeonNode) | null = null;
+	mounted: Dispose | null = null;
+
+	constructor(node: NativeNode, followsScreen: boolean) {
+		this.node = node;
+		this.followsScreen = followsScreen;
+	}
+}
+
+const mainRoot = new NativeRoot(nativeNode(null, false, false), true);
+const roots: NativeRoot[] = [mainRoot];
+
+function isRootNode(n: NativeNode): boolean {
+	for (const r of roots) {
+		if (r.node === n) { return true; }
+	}
+	return false;
+}
+
+function rootOf(n: NativeNode): NativeRoot | null {
+	let top = n;
+	let up = tree.parentOf(top);
+	while (up !== null) {
+		top = up as NativeNode;
+		up = tree.parentOf(top);
+	}
+	for (const r of roots) {
+		if (r.node === top) { return r; }
+	}
+	return null;
+}
 
 function kindOf(n: NativeNode): NativeElementKind {
 	if (n.isText) { return NativeElementKind.Text; }
@@ -477,12 +634,12 @@ function kindOf(n: NativeNode): NativeElementKind {
 	return NativeElementKind.View;
 }
 
-function writeContentSizes(): void {
-	for (const s of scrollNodes) {
+function writeContentSizes(r: NativeRoot): void {
+	for (const s of r.scrollNodes) {
 		if (s.view === null || !isMounted(s)) { continue; }
 		let w: float32 = 0.0;
 		let h: float32 = 0.0;
-		for (const c of s.children) {
+		for (const c of tree.childrenOf(s)) {
 			if (c.x + c.w > w) { w = c.x + c.w; }
 			if (c.y + c.h > h) { h = c.y + c.h; }
 		}
@@ -495,19 +652,19 @@ function writeContentSizes(): void {
 
 // RN RCTScrollViewComponentView _prepareForMaintainVisibleScrollPosition and
 // _adjustForMaintainVisibleContentPosition, around the layout pass instead of a mount.
-function prepareVisibleContent(): void {
-	for (const s of scrollNodes) {
-		s.anchor = null;
+function prepareVisibleContent(r: NativeRoot): void {
+	for (const s of r.scrollNodes) {
+		tree.setAnchor(s, null);
 		const position = s.visibleContent;
-		if (position === null || s.view === null || s.children.length === 0) { continue; }
+		if (position === null || s.view === null || tree.childrenOf(s).length === 0) { continue; }
 		if (!isMounted(s)) { continue; }
 		const offset = s.horizontal ? niScrollOffsetX(s.view) : niScrollOffsetY(s.view);
 		let index: int32 = 0;
-		for (const child of s.children[0].children) {
+		for (const child of tree.childrenOf(tree.childrenOf(s)[0])) {
 			if (child.isString || !child.framed) { continue; }
 			index += 1;
 			if (index <= position.minIndexForVisible) { continue; }
-			s.anchor = child;
+			tree.setAnchor(s, child);
 			s.anchorX = child.x;
 			s.anchorY = child.y;
 			if ((s.horizontal ? child.x + child.w : child.y + child.h) > offset) { break; }
@@ -515,13 +672,14 @@ function prepareVisibleContent(): void {
 	}
 }
 
-function adjustVisibleContent(): void {
-	for (const s of scrollNodes.slice(0, scrollNodes.length)) {
-		const anchor = s.anchor;
+function adjustVisibleContent(r: NativeRoot): void {
+	for (const s of r.scrollNodes.slice(0, r.scrollNodes.length)) {
+		const anchor = tree.anchorOf(s);
 		const position = s.visibleContent;
-		s.anchor = null;
+		tree.setAnchor(s, null);
 		if (anchor === null || position === null || s.view === null) { continue; }
-		if (s.children.length === 0 || anchor.parent !== s.children[0]) { continue; }
+		const kids = tree.childrenOf(s);
+		if (kids.length === 0 || tree.parentOf(anchor) !== kids[0]) { continue; }
 		const delta = s.horizontal ? anchor.x - s.anchorX : anchor.y - s.anchorY;
 		if (Math.abs(delta) <= 0.5) { continue; }
 		const x = niScrollOffsetX(s.view);
@@ -536,8 +694,8 @@ function adjustVisibleContent(): void {
 	}
 }
 
-function fireLayouts(): void {
-	for (const n of layoutNodes.slice(0, layoutNodes.length)) {
+function fireLayouts(r: NativeRoot): void {
+	for (const n of r.layoutNodes.slice(0, r.layoutNodes.length)) {
 		if (n.eventTag === 0 || !isMounted(n)) { continue; }
 		if (n.x === n.firedX && n.y === n.firedY && n.w === n.firedW && n.h === n.firedH) { continue; }
 		n.firedX = n.x;
@@ -549,30 +707,20 @@ function fireLayouts(): void {
 }
 
 function childIndex(parent: NativeNode, node: NativeNode): int32 {
-	let i: int32 = 0;
-	while (i < (parent.children.length as int32)) {
-		if (parent.children[i] === node) { return i; }
-		i += 1;
-	}
-	return -1;
+	return tree.childrenOf(parent).indexOf(node) as int32;
 }
 
 function isMounted(n: NativeNode): boolean {
-	let current: NativeNode | null = n;
-	while (current !== null) {
-		if (current === root) { return true; }
-		current = current.parent;
-	}
-	return false;
+	return rootOf(n) !== null;
 }
 
 function blurInputs(n: NativeNode): void {
 	if (n.isInput && n.view !== null) { niSetFocused(n.view, 0); }
-	for (const child of n.children) { blurInputs(child); }
+	for (const child of tree.childrenOf(n)) { blurInputs(child); }
 }
 
-function releaseNativeTree(n: NativeNode): void {
-	for (const child of n.children) { releaseNativeTree(child); }
+function releaseNativeTree(r: NativeRoot, n: NativeNode): void {
+	for (const child of tree.childrenOf(n)) { releaseNativeTree(r, child); }
 	if (n.eventTag !== 0) {
 		retirePressTag(n.eventTag);
 		eventRegistry.remove(n.eventTag);
@@ -580,39 +728,37 @@ function releaseNativeTree(n: NativeNode): void {
 		n.eventTag = 0;
 	}
 	if (n.isScroll) {
-		const at = scrollNodes.indexOf(n);
-		if (at >= 0) { scrollNodes.splice(at, 1); }
+		const at = r.scrollNodes.indexOf(n);
+		if (at >= 0) { r.scrollNodes.splice(at, 1); }
 	}
-	const laid = layoutNodes.indexOf(n);
-	if (laid >= 0) { layoutNodes.splice(laid, 1); }
+	const laid = r.layoutNodes.indexOf(n);
+	if (laid >= 0) { r.layoutNodes.splice(laid, 1); }
 	if (n.isText) {
-		const at = textNodes.indexOf(n);
-		if (at >= 0) { textNodes.splice(at, 1); }
+		const at = r.textNodes.indexOf(n);
+		if (at >= 0) { r.textNodes.splice(at, 1); }
 	}
 	if (n.multiline) {
-		const at = inputNodes.indexOf(n);
-		if (at >= 0) { inputNodes.splice(at, 1); }
+		const at = r.inputNodes.indexOf(n);
+		if (at >= 0) { r.inputNodes.splice(at, 1); }
 	}
 	if (n.view !== null) {
 		niRemoveFromParent(n.view);
 		niViewRelease(n.view);
 		n.view = null;
 	}
-	n.children = [];
-	n.paintOrder = [];
+	tree.drop(n);
 	n.zChildren = 0;
-	n.labelOwner = null;
 	n.styleCache = null;
 	n.flex = null;
 	for (const tag of n.spanTags) {
 		if (tag !== 0) { dropSpanTag(tag); }
 	}
 	n.spanTags = [];
-	n.spanData = null;
+	tree.setSpans(n, null);
 }
 
 function onResize(): void {
-	relayoutRoot();
+	relayout(mainRoot);
 }
 
 const SPAN_RECORD = "\u001e";
@@ -665,6 +811,9 @@ function refuseLineStyle(s: Style | null): void {
 	if (s.textDecorationColor !== null) {
 		throw `native host: textDecorationColor "${s.textDecorationColor as string}" is not drawn by the platform text stacks yet; the line takes the text colour`;
 	}
+	if (s.textDecorationLine !== null && (s.textDecorationLine as string).indexOf("overline") >= 0) {
+		throw `native host: textDecorationLine "${s.textDecorationLine as string}" is not drawn by the platform text stacks yet; underline and line-through are`;
+	}
 	if (s.textDecorationStyle === null || s.textDecorationStyle === "solid") { return; }
 	throw `native host: textDecorationStyle "${s.textDecorationStyle as string}" is not drawn by the platform text stacks yet; solid is`;
 }
@@ -673,7 +822,8 @@ function refuseLineStyle(s: Style | null): void {
 function refreshLabel(n: NativeNode): void {
 	if (n.view === null) { return; }
 	const base: Style = n.styleCache !== null ? n.styleCache as Style : {};
-	const spans: TextSpan[] = n.spanData !== null ? n.spanData as TextSpan[] : [];
+	const known = tree.spansOf(n);
+	const spans: TextSpan[] = known !== null ? known as TextSpan[] : [];
 	refuseLineStyle(base);
 	let rich = styledRun(base);
 	for (const span of spans) {
@@ -731,14 +881,14 @@ function spanTouchRoute(touch: (name: string, e: NeonEvent) => void, name: strin
 }
 
 // A span with onPress or touches keeps its own tag by position, so the label finds the span under the finger.
-function deliverSpans(node: HostNode, spans: TextSpan[]): void {
+function deliverSpans(r: NativeRoot, node: HostNode, spans: TextSpan[]): void {
 	const n = node as unknown as NativeNode;
 	if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }
-	setSpansOf(n, spans);
+	setSpansOf(r, n, spans);
 }
 
-function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
-	n.spanData = spans;
+function setSpansOf(r: NativeRoot, n: NativeNode, spans: TextSpan[]): void {
+	tree.setSpans(n, spans);
 	let pressable = false;
 	for (let i = 0; i < spans.length; i += 1) {
 		if (i >= n.spanTags.length) { n.spanTags.push(0); }
@@ -773,18 +923,17 @@ function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 	}
 	if (pressable) { markPressable(n); }
 	refreshLabel(n);
-	if (isMounted(n)) { requestLayout(); }
+	if (isMounted(n)) { requestLayout(r); }
 }
 
 // A string under a Text element merges onto the parent's label (the reference
 // hosts' rule — no nested labels); under anything else it materialises its
 // own label, inheriting the parent's text paint (RN color/fontSize cascade,
 // first cut).
-function materializeString(child: NativeNode, parent: NativeNode): void {
+function materializeString(r: NativeRoot, child: NativeNode, parent: NativeNode): void {
 	if (child.view === null) { child.view = niTextCreate(); }
-	if (textNodes.indexOf(child) < 0) { textNodes.push(child); }
+	if (r.textNodes.indexOf(child) < 0) { r.textNodes.push(child); }
 	child.isText = true;
-	child.labelOwner = child;
 	niSetText(child.view, child.text);
 	const ps = parent.styleCache;
 	if (ps !== null && child.view !== null) {
@@ -813,8 +962,6 @@ function onScroll(): void {
 	});
 }
 
-let focusedInput: NativeNode | null = null;
-
 function onControl(): void {
 	const tag = niLastControlTag();
 	const phase = niLastControlPhase();
@@ -822,11 +969,12 @@ function onControl(): void {
 	const width = niLastControlWidth();
 	const height = niLastControlHeight();
 	const input = nodesByTag.has(tag) ? nodesByTag.get(tag) as NativeNode : null;
+	const owner = input !== null ? rootOf(input as NativeNode) : null;
 	if (input !== null && phase === 0) { input.inputValue = value; }
-	if (input !== null && phase === 1) { focusedInput = input; }
-	if (phase === 2 && focusedInput === input) { focusedInput = null; }
+	if (owner !== null && phase === 1) { owner.focusedInput = input; }
+	if (owner !== null && phase === 2 && owner.focusedInput === input) { owner.focusedInput = null; }
 	batched((): void => {
-		if (phase === 0 && nodesByTag.has(tag) && growInput(nodesByTag.get(tag) as NativeNode)) { requestLayout(); }
+		if (phase === 0 && nodesByTag.has(tag) && growInput(nodesByTag.get(tag) as NativeNode) && owner !== null) { requestLayout(owner as NativeRoot); }
 		eventRegistry.control(tag, phase, value, width, height);
 	});
 }
@@ -917,6 +1065,11 @@ function resetPress(): void {
 	bubbledTime = -1;
 }
 
+function settlePress(): void {
+	if (pressSourceTag !== 0 && livePressTag(pressSourceTag)) { return; }
+	resetPress();
+}
+
 function retirePressTag(tag: int32): void {
 	if (pressOwnerTag === tag) { pressOwnerTag = 0; }
 	if (releasedPressTag === tag) {
@@ -940,7 +1093,7 @@ function nearestPress(tag: int32): int32 {
 	while (at !== null) {
 		const n = at as NativeNode;
 		if (n.pressable) { return n.eventTag; }
-		at = n.parent;
+		at = tree.parentOf(n);
 	}
 	return 0;
 }
@@ -1004,7 +1157,7 @@ function touchTags(tag: int32, phase: int32, x: number, y: number, timeStamp: nu
 	while (at !== null) {
 		const n = at as NativeNode;
 		if (n.eventTag !== 0) { tags.push(n.eventTag); }
-		at = n.parent;
+		at = tree.parentOf(n);
 	}
 	return tags;
 }
@@ -1069,13 +1222,11 @@ export interface NativeHost {
 	relayout: () => void;
 }
 
-export function createNativeHost(): NativeHost {
-	resetPress();
-	const container = niContainerView();
-	root = nativeNode(container, false, false);
-	rootDirection = I18nManager.isRTL() ? "rtl" : "ltr";
-	const ownedRoot = root;
-	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
+let bridgeInstalled = false;
+
+function installBridge(): void {
+	if (bridgeInstalled) { return; }
+	bridgeInstalled = true;
 	niSetTouchHandler(onTouch);
 	niSetScrollHandler(onScroll);
 	niSetResizeHandler(onResize);
@@ -1084,25 +1235,38 @@ export function createNativeHost(): NativeHost {
 	installFrameDriver({ now: (): number => performance.now(), schedule: scheduleFrame });
 	niSetControlHandler(onControl);
 	niSetEnvironmentHandler(onEnvironment);
+}
+
+export function createNativeHost(): NativeHost {
+	resetPress();
+	mainRoot.node = nativeNode(niContainerView(), false, false);
+	mainRoot.direction = I18nManager.isRTL() ? "rtl" : "ltr";
+	mainRoot.node.flex = { width: niScreenWidth(), height: niScreenHeight() };
+	installBridge();
 	publishEnvironment();
 	installNativeAppServices(batched);
+	return nativeHostOf(mainRoot);
+}
 
+function nativeHostOf(r: NativeRoot): NativeHost {
+	const ownedNode = r.node;
+	const spansTo = (node: HostNode, spans: TextSpan[]): void => { deliverSpans(r, node, spans); };
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
 			const kind = nativeElementKind(tag);
 			let n: NativeNode;
 			if (kind === NativeElementKind.Text) {
 				n = nativeNode(niTextCreate(), true, false);
-				textNodes.push(n);
+				r.textNodes.push(n);
 			} else if (kind === NativeElementKind.Scroll) {
 				n = nativeNode(niScrollCreate(), false, false);
 				n.isScroll = true;
-				scrollNodes.push(n);
+				r.scrollNodes.push(n);
 			} else if (kind === NativeElementKind.Input) {
 				n = nativeNode(tag === "multilinetextinput" ? niTextAreaCreate() : niInputCreate(), false, false);
 				n.isInput = true;
 				n.multiline = tag === "multilinetextinput";
-				if (n.multiline) { inputNodes.push(n); }
+				if (n.multiline) { r.inputNodes.push(n); }
 			} else if (kind === NativeElementKind.Image) {
 				n = nativeNode(niImageCreate(), false, false);
 			} else if (kind === NativeElementKind.Component) {
@@ -1134,20 +1298,20 @@ export function createNativeHost(): NativeHost {
 			if (n.isText && n.view !== null) {
 				niSetText(n.view, s);
 				remeasureText(n);
-				requestLayout();
+				requestLayout(r);
 			}
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			writeProp(node as unknown as NativeNode, name, value);
+			writeProp(r, node as unknown as NativeNode, name, value);
 		},
 		removeAttr: (node: HostNode, name: string): void => {
-			writeProp(node as unknown as NativeNode, name, "");
+			writeProp(r, node as unknown as NativeNode, name, "");
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as NativeNode;
 			const zIndex = style.zIndex ?? 0;
 			if (zIndex !== n.zIndex) {
-				const p = n.parent;
+				const p = tree.parentOf(n);
 				if (p !== null) {
 					if (n.zIndex !== 0) { p.zChildren -= 1; }
 					if (zIndex !== 0) { p.zChildren += 1; }
@@ -1160,9 +1324,9 @@ export function createNativeHost(): NativeHost {
 			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
 			n.minFromMeasure = false;
 			applyPaint(n, style);
-			if (n.isText && !n.isString && n.spanData !== null) { refreshLabel(n); }
+			if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
 			else if (n.isText) { remeasureText(n); }
-			if (isMounted(n)) { requestLayout(); }
+			if (isMounted(n)) { requestLayout(r); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,
@@ -1174,7 +1338,7 @@ export function createNativeHost(): NativeHost {
 				niViewSetPressable(n.view);
 				n.pressable = true;
 			}
-			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
+			if (name === "onLayout" && r.layoutNodes.indexOf(n) < 0) { r.layoutNodes.push(n); }
 		},
 		addEventPhases: (node: HostNode, name: string, lifecycle: (e: NeonEvent) => void,
 			listener: (e: NeonEvent) => void): void => {
@@ -1185,28 +1349,27 @@ export function createNativeHost(): NativeHost {
 				niViewSetPressable(n.view);
 				n.pressable = true;
 			}
-			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
+			if (name === "onLayout" && r.layoutNodes.indexOf(n) < 0) { r.layoutNodes.push(n); }
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			const p = parent as unknown as NativeNode;
 			const c = child as unknown as NativeNode;
 			refuseIntoText(p, "append");
-			if (c.parent === p && childIndex(p, c) === (p.children.length as int32) - 1) { return; }
-			const sameParent = c.parent === p;
+			if (tree.parentOf(c) === p && childIndex(p, c) === (tree.childrenOf(p).length as int32) - 1) { return; }
+			const sameParent = tree.parentOf(c) === p;
 			const wasMounted = isMounted(c);
 			unlinkChild(c, p);
-			c.parent = p;
-			p.children.push(c);
+			tree.attach(c, p, -1);
 			if (c.zIndex !== 0) { p.zChildren += 1; }
 			if (c.isString && !sameParent) {
-				materializeString(c, p);
+				materializeString(r, c, p);
 			} else if (!sameParent && p.view !== null && c.view !== null) {
 				niAddChild(p.view, c.view);
 			} else if (sameParent && p.zChildren === 0 && c.view !== null) {
 				niBringChildToFront(c.view);
 			}
 			if (p.zChildren > 0) { restack(p); }
-			if (wasMounted || isMounted(p)) { requestLayout(); }
+			if (wasMounted || isMounted(p)) { requestLayout(r); }
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as NativeNode;
@@ -1214,75 +1377,73 @@ export function createNativeHost(): NativeHost {
 			refuseIntoText(p, "insertBefore");
 			let idx: int32;
 			if (ref === null) {
-				idx = p.children.length as int32;
+				idx = tree.childrenOf(p).length as int32;
 			} else {
 				idx = childIndex(p, ref as unknown as NativeNode);
 				if (idx < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
 			}
 			if (ref === node) { return; }
-			const sameParent = n.parent === p;
+			const sameParent = tree.parentOf(n) === p;
 			const wasMounted = isMounted(n);
 			if (wasMounted && !isMounted(p)) { blurInputs(n); }
 			const current = sameParent ? childIndex(p, n) : -1;
 			if (sameParent && current === idx - 1) { return; }
 			if (sameParent && current < idx) { idx -= 1; }
 			unlinkChild(n, p);
-			n.parent = p;
-			p.children.splice(idx, 0, n);
+			tree.attach(n, p, idx);
 			if (n.zIndex !== 0) { p.zChildren += 1; }
 			if (n.isString && !sameParent) {
-				materializeString(n, p);
+				materializeString(r, n, p);
 			} else if (!sameParent && p.view !== null && n.view !== null) {
 				niAddChild(p.view, n.view);
 			}
 			if (ref !== null || sameParent || p.zChildren > 0) { restack(p); }
-			if (wasMounted || isMounted(p)) { requestLayout(); }
+			if (wasMounted || isMounted(p)) { requestLayout(r); }
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as NativeNode;
 			const n = node as unknown as NativeNode;
 			const idx = childIndex(p, n);
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
-			p.children.splice(idx, 1);
+			tree.detach(n);
 			if (n.zIndex !== 0) { p.zChildren -= 1; }
 			removePaintChild(p, n);
-			n.parent = null;
-			if (isMounted(p)) { requestLayout(); }
-			freeLayoutTree(n);
-			releaseNativeTree(n);
+			if (isMounted(p)) { requestLayout(r); }
+			freeLayoutTreeAt(n);
+			releaseNativeTree(r, n);
 		},
 		parentOf: (node: HostNode): HostNode | null => {
-			const p = (node as unknown as NativeNode).parent;
+			const p = tree.parentOf(node as unknown as NativeNode);
 			if (p === null) { return null; }
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
 			const n = node as unknown as NativeNode;
-			if (n.parent !== null) { throw "release: the node still has a parent; remove it first"; }
-			freeLayoutTree(n);
-			releaseNativeTree(n);
+			if (tree.parentOf(n) !== null) { throw "release: the node still has a parent; remove it first"; }
+			freeLayoutTreeAt(n);
+			releaseNativeTree(r, n);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as NativeNode;
-			const p = n.parent;
+			const p = tree.parentOf(n);
 			if (p === null) { return null; }
 			const idx = childIndex(p, n);
-			if (idx < 0 || idx + 1 >= (p.children.length as int32)) { return null; }
-			return p.children[idx + 1] as unknown as HostNode;
+			if (idx < 0 || idx + 1 >= (tree.childrenOf(p).length as int32)) { return null; }
+			return tree.childrenOf(p)[idx + 1] as unknown as HostNode;
 		},
 		firstChild: (node: HostNode): HostNode | null => {
 			const n = node as unknown as NativeNode;
-			if ((n.children.length as int32) === 0) { return null; }
-			return n.children[0] as unknown as HostNode;
+			if ((tree.childrenOf(n).length as int32) === 0) { return null; }
+			return tree.childrenOf(n)[0] as unknown as HostNode;
 		},
 		cloneNode: null,
 		voidArea: null,
 		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
-			spanParagraph(deliverSpans, node, kids, spans);
+			spanParagraph(spansTo, node, kids, spans);
 		},
-		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => measureNativeWindow(node as unknown as NativeNode, ownedRoot),
-		measureLayout: (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => measureNativeLayout(node as unknown as NativeNode, ancestor as unknown as NativeNode, ownedRoot),
-		overlayRoot: (node: HostNode): HostNode => root as unknown as HostNode,
+		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => measureNativeWindow(node as unknown as NativeNode, r, ownedNode),
+		measureLayout: (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => measureNativeLayout(node as unknown as NativeNode, ancestor as unknown as NativeNode, r, ownedNode),
+		overlayRoot: (node: HostNode): HostNode => r.node as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isInput || n.view === null) { throw "native host: focus needs a mounted text input"; }
@@ -1307,12 +1468,12 @@ export function createNativeHost(): NativeHost {
 
 	return {
 		host,
-		rootNode: root as unknown as HostNode,
-		relayout: (): void => { relayoutRoot(); },
+		rootNode: ownedNode as unknown as HostNode,
+		relayout: (): void => { relayout(r); },
 	};
 }
 
-function writeProp(n: NativeNode, name: string, value: string): void {
+function writeProp(r: NativeRoot, n: NativeNode, name: string, value: string): void {
 	if (n.view === null) { return; }
 	if (name === "cellWidth" || name === "cellWidths") { throw new Error(`${name}: the native host has no cell grid; it is a Void-host Text prop`); }
 	if (n.isScroll && name === "maintainVisibleContentPosition") {
@@ -1326,71 +1487,70 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 	}
 	niSetProp(n.view, name, value);
 	if (n.isInput && name === "value") { n.inputValue = value; }
-	if (name === "statusBarTranslucent") { requestLayout(); }
-	if (n.isInput && (name === "value" || name === "defaultValue") && growInput(n) && isMounted(n)) { requestLayout(); }
+	if (name === "statusBarTranslucent") { requestLayout(r); }
+	if (n.isInput && (name === "value" || name === "defaultValue") && growInput(n) && isMounted(n)) { requestLayout(r); }
 	if (n.isText && name === "numberOfLines") {
 		remeasureText(n);
-		if (isMounted(n)) { requestLayout(); }
+		if (isMounted(n)) { requestLayout(r); }
 	}
 }
 
 function removePaintChild(p: NativeNode, n: NativeNode): void {
-	const at = p.paintOrder.indexOf(n);
+	if (tree.rowOf(p) < 0) { return; }
+	const order = tree.paintOrderOf(p);
+	const at = order.indexOf(n);
 	if (at < 0) { return; }
-	for (let i = at; i + 1 < p.paintOrder.length; i += 1) { p.paintOrder[i] = p.paintOrder[i + 1]; }
-	p.paintOrder.pop();
+	order.splice(at, 1);
 }
 
 function unlinkChild(n: NativeNode, nextParent: NativeNode): void {
-	const old = n.parent;
+	const old = tree.parentOf(n);
 	if (old === null) { return; }
 	if (old !== nextParent && n.yg !== null) {
 		const owner = YGNodeGetParent(n.yg);
 		if (owner !== null) { YGNodeRemoveChild(owner, n.yg); }
 	}
-	const at = childIndex(old, n);
-	if (at >= 0) { old.children.splice(at, 1); }
+	tree.detach(n);
 	if (n.zIndex !== 0) { old.zChildren -= 1; }
 	removePaintChild(old, n);
-	if (n.isString && old !== nextParent) { n.labelOwner = null; }
 }
 
 function restack(p: NativeNode): void {
 	if (p.view === null) { return; }
 	if (p.zChildren === 0) {
-		for (const child of p.children) {
+		for (const child of tree.childrenOf(p)) {
 			if (child.view !== null) { niBringChildToFront(child.view); }
 		}
 		return;
 	}
+	const order = tree.paintOrderOf(p);
 	let count: int32 = 0;
-	for (const child of p.children) {
+	for (const child of tree.childrenOf(p)) {
 		if (child.view === null) { continue; }
-		if (count < p.paintOrder.length) { p.paintOrder[count] = child; }
-		else { p.paintOrder.push(child); }
+		if (count < order.length) { order[count] = child; }
+		else { order.push(child); }
 		let at = count;
-		while (at > 0 && p.paintOrder[at - 1].zIndex > child.zIndex) {
-			p.paintOrder[at] = p.paintOrder[at - 1];
+		while (at > 0 && order[at - 1].zIndex > child.zIndex) {
+			order[at] = order[at - 1];
 			at -= 1;
 		}
-		p.paintOrder[at] = child;
+		order[at] = child;
 		count += 1;
 	}
-	while (p.paintOrder.length > count) { p.paintOrder.pop(); }
-	for (const child of p.paintOrder) {
+	while (order.length > count) { order.pop(); }
+	for (const child of order) {
 		if (child.view !== null) { niBringChildToFront(child.view); }
 	}
 }
 
 let batchDepth = 0;
-let layoutDirty = false;
 
-function requestLayout(): void {
+function requestLayout(r: NativeRoot): void {
 	if (batchDepth > 0 || getOwner() !== null) {
-		layoutDirty = true;
+		r.layoutDirty = true;
 		return;
 	}
-	relayoutRoot();
+	relayout(r);
 }
 
 function batched(fn: () => void): void {
@@ -1400,59 +1560,69 @@ function batched(fn: () => void): void {
 	} finally {
 		batchDepth -= 1;
 	}
-	if (batchDepth === 0 && layoutDirty) { relayoutRoot(); }
+	if (batchDepth === 0) { relayoutDirty(); }
 }
 
-function relayoutRoot(): void {
-	layoutDirty = false;
+function relayoutDirty(): void {
+	for (const r of roots.slice(0, roots.length)) {
+		if (r.layoutDirty && roots.indexOf(r) >= 0) { relayout(r); }
+	}
+}
+
+function relayout(r: NativeRoot): void {
+	r.layoutDirty = false;
 	const plan = takeLayoutAnimation();
 	if (plan !== null) { layoutPlan = plan; }
 	layoutPassId += 1;
-	const width = niScreenWidth();
-	const height = niScreenHeight();
-	batchDepth += 1;
-	try {
-		publishWindow(width, height);
-		publishSafeArea(niSafeAreaInset(0), niSafeAreaInset(1), niSafeAreaInset(2), niSafeAreaInset(3));
-	} finally {
-		batchDepth -= 1;
+	const width = r.followsScreen ? niScreenWidth() : r.width;
+	const height = r.followsScreen ? niScreenHeight() : r.height;
+	if (r.followsScreen) {
+		batchDepth += 1;
+		try {
+			publishWindow(width, height);
+			publishSafeArea(niSafeAreaInset(0), niSafeAreaInset(1), niSafeAreaInset(2), niSafeAreaInset(3));
+		} finally {
+			batchDepth -= 1;
+		}
 	}
-	layoutDirty = false;
-	root.flex = { width, height };
-	prepareVisibleContent();
-	runLayoutPass(root, width, height, rootDirection);
+	r.layoutDirty = false;
+	const top = r.node;
+	top.flex = { width, height };
+	prepareVisibleContent(r);
+	const pointScale = untrack((): float64 => usePixelRatio()()) as float32;
+	layoutPassAt(top, width, height, r.direction, pointScale);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
-		for (const t of textNodes) {
+		for (const t of r.textNodes) {
 			if (!textNeedsRemeasure(t)) { continue; }
 			measureTextWithin(t, availableTextWidth(t));
 			changed = true;
 		}
-		for (const field of inputNodes) {
+		for (const field of r.inputNodes) {
 			if (!growsWithContent(field) || !isMounted(field) || Math.abs(field.w - field.measuredFor) < 0.5) { continue; }
 			if (growInput(field)) { changed = true; }
 		}
 		if (!changed) { break; }
-		runLayoutPass(root, width, height, rootDirection);
+		layoutPassAt(top, width, height, r.direction, pointScale);
 	}
 	layoutPlan = null;
-	writeContentSizes();
-	adjustVisibleContent();
-	batched(fireLayouts);
+	writeContentSizes(r);
+	adjustVisibleContent(r);
+	batched((): void => { fireLayouts(r); });
 }
 
-function nativeMeasurementError(node: NativeNode, ownedRoot: NativeNode): MeasureError | null {
-	if (root !== ownedRoot) { return MeasureError.NotMounted; }
-	if (layoutDirty) { relayoutRoot(); }
-	if (!isMounted(node)) { return MeasureError.NotMounted; }
+function nativeMeasurementError(node: NativeNode, r: NativeRoot, ownedNode: NativeNode): MeasureError | null {
+	if (r.node !== ownedNode || roots.indexOf(r) < 0) { return MeasureError.NotMounted; }
+	if (r.layoutDirty) { relayout(r); }
+	if (rootOf(node) !== r) { return MeasureError.NotMounted; }
 	if (node.view === null || node.isString) { return MeasureError.Unsupported; }
-	if (node !== root && !node.framed) { return MeasureError.NotLaidOut; }
+	if (node !== ownedNode && !node.framed) { return MeasureError.NotLaidOut; }
 	let at: NativeNode | null = node;
 	while (at !== null) {
 		const current = at as NativeNode;
 		const style = current.styleCache;
 		if (style !== null && (style as Style).display === "none") { return MeasureError.NotLaidOut; }
-		at = current.parent;
+		at = tree.parentOf(current);
 	}
 	return null;
 }
@@ -1469,8 +1639,8 @@ function nativeAccessibilityFocus(): ((node: HostNode) => void) | null {
 	}
 }
 
-function measureNativeWindow(node: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
-	const error = nativeMeasurementError(node, ownedRoot);
+function measureNativeWindow(node: NativeNode, r: NativeRoot, ownedNode: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, r, ownedNode);
 	if (error !== null) { return Result.err(error as MeasureError); }
 	const ready = niMeasureInWindow(node.view);
 	if (ready < 0) { return Result.err(MeasureError.NotMounted); }
@@ -1478,10 +1648,10 @@ function measureNativeWindow(node: NativeNode, ownedRoot: NativeNode): Result<Me
 	return Result.ok({ x: niMeasurementX(), y: niMeasurementY(), width: niMeasurementW(), height: niMeasurementH() });
 }
 
-function measureNativeLayout(node: NativeNode, ancestor: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
-	const error = nativeMeasurementError(node, ownedRoot);
+function measureNativeLayout(node: NativeNode, ancestor: NativeNode, r: NativeRoot, ownedNode: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, r, ownedNode);
 	if (error !== null) { return Result.err(error as MeasureError); }
-	const parentError = nativeMeasurementError(ancestor, ownedRoot);
+	const parentError = nativeMeasurementError(ancestor, r, ownedNode);
 	if (parentError !== null) { return Result.err(parentError as MeasureError); }
 	let x = 0.0;
 	let y = 0.0;
@@ -1491,25 +1661,23 @@ function measureNativeLayout(node: NativeNode, ancestor: NativeNode, ownedRoot: 
 		const current = at as NativeNode;
 		x += current.x;
 		y += current.y;
-		at = current.parent;
+		at = tree.parentOf(current);
 	}
 	return Result.ok({ x, y, width: node.w, height: node.h });
 }
 
-let mountedApp: (() => NeonNode) | null = null;
-let mounted: Dispose | null = null;
-
 when (hcr || testBuild) {
-	function devNode(n: NativeNode, x: float32, y: float32): DevNode {
+	function devNode(r: NativeRoot, n: NativeNode, x: float32, y: float32): DevNode {
 		const children: DevNode[] = [];
-		for (const c of n.children) { children.push(devNode(c, x + c.x, y + c.y)); }
+		for (const c of tree.childrenOf(n)) { children.push(devNode(r, c, x + c.x, y + c.y)); }
 		let text = n.isString ? n.text : "";
-		if (n.spanData !== null) { for (const span of n.spanData as TextSpan[]) { text += span.text; } }
+		const spans = tree.spansOf(n);
+		if (spans !== null) { for (const span of spans as TextSpan[]) { text += span.text; } }
 		return {
 			tag: n.tag,
 			text,
 			value: n.isInput ? n.inputValue : null,
-			focused: n === focusedInput,
+			focused: n === r.focusedInput,
 			pressable: n.pressable,
 			x, y, w: n.w, h: n.h,
 			children,
@@ -1518,8 +1686,8 @@ when (hcr || testBuild) {
 
 	function touchTarget(n: NativeNode, x: float32, y: float32, ox: float32, oy: float32): NativeNode | null {
 		if (x < ox || y < oy || x >= ox + n.w || y >= oy + n.h) { return null; }
-		for (let i = n.children.length - 1; i >= 0; i -= 1) {
-			const c = n.children[i];
+		for (let i = tree.childrenOf(n).length - 1; i >= 0; i -= 1) {
+			const c = tree.childrenOf(n)[i];
 			const hit = touchTarget(c, x, y, ox + c.x, oy + c.y);
 			if (hit !== null) { return hit; }
 		}
@@ -1527,7 +1695,7 @@ when (hcr || testBuild) {
 	}
 
 	function nativeDriverPress(x: float32, y: float32): void {
-		const target = touchTarget(root, x, y, 0.0, 0.0);
+		const target = touchTarget(mainRoot.node, x, y, 0.0, 0.0);
 		if (target === null) { throw new Error(`native host: nothing at ${x},${y} takes a touch`); }
 		const tag = (target as NativeNode).eventTag;
 		const at = performance.now();
@@ -1537,17 +1705,35 @@ when (hcr || testBuild) {
 	}
 }
 
-function mountApp(): void {
-	const native = createNativeHost();
+function mountInto(r: NativeRoot, native: NativeHost): void {
 	batched((): void => {
-		const app = mountedApp as () => NeonNode;
-		mounted = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, native.host, native.rootNode);
+		const app = r.mountedApp as () => NeonNode;
+		r.mounted = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, native.host, native.rootNode);
 	});
 	native.relayout();
+}
+
+function closeRoot(r: NativeRoot): void {
+	r.focusedInput = null;
+	if (r.mounted !== null) {
+		const dispose = r.mounted as Dispose;
+		r.mounted = null;
+		dispose();
+	}
+	const top = r.node;
+	freeLayoutTreeAt(top);
+	for (const child of tree.childrenOf(top)) { releaseNativeTree(r, child); }
+	tree.drop(top);
+	top.zChildren = 0;
+	settlePress();
+}
+
+function mountApp(): void {
+	mountInto(mainRoot, createNativeHost());
 	when (hcr || testBuild) {
 		setDevDriver({
 			host: "native",
-			tree: (): DevNode => devNode(root, 0.0, 0.0),
+			tree: (): DevNode => devNode(mainRoot, mainRoot.node, 0.0, 0.0),
 			pressAt: nativeDriverPress,
 			type: (text: string): void => {
 				throw new Error("native host: type needs a bridge call that inserts text into the focused platform input; the bridges have none yet (docs/DEVTOOLS.md)");
@@ -1560,22 +1746,45 @@ function teardownApp(): void {
 	when (hcr || testBuild) {
 		setDevDriver(null);
 	}
-	focusedInput = null;
-	resetPress();
-	if (mounted !== null) {
-		const dispose = mounted as Dispose;
-		mounted = null;
-		dispose();
-	}
-	freeLayoutTree(root);
-	for (const child of root.children) { releaseNativeTree(child); }
-	root.children = [];
-	root.paintOrder = [];
-	root.zChildren = 0;
+	closeRoot(mainRoot);
+}
+
+export interface NativeRootHandle {
+	resize: (width: float32, height: float32) => void;
+	dispose: Dispose;
+}
+
+export function mountNativeRoot(container: Ptr<void>, width: float32, height: float32, app: () => NeonNode): NativeRootHandle {
+	installBridge();
+	const r = new NativeRoot(nativeNode(container, false, false), false);
+	r.width = width;
+	r.height = height;
+	r.direction = I18nManager.isRTL() ? "rtl" : "ltr";
+	const [size, setSize] = createSignal<WindowDimensions>({ width: width, height: height });
+	r.mountedApp = (): NeonNode => {
+		publishRootWindow(size);
+		return app();
+	};
+	roots.push(r);
+	mountInto(r, nativeHostOf(r));
+	return {
+		resize: (w: float32, h: float32): void => {
+			if (roots.indexOf(r) < 0) { throw new Error("native host: resize of a disposed root"); }
+			r.width = w;
+			r.height = h;
+			flush((): void => { setSize({ width: w, height: h }); });
+			relayout(r);
+		},
+		dispose: (): void => {
+			if (roots.indexOf(r) < 0) { return; }
+			closeRoot(r);
+			roots.splice(roots.indexOf(r), 1);
+		},
+	};
 }
 
 export function runApp(app: () => NeonNode): int32 {
-	mountedApp = app;
+	mainRoot.mountedApp = app;
 	when (android && hcr) {
 		niSetReloadPoll((): void => { batched(pollReload); });
 	} else when (hcr) {

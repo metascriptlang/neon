@@ -92,4 +92,5 @@ expect_reject tests/macros/htmlRefTypeRejected.ms "parameter 'c' takes HTMLDivEl
 expect_reject tests/macros/breakpointFieldUnfoldableRejected.ms "field 'width' of a breakpoint block must be a value the compiler can read"
 expect_reject tests/macros/breakpointKeyNotATableRejected.ms "a bracketed \`when\` key names a breakpoint"
 expect_reject tests/macros/breakpointWidthUnfoldableRejected.ms "breakpoint 'wide' must be a number the compiler can read"
+expect_reject tests/macros/sheetSpreadUnreadableRejected.ms "a spread in a sheet entry must name a const style object the compiler can read"
 exit $fail

@@ -546,6 +546,16 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 	}
 }
 
+test "native percent dimensions lay out against the parent" {
+	const app = (): NeonNode => <View style={{ width: 200, height: 100 }}>
+		<Pressable style={{ width: "50%", height: "100%", maxHeight: "40%" }} onPress={() => {}} />
+	</View>;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40, `percent sizes resolve against the 200x100 parent: ${nmLayoutWidth(tag)}x${nmLayoutHeight(tag)}`;
+	nmTeardown();
+}
+
 test "native materialized string labels participate in paint order and reuse their views when moved" {
 	const native = createNativeHost();
 	const host = native.host;
@@ -677,6 +687,17 @@ test "a native TextInput writes its props, routes typing, focus and submit, and 
 	assert log === "focus;change grace;submit GRACE;blur;", "event order: " + log;
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "the input is released with the rest";
+}
+
+test "a native TextInput's key press reaches onKeyPress with its key" {
+	let log = "";
+	const app = (): NeonNode => <View>
+		<TextInput value="" onKeyPress={(e: NeonEvent): void => { log += `key ${e.key} "${e.value}";`; }} />
+	</View>;
+	runApp(app);
+	nmControl(nmLastInputTag(), 16, "Escape");
+	assert log === "key Escape \"\";", "onKeyPress carries the key and no value: " + log;
+	nmTeardown();
 }
 
 test "the native host publishes window size, keyboard height and color scheme as signals" {

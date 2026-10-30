@@ -1,5 +1,5 @@
 import { NavTarget, NavigationState } from "./core";
-import { encodeRouteComponent } from "./routing";
+import { QueryParams, encodeRouteComponent } from "./routing";
 
 export interface LinkingScreen {
 	name: string;
@@ -172,19 +172,23 @@ function decodeParam(text: string): string | null {
 	return decodeComponent(text);
 }
 
-function parseQuery(query: string, into: Map<string, string>): void {
+function parseQuery(query: string, into: QueryParams): void {
 	let rest = query.trim();
 	if (rest.startsWith("?") || rest.startsWith("#") || rest.startsWith("&")) {
 		rest = rest.substring(1, rest.length);
 	}
+	const seen: string[] = [];
 	for (const pair of rest.split("&")) {
 		if (pair === "") { continue; }
 		const spaced = pair.split("+").join(" ");
 		const eq = spaced.indexOf("=");
-		if (eq < 0) {
-			into.set(decodeComponent(spaced), "");
+		const name = decodeComponent(eq < 0 ? spaced : spaced.substring(0, eq));
+		const value = eq < 0 ? "" : decodeComponent(spaced.substring(eq + 1, spaced.length));
+		if (seen.indexOf(name) < 0) {
+			seen.push(name);
+			into.set(name, value);
 		} else {
-			into.set(decodeComponent(spaced.substring(0, eq)), decodeComponent(spaced.substring(eq + 1, spaced.length)));
+			into.append(name, value);
 		}
 	}
 }
@@ -194,7 +198,7 @@ function matchFrom(
 	from: int32,
 	parts: string[],
 	at: int32,
-	values: Map<string, string>[],
+	values: QueryParams[],
 ): boolean {
 	if (from >= segments.length) { return at >= parts.length; }
 	const segment = segments[from];
@@ -293,11 +297,11 @@ export function targetFromPath(path: string, config: LinkingConfig): NavTarget |
 	const candidates: Candidate[] = [];
 	collect(config.screens, [], [], candidates);
 	let best: Candidate | null = null;
-	let bestValues: Map<string, string>[] = [];
+	let bestValues: QueryParams[] = [];
 	for (const candidate of candidates) {
-		const values: Map<string, string>[] = [];
+		const values: QueryParams[] = [];
 		for (let i = 0; i < candidate.chain.length; i += 1) {
-			values.push(new Map<string, string>());
+			values.push(new QueryParams());
 		}
 		if (!matchFrom(candidate.segments, 0, parts, 0, values)) { continue; }
 		if (best === null || candidate.score > (best as Candidate).score) {
@@ -330,9 +334,10 @@ function findScreen(screens: LinkingScreen[], name: string): LinkingScreen | nul
 	return null;
 }
 
-function unclaimedKeys(held: Map<string, string>, segments: Segment[], depth: int32): string[] {
+function unclaimedKeys(held: QueryParams, segments: Segment[], depth: int32): string[] {
 	const keys: string[] = [];
-	for (const key of held) {
+	for (const key of held.names) {
+		if (keys.indexOf(key) >= 0) { continue; }
 		let claimed = false;
 		for (const segment of segments) {
 			if (segment.param && segment.owner === depth && segment.text === key) {
@@ -346,16 +351,18 @@ function unclaimedKeys(held: Map<string, string>, segments: Segment[], depth: in
 }
 
 function unclaimedQuery(
-	params: Map<string, string> | null,
+	params: QueryParams | null,
 	segments: Segment[],
 	depth: int32,
 ): string {
 	if (params === null) { return ""; }
-	const held = params as Map<string, string>;
+	const held = params as QueryParams;
 	const keys = unclaimedKeys(held, segments, depth);
 	const pairs: string[] = [];
 	for (const key of keys) {
-		pairs.push(encodeRouteComponent(key) + "=" + encodeRouteComponent(held.get(key) ?? ""));
+		for (const value of held.getAll(key)) {
+			pairs.push(encodeRouteComponent(key) + "=" + encodeRouteComponent(value));
+		}
 	}
 	return pairs.join("&");
 }
@@ -370,7 +377,7 @@ export function pathFromState(state: NavigationState, config: LinkingConfig): st
 		let route = here.routes[here.index];
 		let hit = findScreen(config.screens, route.name);
 		let segments: Segment[] = [];
-		const owned: (Map<string, string> | null)[] = [];
+		const owned: (QueryParams | null)[] = [];
 		while (hit !== null) {
 			const screen = hit as LinkingScreen;
 			segments = screenSegments(screen, segments, owned.length as int32);
@@ -399,7 +406,7 @@ export function pathFromState(state: NavigationState, config: LinkingConfig): st
 					const values = owned[segment.owner];
 					let value: string | null = null;
 					if (values !== null) {
-						value = (values as Map<string, string>).get(segment.text);
+						value = (values as QueryParams).get(segment.text);
 					}
 					if (value !== null) {
 						pieces.push(encodeRouteComponent(value as string));
@@ -428,7 +435,7 @@ function ownSegments(screens: LinkingScreen[] | null, name: string): Segment[] |
 export function screenPathPart(
 	screens: LinkingScreen[] | null,
 	name: string,
-	values: Map<string, string> | null,
+	values: QueryParams | null,
 ): string {
 	const segments = ownSegments(screens, name);
 	if (segments === null) { return encodeRouteComponent(name); }
@@ -440,7 +447,7 @@ export function screenPathPart(
 			pieces.push(encodeRouteComponent(segment.text));
 		} else {
 			let value: string | null = null;
-			if (values !== null) { value = (values as Map<string, string>).get(segment.text); }
+			if (values !== null) { value = (values as QueryParams).get(segment.text); }
 			if (value !== null) {
 				pieces.push(encodeRouteComponent(value as string));
 			} else if (!segment.optional) {
@@ -457,14 +464,14 @@ export function screenPathPart(
 export function screenQuery(
 	screens: LinkingScreen[] | null,
 	name: string,
-	values: Map<string, string> | null,
-): Map<string, string> | null {
+	values: QueryParams | null,
+): QueryParams | null {
 	if (values === null) { return null; }
-	const held = values as Map<string, string>;
+	const held = values as QueryParams;
 	const segments = ownSegments(screens, name);
-	const query = new Map<string, string>();
+	const query = new QueryParams();
 	for (const key of unclaimedKeys(held, segments === null ? [] : segments as Segment[], 0)) {
-		query.set(key, held.get(key) ?? "");
+		for (const value of held.getAll(key)) { query.append(key, value); }
 	}
 	return query;
 }

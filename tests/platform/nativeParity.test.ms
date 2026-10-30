@@ -130,6 +130,12 @@ test "a native Text refuses a decoration line style its platform text stack does
 	} catch (e) { refused = e.toString(); }
 	nmTeardown();
 	assert refused.indexOf("textDecorationColor") >= 0 && refused.indexOf("is not drawn by the platform text stacks yet") >= 0, "colour: " + refused;
+	refused = "";
+	try {
+		runApp((): NeonNode => <View><Text style={{ textDecorationLine: "underline overline" }}>b</Text></View>);
+	} catch (e) { refused = e.toString(); }
+	nmTeardown();
+	assert refused.indexOf("overline") >= 0 && refused.indexOf("is not drawn by the platform text stacks yet") >= 0, "overline: " + refused;
 }
 
 test "a native Text sends its fontFamily to its label, a span may not change the family, and a family list is refused" {

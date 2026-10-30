@@ -65,6 +65,7 @@ when (server) {
 		domAttrValue,
 		ariaGroupNames,
 		ariaGroupValues,
+		ariaStateRole,
 	} from "./web";
 	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
@@ -268,11 +269,16 @@ when (server) {
 		if (names.length > 0) {
 			const outNames: string[] = [];
 			const outValues: string[] = [];
+			let role = "";
+			for (let i = 0; i < names.length; i += 1) {
+				if (names[i] === "role" || names[i] === "accessibilityRole") { role = values[i]; }
+			}
+			role = ariaStateRole(role, tag);
 			for (let i = 0; i < names.length; i += 1) {
 				const raw = values[i];
 				const group = ariaGroupNames(names[i]);
 				if (group.length > 0) {
-					const grouped = ariaGroupValues(names[i], raw);
+					const grouped = ariaGroupValues(names[i], raw, role);
 					for (let k = 0; k < group.length; k += 1) {
 						putAttribute(outNames, outValues, group[k], grouped[k]);
 					}

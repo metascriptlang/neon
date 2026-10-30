@@ -30,6 +30,7 @@ float nmOpacity(int32_t tag);
 float nmTranslateX(int32_t tag);
 float nmLayoutHeight(int32_t tag);
 void nmTapAt(float x, float y);
+void nmTapAtIn(void *container, float x, float y);
 int32_t nmLastPressableTag(void);
 float nmLayoutX(int32_t tag);
 float nmLayoutY(int32_t tag);

@@ -1,4 +1,4 @@
-import { RoutingError, encodeRouteComponent, decodeRouteComponent, decodeQueryComponent } from "./routing";
+import { RoutingError, QueryParams, encodeRouteComponent, decodeRouteComponent, decodeQueryComponent } from "./routing";
 import {
 	PathMatch,
 	joinPaths,
@@ -20,7 +20,7 @@ export type PreloadIntent = "initial" | "navigate" | "native" | "preload";
 
 export interface RouterLocation {
 	pathname: string;
-	search: Map<string, string>;
+	search: QueryParams;
 	hash: string;
 }
 
@@ -149,7 +149,7 @@ export interface MatchedRoute {
 
 export interface RouteMatch {
 	chain: MatchedRoute[];
-	search: Map<string, string>;
+	search: QueryParams;
 	hash: string;
 }
 
@@ -166,7 +166,7 @@ export interface RouteTree {
 	href: (
 		node: RouteNode,
 		values: Map<string, string>,
-		search: Map<string, string>,
+		search: QueryParams,
 	) => Result<string, RoutingError>;
 	staticPaths: () => Result<string[], RoutingError>;
 }
@@ -285,7 +285,7 @@ export function hrefOf<P, D>(
 	tree: RouteTree,
 	target: RouteDef<P, D>,
 	params: P,
-	search: Map<string, string>,
+	search: QueryParams,
 ): Result<string, RoutingError> {
 	return tree.href(target.node, target.params.stringify(params), search);
 }
@@ -540,21 +540,21 @@ function decodeSearch(text: string): string {
 	return decodeQueryComponent(text.replaceAll("+", " "));
 }
 
-function parseSearch(query: string): Map<string, string> {
-	const search = new Map<string, string>();
+function parseSearch(query: string): QueryParams {
+	const search = new QueryParams();
 	for (const pair of query.split("&")) {
 		if (pair === "") { continue; }
 		const equalAt = pair.indexOf("=");
 		const name = decodeSearch(equalAt < 0 ? pair : pair.substring(0, equalAt));
 		const value = decodeSearch(equalAt < 0 ? "" : pair.substring(equalAt + 1, pair.length));
-		if (!search.has(name)) { search.set(name, value); }
+		search.append(name, value);
 	}
 	return search;
 }
 
 interface Address {
 	pathname: string;
-	search: Map<string, string>;
+	search: QueryParams;
 	hash: string;
 }
 
@@ -643,12 +643,8 @@ function buildPath(pattern: string, values: Map<string, string>): Result<string,
 	return Result.ok(built === "" ? "/" : built);
 }
 
-function searchText(search: Map<string, string>): string {
-	const pairs: string[] = [];
-	for (const [name, value] of search) {
-		pairs.push(encodeRouteComponent(name) + "=" + encodeRouteComponent(value));
-	}
-	return pairs.length === 0 ? "" : "?" + pairs.join("&");
+function searchText(search: QueryParams): string {
+	return search.size === 0 ? "" : "?" + search.toString();
 }
 
 function hasParams(pattern: string): boolean {
@@ -696,7 +692,7 @@ export function createRouteTree(entries: RouteEntry[], base: string = ""): Route
 		href: (
 			node: RouteNode,
 			values: Map<string, string>,
-			search: Map<string, string>,
+			search: QueryParams,
 		): Result<string, RoutingError> => {
 			for (const place of places) {
 				if (place.node === node) {

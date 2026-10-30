@@ -38,11 +38,11 @@ test "a Text draws a codepoint its font lacks from the system face the resolver 
 	setFaceResolver(null);
 	const bare = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), font.value);
 	render(element(<Text>{"⏵⏺"}</Text>), bare.host, bare.root);
-	assert !drawsFromFallback((bare.root as VoidNode).children[0], PLAY), "with no resolver the glyph stays in the primary face";
+	assert !drawsFromFallback(bare.tree.childrenOf(bare.root as VoidNode)[0], PLAY), "with no resolver the glyph stays in the primary face";
 	setFaceResolver(systemFace);
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), font.value);
 	render(element(<Text>{"⏵⏺"}</Text>), vh.host, vh.root);
-	const text = (vh.root as VoidNode).children[0];
+	const text = vh.tree.childrenOf(vh.root as VoidNode)[0];
 	assert drawsFromFallback(text, PLAY) && drawsFromFallback(text, RECORD), "both glyphs come from a system face";
 	setFaceResolver(null);
 }

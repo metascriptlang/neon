@@ -1,6 +1,6 @@
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
-import { createVoidHost, layoutPass, VoidNode } from "../../src/platform/void/host";
+import { createVoidHost, VoidNode } from "../../src/platform/void/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Style } from "../../src/render/style";
 import { I18nManager } from "../../src/api/i18nManager";
@@ -23,7 +23,7 @@ function firstCellX(box: Style, rootRtl: boolean): float32 {
 	I18nManager.forceRTL(false);
 	render(app, vh.host, vh.root);
 	vh.layout(200.0, 40.0);
-	return (vh.root as VoidNode).children[0].children[0].ref.local().x;
+	return vh.tree.childrenOf(vh.tree.childrenOf(vh.root as VoidNode)[0])[0].ref.local().x;
 }
 
 test "a row with direction rtl lays its first child at the right edge" {

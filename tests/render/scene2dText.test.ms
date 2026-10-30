@@ -17,7 +17,7 @@ import { labelTexts, labelLines, cursorShown, advanceBlink } from "../../../void
 function run(len: int32): TextRun {
 	return { len: len, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0),
 		background: rgba(0.0, 0.0, 0.0, 0.0), underline: rgba(0.0, 0.0, 0.0, 0.0),
-		wavy: false, strikethrough: rgba(0.0, 0.0, 0.0, 0.0) };
+		strikethrough: rgba(0.0, 0.0, 0.0, 0.0) };
 }
 
 test "Label owns run and shaping-break snapshots and binds line options reactively" {

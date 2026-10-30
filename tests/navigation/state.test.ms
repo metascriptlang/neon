@@ -11,6 +11,7 @@ import {
 	createNavigationContainerRef,
 	createStackNavigator,
 	useRoute,
+	QueryParams,
 } from "../../src/navigation/index";
 import { press, visibleText } from "./navHarness";
 
@@ -44,8 +45,8 @@ function Detail(props: ScreenProps<HomeParams>): NeonNode {
 	return <Text>{"detail " + (params() === null ? "-" : (params() as ItemParams).id.toString())}</Text>;
 }
 
-function encodeItem(params: ItemParams): Map<string, string> {
-	const values = new Map<string, string>();
+function encodeItem(params: ItemParams): QueryParams {
+	const values = new QueryParams();
 	values.set("id", params.id.toString());
 	return values;
 }
@@ -55,7 +56,7 @@ function Home(props: ScreenProps<TabParams>): NeonNode {
 		<HomeStack.Screen name="List" component={List} options={{ title: "Items" }} />
 		<HomeStack.Screen name="Detail" component={Detail}
 			params={HomeStack.params.of("Detail", {
-				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
+				parse: (values: QueryParams): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
 				stringify: encodeItem,
 			})} />
 	</HomeStack.Navigator>;
@@ -89,7 +90,7 @@ test "the root state nests each child navigator's state with stringified params"
 	const stack = home as NavigationState;
 	assert stack.index === 1 && stack.routes[1].name === "Detail", "stack";
 	const params = stack.routes[1].params;
-	assert params !== null && (params as Map<string, string>).get("id") === "3", "params";
+	assert params !== null && (params as QueryParams).get("id") === "3", "params";
 	assert stack.routes[0].params === null, "a route without params reports none";
 	assert state.routes[1].state === null, "an unvisited tab has no child state";
 	const last = seen[seen.length - 1];
@@ -113,7 +114,7 @@ test "a saved state mounts again as the same screens with their params" {
 }
 
 test "an initial stack state whose index is below its last route focuses the last route" {
-	const ids = new Map<string, string>();
+	const ids = new QueryParams();
 	ids.set("id", "4");
 	const stack: NavigationState = {
 		index: 0,

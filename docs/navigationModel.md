@@ -139,13 +139,10 @@ never knows a URL, a pattern or a component.
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
 A renderer takes a model and a `render(child)` function; input events call model
-operations: edge swipe and hardware back today. A desktop app wires back itself, as
-Decompose's Compose for Desktop recipe does (`docs/component/back-button.md:123-160`,
-`f48655a`): a focusable root `View` takes `onKeyUp` and calls `dispatchHardwareBackPress()` on
-`e.code === "Escape"`, and a focused `TextInput` that calls `e.stopPropagation()` on Escape keeps
-the screen, because key events bubble from the focused node. The framework maps no key by default;
-`examples/navigation/desktop.ms` is the recipe and `tests/platform/voidDesktopBack.test.ms` pins it.
-The mouse back button is not wired. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+operations: edge swipe and hardware back today. A desktop has no hardware back: the Void window host maps the mouse
+back button (Ion delivers it as button 4 on macOS and Windows) on release, Cmd+[ on macOS and Alt+Left on
+Windows and Linux, the inputs a browser maps to history back, to `dispatchHardwareBackPress()` by default; Escape and the
+forward inputs are not mapped (`docs/PLATFORMS.md` lists the hosts). It never imports routing. `navigatorMotion.ms` stays the transition engine.
 `renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
 time in single mode, main beside details or extra in dual, three columns in triple,
 with weights and placeholders for an empty panel. The app picks the mode from its
@@ -223,13 +220,17 @@ the ones below, which stay shown down to the first opaque child.
   A reload is told apart as TanStack does (`tempLocationKey`): each router draws a
   random document key and writes it into its entries, so an entry with another key
   was written before the page loaded, while back and forward in the same page restore.
-  A back from a reload that resolved from the address does not know the stack under it: the
-  entries before the reload carry no structure Neon trusts, so a back onto a
-  `resolveOnReload` entry resolves its address as a link does and pushes it over the
-  reloaded page (`[post 2]` then back gives `[post 2, post 1]` at `/feed/1`). TanStack has
-  no stack to rebuild (`router.ts:1519`, a location is rendered whole) and Expo
-  navigates to the entry's path (`browserHistory.ts` `navigateToBrowserPath`), so neither
-  settles whether such a back pops; this stays as is until the person decides.
+  A back from a reload that resolved from the address does not know the stack under it:
+  the entries before the reload carry no structure Neon trusts, and the same holds for any
+  entry without state. React Navigation 7 settles it (`@react-navigation/native@7.5.1`
+  `useLinking.tsx:453-497`): on a traversal onto an entry it has no record for, it computes
+  the state from the path and dispatches a navigate only going forward (`index >
+  previousIndex`, line 463), because an action on a back "will likely add items to
+  history, which would mess things up"; otherwise it resets with `'replace'`. Neon does
+  the same: a back onto such an entry replaces the top of the stack with what the address
+  resolves to, so `[post 2]` then back gives `[post 1]` at `/feed/1`, and a forward onto
+  one resolves its address as a link does and pushes it. An entry the page wrote itself,
+  also the reloaded one, restores its stored structure in both directions.
 - A stack retains every pushed page, so links that ping-pong grow it without bound
   (40 pushes keep 41 mounted). Expo Router and React Navigation do the same on the web:
   `NativeStackView.tsx:143` only sets `display: none` on a page that is not focused, and
@@ -319,7 +320,10 @@ server, in static output and in the browser. A route in a Stack may name
 `presentation: "transparentModal"` to show over the screen below it (Expo's
 `presentation`); anywhere else the declaration throws. `Router.response()` gives a server the
 first redirect's status and final location, or the route's status. The query of an address is decoded as
-`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`): a malformed escape stays literal and an
+`URLSearchParams` does (Solid `extractSearchParams`, `utils.ts:50`; `QueryParams` is the ordered multimap
+that `URLSearchParams` models, so `?tag=a&tag=b` keeps both values, `get` reads the first, `getAll` every one, and a bare
+`?flag` is present with `""`; path params stay a separate single-valued map, as Solid keeps `params` and `searchParams`
+apart): a malformed escape stays literal and an
 invalid byte becomes U+FFFD, while a malformed escape in the path is `InvalidAddress` and a 400 (Next
 `DecodeError`, `base-server.ts:1545`). A double slash inside a path matches no route (Solid `createMatcher`,
 `utils.ts:73-76`, #567). A relative `navigate` target resolves as Solid's `resolvePath` does (`utils.ts:22`,
@@ -493,7 +497,10 @@ A route's `component` is `(props: RouteSectionProps<Map<string, string>, unknown
 holds the `<Loading>` (the router adds none). Solid Router calls `component.preload` at
 `routing.ts:650-681` and `:690-704`, which Neon lacks until the `.preload()` card lands.
 `tests/render/lazyRoute.test.ms` pins it on the mock host and `tests/browser/lazy.test.ms`
-in Chrome: the module is not fetched until the first navigation to the route. Hydration
+in Chrome: the module is not fetched until the first navigation to the route. A navigation to a
+lazy route whose module has not loaded keeps the old page, with or without a `<Loading>` in the
+layout, until the new page can render, and a `<Loading>` around a layout's outlet renders on the
+server (`tests/navigation/routeLazyHold.test.ms`, `routeLazyHoldServer.test.ms`). Hydration
 claims the served node only when the module is already loaded
 (`tests/render/lazyHydrate.test.ms`); Solid hands the client a preloaded module per
 hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so a lazy
@@ -508,9 +515,13 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
 boundary (`$`, `/`, `?`, `#`), so `https://x.com` never matches `https://x.com.evil.com`, and a
 `*` label matches one or more host characters (`https://*.example.com`). In the query, `+` is a
 space and a malformed escape keeps its raw text; in a path param, a malformed escape rejects
-that route and the next candidate is tried. Two things are left for the person: a repeated query
-key is an array in React Navigation and `?flag` is `null`, while `NavTarget.values` is
-`Map<string, string>` and keeps the last value and `""`.
+that route and the next candidate is tried. A repeated query key is an array in React Navigation and `?flag` is `null`; the rule for
+Neon is the router's: one `QueryParams` per query, `?flag` is `""`. `NavTarget.values`,
+`NavigationRoute.params`, the `ScreenParams` codec input and output and the container history carry it too, so a
+deep link, `initialState` and the exported state keep every value; path params stay single-valued in the same
+object, and the first query occurrence of a name that a path param owns replaces the path value, as before.
+The address a history writes keeps every value in order, and an opened address that the router did not change is not
+rewritten (`?flag` stays `?flag`, though `QueryParams` writes `flag=` for a changed one).
 
 ## Base path
 
@@ -754,9 +765,10 @@ uses a shadow root.
   a `drawer` item when the status differs from `default`) as TabRouter and DrawerRouter
   state does; a `fullHistory` visit's params snapshot is not persisted. Not carried:
   options as `({ route, navigation }) => options` (parked on `~/metascript/.inbox/compiler/2026-10-08-jsx-inline-handler-local-owner.md`: a destructured arrow parameter is refused),
-  `navigation.dispatch` with `CommonActions`, `StackActions`, `TabActions` and
-  `DrawerActions` (their payload is an untyped `object`, and Neon types params by the
-  navigator's list), `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
+  action objects (`CommonActions`, `StackActions`, `TabActions`, `DrawerActions`): each one is a
+  typed method here (`navigate`, `push`, `pop`, `popTo`, `replace`, `reset`, `setParams`,
+  `jumpTo`, `openDrawer`), and the one place an app holds an action as a value, resuming a
+  removal it blocked, is `navigation.dispatch(e.data.action)` on the event's action; `useHeaderHeight` and `useBottomTabBarHeight` (the header and the tab
   bar are fixed-size, with no measured height or safe-area inset to report).
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.

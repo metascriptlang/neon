@@ -104,6 +104,7 @@ export {
 	RoutePlan,
 	RouteBinding,
 	bindRoute,
+	QueryParams,
 	encodeRouteComponent,
 	decodeRouteComponent,
 	RegionAddress,

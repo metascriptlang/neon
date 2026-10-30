@@ -13,14 +13,14 @@ import {
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
-import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, YGNode, PositionType, Direction, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, FontWeight, PositionType as StylePositionType } from "../../render/style";
+import { FlexStyle, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
+import { Style, FontWeight, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
@@ -29,7 +29,7 @@ import {
 	commitText, composeText, deleteBackward, deleteForward, moveCaret,
 } from "./editing";
 
-export { layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
+export { layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
 export { DrawKind } from "../../../../void/src/void2d/node";
 export { TextEditingValue, TextRange, editingValue, textRange, noRange } from "./editing";
 
@@ -46,12 +46,14 @@ struct Frame {
 	h: float32;
 }
 
+// No path leads from a VoidNode back to one (the tree is in VoidTree); the compiler finds a possible cycle only
+// through NodeRef's scene, whose textures hold a realloc closure that Neon never sets.
+@acyclic
 export class VoidNode {
 	ref: NodeRef;
 	raw: boolean;
 	tag: string = "";
-	parent: VoidNode | null = null;
-	children: VoidNode[] = [];
+	row: int32 = -1;
 	scroller: NodeRef | null = null;
 	disposed: boolean = false;
 	laid: Frame | null = null;
@@ -69,7 +71,6 @@ export class VoidNode {
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	cellWidths: uint8[] = [];
-	spans: TextSpan[] | null = null;
 	boxed: boolean = false;
 
 	constructor(ref: NodeRef, raw: boolean = false) {
@@ -78,33 +79,139 @@ export class VoidNode {
 	}
 }
 
+const NO_CHILDREN: VoidNode[] = [];
+
+// The host's node tree. A node holds no reference to another node or to a closure, so VoidNode stays out of the
+// cycle collector: its parent, its children and a Text's spans (whose handlers are closures) live here, in the row
+// the node enters on its first append, insert or spans. A node that never entered has no parent, no children and no
+// spans; a freed subtree leaves its rows, which later nodes reuse.
+export class VoidTree {
+	nodes: (VoidNode | null)[] = [];
+	ups: (VoidNode | null)[] = [];
+	downs: VoidNode[][] = [];
+	texts: (TextSpan[] | null)[] = [];
+	open: int32[] = [];
+
+	rowOf(n: VoidNode): int32 {
+		const at = n.row;
+		if (at < 0) { return -1; }
+		if (at >= this.nodes.length || this.nodes[at] !== n) { throw new Error("void host: a node's row belongs to another node"); }
+		return at;
+	}
+
+	enter(n: VoidNode): int32 {
+		const known = this.rowOf(n);
+		if (known >= 0) { return known; }
+		let at: int32;
+		if (this.open.length > 0) {
+			at = this.open[this.open.length - 1];
+			this.open.splice(this.open.length - 1, 1);
+			this.nodes[at] = n;
+			this.ups[at] = null;
+			this.downs[at] = [];
+			this.texts[at] = null;
+		} else {
+			at = this.nodes.length as int32;
+			this.nodes.push(n);
+			this.ups.push(null);
+			this.downs.push([]);
+			this.texts.push(null);
+		}
+		n.row = at;
+		return at;
+	}
+
+	parentOf(n: VoidNode): VoidNode | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.ups[at];
+	}
+
+	childrenOf(n: VoidNode): VoidNode[] {
+		const at = this.rowOf(n);
+		return at < 0 ? NO_CHILDREN : this.downs[at];
+	}
+
+	spansOf(n: VoidNode): TextSpan[] | null {
+		const at = this.rowOf(n);
+		return at < 0 ? null : this.texts[at];
+	}
+
+	setSpans(n: VoidNode, spans: TextSpan[]): void {
+		this.texts[this.enter(n)] = spans;
+	}
+
+	attach(c: VoidNode, p: VoidNode, at: int32): void {
+		const row = this.enter(c);
+		if (this.ups[row] !== null) { throw new Error("void host: attach a node that still has a parent"); }
+		const kids = this.downs[this.enter(p)];
+		if (at < 0) { kids.push(c); } else { kids.splice(at, 0, c); }
+		this.ups[row] = p;
+	}
+
+	detach(c: VoidNode): void {
+		const row = this.rowOf(c);
+		if (row < 0) { return; }
+		const up = this.ups[row];
+		if (up === null) { return; }
+		const kids = this.downs[this.rowOf(up as VoidNode)];
+		const at = kids.indexOf(c);
+		if (at < 0) { throw new Error("void host: a node is missing from its parent's children"); }
+		kids.splice(at, 1);
+		this.ups[row] = null;
+	}
+
+	drop(n: VoidNode): void {
+		const row = this.rowOf(n);
+		if (row < 0) { return; }
+		for (const c of this.downs[row]) { this.drop(c); }
+		this.nodes[row] = null;
+		this.ups[row] = null;
+		this.downs[row] = [];
+		this.texts[row] = null;
+		this.open.push(row);
+		n.row = -1;
+	}
+}
+
+// Yoga's indexed pass walks the tree through this handle, so a pass allocates nothing per node.
+export struct VoidLayout {
+	tree: VoidTree;
+	node: VoidNode;
+}
+
+export function layoutOf(tree: VoidTree, node: VoidNode): VoidLayout {
+	return { tree, node };
+}
+
 function childHolder(n: VoidNode): NodeRef {
 	const s = n.scroller;
 	return s !== null ? s as NodeRef : n.ref;
 }
 
-export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.children; }
-export function layoutGetStyle(this n: VoidNode): FlexStyle | null {
-	return n.raw ? null : n.flex;
+export function layoutChildCount(this l: VoidLayout): int32 { return l.tree.childrenOf(l.node).length as int32; }
+export function layoutChildAt(this l: VoidLayout, i: int32): VoidLayout { return { tree: l.tree, node: l.tree.childrenOf(l.node)[i] }; }
+export function layoutGetStyle(this l: VoidLayout): FlexStyle | null {
+	return l.node.raw ? null : l.node.flex;
 }
-export function layoutGetLastStyle(this n: VoidNode): FlexStyle | null { return n.lastFlex; }
-export function layoutSetLastStyle(this n: VoidNode, s: FlexStyle | null): void { n.lastFlex = s; }
-function freeNestedLayouts(n: VoidNode): void {
-	for (const c of n.children) {
-		freeNestedLayouts(c);
-		if (n.raw && c.yg !== null) { freeLayoutTree(c); }
+export function layoutGetLastStyle(this l: VoidLayout): FlexStyle | null { return l.node.lastFlex; }
+export function layoutSetLastStyle(this l: VoidLayout, s: FlexStyle | null): void { l.node.lastFlex = s; }
+function freeNestedLayouts(tree: VoidTree, n: VoidNode): void {
+	for (const c of tree.childrenOf(n)) {
+		freeNestedLayouts(tree, c);
+		if (n.raw && c.yg !== null) { freeLayoutTreeAt(layoutOf(tree, c)); }
 	}
 }
 
-export function freeVoidLayoutTree(n: VoidNode): void {
+export function freeVoidLayoutTree(tree: VoidTree, n: VoidNode): void {
 	// Yoga's recursive clear cannot retain pointers to independently owned nested islands.
-	freeNestedLayouts(n);
-	freeLayoutTree(n);
+	freeNestedLayouts(tree, n);
+	freeLayoutTreeAt(layoutOf(tree, n));
 }
 
-export function layoutGetYg(this n: VoidNode): Ptr<YGNode> | null { return n.yg; }
-export function layoutSetYg(this n: VoidNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
-export function layoutSetFrame(this n: VoidNode, x: float32, y: float32, w: float32, h: float32): void {
+export function layoutGetYg(this l: VoidLayout): Ptr<YGNode> | null { return l.node.yg; }
+export function layoutSetYg(this l: VoidLayout, yg: Ptr<YGNode> | null): void { l.node.yg = yg; }
+export function layoutSetFrame(this l: VoidLayout, x: float32, y: float32, w: float32, h: float32): void {
+	const n = l.node;
 	n.ref.setPosition(x, y).setSize(w, h);
 	const s = n.scroller;
 	if (s !== null) { (s as NodeRef).setSize(w, h); }
@@ -113,6 +220,7 @@ export function layoutSetFrame(this n: VoidNode, x: float32, y: float32, w: floa
 export interface VoidHost {
 	host: Host;
 	root: HostNode;
+	tree: VoidTree;
 	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
 	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => boolean;
@@ -127,7 +235,7 @@ export interface VoidHost {
 	commitText: (text: string) => void;
 	composeText: (text: string, cursor: int32) => void;
 	setWindowFocus: (focused: boolean) => void;
-	layout: (width: float32, height: float32) => void;
+	layout: (width: float32, height: float32, pointScale?: float32) => void;
 	focus: (node: VoidNode | null) => void;
 	focused: () => VoidNode | null;
 	imeRect: () => CaretRect | null;
@@ -264,16 +372,29 @@ function num(v: number | null): float32 | null {
 	return n as float32;
 }
 
-function dim(v: number | string | null, field: string): float32 | null {
+function dim(v: number | string | null): float32 | string | null {
 	if (v === null) { return null; }
-	if (typeof v === "string") { throw `void host: ${field} "${v as string}" is not supported, yoga takes points only`; }
-	const n = v as number;
-	return n as float32;
+	if (typeof v === "string") { return v as string; }
+	return (v as number) as float32;
 }
 
 function position(v: StylePositionType | null): PositionType | null {
-	if (v === null || v === "fixed") { return null; }
+	if (v === null || v === "fixed" || v === "sticky") { return null; }
 	return v;
+}
+
+function display(v: StyleDisplay | null): Display | null {
+	if (v === "flex") { return "flex"; }
+	if (v === "none") { return "none"; }
+	if (v === "contents") { return "contents"; }
+	return null;
+}
+
+function overflow(v: StyleOverflow | null): Overflow | null {
+	if (v === "visible") { return "visible"; }
+	if (v === "hidden" || v === "clip") { return "hidden"; }
+	if (v === "scroll") { return "scroll"; }
+	return null;
 }
 
 asFlexStyleBody(0);
@@ -331,11 +452,11 @@ function live(node: HostNode, op: string): VoidNode {
 	return n;
 }
 
-function within(node: VoidNode, top: VoidNode): boolean {
+function within(tree: VoidTree, node: VoidNode, top: VoidNode): boolean {
 	let cur: VoidNode | null = node;
 	while (cur !== null) {
 		if (cur === top) { return true; }
-		cur = (cur as VoidNode).parent;
+		cur = tree.parentOf(cur as VoidNode);
 	}
 	return false;
 }
@@ -352,14 +473,15 @@ function pointerMode(n: VoidNode): string {
 	return mode;
 }
 
-function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
+function deepestAt(tree: VoidTree, n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
 	const mode = pointerMode(n);
 	if (mode === "none") { return null; }
 	if (mode !== "box-only") {
-		for (let i = n.children.length - 1; i >= 0; i -= 1) {
-			const c = n.children[i];
+		const kids = tree.childrenOf(n);
+		for (let i = kids.length - 1; i >= 0; i -= 1) {
+			const c = kids[i];
 			if (c.disposed) { continue; }
-			const hit = deepestAt(c, x, y, accepts);
+			const hit = deepestAt(tree, c, x, y, accepts);
 			if (hit !== null) { return hit; }
 		}
 	}
@@ -368,9 +490,9 @@ function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) 
 	return n.ref.hitTest(vec2(x, y)) ? n : null;
 }
 
-function markDisposed(n: VoidNode): void {
+function markDisposed(tree: VoidTree, n: VoidNode): void {
 	n.disposed = true;
-	for (const c of n.children) { markDisposed(c); }
+	for (const c of tree.childrenOf(n)) { markDisposed(tree, c); }
 }
 
 function applyTextPaint(label: NodeRef, s: Style): void {
@@ -513,14 +635,23 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	const bg = own.backgroundColor !== null ? own.backgroundColor : base.backgroundColor;
 	const deco: Style = own.textDecorationLine !== null ? own : base;
 	const line = own.textDecorationStyle !== null ? own.textDecorationStyle : base.textDecorationStyle;
-	if (line !== null && line !== "solid" && line !== "wavy") {
-		throw new Error(`void host: textDecorationStyle "${line as string}" is not drawn on the Void host yet; solid and wavy are`);
-	}
 	const decoCss = own.textDecorationColor !== null ? own.textDecorationColor : base.textDecorationColor;
 	const decoColor = decoCss !== null ? colorOf(decoCss as string, "textDecorationColor") : color;
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
-		underline: lineColor(deco, "underline", decoColor), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", decoColor),
+		underline: lineColor(deco, "underline", decoColor), underlineStyle: underlineStyleOf(line),
+		strikethrough: lineColor(deco, "line-through", decoColor), overline: lineColor(deco, "overline", decoColor),
+	};
+}
+
+function underlineStyleOf(line: TextDecorationStyle | null): UnderlineStyle {
+	if (line === null) { return UnderlineStyle.Solid; }
+	return match (line as TextDecorationStyle) {
+		"solid" => UnderlineStyle.Solid,
+		"double" => UnderlineStyle.Double,
+		"dotted" => UnderlineStyle.Dotted,
+		"dashed" => UnderlineStyle.Dashed,
+		"wavy" => UnderlineStyle.Wavy,
 	};
 }
 
@@ -578,7 +709,9 @@ export function createVoidHostWith(
 	const clients: ClientEntry[] = [];
 	const fields: Field[] = [];
 	const scrollers: VoidNode[] = [];
+	const tree = new VoidTree();
 	const root = new VoidNode(scene.group());
+	tree.enter(root);
 	root.flex = {};
 	scene.add(root.ref);
 	let focusedNode: VoidNode | null = null;
@@ -602,7 +735,7 @@ export function createVoidHostWith(
 		}
 	};
 
-	const attached = (n: VoidNode): boolean => within(n, root);
+	const attached = (n: VoidNode): boolean => within(tree, n, root);
 
 	const askLayout = (): void => {
 		if (signaled || dirtyListener === null) { return; }
@@ -627,7 +760,7 @@ export function createVoidHostWith(
 		let cur = n;
 		while (cur !== null) {
 			path.push(cur as VoidNode);
-			cur = (cur as VoidNode).parent;
+			cur = tree.parentOf(cur as VoidNode);
 		}
 		return path;
 	};
@@ -793,7 +926,8 @@ export function createVoidHostWith(
 		}
 		root.paraStale = false;
 		const base: Style = root.style !== null ? root.style as Style : {};
-		const spans: TextSpan[] = root.spans !== null ? root.spans as TextSpan[] : [];
+		const held = tree.spansOf(root);
+		const spans: TextSpan[] = held !== null ? held as TextSpan[] : [];
 		let text = "";
 		let styled = false;
 		for (const s of spans) {
@@ -868,12 +1002,10 @@ export function createVoidHostWith(
 	};
 
 	const unlink = (c: VoidNode, into: VoidNode): void => {
-		const old = c.parent;
+		const old = tree.parentOf(c);
 		if (old === null) { return; }
-		const from = old as VoidNode;
-		const at = from.children.indexOf(c);
-		if (at >= 0) { from.children.splice(at, 1); }
-		if (from !== into) { freeVoidLayoutTree(c); }
+		tree.detach(c);
+		if (old !== into) { freeVoidLayoutTree(tree, c); }
 	};
 
 	const refuseIntoText = (p: VoidNode, op: string): void => {
@@ -881,11 +1013,11 @@ export function createVoidHostWith(
 	};
 
 	const refuseCycle = (p: VoidNode, c: VoidNode, op: string): void => {
-		if (within(p, c)) { throw new Error(`${op}: a node cannot be placed inside itself or its own descendant`); }
+		if (within(tree, p, c)) { throw new Error(`${op}: a node cannot be placed inside itself or its own descendant`); }
 	};
 
 	const release = (n: VoidNode): void => {
-		markDisposed(n);
+		markDisposed(tree, n);
 		for (let i = events.length - 1; i >= 0; i -= 1) {
 			if (events[i].node.disposed) { events.splice(i, 1); }
 		}
@@ -898,11 +1030,12 @@ export function createVoidHostWith(
 		for (let i = scrollers.length - 1; i >= 0; i -= 1) {
 			if (scrollers[i].disposed) { scrollers.splice(i, 1); }
 		}
+		tree.drop(n);
 	};
 
 	const free = (n: VoidNode): void => {
-		if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
-		freeVoidLayoutTree(n);
+		if (focusedNode !== null && within(tree, focusedNode as VoidNode, n)) { focus(null); }
+		freeVoidLayoutTree(tree, n);
 		if (n.ref.isLive()) { n.ref.dispose(); }
 		release(n);
 	};
@@ -911,7 +1044,7 @@ export function createVoidHostWith(
 		const n = live(node, "setSpans");
 		if (!n.isText) { throw new Error("void host: spans belong on a Text"); }
 		const was = wasDirty();
-		n.spans = spans;
+		tree.setSpans(n, spans);
 		refreshParagraph(n);
 		woke(was);
 		askLayout();
@@ -948,11 +1081,11 @@ export function createVoidHostWith(
 					if (getOwner() !== null) {
 						const text = n;
 						onCleanup((): void => {
-							const spans = text.spans;
+							const spans = tree.spansOf(text);
 							if (spans === null) { return; }
 							const retired: TextSpan[] = [];
-							for (const span of spans) { retired.push({ text: span.text, style: span.style }); }
-							text.spans = retired;
+							for (const span of spans as TextSpan[]) { retired.push({ text: span.text, style: span.style }); }
+							tree.setSpans(text, retired);
 						});
 					}
 				}
@@ -969,7 +1102,7 @@ export function createVoidHostWith(
 		},
 		setText: (node: HostNode, s: string): void => {
 			const n = live(node, "setText");
-			const up = n.parent;
+			const up = tree.parentOf(n);
 			if (scene2dScope && s !== "" && !n.raw && up !== null &&
 				(up === root || up.raw)) {
 				throw new Error("Scene2D: raw text requires Label");
@@ -1035,7 +1168,7 @@ export function createVoidHostWith(
 			n.style = style;
 			applyPaint(n, style);
 			if (n.isText) { refreshParagraph(n); }
-			else { for (const c of n.children) { inheritTextPaint(c, n); } }
+			else { for (const c of tree.childrenOf(n)) { inheritTextPaint(c, n); } }
 			const f = fieldOf(n);
 			if (f !== null) {
 				applyTextPaint((f as Field).label, style);
@@ -1069,8 +1202,7 @@ export function createVoidHostWith(
 			validatePlacement(p, c);
 			const was = wasDirty();
 			unlink(c, p);
-			c.parent = p;
-			p.children.push(c);
+			tree.attach(c, p, -1);
 			childHolder(p).addChild(c.ref);
 			inheritTextPaint(c, p);
 			if (waiting.length > 0) { refreshWaiting(); }
@@ -1081,35 +1213,34 @@ export function createVoidHostWith(
 			const n = live(node, "insertBefore");
 			refuseCycle(p, n, "insertBefore");
 			refuseIntoText(p, "insertBefore");
-			if (focusedNode !== null && within(focusedNode as VoidNode, n) && !attached(p)) { focus(null); }
+			if (focusedNode !== null && within(tree, focusedNode as VoidNode, n) && !attached(p)) { focus(null); }
 			validatePlacement(p, n);
 			const was = wasDirty();
 			if (before === null) {
 				unlink(n, p);
 				childHolder(p).addChild(n.ref);
-				n.parent = p;
-				p.children.push(n);
+				tree.attach(n, p, -1);
 				inheritTextPaint(n, p);
 				if (waiting.length > 0) { refreshWaiting(); }
 				woke(was);
 				return;
 			}
 			const r = live(before, "insertBefore");
-			let idx = p.children.indexOf(r);
+			const kids = tree.childrenOf(p);
+			let idx = kids.indexOf(r);
 			if (idx < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
 			let at = childHolder(p).getChildIndex(r.ref);
-			const cur = p.children.indexOf(n);
+			const cur = kids.indexOf(n);
 			const voidCur = childHolder(p).getChildIndex(n.ref);
 			if (cur >= 0) {
-				p.children.splice(cur, 1);
+				tree.detach(n);
 				if (cur < idx) { idx = idx - 1; }
 				if (voidCur >= 0 && voidCur < at) { at = at - 1; }
 			} else {
 				unlink(n, p);
 			}
 			childHolder(p).addChildAt(n.ref, at);
-			n.parent = p;
-			p.children.splice(idx, 0, n);
+			tree.attach(n, p, idx as int32);
 			inheritTextPaint(n, p);
 			if (waiting.length > 0) { refreshWaiting(); }
 			woke(was);
@@ -1117,39 +1248,38 @@ export function createVoidHostWith(
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = live(parent, "removeChild");
 			const n = live(node, "removeChild");
-			const idx = p.children.indexOf(n);
-			if (idx < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
+			if (tree.parentOf(n) !== p) { throw new Error("removeChild: the node is not a child of the parent"); }
 			const was = wasDirty();
-			p.children.splice(idx, 1);
-			n.parent = null;
+			tree.detach(n);
 			free(n);
 			woke(was);
 		},
 		parentOf: (node: HostNode): HostNode | null => {
-			const p = live(node, "parentOf").parent;
+			const p = tree.parentOf(live(node, "parentOf"));
 			if (p === null) { return null; }
 			return p as HostNode;
 		},
 		release: (node: HostNode): void => {
 			const n = live(node, "release");
-			if (n.parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			if (tree.parentOf(n) !== null) { throw new Error("release: the node still has a parent; remove it first"); }
 			const was = wasDirty();
 			free(n);
 			woke(was);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = live(node, "nextSibling");
-			const p = n.parent;
+			const p = tree.parentOf(n);
 			if (p === null) { return null; }
-			const sibs = (p as VoidNode).children;
+			const sibs = tree.childrenOf(p as VoidNode);
 			const idx = sibs.indexOf(n);
 			if (idx < 0 || idx + 1 >= sibs.length) { return null; }
 			return sibs[idx + 1];
 		},
 		firstChild: (node: HostNode): HostNode | null => {
 			const n = live(node, "firstChild");
-			if (n.children.length === 0) { return null; }
-			return n.children[0];
+			const kids = tree.childrenOf(n);
+			if (kids.length === 0) { return null; }
+			return kids[0];
 		},
 		cloneNode: null,
 		voidArea: null,
@@ -1186,7 +1316,8 @@ export function createVoidHostWith(
 
 	// The span of a Text under a point: the grapheme the point falls in, none past a line's end.
 	const spanAt = (n: VoidNode, x: float32, y: float32): TextSpan | null => {
-		if (!n.isText || n.para === null || n.spans === null) { return null; }
+		const held = tree.spansOf(n);
+		if (!n.isText || n.para === null || held === null) { return null; }
 		const label = n.para as NodeRef;
 		const at = label.globalToLocal(vec2(x, y));
 		let index = label.indexAt(at.x, at.y);
@@ -1194,7 +1325,7 @@ export function createVoidHostWith(
 		const line = label.lineBoxAt(index);
 		if (at.x < line.x || at.x > line.x + line.width) { return null; }
 		let start: int32 = 0;
-		for (const s of n.spans as TextSpan[]) {
+		for (const s of held as TextSpan[]) {
 			const end = start + (s.text.length as int32);
 			if (index >= start && index < end) { return s; }
 			start = end;
@@ -1225,7 +1356,7 @@ export function createVoidHostWith(
 	// From onPointerDown until that button's release, the pressed node keeps the pointer, as RN's touch target does.
 	const pointerTarget = (x: float32, y: float32): VoidNode | null => {
 		if (captured !== null && !(captured as VoidNode).disposed && attached(captured as VoidNode)) { return captured; }
-		return deepestAt(root, x, y, null);
+		return deepestAt(tree, root, x, y, null);
 	};
 
 	// Bubbles from the target; locationX/Y are relative to it, even outside its box.
@@ -1340,7 +1471,7 @@ export function createVoidHostWith(
 		pressSpan = null;
 		if (node === null || under === null) { return; }
 		const n = node as VoidNode;
-		if (n.disposed || !attached(n) || !within(under as VoidNode, n)) { return; }
+		if (n.disposed || !attached(n) || !within(tree, under as VoidNode, n)) { return; }
 		const ev = neonEvent("press");
 		ev.pointerOrigin = true;
 		ev.x = x;
@@ -1360,8 +1491,8 @@ export function createVoidHostWith(
 			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Button, ev);
 			return true;
 		}
-		const under = deepestAt(root, x, y, null);
-		const focusTarget = deepestAt(root, x, y, focusable);
+		const under = deepestAt(tree, root, x, y, null);
+		const focusTarget = deepestAt(tree, root, x, y, focusable);
 		const span = under === null ? null : spanAt(under as VoidNode, x, y);
 		const spanPress = span !== null && (span as TextSpan).onPress !== null;
 		const takes = captured !== null || focusTarget !== null || spanPress || handles(under, PRESS_HANDLERS);
@@ -1401,7 +1532,7 @@ export function createVoidHostWith(
 			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Motion, ev);
 			return true;
 		}
-		const under = deepestAt(root, x, y, null);
+		const under = deepestAt(tree, root, x, y, null);
 		const takes = captured !== null || handles(under, HOVER_HANDLERS);
 		if (takes) { leaveLayer(x, y); }
 		else {
@@ -1430,7 +1561,7 @@ export function createVoidHostWith(
 			tellLayer(layer as AreaLayer, x, y, AreaPointerKind.Button, ev);
 			return true;
 		}
-		const under = deepestAt(root, x, y, null);
+		const under = deepestAt(tree, root, x, y, null);
 		hoverTo(under, x, y);
 		const target = pointerTarget(x, y);
 		const holder = captured;
@@ -1488,7 +1619,7 @@ export function createVoidHostWith(
 			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Wheel, ev);
 			return true;
 		}
-		const under = deepestAt(root, x, y, null);
+		const under = deepestAt(tree, root, x, y, null);
 		if (!handles(under, WHEEL_HANDLERS) && topLayerTaking(x, y, AreaPointerKind.Wheel, ev) !== null) { return true; }
 		pointerAt("onWheel", under, x, y, ev);
 		return handles(under, WHEEL_HANDLERS);
@@ -1561,7 +1692,7 @@ export function createVoidHostWith(
 			return;
 		}
 		let x: float32 = 0.0;
-		for (const c of n.children) {
+		for (const c of tree.childrenOf(n)) {
 			if (!c.raw && c.ref.kind() === DrawKind.Label && c.flex === null) {
 				c.ref.setX(x);
 				x = x + c.ref.xForIndex(c.ref.labelText().length as int32);
@@ -1581,7 +1712,7 @@ export function createVoidHostWith(
 			const own = frameOf(n);
 			let right = own.w;
 			let bottom = own.h;
-			for (const c of n.children) {
+			for (const c of tree.childrenOf(n)) {
 				const f = frameOf(c);
 				if (f.x + f.w > right) { right = f.x + f.w; }
 				if (f.y + f.h > bottom) { bottom = f.y + f.h; }
@@ -1590,11 +1721,12 @@ export function createVoidHostWith(
 		}
 	};
 
+	let laidScale: float32 = 1.0;
 	const layoutIslands = (n: VoidNode): void => {
-		for (const c of n.children) {
+		for (const c of tree.childrenOf(n)) {
 			if (n.raw && !c.raw && c.flex !== null) {
 				const box = n.ref.content();
-				layoutPass(c, box.w, box.h, rootDirection);
+				layoutPassAt(layoutOf(tree, c), box.w, box.h, rootDirection, laidScale);
 			}
 			layoutIslands(c);
 		}
@@ -1625,7 +1757,7 @@ export function createVoidHostWith(
 		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			if (scene.isClosed()) { return; }
-			layoutPass(root, w, h, rootDirection);
+			layoutPassAt(layoutOf(tree, root), w, h, rootDirection, laidScale);
 			layoutIslands(root);
 			flowText(root);
 			fitScrollers();
@@ -1639,9 +1771,10 @@ export function createVoidHostWith(
 	let laidWidth: float32 = -1.0;
 	let laidHeight: float32 = -1.0;
 	let laying = false;
-	const layout = (w: float32, h: float32): void => {
+	const layout = (w: float32, h: float32, pointScale?: float32): void => {
 		laidWidth = w;
 		laidHeight = h;
+		laidScale = pointScale ?? 1.0;
 		laying = true;
 		try { layoutPasses(w, h); } finally { laying = false; }
 	};
@@ -1682,7 +1815,7 @@ export function createVoidHostWith(
 			const f = frameOf(up as VoidNode);
 			x += f.x;
 			y += f.y;
-			up = (up as VoidNode).parent;
+			up = tree.parentOf(up as VoidNode);
 		}
 		const own = frameOf(n);
 		return Result.ok({ x: x as number, y: y as number, width: own.w as number, height: own.h as number });
@@ -1706,7 +1839,8 @@ export function createVoidHostWith(
 	const ownText = (n: VoidNode): string => {
 		if (n.isText) {
 			let out = "";
-			if (n.spans !== null) { for (const span of n.spans as TextSpan[]) { out += span.text; } }
+			const held = tree.spansOf(n);
+			if (held !== null) { for (const span of held as TextSpan[]) { out += span.text; } }
 			return out;
 		}
 		return n.ref.kind() === DrawKind.Label ? n.ref.labelText() : "";
@@ -1730,7 +1864,7 @@ export function createVoidHostWith(
 		const at = n.ref.localToGlobal(vec2(0.0, 0.0));
 		const f = frameOf(n);
 		const children: DevNode[] = [];
-		for (const c of n.children) {
+		for (const c of tree.childrenOf(n)) {
 			if (!c.disposed) { children.push(snapshot(c)); }
 		}
 		return {
@@ -1773,7 +1907,7 @@ export function createVoidHostWith(
 	};
 
 	return {
-		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, pointerLeave, textInput, keyDown, keyUp,
+		host, root, tree, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, pointerLeave, textInput, keyDown, keyUp,
 		setLayers: (paintOrder: () => AreaLayer[]): void => { layerOrder = paintOrder; },
 		commitText: commit, composeText: compose, setWindowFocus, layout,
 		focus: (n: VoidNode | null): void => { focus(n); },

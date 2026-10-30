@@ -1,3 +1,4 @@
+import { QueryParams } from "../../src/navigation/routing";
 import { flush } from "../../src/core/runtime";
 import { Accessor, Signal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
@@ -191,11 +192,11 @@ function start(url: string, side: SideRegion | null): Fixture {
 			},
 			parametersMapper: (
 				child: NavigationChild<Screen, ScreenInstance>,
-			): Map<string, string> | null => {
+			): QueryParams | null => {
 				const query = controls.query.get();
 				if (query === "") { return null; }
-				const parameters = new Map<string, string>();
-				parameters.set("q", query);
+				const parameters = new QueryParams();
+				for (const value of query.split(",")) { parameters.append("q", value); }
 				return parameters;
 			},
 			onBeforeNavigate: (): boolean => {
@@ -247,6 +248,21 @@ function innerNames(stack: ChildStack<Screen, ScreenInstance>): string {
 	const inner = items[items.length - 1].instance.inner;
 	if (inner === null) { return "-"; }
 	return (inner as ChildStack<string, string>).configurations().join(",");
+}
+
+test "a published query keeps every value of a repeated key in order" {
+	const fixture = start("/home", null);
+	fixture.stack.push(screen("detail"));
+	take(fixture.log);
+	fixture.controls.query.set("a,b");
+	flush();
+	const replaced = take(fixture.log);
+	assert replaced === "replace /detail?q=a&q=b;", replaced;
+	assert fixture.memory.read().url === "/detail?q=a&q=b", fixture.memory.read().url;
+	fixture.controls.query.set("b,a");
+	flush();
+	assert fixture.memory.read().url === "/detail?q=b&q=a", fixture.memory.read().url;
+	assert finish(fixture) === 0;
 }
 
 test "a pushed item whose child holds history pushes one entry per child entry" {

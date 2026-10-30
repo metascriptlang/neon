@@ -19,6 +19,7 @@ import {
 	createNavigationContainerRef,
 	createRoutingSession,
 	createStackNavigator,
+	QueryParams,
 } from "../../src/navigation/index";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
@@ -128,12 +129,12 @@ function Product(props: ScreenProps<StoreParams>): NeonNode {
 	return <Text>{"Product " + (params() === null ? "-" : (params() as ItemParams).id)}</Text>;
 }
 
-function parseItem(values: Map<string, string>): ItemParams {
+function parseItem(values: QueryParams): ItemParams {
 	return { id: values.get("id") ?? "" };
 }
 
-function stringifyItem(params: ItemParams): Map<string, string> {
-	const values = new Map<string, string>();
+function stringifyItem(params: ItemParams): QueryParams {
+	const values = new QueryParams();
 	values.set("id", params.id);
 	return values;
 }

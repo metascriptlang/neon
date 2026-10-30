@@ -383,7 +383,7 @@ function renderNode(
 					if (children !== null) { children(host, wrapped, null); }
 				} catch (error) {
 					if (!wrapped.disposed) {
-						const up = wrapped.parent;
+						const up = vh.tree.parentOf(wrapped);
 						if (up !== null) { host.removeChild(up, wrapped); }
 						else {
 							if (node.isLive()) { node.dispose(); }
@@ -421,7 +421,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {
 					if (scene.closed) { return; }
 					const dpi = area.handle.scale();
-					vh.layout((pixelWidth as float32) / dpi, (pixelHeight as float32) / dpi);
+					vh.layout((pixelWidth as float32) / dpi, (pixelHeight as float32) / dpi, dpi);
 				},
 				prepare: (pixelWidth: int32, pixelHeight: int32): void => {
 					if (scene.closed) { return; }
@@ -481,10 +481,11 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				if (backdrop !== null) { backdrop.scene.close(); }
 				invalidate();
 				const root = vh.root as VoidNode;
-				for (let i = root.children.length - 1; i >= 0; i -= 1) {
-					vh.host.removeChild(root, root.children[i]);
+				const kids = vh.tree.childrenOf(root);
+				for (let i = kids.length - 1; i >= 0; i -= 1) {
+					vh.host.removeChild(root, kids[i]);
 				}
-				freeVoidLayoutTree(root);
+				freeVoidLayoutTree(vh.tree, root);
 				root.disposed = true;
 				scene.close();
 			});

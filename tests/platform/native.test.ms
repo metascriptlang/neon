@@ -64,6 +64,12 @@ test "native styles project onto FlexStyle without filling absent fields" {
 	assert scroll.flexDirection === "column" && scroll.overflow === "scroll", "a scroll container lays out its content unshrunk";
 }
 
+test "native percent and auto dimensions reach Yoga as written" {
+	const projected = nativeFlexStyle({ width: "100%", maxHeight: "40%", marginLeft: "auto", flexBasis: 10 } as Style, NativeElementKind.View);
+	assert projected.width === "100%" && projected.maxHeight === "40%", "percent dimensions reach Yoga";
+	assert projected.marginLeft === "auto" && projected.flexBasis === 10, "auto and points reach Yoga";
+}
+
 test "native event capture retains actual legs and scalar samples across removal and replacement" {
 	for (const throwing of [false, true]) {
 		const registry = createNativeEventRegistry();

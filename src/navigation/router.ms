@@ -13,8 +13,8 @@ import {
 	RoutingError,
 	RoutingParticipant,
 	RoutingRegistry,
+	QueryParams,
 	decodeRouteComponent,
-	encodeRouteComponent,
 } from "./routing";
 import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingHistory";
 import { Scroller } from "./scroll";
@@ -303,7 +303,7 @@ interface LeaveListener {
 export interface ToOptions<P, D> {
 	to: RouteDef<P, D>;
 	params: P;
-	search?: Map<string, string> | null;
+	search?: QueryParams | null;
 	replace?: boolean | null;
 }
 
@@ -371,7 +371,7 @@ interface Stop {
 	path: string;
 	part: string;
 	params: Map<string, string>;
-	search: Map<string, string>;
+	search: QueryParams;
 	hash: string;
 	intent: PreloadIntent;
 }
@@ -430,7 +430,7 @@ function stopOf(
 	routes: Routes,
 	chain: MatchedRoute[],
 	depth: int32,
-	search: Map<string, string>,
+	search: QueryParams,
 	hash: string,
 	seed: string,
 	visit: int32,
@@ -455,7 +455,8 @@ function stopOf(
 function defaultStop(routes: Routes, id: int32, parent: string, intent: PreloadIntent): Stop {
 	const view = routes.views[id];
 	const none = new Map<string, string>();
-	const built = routes.tree.href(view.node, none, none);
+	const noSearch = new QueryParams();
+	const built = routes.tree.href(view.node, none, noSearch);
 	if (!built.ok) {
 		throw new Error("routing: " + view.label + " takes params, so it cannot open by default");
 	}
@@ -467,7 +468,7 @@ function defaultStop(routes: Routes, id: int32, parent: string, intent: PreloadI
 		path: address,
 		part: partOf(address, parent),
 		params: none,
-		search: none,
+		search: noSearch,
 		hash: "",
 		intent,
 	};
@@ -490,8 +491,9 @@ function kindOf(routes: Routes, owner: int32): LevelKind {
 function defaultChild(routes: Routes, owner: int32): int32 {
 	if (owner >= 0 && routes.views[owner].initial >= 0) { return routes.views[owner].initial; }
 	const none = new Map<string, string>();
+	const noSearch = new QueryParams();
 	for (const id of childrenOf(routes, owner)) {
-		if (routes.tree.href(routes.views[id].node, none, none).ok) { return id; }
+		if (routes.tree.href(routes.views[id].node, none, noSearch).ok) { return id; }
 	}
 	const label = owner < 0 ? "the route tree" : routes.views[owner].label;
 	throw new Error("routing: " + label + " has no route that opens without params");
@@ -516,8 +518,7 @@ function stopSerializer(routes: Routes): WebKeySerializer<Stop> {
 			const chain = found.value.chain;
 			for (let depth: int32 = 0; depth < chain.length; depth += 1) {
 				if (chain[depth].node !== node) { continue; }
-				const none = new Map<string, string>();
-				return Result.ok(stopOf(routes, chain, depth, none, "", key.seed, key.visit, "native"));
+				return Result.ok(stopOf(routes, chain, depth, new QueryParams(), "", key.seed, key.visit, "native"));
 			}
 			return Result.err(WebNavigationError.UndecodableKey);
 		},
@@ -602,7 +603,7 @@ function createLevel(
 		};
 		const web = childPagesWebNavigation<Stop, Place>(pages, serializer, {
 			pathMapper: (page: NavigationChild<Stop, Place>): string | null => page.configuration().part,
-			parametersMapper: (page: NavigationChild<Stop, Place>): Map<string, string> | null => {
+			parametersMapper: (page: NavigationChild<Stop, Place>): QueryParams | null => {
 				const stop = page.configuration();
 				return leafView(routes, stop) ? stop.search : null;
 			},
@@ -644,7 +645,7 @@ function createLevel(
 	);
 	const web = childStackWebNavigation<Stop, Place>(stack, serializer, {
 		pathMapper: (child: NavigationChild<Stop, Place>): string | null => child.configuration().part,
-		parametersMapper: (child: NavigationChild<Stop, Place>): Map<string, string> | null => {
+		parametersMapper: (child: NavigationChild<Stop, Place>): QueryParams | null => {
 			const stop = child.configuration();
 			return leafView(routes, stop) ? stop.search : null;
 		},
@@ -687,12 +688,8 @@ function freeVisit(stops: Stop[], route: int32, path: string, skip: int32): int3
 	return visit;
 }
 
-function sameSearch(a: Map<string, string>, b: Map<string, string>): boolean {
-	if (a.size !== b.size) { return false; }
-	for (const name of a) {
-		if (!b.has(name) || b.get(name) !== a.get(name)) { return false; }
-	}
-	return true;
+function sameSearch(a: QueryParams, b: QueryParams): boolean {
+	return a.toString() === b.toString();
 }
 
 enum Walked {
@@ -703,7 +700,7 @@ enum Walked {
 
 interface Target {
 	chain: MatchedRoute[];
-	search: Map<string, string>;
+	search: QueryParams;
 	hash: string;
 	seed: string;
 	replace: boolean;
@@ -920,6 +917,11 @@ export class Router {
 		return delta === 0 || this.confirmLeave(delta, null);
 	}
 
+	traversingBack(): boolean {
+		const session = this.session;
+		return session !== null && (session as RoutingSession).traversal() < 0;
+	}
+
 	get base(): string {
 		return this.routes.tree.base;
 	}
@@ -984,7 +986,7 @@ export class Router {
 	}
 
 	navigate<P, D>(options: ToOptions<P, D>): boolean {
-		const built = hrefOf<P, D>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
+		const built = hrefOf<P, D>(this.routes.tree, options.to, options.params, options.search ?? new QueryParams());
 		if (!built.ok) { throw new Error("routing: navigate({ to }) cannot build an address for " + (options.to.node.pattern ?? "a pathless route") + ": " + built.error.toString()); }
 		return this.land(built.value, { replace: options.replace ?? false });
 	}
@@ -1215,7 +1217,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 		(address: string | null): Result<RoutePlan, RoutingError> => {
 			if (address === null) { return Result.err(RoutingError.NoMatch); }
 			const resolved = try follow(routes.tree, address as string);
-			return Result.ok({ commit: (): void => { router.apply(resolved, false); } });
+			return Result.ok({ commit: (): void => { router.apply(resolved, router.traversingBack()); } });
 		},
 	);
 	const registry = new RoutingRegistry("main");
@@ -1263,11 +1265,7 @@ interface Steer {
 
 function addressOf(stop: Stop): string {
 	let address = stop.path;
-	let first = true;
-	for (const name of stop.search) {
-		address += (first ? "?" : "&") + encodeRouteComponent(name) + "=" + encodeRouteComponent(stop.search.get(name) ?? "");
-		first = false;
-	}
+	if (stop.search.size > 0) { address += "?" + stop.search.toString(); }
 	return stop.hash === "" ? address : address + "#" + stop.hash;
 }
 

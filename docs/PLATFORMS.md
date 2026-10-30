@@ -43,6 +43,18 @@ Two hosts render a narrower set:
   any other tag as an empty group, without an error.
 - **The terminal host** (`src/platform/terminal/host.ms`) maps View, Text, TextInput and Pressable to boxes. It drops layout styles except `display: "none"`, which hides the view and its descendants as in React Native.
 
+## Desktop back input
+
+A desktop has no hardware back key, so a host maps the inputs a browser maps to history back onto `dispatchHardwareBackPress()`, the call Android's back makes: `BackHandler` listeners run in reverse order and a navigator pops when no listener consumes it. No UI framework in `~/projects` defines this; the convention is the browser's (Chrome and Safari map the mouse back button, Cmd+[ on macOS and Alt+Left elsewhere to history back) and Apple's HIG and the Windows guidelines leave those chords to the app. Escape is not back, and forward (button 5, Cmd+], Alt+Right) is not mapped because `BackHandler` has no forward.
+
+| host | mouse back button (button 4, on release) | Cmd+[ (macOS) / Alt+Left (Windows, Linux) |
+|---|---|---|
+| full-window `<Void>` over Ion (`src/platform/ion/window.ms`) | yes | yes, unless a focused node's `onKeyDown` stops propagation |
+| full-window `<Void>` over sokol (`src/platform/sokol/input.ms`) | no: sokol delivers only buttons 1 to 3 | yes, unless a focused node's `onKeyDown` stops propagation |
+| macOS native views (`src/platform/macos/ion.ms`) | yes, not run on a device | no: Ion's key events reach only its own content view, not a native view holding focus |
+| Windows native views (`src/platform/windows/ion.ms`) | yes, not run on a device | Alt+Left, not run on a device; it is taken before the focused native view |
+| terminal, browser | no: the browser's own history back applies | no |
+
 ## Device APIs on an Ion desktop host
 
 macOS and Windows install each of these when the app imports it (`src/platform/ion/`); any other device API throws `<API> is not available on this host`.

@@ -5,6 +5,7 @@ import {
 	AreaLayer,
 	AreaKeyAction,
 	AreaKeyEvent,
+	AreaKeyMod,
 	AreaPointerEvent,
 	AreaPointerKind,
 	createAreaHub,
@@ -12,6 +13,7 @@ import {
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
+import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishWindow } from "../../render/environment";
 import { FontId } from "../../../../void/src/void2d/font";
 import { Scene2D, NodeRef } from "../../../../void/src/void2d/node";
@@ -251,6 +253,15 @@ export function areaKeyEvent(e: AreaKeyEvent, code: string, composing: boolean):
 	return ev;
 }
 
+function chordBack(e: AreaKeyEvent, code: string): boolean {
+	const mods = e.mods;
+	if (mods.has(AreaKeyMod.Ctrl) || mods.has(AreaKeyMod.Shift)) { return false; }
+	when (macos) {
+		return code === "BracketLeft" && mods.has(AreaKeyMod.Super) && !mods.has(AreaKeyMod.Alt);
+	}
+	return code === "ArrowLeft" && mods.has(AreaKeyMod.Alt) && !mods.has(AreaKeyMod.Super);
+}
+
 export function deliverKey(a: WindowArea, e: AreaKeyEvent, code: string): void {
 	a.hub.key(e);
 	const ev = areaKeyEvent(e, code, a.composing);
@@ -259,11 +270,19 @@ export function deliverKey(a: WindowArea, e: AreaKeyEvent, code: string): void {
 		return;
 	}
 	a.vh.keyDown(ev);
+	if (e.action === AreaKeyAction.Press && !ev.propagationStopped && chordBack(e, code)) {
+		dispatchHardwareBackPress();
+		return;
+	}
 	if (printable(e.text) && !ev.ctrlKey && !ev.altKey && !ev.metaKey) { a.vh.commitText(e.text); }
 }
 
 export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 	a.hub.pointer(e);
+	if (e.kind === AreaPointerKind.Button && e.button === DESKTOP_BACK_BUTTON) {
+		if (!e.pressed) { dispatchHardwareBackPress(); }
+		return;
+	}
 	const x = (e.pixelX as float32) / a.scale;
 	const y = (e.pixelY as float32) / a.scale;
 	const mods = (e.mods as uint16) as number;
@@ -379,7 +398,7 @@ export function layersInPaintOrder(vh: VoidHost, layers: AreaLayer[], painted: N
 }
 
 export function drawArea(a: WindowArea): boolean {
-	a.vh.layout(a.logicalWidth(), a.logicalHeight());
+	a.vh.layout(a.logicalWidth(), a.logicalHeight(), a.scale);
 	const scene = a.vh.scene;
 	if (scene.isClosed()) { return false; }
 	const layers = a.hub.layers();

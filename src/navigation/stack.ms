@@ -7,6 +7,7 @@ import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
 import { NavigationChild } from "./children";
 import { createChildStack } from "./childStack";
+import { QueryParams } from "./queryParams";
 import {
 	WebNavigationNode,
 	WebNavigationOwner,
@@ -257,7 +258,7 @@ function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | nul
 				},
 				parametersMapper: (
 					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
-				): Map<string, string> | null => map.parameters(child.instance),
+				): QueryParams | null => map.parameters(child.instance),
 				onBeforeNavigate: (): boolean => {
 					const list = core.snapshot();
 					const top = list[list.length - 1];

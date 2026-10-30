@@ -9,6 +9,7 @@ import {
 	RoutePlan,
 	decodeRoutingLocation,
 	encodeRoutingLocation,
+	equivalentAddress,
 } from "../../src/navigation/routing";
 
 struct ItemParams {
@@ -185,4 +186,11 @@ test "inactive route bindings have no address" {
 	const address = binding.address();
 	assert address.ok;
 	if (address.ok) { assert address.value === null; }
+}
+
+test "a bare query key and the same key with an empty value are one address" {
+	assert equivalentAddress("/docs/a?tag=a&tag=b&flag", "/docs/a?tag=a&tag=b&flag=");
+	assert !equivalentAddress("/docs/a?tag=a&flag", "/docs/a?flag&tag=a");
+	assert !equivalentAddress("/docs/a?q=1", "/docs/b?q=1");
+	assert equivalentAddress("/docs/a", "/docs/a");
 }

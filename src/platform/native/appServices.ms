@@ -163,7 +163,9 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	installAppServices(app);
 	installCaptureServices(capture);
 	publishPlatform(call("platform", ""), call("isPad", "") === "1");
-	publishScale(parseFloat(call("pixelRatio", "")), parseFloat(call("fontScale", "")));
+	const ratio = call("pixelRatio", "");
+	const font = call("fontScale", "");
+	if (ratio !== "" && font !== "") { publishScale(parseFloat(ratio), parseFloat(font)); }
 	const screen = call("screen", "").split(FIELD);
 	if (screen.length === 2) { publishScreen(parseFloat(screen[0]), parseFloat(screen[1])); }
 	const state = call("appState", "");

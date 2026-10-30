@@ -55,11 +55,11 @@ function tapAt(vh: VoidHost, x: float32, y: float32): void {
 }
 
 function top(vh: VoidHost): VoidNode {
-	return (vh.root as VoidNode).children[0];
+	return vh.tree.childrenOf(vh.root as VoidNode)[0];
 }
 
 function field(vh: VoidHost): VoidNode {
-	return top(vh).children[0];
+	return vh.tree.childrenOf(top(vh))[0];
 }
 
 function labelOf(n: VoidNode): NodeRef {
@@ -205,7 +205,7 @@ test "a layout change an onLayout handler makes is laid out in the frame that ra
 			<View style={{ width: w(), height: 10 }} />
 		</View>
 	), vh.host, vh.root);
-	const second = (): number => top(vh).children[1].ref.content().w as number;
+	const second = (): number => vh.tree.childrenOf(top(vh))[1].ref.content().w as number;
 	vh.layout(400.0, 300.0);
 	assert second() === 200.0, "the first frame lays out the handler's width: w=" + second().toString();
 	settle(vh);
@@ -225,9 +225,9 @@ test "a node an onLayout handler mounts is laid out before the frame is drawn" {
 	vh.layout(400.0, 300.0);
 	settle(vh);
 	vh.layout(500.0, 300.0);
-	const kids = top(vh).children.length;
+	const kids = vh.tree.childrenOf(top(vh)).length;
 	assert kids === 2, "the handler mounted the box before Show's marker: " + kids.toString();
-	const box = top(vh).children[0].ref;
+	const box = vh.tree.childrenOf(top(vh))[0].ref;
 	assert box.local().x === 50.0 && box.content().w === 100.0, `the box is laid out: x=${box.local().x} w=${box.content().w}`;
 }
 
@@ -304,8 +304,8 @@ test "every label the host makes draws in the host's font" {
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), second);
 	render(element(<View><Text>hi</Text><TextInput /></View>), vh.host, vh.root);
 	const view = top(vh);
-	assert paragraph(view.children[0]).textStyle().font === second, "text label font";
-	assert labelOf(view.children[1]).textStyle().font === second, "text field label font";
+	assert paragraph(vh.tree.childrenOf(view)[0]).textStyle().font === second, "text label font";
+	assert labelOf(vh.tree.childrenOf(view)[1]).textStyle().font === second, "text field label font";
 }
 
 test "a Text's strings draw in order as one paragraph label, and a string change rewrites it" {
@@ -313,10 +313,10 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 	const [n, setN] = createSignal(7);
 	render(element(<View style={{ width: 200, height: 20 }}><Text>Count: {n().toString()}</Text></View>), vh.host, vh.root);
 	vh.layout(200.0, 20.0);
-	const text = top(vh).children[0];
+	const text = vh.tree.childrenOf(top(vh))[0];
 	assert paragraph(text).text() === "Count: 7", "one label holds both strings: \"" + paragraph(text).text() + "\"";
 	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
-	assert text.children.length === 0, "the strings are spans, not host nodes";
+	assert vh.tree.childrenOf(text).length === 0, "the strings are spans, not host nodes";
 	setN(8);
 	flush();
 	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
@@ -336,7 +336,7 @@ test "a Text's color and fontSize reach its paragraph, and follow a style change
 	const [red, setRed] = createSignal(true);
 	const [n, setN] = createSignal(7);
 	render(element(<View><Text style={{ color: red() ? "#ff0000" : "#00ff00", fontSize: 20 }}>Count: {n().toString()}</Text></View>), vh.host, vh.root);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	assert label.paint().color.r === 1.0 && label.paint().color.g === 0.0, "the paragraph is red";
 	assert label.textStyle().size === 20.0, "the paragraph is 20, got " + label.textStyle().size.toString();
 	setRed(false);
@@ -348,7 +348,7 @@ test "a nested Text is a run of the outer Text's paragraph, which wraps at the T
 	const vh = host();
 	render(element(<View style={{ width: 120 }}><Text>Hello there <Text style={{ color: "#ff0000" }}>big red words</Text> and a long tail that wraps</Text></View>), vh.host, vh.root);
 	vh.layout(120.0, 300.0);
-	const text = top(vh).children[0];
+	const text = vh.tree.childrenOf(top(vh))[0];
 	const label = paragraph(text);
 	assert label.text() === "Hello there big red words and a long tail that wraps", "one paragraph: \"" + label.text() + "\"";
 	assert text.ref.numChildren() === 1, "no scene node for the nested Text, got " + text.ref.numChildren().toString();
@@ -366,7 +366,7 @@ test "a nested Text's colour and content changes reach its run, and the runs go 
 	const [word, setWord] = createSignal("red");
 	const [shown, setShown] = createSignal(true);
 	render(element(<View style={{ width: 300 }}><Text>a <Show when={shown()}><Text style={{ color: hot() ? "#ff0000" : "#0000ff", textDecorationLine: "underline" }}>{word()}</Text></Show> b</Text></View>), vh.host, vh.root);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	assert label.text() === "a red b", "start: \"" + label.text() + "\"";
 	assert runsOf(vh, label)[1].underline.r === 1.0, "the underline takes the run colour";
 	setHot(false);
@@ -386,7 +386,7 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	const [cell, setCell] = createSignal(10);
 	render(element(<View style={{ width: 300 }}><Text cellWidth={cell()}>ab<Text style={{ color: "#ff0000" }}>cd</Text></Text></View>), vh.host, vh.root);
 	vh.layout(300.0, 100.0);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	label.textWidth();
 	assert label.xForIndex(1) === 10.0 && label.xForIndex(3) === 30.0, "cells of 10: " + label.xForIndex(1).toString() + ", " + label.xForIndex(3).toString();
 	setCell(7);
@@ -399,7 +399,7 @@ test "a cellWidth Text narrower than its text stays one line" {
 	const vh = host();
 	render(element(<View style={{ width: 100 }}><Text cellWidth={10}>abcdefghijklmnopqrst</Text></View>), vh.host, vh.root);
 	vh.layout(100.0, 100.0);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	label.textWidth();
 	assert label.xForIndex(15) === 150.0, "grapheme 15 stays on the first line: x=" + label.xForIndex(15).toString();
 }
@@ -409,7 +409,7 @@ test "cellWidths puts a wide grapheme on two cells of the grid, and follows a ch
 	const [widths, setWidths] = createSignal<uint8[]>([2, 0, 0, 2, 0, 0, 1]);
 	render(element(<View style={{ width: 300 }}><Text cellWidth={16} cellWidths={widths()}>{"\u{4F60}\u{597D}a"}</Text></View>), vh.host, vh.root);
 	vh.layout(300.0, 100.0);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	label.textWidth();
 	const wide = labelTexts[vh.scene.payloads[label.id.index]].layout.glyphs;
 	assert (wide.length as int32) === 3 && wide[0].x === 0.0 && wide[1].x === 32.0 && wide[2].x === 64.0, "cells 0, 2 and 4: " + wide[1].x.toString() + ", " + wide[2].x.toString();
@@ -435,10 +435,10 @@ test "spans draw as one paragraph label on the Void host, with no node per span"
 	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };
 	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "error", style: red }, { text: ": not found" }]);
 	render(element(<View style={{ width: 300 }}><Text spans={spans()} /></View>), vh.host, vh.root);
-	const text = top(vh).children[0];
+	const text = vh.tree.childrenOf(top(vh))[0];
 	const label = paragraph(text);
 	assert label.text() === "error: not found", "one paragraph: \"" + label.text() + "\"";
-	assert text.children.length === 0 && text.ref.numChildren() === 1, "no host node per span";
+	assert vh.tree.childrenOf(text).length === 0 && text.ref.numChildren() === 1, "no host node per span";
 	const runs = runsOf(vh, label);
 	assert runs.length === 2 && runs[0].len === 5 && runs[1].len === 11, "a run per span";
 	assert runs[0].color.r === 1.0 && runs[0].color.g === 0.0 && runs[0].underline.r === 1.0 && runs[1].color.g === 1.0, "only the first span is red and underlined";
@@ -456,7 +456,7 @@ test "a press over a nested Text's run fires that run's onPress, and the plain t
 	let outer = 0;
 	render(element(<View style={{ width: 400 }}><Text style={{ height: 30 }} onPress={(): void => { outer += 1; }}>plain <Text onPress={(): void => { link += 1; }}>link</Text> tail</Text></View>), vh.host, vh.root);
 	vh.layout(400.0, 100.0);
-	const label = paragraph(top(vh).children[0]);
+	const label = paragraph(vh.tree.childrenOf(top(vh))[0]);
 	label.textWidth();
 	const at = (index: int32): Vec2 => label.localToGlobal(vec2(label.xForIndex(index) + 1.0, label.lineBoxAt(index).top + 2.0));
 	const inLink = at(7);
@@ -539,10 +539,10 @@ test "a focused View hears committed and composing text, and a TextInput keeps i
 	vh.textInput("你");
 	vh.commitText("typed");
 	assert log === "pre:ni@2 text:你 outer:你 ", "a typed key's text is not a second text event: " + log;
-	vh.focus(top(vh).children[1]);
+	vh.focus(vh.tree.childrenOf(top(vh))[1]);
 	vh.textInput("é");
 	assert log === "pre:ni@2 text:你 outer:你 ", "the TextInput took the text, nothing bubbled: " + log;
-	assert labelOf(top(vh).children[1]).text() === "é", "the field shows the commit";
+	assert labelOf(vh.tree.childrenOf(top(vh))[1]).text() === "é", "the field shows the commit";
 }
 
 function seen(who: string, sink: string[]): (e: NeonEvent) => void {
@@ -627,11 +627,11 @@ test "pressing a component with a pointer, wheel or text handler, or focusable, 
 	vh.layout(400.0, 50.0);
 	const row = top(vh);
 	tapAt(vh, 10.0, 10.0);
-	assert vh.focused() === row.children[0], "onPointerDown makes it focusable";
+	assert vh.focused() === vh.tree.childrenOf(row)[0], "onPointerDown makes it focusable";
 	tapAt(vh, 110.0, 10.0);
-	assert vh.focused() === row.children[1], "onWheel makes it focusable";
+	assert vh.focused() === vh.tree.childrenOf(row)[1], "onWheel makes it focusable";
 	tapAt(vh, 210.0, 10.0);
-	assert vh.focused() === row.children[2], "the focusable prop makes it focusable";
+	assert vh.focused() === vh.tree.childrenOf(row)[2], "the focusable prop makes it focusable";
 	tapAt(vh, 310.0, 10.0);
 	assert pressed === 1, "onPress fired once";
 	assert vh.focused() === null, "a pressable with no key handler takes no focus";
@@ -672,13 +672,13 @@ function lineRow(item: Accessor<Line>): NeonNode {
 	return element(<Text>{item().text}</Text>);
 }
 
-function shapeAll(n: VoidNode): void {
+function shapeAll(vh: VoidHost, n: VoidNode): void {
 	if (n.para !== null) {
 		(n.para as NodeRef).textWidth();
 		return;
 	}
 	if (n.ref.kind() === DrawKind.Label) { n.ref.textWidth(); }
-	for (const c of n.children) { shapeAll(c); }
+	for (const c of vh.tree.childrenOf(n)) { shapeAll(vh, c); }
 }
 
 // Labels whose text or style changed since the last paint, or whose shaped layout is out of date.
@@ -692,7 +692,7 @@ function textTouched(vh: VoidHost, n: VoidNode): number {
 		const row = n.ref.id.index;
 		if (labelTexts[vh.scene.payloads[row]].stale || vh.scene.changed[row].has(Changed.Text)) { count = 1; }
 	}
-	for (const c of n.children) { count = count + textTouched(vh, c); }
+	for (const c of vh.tree.childrenOf(n)) { count = count + textTouched(vh, c); }
 	return count;
 }
 
@@ -703,10 +703,10 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	const rows = createList<Line>(items);
 	render(element(<View style={{ width: 300, height: 1200 }}>{ForList<Line>({ each: rows, children: lineRow })}</View>), vh.host, vh.root);
 	vh.layout(300.0, 1200.0);
-	shapeAll(vh.root as VoidNode);
+	shapeAll(vh, vh.root as VoidNode);
 	settle(vh);
 	const root = vh.root as VoidNode;
-	const before = top(vh).children.slice(0);
+	const before = vh.tree.childrenOf(top(vh)).slice(0);
 	assert before.length === 61 && textTouched(vh, root) === 0, "60 rows and the region anchor, all shaped and painted: " + textTouched(vh, root).toString();
 	rows.remove(0);
 	flush();
@@ -714,7 +714,7 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	flush();
 	assert textTouched(vh, root) === 1, "after the ops only the pushed row's label is new: " + textTouched(vh, root).toString();
 	vh.layout(300.0, 1200.0);
-	const after = top(vh).children;
+	const after = vh.tree.childrenOf(top(vh));
 	assert after.length === 61 && after[60] === before[60], "still 60 rows before the same anchor";
 	for (let i = 0; i < 59; i += 1) {
 		assert after[i] === before[i + 1], "row " + (i + 1).toString() + " kept its node";
@@ -860,7 +860,7 @@ test "a style change that only moves layout asks the window for a frame" {
 	flush();
 	assert woke === before + 1, "a height-only change woke the host: " + (woke - before).toString();
 	vh.layout(400.0, 300.0);
-	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
+	assert vh.tree.childrenOf(top(vh))[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + vh.tree.childrenOf(top(vh))[1].ref.local().y.toString();
 }
 
 test "a View's handle focuses it on the Void host and blur clears it" {

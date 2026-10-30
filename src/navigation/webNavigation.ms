@@ -3,6 +3,7 @@ import { NavigationChild } from "./children";
 import { ChildStack } from "./childStack";
 import { ChildPages, Pages } from "./childPages";
 import { ChildPanels } from "./childPanels";
+import { QueryParams } from "./queryParams";
 
 export enum WebNavigationError {
 	UndecodableKey,
@@ -20,7 +21,7 @@ export interface WebNavigationOwner {
 export interface WebHistoryItem<C> {
 	key: C;
 	path: string;
-	parameters: Map<string, string>;
+	parameters: QueryParams;
 	child: WebNavigationOwner | null;
 }
 
@@ -69,14 +70,14 @@ export function webNavigationNode<C>(navigation: WebNavigation<C>): WebNavigatio
 export interface StackWebNavigationOptions<C, T> {
 	enableHistory?: boolean | null;
 	pathMapper?: ((child: NavigationChild<C, T>) => string | null) | null;
-	parametersMapper?: ((child: NavigationChild<C, T>) => Map<string, string> | null) | null;
+	parametersMapper?: ((child: NavigationChild<C, T>) => QueryParams | null) | null;
 	onBeforeNavigate?: (() => boolean) | null;
 	childSelector?: ((child: NavigationChild<C, T>) => WebNavigationOwner | null) | null;
 }
 
 export interface PagesWebNavigationOptions<C, T> {
 	pathMapper?: ((page: NavigationChild<C, T>) => string | null) | null;
-	parametersMapper?: ((page: NavigationChild<C, T>) => Map<string, string> | null) | null;
+	parametersMapper?: ((page: NavigationChild<C, T>) => QueryParams | null) | null;
 	onBeforeNavigate?: (() => boolean) | null;
 	childSelector?: ((child: NavigationChild<C, T>) => WebNavigationOwner | null) | null;
 	visited?: ((pages: ChildPages<C, T>) => int32[]) | null;
@@ -91,7 +92,7 @@ export interface PanelsHistoryKey<MC, DC, EC> {
 export interface PanelsWebNavigationOptions<MC, MT, DC, DT, EC, ET> {
 	pathMapper?: ((panels: ChildPanels<MC, MT, DC, DT, EC, ET>) => string | null) | null;
 	parametersMapper?: (
-		(panels: ChildPanels<MC, MT, DC, DT, EC, ET>) => Map<string, string> | null
+		(panels: ChildPanels<MC, MT, DC, DT, EC, ET>) => QueryParams | null
 	) | null;
 	onBeforeNavigate?: (() => boolean) | null;
 	childSelector?: (
@@ -119,15 +120,15 @@ function allow(): boolean {
 function historyItem<C>(
 	key: C,
 	path: string | null,
-	parameters: Map<string, string> | null,
+	parameters: QueryParams | null,
 	child: WebNavigationOwner | null,
 ): WebHistoryItem<C> {
 	return {
 		key,
 		path: path === null ? "" : path as string,
 		parameters: parameters === null
-			? new Map<string, string>()
-			: parameters as Map<string, string>,
+			? new QueryParams()
+			: parameters as QueryParams,
 		child,
 	};
 }

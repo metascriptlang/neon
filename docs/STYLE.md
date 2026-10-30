@@ -115,6 +115,9 @@ sidebar: { width: "100%", when: { [screen.wide]: { width: 280 }, [screen.xl]: { 
   layer has no class, so on the web it resolves inline against the window: server markup carries
   the published width's result, not a media query, and hydrate corrects it at the real width. A
   page that must not shift uses the sheet entry directly, whose class rule holds the `@media`.
+- **a shared base is a spread.** Entries that differ only in a block share their base fields as
+  `{ ...FRAME, when: { … } }` with `const FRAME: Style = { … }`; the macro reads the const into
+  the entry, so each class rule holds the base too. A spread it cannot read is an error.
 - **cost where unused.** A block is a `StyleBlock` (the table's fields plus `fromWidth`, a field
   `Style` lacks, so `Style` stays acyclic). Resolving, layering and the window binding live in
   `src/render/breakpoints.ms`, which installs them into `style.ms` and `bind.ms` when imported, the
@@ -202,6 +205,15 @@ Core defines `Style`. Each host declares the projection **in its own module**:
   color  → Node2D.color      (no flex at all)
   bg     → rect fill
 ```
+
+**Which host carries which field.** `styleTable` in `src/macros/style/fields.ms` is the support
+matrix: one row per field, one column per host. A host column reading `ignore` means that host
+accepts the field and drops it, so the same `Style`
+builds everywhere and only the browser paints it. As of 2026-10-27 the yoga hosts (native, Void)
+lay out none of the start/end edges, `inset`, the per-side border widths, and lay out the web-only
+`position` (`fixed`, `sticky`), `overflow` (`auto`; `clip` lays out as `hidden`) and `display` (`block`, `inline`, `inline-block`, `inline-flex`)
+values as unset; the browser maps React Native's `*Horizontal`, `*Vertical`, `*Start`, `*End` and
+`start`/`end` to the logical CSS properties (`cssProperty` in the same file).
 
 Why this rather than adding `applyStyle(node, Style)` to the `Host` interface: the interface version
 forces **every** host to implement it and forces core to anticipate the projection. The protocol

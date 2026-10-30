@@ -2,7 +2,7 @@ import { Signal } from "../core/signal";
 import { Dispose } from "../core/types";
 import { getOwner } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
-import { RoutingError, RoutingRegistry, RoutingSnapshot } from "./routing";
+import { RoutingError, RoutingRegistry, RoutingSnapshot, equivalentAddress } from "./routing";
 
 export struct RoutingHistoryEntry {
 	url: string;
@@ -156,7 +156,8 @@ export class RoutingSession {
 
 	sync(replace: boolean): Result<void, RoutingError> {
 		this.checkWritable();
-		const url = try this.registry.address();
+		const address = try this.registry.address();
+		const url = replace && equivalentAddress(address, this.previous.url) ? this.previous.url : address;
 		const entry: RoutingHistoryEntry = {
 			url,
 			state: JSON.stringify(this.registry.capture()),

@@ -1,6 +1,6 @@
 import { NeonEvent, eventType, neonEvent } from "../../render/event";
-import { Style, PositionType as StylePositionType } from "../../render/style";
-import { FlexStyle, PositionType } from "../../../../yoga/src/index";
+import { Style, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { FlexStyle, PositionType, Display, Overflow } from "../../../../yoga/src/index";
 import { asFlexStyleBody } from "../../macros/style/fields";
 
 export enum NativeElementKind {
@@ -48,15 +48,29 @@ function num(v: number | null): float32 | null {
 	return (v as number) as float32;
 }
 
-function dim(v: number | string | null, field: string): float32 | null {
+function dim(v: number | string | null): float32 | string | null {
 	if (v === null) { return null; }
-	if (typeof v === "string") { throw `native host: ${field} "${v as string}" is not supported, yoga takes points only`; }
+	if (typeof v === "string") { return v as string; }
 	return (v as number) as float32;
 }
 
 function position(v: StylePositionType | null): PositionType | null {
-	if (v === null || v === "fixed") { return null; }
+	if (v === null || v === "fixed" || v === "sticky") { return null; }
 	return v;
+}
+
+function display(v: StyleDisplay | null): Display | null {
+	if (v === "flex") { return "flex"; }
+	if (v === "none") { return "none"; }
+	if (v === "contents") { return "contents"; }
+	return null;
+}
+
+function overflow(v: StyleOverflow | null): Overflow | null {
+	if (v === "visible") { return "visible"; }
+	if (v === "hidden" || v === "clip") { return "hidden"; }
+	if (v === "scroll") { return "scroll"; }
+	return null;
 }
 
 asFlexStyleBody(0);
@@ -414,6 +428,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			13 => "progress",
 			14 => "end",
 			15 => "accessibilityaction",
+			16 => "keypress",
 			30 => "cameraready",
 			31 => "mounterror",
 			32 => "picture",
@@ -426,7 +441,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			if (eventType(route.name) !== type) { continue; }
 			const event = neonEvent(type);
 			event.timeStamp = timeStamp;
-			event.value = value;
+			if (type === "keypress") { event.key = value; } else { event.value = value; }
 			event.width = width;
 			event.height = height;
 			fireRoute(route, event);

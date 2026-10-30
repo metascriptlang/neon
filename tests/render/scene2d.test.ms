@@ -4,7 +4,7 @@ import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import {
-	HostNode, MockNode, mockNode, mockHost, render, mockToString,
+	Host, HostNode, MockNode, mockNode, mockHost, render, mockToString,
 } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
 import { VoidNode } from "../../src/platform/void/host";
@@ -887,14 +887,17 @@ test "unmapped nested Void cannot bypass the Scene2D host boundary" {
 test "View and Text under Scene2D share its native scene without leaking into HUD" {
 	const scenes: VoidScene2D[] = [];
 	const ui: VoidNode[] = [];
+	const hosts: Host[] = [];
+	const capture: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => { hosts.push(host); };
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
 		<View ref={(handle: ViewHandle): void => { ui.push(handle.node as VoidNode); }}>
+			{capture}
 			<Text ref={(handle: ElementHandle): void => { ui.push(handle.node as VoidNode); }}>UI</Text>
 		</View>
 	</Scene2D></Void>), mockHost(), root);
-	assert ui.length === 2 && ui[0].parent === ui[1];
+	assert ui.length === 2 && (hosts[0].parentOf(ui[0]) as VoidNode | null) === ui[1];
 	assert ui[0].ref.scene === scenes[0] && ui[1].ref.scene === scenes[0];
 	const outer = root.children[0];
 	assert root.children.length === 1 && outer.tag === "void" && outer.children.length === 1, "Void is the only host element";

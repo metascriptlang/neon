@@ -20,6 +20,7 @@ import {
 	useIsFocused,
 	useNavigation,
 	useRoute,
+	QueryParams,
 } from "../../src/navigation/index";
 import { press, visibleText, findLabel } from "./navHarness";
 
@@ -95,7 +96,7 @@ function Home(props: ScreenProps<TabParams>): NeonNode {
 		<HomeStack.Screen name="List" component={List} options={{ title: "Items" }} />
 		<HomeStack.Screen name="Detail" component={Detail}
 			params={HomeStack.params.of("Detail", {
-				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
+				parse: (values: QueryParams): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
 			})} />
 	</HomeStack.Navigator>;
 }

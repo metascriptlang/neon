@@ -104,8 +104,8 @@ test "the window opens its one Void on the Void host, with the Void's style on t
 	assert p.areas.length === 1, "one area opened";
 	const area = p.areas[0];
 	const root = area.vh.root as VoidNode;
-	assert root.children.length === 1, "the View is the area root's child";
-	assert root.children[0].ref.kind() === DrawKind.Group, "the View is a Void group";
+	assert area.vh.tree.childrenOf(root).length === 1, "the View is the area root's child";
+	assert area.vh.tree.childrenOf(root)[0].ref.kind() === DrawKind.Group, "the View is a Void group";
 	assert area.vh.scene.clear == (parseColor("#102030") as Color), "the background clears the scene";
 	assert area.hub.handle.pixelWidth() === (640 as int32), "the handle starts at the window's pixel width";
 	assert p.log.indexOf("frame") > p.log.indexOf("opened"), "the style asked for a frame after the area opened: " + p.log.join(",");
@@ -172,7 +172,7 @@ test "a refresh boundary at the window: its empty anchor is accepted, and a remo
 	const summary = refreshModule(file);
 	assert summary.remounted === 1, "the window-level component remounted";
 	assert p.areas.length === 2 && p.log.filter((l: string): boolean => l === "released").length === 1, "the old area released, a new one opened: " + p.log.join(",");
-	assert (p.areas[1].vh.root as VoidNode).children.length === 1, "the new area holds the new Text";
+	assert p.areas[1].vh.tree.childrenOf(p.areas[1].vh.root as VoidNode).length === 1, "the new area holds the new Text";
 	assert thrown(windowOnly(element(<>{"hi"}<Void /></>))).indexOf("text \"hi\" cannot be a child of the window") >= 0, "text with characters is still refused";
 }
 
@@ -301,6 +301,26 @@ test "a sibling onLayout after the release does not run, and the frame stays und
 	const mark = p.log.length;
 	assert !drawArea(p.areas[0]), "a released area reports the frame undrawn";
 	assert p.log.slice(mark).join(",") === "first,released", p.log.join(",");
+}
+
+test "a frame lays out on the window's pixel grid, so 17.5 point rows stay 35 device pixels apart at 2x" {
+	const p = probe();
+	const tops: number[] = [];
+	let dispose: (() => void) | null = null;
+	dispose = render(element(
+		<Void>
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => { tops.push(e.y); }} />
+			<View style={{ height: 17.5 }} onLayout={(e: NeonEvent): void => {
+				tops.push(e.y);
+				if (dispose !== null) { (dispose as () => void)(); }
+			}} />
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	deliverResize(p.areas[0], 640 as int32, 360 as int32, 2.0);
+	assert !drawArea(p.areas[0]), "the last onLayout released the area";
+	assert tops.join(",") === "0,17.5,35,52.5", tops.join(",");
 }
 
 test "the control channel drives a window: tree shows what is laid out, press and type take the real input path" {
