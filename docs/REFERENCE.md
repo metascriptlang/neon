@@ -302,3 +302,33 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Don't:** dispose a pending hydrate and expect the page to come alive later; call `hydrate` again for that.
 - **Pin:** `tests/render/lazyHydrate.test.ms` ("a hydrate disposed before its lazy module loads never claims the page", "… leaves a later mount into the same container alone", "… fails to load renders nothing"), C and JS, debug and `--release`; on C each goes red when the dispose does nothing before the load.
 - **Checked:** 2026-10-25, read and measured on C and JS; approved by the person ("nếu vẫn muốn làm thì ghi vào REFERENCE").
+
+### RD-15 · `<Detailed>` picks its level by projected screen size, not camera distance
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **R3F:** drei `Detailed` takes `distances` and one child per level (`~/projects/drei` at `bf6f4ad`, `src/core/Detailed.tsx:9`, `:19`) and calls three's `LOD.update(camera)` each frame (`:21`), which picks by world distance divided by `camera.zoom` (`~/projects/three.js` at `9b4a2ac`, `src/objects/LOD.js:250-259`).
+- **MS:** `Detailed` in `src/components/scene3d/detailed.ms` takes `radius`, descending `thresholds` and an optional `cullingRatio`/`forcedLevel`, and shows the child Void's `MeshLod.select` names from the projected size (`void/src/void3d/meshLod.ms`, after Heaps' mesh LOD). Neon gathers radius, world scale, camera and projection; the selection math is Void's.
+- **Why:** the name and the one-child-per-level shape are drei's, so an R3F author finds the component; the criterion is Void's, because Void's renderer already selects mesh LOD by projected size and a second, distance-based rule in Neon would pick differently from Void for the same scene and field of view. A projected-size threshold also stays right when the field of view or the viewport changes, which a distance does not.
+- **Don't:** pass drei's `distances`; the prop does not exist and the checker refuses it.
+- **Pin:** `tests/render/scene3dDetailed.test.ms` ("Detailed selects its level by Void MeshLod projected size, like Heaps Mesh LOD", "Detailed world scale grows the projected size and forcedLevel overrides the selection")
+- **Checked:** 2026-11-01, read; the person approved the name and the criterion on 2026-11-01.
+
+### RD-16 · Scene3D has `<Label3D>`, a drawn text label, and no `<Text3D>`
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **R3F:** drei `Text3D` extrudes a typeface into a `TextGeometry` mesh (`~/projects/drei` at `bf6f4ad`, `src/core/Text3D.tsx:5`, `:32`).
+- **MS:** `Label3D` in `src/components/scene3d/label3d.ms` draws a void2d label onto a quad through Void's `WorldLabel` (`void/src/void3d/worldLabel.ms`), redraws it only when text, size or style change, and turns it to the active camera when `billboard`. Void has no extruded text geometry, so nothing in Scene3D answers drei's `Text3D`.
+- **Why:** giving the label drei's name would promise extruded geometry it does not have, and `Text3D` reads next to React Native's `Text` as the same component in 3D. A label is what the component is.
+- **Don't:** expect depth, bevels or a typeface file; the label is flat and uses the Void area's font.
+- **Pin:** `tests/render/scene3dLabel.test.ms` (refusals), `tests/device/label3d.ms`, `tests/device/label3dFont.ms`
+- **Checked:** 2026-11-01, read; the person approved the name on 2026-11-01.
+
+### RD-17 · `<RenderTexture>` renders Neon views into a texture, not a 3D scene
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **R3F:** drei `RenderTexture` renders its children, a separate 3D scene with its own camera, into an FBO through `createPortal` (`~/projects/drei` at `bf6f4ad`, `src/core/RenderTexture.tsx:51`, `:83`).
+- **MS:** `RenderTexture` in `src/components/scene3d/renderTexture.ms` lays out and draws its children, ordinary Neon views, as a void2d scene into a target texture of `width` × `height`, and hands the texture and its material to `ref` for a `Mesh` to show.
+- **Why:** the case Neon needs is a 2D interface on a 3D surface (a screen, a panel, a sign), which Neon's own views already describe; a second 3D scene inside a texture has no consumer yet. The name stays drei's because the role is the same: children become a texture a mesh shows.
+- **Don't:** put Scene3D components inside it and expect a nested 3D render.
+- **Pin:** `tests/render/scene3dRenderTexture.test.ms` (refusals), `tests/device/renderTexture.ms`, `tests/device/renderTextureChildren.ms`
+- **Checked:** 2026-11-01, read; the person approved keeping it on 2026-11-01.
