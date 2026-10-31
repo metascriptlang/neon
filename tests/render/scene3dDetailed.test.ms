@@ -8,7 +8,7 @@ import { useContext } from "../../src/render/context";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Group, Camera3D, Lod } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Group, Camera3D, Detailed } from "../../src/components/scene3d";
 import { SceneState, sceneScope, runBeforeRefresh } from "../../src/components/scene3d/core";
 import { NodeId3D, setVisible } from "../../../void/src/void3d/scene";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
@@ -28,7 +28,7 @@ function shownLevels(handle: Scene3DHandle, levels: NodeId3D[]): string {
 	return out;
 }
 
-test "Lod selects its level by Void MeshLod projected size, like Heaps Mesh LOD" {
+test "Detailed selects its level by Void MeshLod projected size, like Heaps Mesh LOD" {
 	const refs: Scene3DHandle[] = [];
 	const states: SceneState[] = [];
 	const levels: NodeId3D[] = [];
@@ -37,11 +37,11 @@ test "Lod selects its level by Void MeshLod projected size, like Heaps Mesh LOD"
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 			{Capture(states)}
 			<Camera3D active={true} position={eye()} />
-			<Lod radius={1.0} thresholds={[0.5, 0.2]} cullingRatio={0.05} position={vec3(0.0, 0.0, -5.0)}>
+			<Detailed radius={1.0} thresholds={[0.5, 0.2]} cullingRatio={0.05} position={vec3(0.0, 0.0, -5.0)}>
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
-			</Lod>
+			</Detailed>
 		</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
 	const handle = refs[0];
@@ -61,7 +61,7 @@ test "Lod selects its level by Void MeshLod projected size, like Heaps Mesh LOD"
 	assert state.beforeRefresh.length === 0, "unmount drops the level selection";
 }
 
-test "Lod world scale grows the projected size and forcedLevel overrides the selection" {
+test "Detailed world scale grows the projected size and forcedLevel overrides the selection" {
 	const refs: Scene3DHandle[] = [];
 	const states: SceneState[] = [];
 	const levels: NodeId3D[] = [];
@@ -71,10 +71,10 @@ test "Lod world scale grows the projected size and forcedLevel overrides the sel
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 			{Capture(states)}
 			<Camera3D active={true} position={vec3(0.0, 0.0, 0.0)} />
-			<Lod radius={1.0} thresholds={[0.5]} forcedLevel={forced()} position={vec3(0.0, 0.0, -5.0)} scale={scale()}>
+			<Detailed radius={1.0} thresholds={[0.5]} forcedLevel={forced()} position={vec3(0.0, 0.0, -5.0)} scale={scale()}>
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
-			</Lod>
+			</Detailed>
 		</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
 	const handle = refs[0];
@@ -94,7 +94,7 @@ test "Lod world scale grows the projected size and forcedLevel overrides the sel
 	assert shownLevels(handle, levels) === "00", "a forced level past the last one culls: " + shownLevels(handle, levels);
 }
 
-test "Lod follows changed thresholds and leaves no hook behind" {
+test "Detailed follows changed thresholds and leaves no hook behind" {
 	const refs: Scene3DHandle[] = [];
 	const states: SceneState[] = [];
 	const levels: NodeId3D[] = [];
@@ -105,11 +105,11 @@ test "Lod follows changed thresholds and leaves no hook behind" {
 			{Capture(states)}
 			<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} />
 			{Show({ when: accessor(() => shown()), children: element(
-				<Lod radius={1.0} thresholds={thresholds()}>
+				<Detailed radius={1.0} thresholds={thresholds()}>
 					<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 					<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 					<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
-				</Lod>
+				</Detailed>
 			) })}
 		</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
@@ -122,7 +122,7 @@ test "Lod follows changed thresholds and leaves no hook behind" {
 	assert shownLevels(handle, levels) === "100", "new thresholds apply on the next frame: " + shownLevels(handle, levels);
 	setShown(false);
 	flush();
-	assert states[0].beforeRefresh.length === 0 && !handle.scene.isLive(levels[0]), "a parked Lod leaves no hook and no nodes";
+	assert states[0].beforeRefresh.length === 0 && !handle.scene.isLive(levels[0]), "a parked Detailed leaves no hook and no nodes";
 }
 
 function refusal(app: () => NeonNode): string {
@@ -135,16 +135,16 @@ function refusal(app: () => NeonNode): string {
 	return message;
 }
 
-test "Lod refuses a MeshLod config Void refuses and a radius that is not a size" {
-	const ascending = refusal((): NeonNode => element(<Void><Scene3D><Lod radius={1.0} thresholds={[0.2, 0.5]} /></Scene3D></Void>));
-	assert ascending.includes("Lod") && ascending.includes("descending"), "names the rule: " + ascending;
-	const culling = refusal((): NeonNode => element(<Void><Scene3D><Lod radius={1.0} thresholds={[0.5]} cullingRatio={-1.0} /></Scene3D></Void>));
-	assert culling.includes("Lod") && culling.includes("cullingRatio"), "names the rule: " + culling;
-	const radius = refusal((): NeonNode => element(<Void><Scene3D><Lod radius={-1.0} thresholds={[0.5]} /></Scene3D></Void>));
-	assert radius.includes("Lod") && radius.includes("radius"), "names the rule: " + radius;
+test "Detailed refuses a MeshLod config Void refuses and a radius that is not a size" {
+	const ascending = refusal((): NeonNode => element(<Void><Scene3D><Detailed radius={1.0} thresholds={[0.2, 0.5]} /></Scene3D></Void>));
+	assert ascending.includes("Detailed") && ascending.includes("descending"), "names the rule: " + ascending;
+	const culling = refusal((): NeonNode => element(<Void><Scene3D><Detailed radius={1.0} thresholds={[0.5]} cullingRatio={-1.0} /></Scene3D></Void>));
+	assert culling.includes("Detailed") && culling.includes("cullingRatio"), "names the rule: " + culling;
+	const radius = refusal((): NeonNode => element(<Void><Scene3D><Detailed radius={-1.0} thresholds={[0.5]} /></Scene3D></Void>));
+	assert radius.includes("Detailed") && radius.includes("radius"), "names the rule: " + radius;
 }
 
-test "Lod refuses a child count its thresholds do not name instead of overwriting the level count" {
+test "Detailed refuses a child count its thresholds do not name instead of overwriting the level count" {
 	const states: SceneState[] = [];
 	let message = "";
 	createRoot((dispose: () => void): void => {
@@ -153,20 +153,20 @@ test "Lod refuses a child count its thresholds do not name instead of overwritin
 				<Scene3D>
 					{Capture(states)}
 					<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} />
-					<Lod radius={1.0} thresholds={[0.5]}>
+					<Detailed radius={1.0} thresholds={[0.5]}>
 						<Group />
 						<Group />
 						<Group />
-					</Lod>
+					</Detailed>
 				</Scene3D>
 			</Void>), mockHost(), mockNode("root") as unknown as HostNode);
 			runBeforeRefresh(states[0], 320, 240);
 		} catch (error) { message = error.toString(); } finally { dispose(); resetErrorHalt(); }
 	});
-	assert message.includes("Lod") && message.includes("1 thresholds name 2 levels") && message.includes("3 children"), "names the mismatch: " + message;
+	assert message.includes("Detailed") && message.includes("1 thresholds name 2 levels") && message.includes("3 children"), "names the mismatch: " + message;
 }
 
-test "Lod reads Void's meshLodScale, and repeats its selection only when an input moved" {
+test "Detailed reads Void's meshLodScale, and repeats its selection only when an input moved" {
 	const refs: Scene3DHandle[] = [];
 	const states: SceneState[] = [];
 	const levels: NodeId3D[] = [];
@@ -174,10 +174,10 @@ test "Lod reads Void's meshLodScale, and repeats its selection only when an inpu
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 			{Capture(states)}
 			<Camera3D active={true} position={vec3(0.0, 0.0, 0.0)} />
-			<Lod radius={1.0} thresholds={[0.5]} position={vec3(0.0, 0.0, -5.0)}>
+			<Detailed radius={1.0} thresholds={[0.5]} position={vec3(0.0, 0.0, -5.0)}>
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
 				<Group ref={(value: NodeId3D): void => { levels.push(value); }} />
-			</Lod>
+			</Detailed>
 		</Scene3D>
 	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
 	const handle = refs[0];

@@ -1,5 +1,5 @@
-// Text3D through the Scene3D layer of a Void area, on the GPU.
-//   msc build tests/device/text3d.ms --output=out/text3d && out/text3d   (from the Neon checkout, beside ../void)
+// Label3D through the Scene3D layer of a Void area, on the GPU.
+//   msc build tests/device/label3d.ms --output=out/label3d && out/label3d   (from the Neon checkout, beside ../void)
 // Exits 0 once a label redrew, rescaled, faced the camera, was replaced and released its GPU resources;
 // glyph atlas pages are process-wide and stay.
 
@@ -11,7 +11,7 @@ import { Show } from "../../src/macros/ui/flow";
 import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../../src/render/host";
 import { AreaHub } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Camera3D, Text3D } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Camera3D, Label3D } from "../../src/components/scene3d";
 import { NodeId3D, Object3D, syncWorld } from "../../../void/src/void3d/scene";
 import { Mat4, Vec3, vec3 } from "../../../void/src/math/math3d";
 import { rgba } from "../../../void/src/void2d/types";
@@ -49,13 +49,13 @@ const [yaw, setYaw] = createSignal<float32>(0.0);
 const FONT_PATH = "../void/assets/font.ttf";
 
 function fail(message: string): void {
-	console.log("FAIL Text3D device:", message);
+	console.log("FAIL Label3D device:", message);
 	process.exit(1);
 }
 
 function labelOf(group: NodeId3D): Object3D {
 	const row = handle.scene.nodes[group.index];
-	if (row.children.length !== 1) { fail("a Text3D group holds one label node, got " + row.children.length.toString()); }
+	if (row.children.length !== 1) { fail("a Label3D group holds one label node, got " + row.children.length.toString()); }
 	return handle.scene.nodes[row.children[0]];
 }
 
@@ -79,9 +79,9 @@ function init(): void {
 	}}>
 		<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} yaw={yaw()} />
 		{Show({ when: accessor(() => shown()), children: element(<>
-			<Text3D text={text()} size={size()} color={rgba(1.0, 0.8, 0.2, 1.0)} pixelsPerUnit={perUnit()}
+			<Label3D text={text()} size={size()} color={rgba(1.0, 0.8, 0.2, 1.0)} pixelsPerUnit={perUnit()}
 				position={vec3(-1.0, 0.0, 0.0)} ref={(node: NodeId3D): void => { flat.push(node); }} />
-			<Text3D text="faced" billboard={true} position={vec3(1.0, 0.5, 0.0)}
+			<Label3D text="faced" billboard={true} position={vec3(1.0, 0.5, 0.0)}
 				ref={(node: NodeId3D): void => { faced.push(node); }} />
 		</>) })}
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
@@ -138,7 +138,7 @@ function frame(): void {
 		let message = "";
 		try { setSize(0.0); flush(); } catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
-		if (message !== "Text3D: size must be positive") { fail("size refusal: " + message); }
+		if (message !== "Label3D: size must be positive") { fail("size refusal: " + message); }
 		setSize(24.0);
 		flush();
 	} else if (frames === 4) {
@@ -169,7 +169,7 @@ function frame(): void {
 			fail("terminal GPU resource reclamation: images " + liveImages().toString() + "/" + baseImages.toString() +
 				" views " + liveViews().toString() + "/" + baseViews.toString());
 		}
-		console.log("PASS Text3D device: redraw rescale, billboard, refusal, replacement, remount, closed GPU resources");
+		console.log("PASS Label3D device: redraw rescale, billboard, refusal, replacement, remount, closed GPU resources");
 		process.exit(0);
 	}
 }

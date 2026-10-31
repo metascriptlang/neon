@@ -1,11 +1,11 @@
-// Text3D in a window's Void takes the window's font, on the GPU.
-//   msc build tests/device/text3dFont.ms --output=out/text3dFont && out/text3dFont   (from the Neon checkout, beside ../void)
+// Label3D in a window's Void takes the window's font, on the GPU.
+//   msc build tests/device/label3dFont.ms --output=out/label3dFont && out/label3dFont   (from the Neon checkout, beside ../void)
 // Exits 0 once a label without textStyle is shaped in the window font.
 
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Text3D } from "../../src/components/scene3d";
+import { Scene3D, Label3D } from "../../src/components/scene3d";
 import { AreaWindow, WindowArea, windowHost, windowNode } from "../../src/platform/void/windowHost";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 import { labelTexts } from "../../../void/src/void2d/labelText";
@@ -20,7 +20,7 @@ const FONT_PATH = "../void/assets/font.ttf";
 let font: FontId = DEFAULT_FONT;
 
 function fail(message: string): void {
-	console.log("FAIL Text3D font device:", message);
+	console.log("FAIL Label3D font device:", message);
 	process.exit(1);
 }
 
@@ -40,7 +40,7 @@ function init(): void {
 	if (!loaded.ok) { fail("the test font did not load from " + FONT_PATH); return; }
 	font = loaded.value;
 	const window: AreaWindow = {
-		name: "text3d font window",
+		name: "label3d font window",
 		font: font,
 		family: null,
 		pixelWidth: (): int32 => 320 as int32,
@@ -52,14 +52,14 @@ function init(): void {
 		released: (area: WindowArea): void => {},
 	};
 	render(element(<Void><Scene3D>
-		<Text3D text="window font" />
+		<Label3D text="window font" />
 	</Scene3D></Void>), windowHost(window), windowNode("window"));
 }
 
 function frame(): void {
 	const shaped = fontOf("window font");
-	if (shaped !== font) { fail("a Text3D without textStyle shaped in font " + (shaped as int32).toString() + ", not the window's " + (font as int32).toString()); }
-	console.log("PASS Text3D font device: the label takes the window font");
+	if (shaped !== font) { fail("a Label3D without textStyle shaped in font " + (shaped as int32).toString() + ", not the window's " + (font as int32).toString()); }
+	console.log("PASS Label3D font device: the label takes the window font");
 	process.exit(0);
 }
 

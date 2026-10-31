@@ -20,7 +20,7 @@ import {
 	NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr,
 } from "./core";
 
-export interface Text3DProps extends NodeProps {
+export interface Label3DProps extends NodeProps {
 	text: Accessor<string>;
 	size?: Accessor<float32> | null;
 	color?: Accessor<Color> | null;
@@ -35,16 +35,16 @@ export interface Text3DProps extends NodeProps {
 const DEFAULT_SIZE: float32 = 16.0;
 const DEFAULT_PIXELS_PER_UNIT: float32 = 100.0;
 
-function sizeOf(props: Text3DProps): float32 {
+function sizeOf(props: Label3DProps): float32 {
 	return valueOr<float32>(props.size, DEFAULT_SIZE);
 }
 
-function colorOf(props: Text3DProps): Color {
+function colorOf(props: Label3DProps): Color {
 	return valueOr<Color>(props.color, rgba(1.0, 1.0, 1.0, 1.0));
 }
 
 function styleLabel(label: WorldLabel, style: TextStyle | null, size: float32, font: FontId): void {
-	if (!(size > 0.0)) { throw new Error("Text3D: size must be positive"); }
+	if (!(size > 0.0)) { throw new Error("Label3D: size must be positive"); }
 	const base: TextStyle = style === null ? { ...label.text.textStyle(), font: font } : style as TextStyle;
 	label.text.setTextStyle({ ...base, size: size });
 	label.stale = true;
@@ -56,20 +56,20 @@ function colorLabel(label: WorldLabel, color: Color): void {
 }
 
 function outlineLabel(label: WorldLabel, width: float32, color: Color): void {
-	if (!(width >= 0.0)) { throw new Error("Text3D: outlineWidth must be nonnegative"); }
+	if (!(width >= 0.0)) { throw new Error("Label3D: outlineWidth must be nonnegative"); }
 	when (voidTextOutline) {
 		setLabelOutline(label, width, color);
 	} else {
-		if (width > 0.0) { throw new Error("Text3D: positive outlineWidth requires -d:voidTextOutline"); }
+		if (width > 0.0) { throw new Error("Label3D: positive outlineWidth requires -d:voidTextOutline"); }
 		setLabelOutline(label, width, color);
 	}
 }
 
-export function Text3D(props: Text3DProps): NeonNode {
+export function Label3D(props: Label3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const scope = requireScene("Text3D");
+		const scope = requireScene("Label3D");
 		if ((props.outlineWidth === null) !== (props.outlineColor === null)) {
-			throw new Error("Text3D: provide outlineWidth and outlineColor together");
+			throw new Error("Label3D: provide outlineWidth and outlineColor together");
 		}
 		const font = useContext(getAreaFaceContext()).font;
 		mountOwned((): void => {
@@ -99,14 +99,14 @@ export function Text3D(props: Text3DProps): NeonNode {
 					valueOr<Anchor>(props.anchor, ANCHOR_CENTER),
 				],
 				(value: [float32, Anchor], prev: [float32, Anchor] | null): Cleanup | null => {
-					if (!(value[0] > 0.0)) { throw new Error("Text3D: pixelsPerUnit must be positive"); }
+					if (!(value[0] > 0.0)) { throw new Error("Label3D: pixelsPerUnit must be positive"); }
 					untrack((): void => {
 						const size = sizeOf(props);
-						if (!(size > 0.0)) { throw new Error("Text3D: size must be positive"); }
+						if (!(size > 0.0)) { throw new Error("Label3D: size must be positive"); }
 						const made = WorldLabel.create(scene, node, props.text(), {
 							...WorldLabelStyle.plainStyle(value[0]), fontSize: size, color: colorOf(props), anchor: value[1],
 						});
-						if (!made.ok) { throw new Error("Text3D: WorldLabel.create failed: " + made.error.toString()); }
+						if (!made.ok) { throw new Error("Label3D: WorldLabel.create failed: " + made.error.toString()); }
 						const next = made.value;
 						try {
 							styleLabel(next, props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), size, font);
@@ -188,9 +188,9 @@ export function Text3D(props: Text3DProps): NeonNode {
 				if (open === null) { return; }
 				if (billboard) {
 					const world = scene.worldOf(node);
-					if (!world.ok) { throw new Error("Text3D: billboard has no world pose: " + world.error.toString()); }
+					if (!world.ok) { throw new Error("Label3D: billboard has no world pose: " + world.error.toString()); }
 					if (faced !== open || world.value != facedPose || view.basis != facedBasis) {
-						if (world.value.determinant3x3() < 0.0) { throw new Error("Text3D: billboard needs ancestors that do not mirror"); }
+						if (world.value.determinant3x3() < 0.0) { throw new Error("Label3D: billboard needs ancestors that do not mirror"); }
 						faceCamera(open, vec3(world.value.m41, world.value.m42, world.value.m43), view.basis);
 						faced = open;
 						facedPose = world.value;

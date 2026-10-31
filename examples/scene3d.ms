@@ -10,7 +10,7 @@ import { element } from "../src/macros/ui/element";
 import { Show } from "../src/macros/ui/flow";
 import { NeonNode } from "../src/render/node";
 import { Void, View, Text, Pressable } from "../src/components/primitives";
-import { Scene3D, Camera3D, DirectionalLight, Mesh, Text3D, Gltf, gltfData, useFrame } from "../src/components/scene3d";
+import { Scene3D, Camera3D, DirectionalLight, Mesh, Label3D, Gltf, gltfData, useFrame } from "../src/components/scene3d";
 import { runWindow, desktopOptions } from "../src/platform/ion/window";
 import { vec3, eulerQuat } from "../../void/src/math/math3d";
 import { MeshData, addBox, addPlane } from "../../void/src/void3d/meshData";
@@ -69,7 +69,7 @@ function App(): NeonNode {
 				<Mesh geometry={floor} receiveShadow={true} />
 				<Mesh geometry={cube} position={vec3(-1.2, 1.0, 0.0)} rotation={eulerQuat(0.0, angle(), 0.0)}
 					castShadow={true} receiveShadow={true} />
-				<Text3D text={spinning() ? "spinning" : "paused"} position={vec3(-1.2, 2.2, 0.0)} billboard={true} />
+				<Label3D text={spinning() ? "spinning" : "paused"} position={vec3(-1.2, 2.2, 0.0)} billboard={true} />
 				<Show when={showModel()}>
 					<Gltf data={scene} position={vec3(1.5, 0.0, 0.0)} />
 				</Show>

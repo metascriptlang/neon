@@ -8,7 +8,7 @@ import { MeshLod, MeshLodProjectedSize } from "../../../../void/src/void3d/meshL
 import { Mat4, Vec3, vec3, identity, position, length, determinant3x3 } from "../../../../void/src/math/math3d";
 import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh, valueOr } from "./core";
 
-export interface LodProps extends NodeProps {
+export interface DetailedProps extends NodeProps {
 	radius: Accessor<float32>;
 	thresholds: Accessor<float32[]>;
 	cullingRatio?: Accessor<float32> | null;
@@ -18,9 +18,9 @@ export interface LodProps extends NodeProps {
 function configOf(thresholds: float32[], cullingRatio: float32): MeshLod {
 	const ratios: float64[] = [];
 	for (const threshold of thresholds) { ratios.push(threshold as float64); }
-	if (!Number.isFinite(cullingRatio) || cullingRatio < 0.0) { throw new Error("Lod: cullingRatio must be finite and non-negative"); }
+	if (!Number.isFinite(cullingRatio) || cullingRatio < 0.0) { throw new Error("Detailed: cullingRatio must be finite and non-negative"); }
 	const made = MeshLod.create(thresholds.length as int32 + 1, ratios, cullingRatio as float64);
-	if (!made.ok) { throw new Error("Lod: thresholds must be finite, non-negative and descending"); }
+	if (!made.ok) { throw new Error("Detailed: thresholds must be finite, non-negative and descending"); }
 	return made.value;
 }
 
@@ -40,9 +40,9 @@ function projectedSize(view: CameraView, world: Mat4, radius: float32, meshLodSc
 	};
 }
 
-export function Lod(props: LodProps): NeonNode {
+export function Detailed(props: DetailedProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const scope = requireScene("Lod");
+		const scope = requireScene("Detailed");
 		mountOwned((): void => {
 			const state = scope.state;
 			const scene = state.handle.scene;
@@ -70,8 +70,8 @@ export function Lod(props: LodProps): NeonNode {
 					props.forcedLevel === null ? null : (props.forcedLevel as () => int32 | null)(),
 				],
 				(value: [float32[], float32, float32, int32 | null], prev: [float32[], float32, float32, int32 | null] | null): Cleanup | null => {
-					if (!Number.isFinite(value[2]) || value[2] < 0.0) { throw new Error("Lod: radius must be finite and non-negative"); }
-					if (value[3] !== null && (value[3] as int32) < 0) { throw new Error("Lod: forcedLevel must be non-negative"); }
+					if (!Number.isFinite(value[2]) || value[2] < 0.0) { throw new Error("Detailed: radius must be finite and non-negative"); }
+					if (value[3] !== null && (value[3] as int32) < 0) { throw new Error("Detailed: forcedLevel must be non-negative"); }
 					lod = configOf(value[0], value[1]);
 					radius = value[2];
 					forced = value[3] === null ? -1 : value[3] as int32;
@@ -88,20 +88,20 @@ export function Lod(props: LodProps): NeonNode {
 				const count = children.length as int32;
 				if (count === 0) { return; }
 				if (count !== lod.lodCount) {
-					throw new Error("Lod: " + (lod.lodCount - 1).toString() + " thresholds name " + lod.lodCount.toString()
+					throw new Error("Detailed: " + (lod.lodCount - 1).toString() + " thresholds name " + lod.lodCount.toString()
 						+ " levels, but " + count.toString() + " children are mounted");
 				}
 				const world = worldOf(scene, node);
-				if (!world.ok) { throw new Error("Lod: no world pose: " + world.error.toString()); }
+				if (!world.ok) { throw new Error("Detailed: no world pose: " + world.error.toString()); }
 				const meshLodScale = state.handle.renderer.core.meshLodScale;
 				let same = settled && world.value == settledWorld && view.eye == settledEye && view.projectionX == settledX
 					&& view.projectionY == settledY && view.nearPlane == settledNear && meshLodScale == settledScale;
 				for (let i = 0; same && i < count; i++) { same = children[i] === settledLevels[i]; }
 				if (same) { return; }
 				const ratio = projectedSize(view, world.value, radius, meshLodScale).referenceScreenRatioHeuristic();
-				if (!ratio.ok) { throw new Error("Lod: no projected size: " + ratio.error.toString()); }
+				if (!ratio.ok) { throw new Error("Detailed: no projected size: " + ratio.error.toString()); }
 				const selected = lod.select(ratio.value, forced);
-				if (!selected.ok) { throw new Error("Lod: MeshLod.select failed: " + selected.error.toString()); }
+				if (!selected.ok) { throw new Error("Detailed: MeshLod.select failed: " + selected.error.toString()); }
 				settledLevels.length = 0;
 				for (let i = 0; i < count; i++) {
 					settledLevels.push(children[i]);
