@@ -8,6 +8,8 @@ import { AreaWindow, WindowArea, windowHost, windowNode, deliverPointer, deliver
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
+import { setup2d, preparePipelines } from "../../../void/src/void2d/draw";
+import { BlendMode } from "../../../void/src/gpu/state";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/host/gpu";
 
 @include("../../../void/src/host/bridge.h");
@@ -48,6 +50,8 @@ function expect(area: WindowArea, px: float64, py: float64, want: string, label:
 
 function init(): void {
 	gfxSetup();
+	setup2d();
+	preparePipelines([BlendMode.Alpha]);
 	const font = addFont("../void/assets/font.ttf");
 	if (!font.ok) { fail("the test font did not load; run from the Neon checkout root beside ../void"); return; }
 	const window: AreaWindow = {
