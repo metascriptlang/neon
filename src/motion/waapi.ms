@@ -358,8 +358,12 @@ when (js) {
 		fill: string,
 	): Animation from
 		"((el, p, o, v, e, duration, delay, iterations, direction, fill) => el.animate(o.map((offset, i) => ({ offset, easing: e[i], [p]: v[i] })), { duration, delay, iterations, direction, fill }))(#, #, #, #, #, #, #, #, #, #)";
-	extern function commitStyles(animation: Animation): void from
-		"(a => { try { a.commitStyles(); } catch {} })(#)";
+	extern function commitStyles(
+		animation: Animation,
+		element: HTMLElement,
+		property: string,
+	): void from
+		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { throw new Error(`motion: the browser refused to commit ${p} on a connected element: ${e.message}`); } })(#, #, #)";
 	extern function readStyle(element: HTMLElement, property: string): string from
 		"((el, p) => el.style[p])(#, #)";
 	extern function writeStyle(element: HTMLElement, property: string, value: string): void from
@@ -400,10 +404,13 @@ when (js) {
 			this.run = null;
 			const animation = run.animation;
 			if (animation === null) { return; }
-			animation.pause();
-			commitStyles(animation);
-			animation.cancel();
 			run.animation = null;
+			animation.pause();
+			try {
+				commitStyles(animation, this.element, this.css);
+			} finally {
+				animation.cancel();
+			}
 		}
 	}
 
@@ -648,16 +655,22 @@ when (js) {
 		}
 
 		private halt(commit: boolean): void {
+			let refused = "";
 			for (const run of this.runs) {
 				const animation = run.animation;
 				if (animation === null) { continue; }
-				animation.pause();
-				animation.currentTime = this.localTime();
-				if (commit) { commitStyles(animation); }
-				animation.cancel();
 				run.animation = null;
 				if (run.owner.run === run) { run.owner.run = null; }
+				animation.pause();
+				animation.currentTime = this.localTime();
+				try {
+					if (commit) { commitStyles(animation, run.element, run.style.css); }
+				} catch (e) {
+					if (refused === "") { refused = e.message; }
+				}
+				animation.cancel();
 			}
+			if (refused !== "") { throw new Error(refused); }
 		}
 	}
 }

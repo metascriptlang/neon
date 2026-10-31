@@ -23,6 +23,7 @@ extern class Animation {}
 extern class CSSStyleDeclaration {
 	opacity: string;
 	translate: string;
+	display: string;
 }
 
 extern class HTMLElement {
@@ -357,5 +358,30 @@ test "a second player on one element's opacity replaces the first's browser anim
 	assert near(opacity(el), 0.05, 1e-3), "dispose commits the shown value: " +
 		computed(el, "opacity");
 	older.dispose();
+	el.remove();
+}
+
+test "cancel on a removed element drops the animation and keeps no inline value" {
+	const node = mount();
+	const el = dom(node);
+	const player = fadeAndSlide(node, paused());
+	player.seek(400);
+	el.remove();
+	player.cancel();
+	assert el.getAnimations().length === 0, "cancel removes the animations";
+	assert el.style.opacity === "", "nothing committed: " + el.style.opacity;
+	player.dispose();
+}
+
+test "a connected element that refuses commitStyles fails the cancel loudly" {
+	const node = mount();
+	const el = dom(node);
+	const player = fadeAndSlide(node, paused());
+	player.seek(400);
+	el.style.display = "none";
+	let message = "";
+	try { player.cancel(); } catch (e) { message = e.message; }
+	assert message.startsWith("motion: the browser refused to commit opacity"), message;
+	assert el.getAnimations().length === 0, "every animation is cancelled before the throw";
 	el.remove();
 }
