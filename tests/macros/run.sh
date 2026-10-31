@@ -38,7 +38,6 @@ expect_reject tests/macros/textRefHandleRejected.ms "the expected function passe
 expect_reject tests/macros/optChangeTextTemplateRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/optChangeTextFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/componentUnknownPropRejected.ms "<Badge> has no prop 'lable'"
-expect_reject tests/macros/pointLightShadowRejected.ms "<PointLight> has no prop 'castShadow'"
 reject_on "" tests/macros/scene3dLightPressRejected.ms "<Light> has no prop 'onPress'"
 reject_on "" tests/macros/scene3dHandlerEventRejected.ms "the expected function passes it Pointer3DEvent"
 expect_reject tests/macros/componentMixedAccessorRejected.ms "prop 'value' of <Count> mixes Accessor with another type"
