@@ -92,4 +92,6 @@ expect_reject tests/macros/breakpointFieldUnfoldableRejected.ms "field 'width' o
 expect_reject tests/macros/breakpointKeyNotATableRejected.ms "a bracketed \`when\` key names a breakpoint"
 expect_reject tests/macros/breakpointWidthUnfoldableRejected.ms "breakpoint 'wide' must be a number the compiler can read"
 expect_reject tests/macros/sheetSpreadUnreadableRejected.ms "a spread in a sheet entry must name a const style object the compiler can read"
+expect_reject_both tests/macros/flatListScrollToItemTypeRejected.ms "Type .string. is not assignable to type .Message."
+expect_reject_both tests/macros/flatListHandleBareRejected.ms "cannot instantiate: .T."
 exit $fail
