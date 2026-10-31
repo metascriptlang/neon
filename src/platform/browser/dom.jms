@@ -205,6 +205,7 @@ extern class DomEvent {
 	timeStamp: number;
 	clientX: number;
 	clientY: number;
+	buttons: number;
 	key: string;
 	code: string;
 	altKey: boolean;
@@ -1323,6 +1324,7 @@ export function domHost(): Host {
 				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove" || type.startsWith("pointer")) {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
+					ev.pressed = de.buttons !== 0;
 				}
 				if (type === "press" && ev.pointerOrigin && lastPointerUp >= 0) {
 					ev.timeStamp = lastPointerUp;
