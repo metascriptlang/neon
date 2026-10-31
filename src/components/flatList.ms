@@ -88,7 +88,7 @@ export function FlatList<T>(props: {
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<T>) => void) | null;
 }): NeonNode {
 	return listEngine<T, T[]>({
 		...props,

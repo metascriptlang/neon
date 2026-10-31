@@ -51,7 +51,7 @@ export function GridList<T>(props: {
 	onScroll?: ((e: NeonEvent) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<T>) => void) | null;
 }): NeonNode {
 	const maxProp = props.maxItemWidth;
 	const columnsProp = props.numColumns;

@@ -77,13 +77,13 @@ function sectionLayout(data: Group[], index: number): ItemLayout {
 }
 
 let rendered = 0;
-let flat: FlatListHandle | null = null;
+let flat: FlatListHandle<Entry> | null = null;
 let sectioned: SectionListHandle | null = null;
 
 function App(): NeonNode {
 	return <View style={styles.base}>
 		<FlatList data={entries} style={styles.flat} getItemLayout={rowLayout}
-			ref={(h: FlatListHandle): void => { flat = h; }}
+			ref={(h: FlatListHandle<Entry>): void => { flat = h; }}
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => {
 				rendered += 1;
 				return <View style={rowStyle(info.item.n)} />;
@@ -127,7 +127,7 @@ function afterWheel(): void {
 	expectRow("row 20 after wheel", 20, 45);
 	expectRow("row 23 after wheel", 23, 195);
 	fail(harnessSample(TITLE));
-	(flat as FlatListHandle).scrollToIndex({ index: 5000, animated: false });
+	(flat as FlatListHandle<Entry>).scrollToIndex({ index: 5000, animated: false });
 	setTimeout(afterScrollToIndex, 500);
 }
 
@@ -135,7 +135,7 @@ function afterScrollToIndex(): void {
 	expectRow("row 5000 at the top", 5000, 45);
 	expectRow("row 5003 at the bottom", 5003, 195);
 	fail(harnessSample(TITLE));
-	(flat as FlatListHandle).scrollToEnd({ animated: false });
+	(flat as FlatListHandle<Entry>).scrollToEnd({ animated: false });
 	setTimeout(afterScrollToEnd, 500);
 }
 

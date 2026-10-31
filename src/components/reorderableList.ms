@@ -62,7 +62,7 @@ export function ReorderableFlatList<T>(props: {
 	activeItemStyle?: Accessor<Style> | null;
 	dropDuration?: Accessor<number> | null;
 	onScroll?: ((e: NeonEvent) => void) | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<T>) => void) | null;
 }): NeonNode {
 	const data = props.data;
 	const userRender = props.renderItem;
@@ -87,7 +87,7 @@ export function ReorderableFlatList<T>(props: {
 	let grantOffset = 0.0;
 	let headerLength = 0.0;
 	const autoscroll = new TimerHandle();
-	let handle: FlatListHandle | null = null;
+	let handle: FlatListHandle<T> | null = null;
 	let drop: Tween | null = null;
 
 	const stopAutoscroll = (): void => { autoscroll.cancel(); };
@@ -148,7 +148,7 @@ export function ReorderableFlatList<T>(props: {
 		else if (bottom > viewport) { step = Math.min(AUTOSCROLL_STEP, bottom - viewport); }
 		if (step === 0) { return; }
 		const next = Math.max(0, offset + step);
-		(handle as FlatListHandle).scrollToOffset({ offset: next, animated: false });
+		(handle as FlatListHandle<T>).scrollToOffset({ offset: next, animated: false });
 		offset = next;
 		place();
 		autoscroll.start(autoscrollTick, AUTOSCROLL_MS);
@@ -255,7 +255,7 @@ export function ReorderableFlatList<T>(props: {
 			if (userScroll !== null) { userScroll(e); }
 		},
 		onLayout: (e: NeonEvent): void => { viewport = e.height; },
-		ref: (h: FlatListHandle): void => {
+		ref: (h: FlatListHandle<T>): void => {
 			handle = h;
 			if (userRef !== null) { userRef(h); }
 		},

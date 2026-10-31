@@ -332,9 +332,9 @@ test "onEndReached without a threshold fires within 2 px of the end, React Nativ
 
 test "the ref's handle scrolls to an index, an offset and the end" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	render(element(<FlatList data={items(100)} getItemLayout={tall50}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const sv = scrollView(root);
 	layOut(root, 500, 5000);
 	handles[0].scrollToIndex({ index: 40 });
@@ -351,32 +351,32 @@ test "the ref's handle scrolls to an index, an offset and the end" {
 
 test "throws if using scrollToIndex with index less than 0" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const handles: FlatListHandle<Item>[] = [];
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: -1 }); });
 	assert msg.includes("scrollToIndex out of range: requested index -1 but minimum is 0"), msg;
 }
 
 test "throws if using scrollToIndex when item length is less than 1" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const handles: FlatListHandle<Item>[] = [];
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: 0 }); });
 	assert msg.includes("scrollToIndex out of range: item length 0 but minimum is 1"), msg;
 }
 
 test "throws if using scrollToIndex when requested index is bigger than or equal to item length" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const handles: FlatListHandle<Item>[] = [];
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: 3 }); });
 	assert msg.includes("scrollToIndex out of range: requested index 3 is out of 0 to 2"), msg;
 }
 
 test "scrollToEnd works with null list" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const handles: FlatListHandle<Item>[] = [];
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert caught((): void => { handles[0].scrollToEnd({}); }) === "", "no throw on an empty list";
 }
 
@@ -433,11 +433,11 @@ test "does not call onEndReached when onContentSizeChange happens after onLayout
 
 test "scrollToIndex past the measured rows without getItemLayout calls onScrollToIndexFailed instead of scrolling" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	let failed = "";
 	render(element(<FlatList data={items(100)} updateCellsBatchingPeriod={0}
 		onScrollToIndexFailed={(info: ScrollToIndexFailedInfo): void => { failed = `${info.index} ${info.highestMeasuredFrameIndex} ${info.averageItemLength}`; }}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 50, 100);
 	measureRows(root, 10);
 	handles[0].scrollToIndex({ index: 5, animated: false });
@@ -448,8 +448,8 @@ test "scrollToIndex past the measured rows without getItemLayout calls onScrollT
 
 test "scrollToIndex past the measured rows without getItemLayout or onScrollToIndexFailed fails loud" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(100)} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const handles: FlatListHandle<Item>[] = [];
+	render(element(<FlatList data={items(100)} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: 50 }); });
 	assert msg.includes("scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed"), msg;
 }
@@ -520,9 +520,9 @@ test "unmounting cancels the pending batch" {
 
 test "horizontal FlatList uses width and x for its window and every imperative offset" {
 	const root = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	render(element(<FlatList data={items(100)} getItemLayout={tall50} horizontal={true}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const viewport = layoutEvent(80);
 	viewport.width = 200;
 	fireEventWith(scrollView(root), "onLayout", viewport);
@@ -740,9 +740,9 @@ test "a retained last row gains and loses its separator as data is appended and 
 
 test "scrollToEnd includes a measured footer" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={row}
-		ListFooterComponent={ListFooter} ref={(h: FlatListHandle): void => { handles.push(h); }} />), mockHost(), root as unknown as HostNode);
+		ListFooterComponent={ListFooter} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 10, 50);
 	for (const child of content(root).children) {
 		if (child.tag === "view" && slotText(child) === "|footer") { fireEventWith(child, "onLayout", layoutEvent(20)); }
@@ -1054,9 +1054,9 @@ test "a measured grid row keeps its measured frame when regrouping changes the r
 	const root: MockNode = mockNode("root");
 	const all = items(7);
 	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3], all[4], all[5]]);
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<FlatList data={data()} numColumns={2} updateCellsBatchingPeriod={0}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 90);
 	const heights: number[] = [30, 10, 50];
 	let y: number = 0;
@@ -1135,10 +1135,10 @@ test "viewabilityConfigCallbackPairs notify every pair under its own config" {
 test "waitForInteraction holds viewability until a drag or recordInteraction" {
 	const root: MockNode = mockNode("root");
 	const calls: string[] = [];
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall50}
 		viewabilityConfig={{ viewAreaCoveragePercentThreshold: 0, waitForInteraction: true }}
-		onViewableItemsChanged={viewabilityLog(calls)} ref={(h: FlatListHandle): void => { handles.push(h); }}
+		onViewableItemsChanged={viewabilityLog(calls)} ref={(h: FlatListHandle<Item>): void => { handles.push(h); }}
 		renderItem={row} />), mockHost(), root as unknown as HostNode);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 100, 500));
 	flush();
@@ -1250,19 +1250,19 @@ test "unmounts sticky headers moved below viewport" {
 
 test "scrollToItem scrolls to the row holding the same item, and does nothing for an equal copy" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const data = items(100);
 	const dispose = render(element(<FlatList data={data} getItemLayout={tall50}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	handles[0].scrollToItem({ item: data[40], animated: false });
 	assert scrolledTo(root) === "2000 false", scrolledTo(root);
 	handles[0].scrollToItem({ item: { id: "k10", n: 10 }, viewOffset: 5 });
 	assert scrolledTo(root) === "2000 false", "an equal copy is not the item: " + scrolledTo(root);
 	dispose();
 	const grid: MockNode = mockNode("root");
-	const gridHandles: FlatListHandle[] = [];
+	const gridHandles: FlatListHandle<Item>[] = [];
 	const disposeGrid = render(element(<FlatList data={data} numColumns={2} getItemLayout={tall50}
-		ref={(h: FlatListHandle): void => { gridHandles.push(h); }} renderItem={cellText} />), mockHost(), grid as unknown as HostNode);
+		ref={(h: FlatListHandle<Item>): void => { gridHandles.push(h); }} renderItem={cellText} />), mockHost(), grid as unknown as HostNode);
 	gridHandles[0].scrollToItem({ item: data[41], animated: false });
 	assert scrolledTo(grid) === "1000 false", "item 41 sits in row 20: " + scrolledTo(grid);
 	disposeGrid();

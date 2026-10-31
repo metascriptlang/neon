@@ -76,9 +76,9 @@ async function waitFor(what: string, ready: () => boolean, ms: number): Promise<
 }
 
 test "a 10000-row FlatList mounts a window, keeps the full scroll height and follows scrollToIndex" {
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	render(element(<FlatList data={items(10000)} style={{ height: 300 }} getItemLayout={fixed}
-		ref={(h: FlatListHandle): void => { handles.push(h); }}
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
 	await waitFor("the window to grow past the first rows", (): boolean => rowsIn(scroller.textContent) > 10, 3000);
@@ -100,9 +100,9 @@ const horizontalListStyle: Style = { width: 300, height: 100 };
 const horizontalRowStyle: Style = { width: ROW, height: 100, flexShrink: 0 };
 
 test "horizontal FlatList virtualizes on x and retains its complete scroll width" {
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<FlatList data={items(10000)} horizontal={true} style={horizontalListStyle} getItemLayout={fixed}
-		ref={(h: FlatListHandle): void => { handles.push(h); }}
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={horizontalRowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	await sleepAsync(100);
 	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
@@ -161,10 +161,10 @@ test "initialScrollIndex opens a 10000-row FlatList at its row without the first
 }
 
 test "an inverted measured list keeps logical indices and scroll offsets while painting rows bottom first" {
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	let ends = 0;
 	const dispose = render(element(<FlatList data={items(6)} inverted={true} style={{ height: 100 }}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} onEndReached={(): void => { ends += 1; }}
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} onEndReached={(): void => { ends += 1; }}
 		ItemSeparatorComponent={<View class="separator-probe" style={{ height: 2 }} />}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={tallness(info.item.n)}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	await sleepAsync(200);
@@ -248,10 +248,10 @@ function gridCell(info: ListRenderItemInfo<Item>): NeonNode {
 }
 
 test "a measured two-column grid lays rows side by side, applies columnWrapperStyle and scrolls by row" {
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<FlatList data={items(41)} renderItem={gridCell} numColumns={2}
 		columnWrapperStyle={{ gap: 10 }} style={{ height: 120 }} updateCellsBatchingPeriod={0}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} />), domHost(), documentBody());
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }} />), domHost(), documentBody());
 	await sleepAsync(200);
 	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
 	const a = scroller.querySelectorAll(".grid-cell-0").item(0).getBoundingClientRect();

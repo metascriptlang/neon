@@ -17,6 +17,7 @@ import {
 	ItemLayout,
 	ListRenderItemInfo,
 	ScrollToIndexFailedInfo,
+	ScrollToIndexOptions,
 	StartReachedInfo,
 	ViewabilityConfig,
 	ViewabilityInfo,
@@ -79,12 +80,16 @@ interface SectionCell<T, S> {
 }
 
 export class SectionListHandle {
-	private list: FlatListHandle;
+	private scrollToIndex: (options: ScrollToIndexOptions) => void;
+	private cellLength: (index: number) => number;
+	private interaction: () => void;
 	private sectionStart: (sectionIndex: int32) => int32;
 	private stickyHeaders: boolean;
 
-	constructor(list: FlatListHandle, sectionStart: (sectionIndex: int32) => int32, stickyHeaders: boolean) {
-		this.list = list;
+	constructor(scrollToIndex: (options: ScrollToIndexOptions) => void, cellLength: (index: number) => number, interaction: () => void, sectionStart: (sectionIndex: int32) => int32, stickyHeaders: boolean) {
+		this.scrollToIndex = scrollToIndex;
+		this.cellLength = cellLength;
+		this.interaction = interaction;
 		this.sectionStart = sectionStart;
 		this.stickyHeaders = stickyHeaders;
 	}
@@ -93,12 +98,12 @@ export class SectionListHandle {
 		const { sectionIndex, itemIndex, animated = true, viewOffset = 0, viewPosition = 0 } = params;
 		const index = itemIndex + (this.sectionStart(sectionIndex as int32) as number);
 		let offset = viewOffset;
-		if (itemIndex > 0 && this.stickyHeaders) { offset += this.list.cellLength(index - itemIndex); }
-		this.list.scrollToIndex({ index, animated, viewOffset: offset, viewPosition });
+		if (itemIndex > 0 && this.stickyHeaders) { offset += this.cellLength(index - itemIndex); }
+		this.scrollToIndex({ index, animated, viewOffset: offset, viewPosition });
 	}
 
 	recordInteraction(): void {
-		this.list.recordInteraction();
+		this.interaction();
 	}
 }
 
@@ -277,12 +282,18 @@ export function VirtualizedSectionList<T, S>(props: {
 			});
 		},
 		viewabilityConfigCallbackPairs: null,
-		ref: (list: FlatListHandle): void => {
+		ref: (list: FlatListHandle<SectionCell<T, S>>): void => {
 			if (userRef === null) { return; }
-			userRef(new SectionListHandle(list, (sectionIndex: int32): int32 => {
-				const laid = layout();
-				return sectionIndex < laid.starts.length ? laid.starts[sectionIndex] : laid.total;
-			}, stickyHeaders));
+			userRef(new SectionListHandle(
+				(options: ScrollToIndexOptions): void => { list.scrollToIndex(options); },
+				(index: number): number => list.cellLength(index),
+				(): void => { list.recordInteraction(); },
+				(sectionIndex: int32): int32 => {
+					const laid = layout();
+					return sectionIndex < laid.starts.length ? laid.starts[sectionIndex] : laid.total;
+				},
+				stickyHeaders,
+			));
 		},
 	}, "VirtualizedSectionList", null, null);
 }

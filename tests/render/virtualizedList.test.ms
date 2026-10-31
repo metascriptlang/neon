@@ -111,14 +111,30 @@ test "VirtualizedList keeps a cell for the same item when its data source change
 
 test "VirtualizedList hands the list handle to ref" {
 	const root: MockNode = mockNode("root");
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Item>[] = [];
 	const dispose = render(element(<VirtualizedList data={page(100)} getItemLayout={pageLayout}
 		getItem={(d: Page, index: number): Item => d.rows[index]}
 		getItemCount={(d: Page): number => d.rows.length}
-		ref={(h: FlatListHandle): void => { handles.push(h); }}
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }}
 		renderItem={itemText} />), mockHost(), root as unknown as HostNode);
 	handles[0].scrollToIndex({ index: 40, animated: false });
 	assert root.children[0].scrollY === 400, root.children[0].scrollY.toString();
+	dispose();
+}
+
+test "VirtualizedList scrollToItem finds the same item, and does nothing for an equal copy" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle<Item>[] = [];
+	const data = page(100);
+	const dispose = render(element(<VirtualizedList data={data} getItemLayout={pageLayout}
+		getItem={(d: Page, index: number): Item => d.rows[index]}
+		getItemCount={(d: Page): number => d.rows.length}
+		ref={(h: FlatListHandle<Item>): void => { handles.push(h); }}
+		renderItem={itemText} />), mockHost(), root as unknown as HostNode);
+	handles[0].scrollToItem({ item: data.rows[40], animated: false });
+	assert root.children[0].scrollY === 400, root.children[0].scrollY.toString();
+	handles[0].scrollToItem({ item: { key: "item_10" }, animated: false });
+	assert root.children[0].scrollY === 400, "an equal copy is not the item: " + root.children[0].scrollY.toString();
 	dispose();
 }
 

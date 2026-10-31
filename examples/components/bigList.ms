@@ -41,7 +41,7 @@ export function BigList(): NeonNode {
 	const [offset, setOffset] = createSignal<number>(0);
 	const [pressed, setPressed] = createSignal("none");
 	const data = entries();
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Entry>[] = [];
 	return <View style={styles.screen}>
 		<Text style={styles.title}>Neon FlatList</Text>
 		<Text style={styles.status}>{mounted() < 0 ? "mounting" : "mounted " + Math.round(mounted()).toString() + " ms"}</Text>
@@ -49,7 +49,7 @@ export function BigList(): NeonNode {
 		<Text style={styles.status}>{"pressed " + pressed()}</Text>
 		<Pressable style={styles.jump} onPress={() => handles[0].scrollToIndex({ index: 5000, animated: false })}>jump 5000</Pressable>
 		<FlatList data={data} style={styles.list} getItemLayout={rowLayout}
-			ref={(h: FlatListHandle): void => { handles.push(h); }}
+			ref={(h: FlatListHandle<Entry>): void => { handles.push(h); }}
 			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
 			onLayout={(e: NeonEvent): void => { if (mounted() < 0) { setMounted(performance.now() - started); } }}
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
@@ -72,7 +72,7 @@ function MeasuredStickyList(props: { inverted: Accessor<boolean> }): NeonNode {
 	const [offset, setOffset] = createSignal<number>(0);
 	const [pressed, setPressed] = createSignal("none");
 	const [ends, setEnds] = createSignal<int32>(0);
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Entry>[] = [];
 	return <View style={styles.screen}>
 		<Text style={styles.title}>Measured sticky list</Text>
 		<Text style={styles.status}>{"offset " + Math.round(offset()).toString()}</Text>
@@ -82,7 +82,7 @@ function MeasuredStickyList(props: { inverted: Accessor<boolean> }): NeonNode {
 		<FlatList data={data} style={styles.list} inverted={props.inverted}
 			stickyHeaderIndices={[0, 8, 16, 24, 32, 40, 48, 56]}
 			initialNumToRender={2} maxToRenderPerBatch={4} windowSize={3}
-			ref={(h: FlatListHandle): void => { handles.push(h); }}
+			ref={(h: FlatListHandle<Entry>): void => { handles.push(h); }}
 			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
 			onEndReached={() => setEnds(ends() + 1)}
 			ListFooterComponent={<View style={{ height: 48, backgroundColor: "#45475a" }}><Text style={styles.status}>List end</Text></View>}

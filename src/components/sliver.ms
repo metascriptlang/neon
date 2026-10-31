@@ -227,7 +227,7 @@ export function CustomScrollView(props: {
 	scrollEventThrottle?: Accessor<number> | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<SliverRow>) => void) | null;
 }): NeonNode {
 	const slivers = props.slivers;
 	const rows = createMemo<SliverRow[]>((): SliverRow[] => {

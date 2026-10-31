@@ -607,11 +607,11 @@ test "native materialized string labels participate in paint order and reuse the
 test "a native sticky list paints and routes its retained header above rows, then removes and changes its sticky indices" {
 	const data = entries(40);
 	const [indices, setIndices] = createSignal<int32[]>([0, 5, 10, 15, 20, 25, 30, 35]);
-	const handles: FlatListHandle[] = [];
+	const handles: FlatListHandle<Entry>[] = [];
 	let pressed = "";
 	const app = (): NeonNode => <FlatList data={data} getItemLayout={rowLayout}
 		style={{ height: 200, flexGrow: 0, flexShrink: 0 }} windowSize={1} initialNumToRender={1}
-		updateCellsBatchingPeriod={0} stickyHeaderIndices={indices()} ref={(h: FlatListHandle): void => { handles.push(h); }}
+		updateCellsBatchingPeriod={0} stickyHeaderIndices={indices()} ref={(h: FlatListHandle<Entry>): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <Pressable style={rowBox} onPress={() => { pressed += info.item.n.toString() + ";"; }}><Text>{info.item.id}</Text></Pressable>} />;
 	runApp(app);
 	loopUntilIdle();

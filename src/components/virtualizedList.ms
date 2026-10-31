@@ -74,8 +74,8 @@ export interface ScrollToOffsetOptions {
 	animated?: boolean | null;
 }
 
-export interface ScrollToItemOptions {
-	item: unknown;
+export interface ScrollToItemOptions<T> {
+	item: T;
 	animated?: boolean | null;
 	viewPosition?: number | null;
 	viewOffset?: number | null;
@@ -138,7 +138,7 @@ class StickyState {
 }
 
 
-export class FlatListHandle {
+export class FlatListHandle<T> {
 	private scroll: ScrollViewHandle;
 	private frameOf: (index: number) => CellMetrics;
 	private offsetOf: (index: number) => number;
@@ -148,9 +148,9 @@ export class FlatListHandle {
 	private unmeasured: (index: number) => boolean;
 	private footerLength: () => number;
 	private interaction: () => void;
-	private indexOfItem: (item: unknown) => number;
+	private indexOfItem: (item: T) => number;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number, interaction: () => void, indexOfItem: (item: unknown) => number) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number, interaction: () => void, indexOfItem: (item: T) => number) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
@@ -185,7 +185,7 @@ export class FlatListHandle {
 		this.moveTo(offset, animated);
 	}
 
-	scrollToItem(params: ScrollToItemOptions): void {
+	scrollToItem(params: ScrollToItemOptions<T>): void {
 		const { animated = true, viewPosition = 0, viewOffset = 0 } = params;
 		const index = this.indexOfItem(params.item);
 		if (index < 0) { return; }
@@ -260,7 +260,7 @@ export function VirtualizedList<T, D>(props: {
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<T>) => void) | null;
 }): NeonNode {
 	return listEngine<T, D>(props, "VirtualizedList", null, null);
 }
@@ -316,7 +316,7 @@ export function listEngine<T, D>(props: {
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
-	ref?: ((handle: FlatListHandle) => void) | null;
+	ref?: ((handle: FlatListHandle<T>) => void) | null;
 }, who: string, columnsProp: Accessor<number> | null, columnWrapperStyle: Accessor<Style> | null): NeonNode {
 	const getItemLayout = props.getItemLayout;
 	const data = props.data;
@@ -432,7 +432,7 @@ export function listEngine<T, D>(props: {
 	let sentEndForContentLength = 0.0;
 	let pendingScrollUpdateCount = initialScrollIndex() > 0 ? 1 : 0;
 	let triggeredInitialScrollToIndex = false;
-	let handle: FlatListHandle | null = null;
+	let handle: FlatListHandle<T> | null = null;
 	let cellsAroundViewport: CellRange = { first: 0, last: -1 };
 	let renderedMask: CellRenderMask | null = null;
 	let itemCells = new Map<T, ListCell>();
@@ -453,9 +453,9 @@ export function listEngine<T, D>(props: {
 		if (!initialContentReady || !footerMeasured || index <= 0 || triggeredInitialScrollToIndex || handle === null) { return; }
 		triggeredInitialScrollToIndex = true;
 		if (index < cellCount()) {
-			(handle as FlatListHandle).scrollToIndex({ animated: false, index });
+			(handle as FlatListHandle<T>).scrollToIndex({ animated: false, index });
 		} else {
-			(handle as FlatListHandle).scrollToEnd({ animated: false });
+			(handle as FlatListHandle<T>).scrollToEnd({ animated: false });
 		}
 	};
 	let warnedInitialScrollIndex = false;
@@ -999,15 +999,15 @@ export function listEngine<T, D>(props: {
 				recordInteraction();
 				updateViewableItems();
 			},
-			(probe: unknown): number => {
+			(probe: T): number => {
 				const n = current === null ? 0 : itemTotal();
 				for (let i: int32 = 0; i < n; i += 1) {
-					if ((itemAt(i) as unknown) === probe) { return (i / columns) as number; }
+					if (itemAt(i) === probe) { return (i / columns) as number; }
 				}
 				return -1;
 			},
 		);
-		if (userRef !== null) { userRef(handle as FlatListHandle); }
+		if (userRef !== null) { userRef(handle as FlatListHandle<T>); }
 	};
 
 	// Parked: <ScrollView style={props.style}> wraps a nullable Accessor again (BUGS.md §3, isAccessorTyped) —
