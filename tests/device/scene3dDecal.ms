@@ -26,11 +26,11 @@ import { MaterialId, addTexture, releaseTexture } from "../../../void/src/void3d
 import { FilterMode, Wrap } from "../../../void/src/gpu/state";
 import { Color, rgba } from "../../../void/src/void2d/types";
 import { vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const clock = useManualFrames();

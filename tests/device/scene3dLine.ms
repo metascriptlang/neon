@@ -19,11 +19,11 @@ import { Program, LINE_WIDTH, LINE_LENGTH_SCALE, LINE_PIXEL_SIZE, LINE_NEAR, LIN
 import { MeshId, MaterialId } from "../../../void/src/void3d/draw";
 import { Color, rgba } from "../../../void/src/void2d/types";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const clock = useManualFrames();

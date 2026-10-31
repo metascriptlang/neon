@@ -13,11 +13,11 @@ import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, PointLight, Mesh, Camera3D, createMaterial } from "../../src/components/scene3d";
 import { MeshData, Rgba, empty, addQuad } from "../../../void/src/void3d/meshData";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/host/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
 
-@include("../../../void/src/sokol/bridge.h");
+@include("../../../void/src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const clock = useManualFrames();
