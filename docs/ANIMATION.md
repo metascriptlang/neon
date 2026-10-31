@@ -4,7 +4,8 @@ State: design agreed on 2026-10-11, prototyped on 2026-10-12, built in `src/moti
 `src/motion/index.ms`, tests `tests/motion/`) from 2026-10-29. `src/animation/` is something else: React Native's `Animated` surface on Neon signals (ROADMAP
 Bundle 5). The scene clocks in `src/components/scene2d.ms` (`Anim`) and `src/components/scene3d/animation.ms`
 (`ObjectAnimation`, `MeshFrameAnimation`) are also separate, and each plays Void's own frame data.
-How these three relate to the model below is an open decision (§Open).
+The person decided on 2026-10-31 that this core replaces their clocks and hands motion to each
+platform's engine where one exists (§Decided); where the core lives is open again (§Open).
 
 ## What it has to be
 
@@ -35,6 +36,11 @@ These are the person's requirements (2026-10-08 to 2026-10-15). Each one rules a
 8. **Checked early.** Metaprogramming types the bindings, validates a document before it plays,
    and lowers it to a backend's plan. An editor-made document passes the same validation as a
    coded one, and authoring never requires a macro DSL.
+9. **No threads in author code.** The app author writes a document, `useMotion` or
+   `value.animate(…)` and never names a thread, an engine or a platform. Each adapter hands a
+   track to the platform's own animation engine wherever one can run it, so a busy app thread
+   does not stall that motion; callbacks stay on the app's thread, and the same document gives
+   the same result everywhere (2026-10-31).
 
 ## Shape
 
@@ -134,6 +140,46 @@ Nothing traced so far needed a **NEW MECHANISM**: every part is a port of one of
 | tests, headless | manual clock | evaluator | values or mock bindings |
 | Lightcube preview | the editor drives the player | the preview's backend | the same document the app ships |
 
+The table above is what runs today. `useMotion` and `useAnimatedValue` run the evaluator through
+signals on every platform, the browser included; only `BrowserMotionPlayer` hands tracks to WAAPI,
+and its master clock still ticks in JS every frame.
+
+The target (2026-10-31, checked against sources the same day): three layers. The author writes a
+document and calls the sugar (`useMotion`, `useAnimatedValue`) or the engine directly, and never
+names a thread. The engine is the core: pure data and pure functions of time. Each adapter sorts a
+track into one of three ranks: handed to a platform engine that runs it without app code per
+frame, run by the evaluator on the app's thread, or refused at construction. Callbacks,
+`subscribe` and contention stay on the app's thread on every platform, so no author code meets a
+thread.
+
+| platform | handed to the platform, no app code per frame | the rest | handed over as |
+|---|---|---|---|
+| browser | WAAPI. On the compositor only for `opacity`, `transform`, `translate`, `rotate`, `scale` and `filter` (Firefox: not `filter`) with `replace` composite and no `endDelay` (Chromium `compositor_animations.cc:388-405,810`); released Safari also needs cubic-bezier or keyword easing (WebKit bug 312407). Other properties run in the browser's style engine on its main thread | evaluator per frame | merged keyframes per CSS property (X and Y as one `translate`, as motion groups one `transform`); stagger as `delay`; spring as a sampled `linear()` (Chrome 113, Firefox 112, Safari 17.2), as motion does (`linear.ts:3-15`); decay stays on the evaluator, as motion keeps inertia in JS |
+| macOS, iOS (Neon on AppKit, UIKit) | Core Animation, run by the render server outside the app's main thread (WWDC 2014 sessions 236 and 419) | evaluator on the main thread | sampled `CAKeyframeAnimation` or `CASpringAnimation` on `transform`, `opacity`, `backgroundColor`, `cornerRadius`; the final value written to the model at hand-over and on cancel; on macOS the centred matrix `updateLayer` applies (`platform/macos/bridge.m:80-98`) |
+| Windows | DirectComposition, run by DWM on its own thread (Microsoft DirectComposition docs) | evaluator on the UI thread | `IDCompositionAnimation` cubic segments, a spring sampled, on the visual's offset, opacity, transform (`platform/windows/dcompComposition.cpp:139-156`) |
+| Android | none through a public API: `ViewPropertyAnimator` runs on the UI thread (`ViewPropertyAnimator.java:858`) and `RenderNodeAnimator` is `@hide` | evaluator on the UI thread | |
+| Void, native and WASM | none: Void draws on the app's thread (`CADisplayLink`, rAF, Choreographer) | evaluator inside Void's frame, beside the scene | bindings as data (node, property) |
+| terminal | none | evaluator on the terminal's frame | |
+| SSR | static `@keyframes` | none | for motion in the first paint |
+
+A retarget samples position and velocity from the core's closed form, cancels what the platform is
+running and hands over the new motion, as motion's `NativeAnimationExtended.ts:119-145` does, so
+seek, cancel and contention keep one meaning. A property that changes layout (`width`, `left`)
+runs on the app's thread on every platform.
+
+Void off the app's thread is not in the target. It needs a thread pinned to one OS thread for the
+GPU device, which ULTRALOCK does not have (M1, V2); WASM has no threads in MetaScript's emcc
+runtime, and browser threads need COOP/COEP. Bevy samples animation on the app side and renders an
+extracted copy (`pipelined_rendering.rs:70-71`), which is the reference to follow if Void ever
+renders on its own thread.
+
+3D asset playback stays a sampler below the core. A glTF clip holds vec3 and quaternion channels
+with Hermite tangents, slerp and morph weight arrays on shared time arrays (`gltfCurve.ms`,
+`gltfPose.ms`), which a scalar `MotionTrack` cannot carry, and skinning (`skinPose.ms`) reads joint
+matrices rather than animating. The core drives such a sampler by time, speed, loop and crossfade
+weight, as Godot keeps typed 3D transform tracks beside property tracks
+(`doc/classes/Animation.xml:31,702-714`).
+
 ## Contract
 
 What an app relies on, the same on every backend:
@@ -173,9 +219,13 @@ timeline the editor scrubs must be reproducible, while a live gesture keeps its 
 | D | composition and browser delegation: nested clips, WAAPI | mixed execution still pauses, seeks and cancels right |
 | E | interactive motion: spring, gesture, retarget, Neon reactivity | interrupts, disposal and ownership right |
 | F | editor proof in Lightcube: edit, save, reopen | round-trip loses no structure; playback uses the same document |
+| G | a Neon app in the browser plays through WAAPI: `useMotion` and `useAnimatedValue` bind DOM elements, merged keyframes per CSS property, stagger as `delay`, spring as `linear()`, no JS master tick when every track is handed over; fixes found on 2026-10-31: `bezier()` builds its table and closures on every sample (`easing.ms:50-79`), `commitStyles` swallows its error (`waapi.ms:362`) | Chrome shows no per-frame style write from JS for a handed-over track |
+| H | Void bindings become data (node, property); a rotation binding writes a quaternion, not one Euler axis read back through `eulerOf` (`void.ms:164-168`); the core, `easing.ms` and `void.ms` move to where §Open decides, while `neon.ms` and `waapi.ms` stay in Neon with closure bindings | Void standalone imports the core without Neon |
+| I | one system for UI motion: derived values (interpolate, arithmetic, `diffClamp`), gesture and scroll events, 2D values, `parallel` and `loop`; `Presence` and `LayoutAnimation` (native and browser) rebuilt on the core; every consumer of `src/animation/` moved (navigation, drawer, header, collapsible, pageView, examples, tests), then `src/animation/` deleted except `frame.ms`; Void's sprite `Anim` clock and `ObjectAnimation`/`MeshFrameAnimation` clocks replaced by the core, which drives Void's glTF and mesh-frame samplers by time and weight | every former consumer runs on the core; a skinned glTF driven by the core matches today's `Clip` crossfade; cost per joint measured against `syncPose` |
+| J | platform engines: Core Animation on macOS and iOS, DirectComposition on Windows, for `transform` and `opacity` | motion stays smooth while the app thread is blocked on purpose |
 | later | Rive-style state machine, interchange | only when a workflow needs it |
 
-F belongs to Lightcube and is built there, not in Neon.
+F belongs to Lightcube and is built there, not in Neon. G to J run in that order (2026-10-31).
 
 ## Prototype, 2026-10-12
 
@@ -221,15 +271,28 @@ What it found:
 - **One global scheduler shared by every consumer.** The semantics and algorithms are shared.
   Each consumer keeps the lifecycle that fits it, and no animation is ticked twice.
 
+## Decided
+
+The person, 2026-10-30 and 2026-10-31:
+
+- **One system.** RN's `Animated` in `src/animation/` and the animation clocks of Void (sprite
+  `Anim`, `ObjectAnimation`, `MeshFrameAnimation`) go once the core covers their consumers
+  (milestone I), with no compatibility surface over the core. Void's glTF and mesh-frame samplers
+  stay, driven by the core (§Where it runs). This answers the VISION question "one animation model
+  for both worlds" (`docs/VISION.md`).
+- **A standalone engine.** The core is not driven by Neon's effects or syntax; `useMotion` and
+  `useAnimatedValue` are sugar for Neon. The engine's single-value API stays
+  `value.animate(spring(…))`, with `value.set(v)` meaning an immediate value.
+- **The three layers and criterion 9** above, built in the order G to J.
+
 ## Open
 
-- **The existing surfaces.** Does RN's `Animated` in `src/animation/` become a surface over this
-  core, stay beside it, or go? Do Void's `Anim` and `ObjectAnimation` play through it? The VISION
-  question "one animation model for both worlds" (`docs/VISION.md`) is the same question.
-- **The code API for a single value.** Built as `value.animate(spring(…))` with `value.set(v)`
-  meaning an immediate value (`value.ms` `AnimatedValue`), the 2026-10-08 recommendation, because
-  in Reanimated's `x.value = withSpring(…)` an animation object poses as a number. The person has
-  not confirmed it.
+- **Where the core lives.** Decided as `void` on 2026-10-31, reopened the same day: `void/CLAUDE.md`
+  rules Void a thin GPU layer with "No scene graph, ECS, physics, asset pipeline", while the same
+  repo carries `void2d`, `void3d` and their animation clocks. The code allows the move (the core
+  and `easing.ms` import nothing from Neon; nothing in Void imports Neon).
+- **Void off the app's thread.** Left out of the target (§Where it runs) until the compiler has a
+  thread pinned to one OS thread.
 
 The discussion is in a pi session:
 `~/.pi/agent/sessions/--Users-le-metascript-neon-wt-rn-components--/2026-10-08T14-31-21-954Z_01a11bed-0a61-73fa-bdc0-7cd6357809ac.jsonl`.
