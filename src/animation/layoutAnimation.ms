@@ -1,5 +1,5 @@
 import { requestFrame, frameNow } from "./frame";
-import { Easing, EasingFunction, bezier } from "./easing";
+import { Easing, EasingFunction, bezier } from "pulse/src/easing";
 
 when (js && !server) {
 	import { animateDomLayout } from "../platform/browser/layoutAnimation";

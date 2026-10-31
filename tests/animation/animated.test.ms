@@ -3,7 +3,7 @@
 import { Animated, CompositeAnimation } from "../../src/animation/animated";
 import { AnimatedValue, ValueState } from "../../src/animation/nodes";
 import { TimingAnimation, EndCallback, EndResult } from "../../src/animation/animation";
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { createEffect } from "../../src/core/effect";

@@ -5,7 +5,7 @@ import { Host, HostNode, MockNode, mockHost, render } from "../../src/render/hos
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
 import { View } from "../../src/components/primitives";
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { framePending, setFrameDriver, useManualFrames } from "../../src/animation/frame";
 import {
 	MotionDocument,
@@ -13,10 +13,10 @@ import {
 	ValueKind,
 	colorValue,
 	linearKeyframe,
-} from "../../src/motion/document";
-import { MotionOptions, MotionPlayer, motionOptions } from "../../src/motion/player";
-import { MotionPolicy } from "../../src/motion/policy";
-import { AnimatedValue, spring, timing } from "../../src/motion/value";
+} from "pulse/src/document";
+import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
+import { MotionPolicy } from "pulse/src/policy";
+import { AnimatedValue, spring, timing } from "pulse/src/value";
 import { MotionSignals, neonClock, useAnimatedValue, useMotion } from "../../src/motion/neon";
 
 function fadeDocument(): MotionDocument {

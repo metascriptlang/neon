@@ -1,6 +1,6 @@
 // Ported from RN Libraries/Animated/__tests__/Interpolation-test.js.
 
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { flush } from "../../src/core/runtime";
 import { AnimatedValue, InterpolationConfig, StringInterpolationConfig } from "../../src/animation/nodes";
 

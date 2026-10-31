@@ -2,12 +2,12 @@ import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
 import { onCleanup } from "../core/cleanup";
 import { getOwner } from "../core/runtime";
 import { Accessor, createSignal } from "../core/signal";
-import { Clock } from "./clock";
-import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "./document";
-import { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "./player";
-import { MotionPolicy } from "./policy";
-import { Composition, MotionTarget } from "./target";
-import { AnimatedValue } from "./value";
+import { Clock } from "pulse/src/clock";
+import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "pulse/src/document";
+import { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
+import { MotionPolicy } from "pulse/src/policy";
+import { Composition, MotionTarget } from "pulse/src/target";
+import { AnimatedValue } from "pulse/src/value";
 
 class FrameTicket {
 	id: int32 = 0;

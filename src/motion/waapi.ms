@@ -1,7 +1,7 @@
 import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
 import { HostNode } from "../render/hostTypes";
-import { Clock } from "./clock";
-import { ComposedTrack, flatten } from "./compose";
+import { Clock } from "pulse/src/clock";
+import { ComposedTrack, flatten } from "pulse/src/compose";
 import {
 	MotionDocument,
 	MotionKeyframe,
@@ -9,8 +9,8 @@ import {
 	ValueKind,
 	findClip,
 	validate,
-} from "./document";
-import { MotionOptions } from "./player";
+} from "pulse/src/document";
+import { MotionOptions } from "pulse/src/player";
 
 export struct StyleProperty {
 	name: string;
@@ -331,9 +331,9 @@ export struct MotionElement {
 }
 
 when (js) {
-	import { numberValue } from "./document";
-	import { MotionBinding, MotionPlayer } from "./player";
-	import { Composition, MotionTarget } from "./target";
+	import { numberValue } from "pulse/src/document";
+	import { MotionBinding, MotionPlayer } from "pulse/src/player";
+	import { Composition, MotionTarget } from "pulse/src/target";
 
 	extern class Animation {
 		currentTime: number | null;

@@ -2,7 +2,7 @@ import { Signal, Accessor, accessor, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
 import { Cleanup, Dispose } from "../core/types";
-import { Easing, EasingFunction, easingOr } from "./easing";
+import { Easing, EasingFunction, easingOr } from "pulse/src/easing";
 import { Animation, EndCallback, EndResult } from "./animation";
 
 export interface ValueState {

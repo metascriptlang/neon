@@ -10,12 +10,12 @@ import {
 	MotionValue,
 	linearKeyframe,
 	numberValue,
-} from "../../src/motion/document";
+} from "pulse/src/document";
 import {
 	MotionBinding,
 	MotionOptions,
 	motionOptions,
-} from "../../src/motion/player";
+} from "pulse/src/player";
 import { BrowserMotionPlayer, frameClock } from "../../src/motion/waapi";
 
 extern class Animation {}

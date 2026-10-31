@@ -10,10 +10,10 @@ import {
 	ValueKind,
 	colorValue,
 	linearKeyframe,
-} from "../../src/motion/document";
-import { MotionPlayer } from "../../src/motion/player";
-import { MotionPolicy } from "../../src/motion/policy";
-import { AnimatedValue, spring, timing } from "../../src/motion/value";
+} from "pulse/src/document";
+import { MotionPlayer } from "pulse/src/player";
+import { MotionPolicy } from "pulse/src/policy";
+import { AnimatedValue, spring, timing } from "pulse/src/value";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
 import { Changed } from "../../../void/src/void2d/node";
 

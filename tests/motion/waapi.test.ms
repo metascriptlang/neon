@@ -1,4 +1,4 @@
-import { ManualClock } from "../../src/motion/clock";
+import { ManualClock } from "pulse/src/clock";
 import {
 	MotionClip,
 	MotionDocument,
@@ -9,8 +9,8 @@ import {
 	colorValue,
 	linearKeyframe,
 	numberValue,
-} from "../../src/motion/document";
-import { MotionOptions, motionOptions } from "../../src/motion/player";
+} from "pulse/src/document";
+import { MotionOptions, motionOptions } from "pulse/src/player";
 import {
 	RoutedTrack,
 	StyleProperty,

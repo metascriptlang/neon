@@ -9,7 +9,7 @@ import { View } from "../components/primitives";
 import { Animated, CompositeAnimation } from "./animated";
 import { AnimatedValue } from "./nodes";
 import { EndResult } from "./animation";
-import { Easing } from "./easing";
+import { Easing } from "pulse/src/easing";
 
 export type PresenceType = "fade" | "scale" | "slide-up" | "slide-down" | "slide-left" | "slide-right";
 

@@ -17,7 +17,7 @@ import {
 	SpringAnimation,
 	DecayAnimation,
 } from "./animation";
-import { EasingFunction } from "./easing";
+import { EasingFunction } from "pulse/src/easing";
 import {
 	AnimatedNode,
 	AnimatedValue,

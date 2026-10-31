@@ -7,7 +7,7 @@ export {
 	ValueState, ValueListener, ExtrapolateType, InterpolationConfig, StringInterpolationConfig, ValueXYInit, LayoutXY,
 } from "./nodes";
 export { Animation, EndResult, EndCallback, TimingAnimation, SpringAnimation, DecayAnimation } from "./animation";
-export { Easing, EasingFunction, bezier } from "./easing";
+export { Easing, EasingFunction, bezier } from "pulse/src/easing";
 export {
 	LayoutAnimation, LayoutAnimationPresets, LayoutAnimationConfig, LayoutAnimationAnim, LayoutAnimationType,
 	LayoutAnimationProperty,

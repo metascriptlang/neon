@@ -12,13 +12,13 @@ import {
 	rootId,
 } from "../../../void/src/void3d/scene";
 import { eulerQuat } from "../../../void/src/math/math3d";
-import { MotionDocument, MotionKeyframe, MotionTrack, ValueKind, colorValue, linearKeyframe } from "../../src/motion/document";
-import { interpolate } from "../../src/motion/evaluate";
-import { MotionPlayer, motionOptions } from "../../src/motion/player";
-import { MotionPolicy } from "../../src/motion/policy";
-import { springByStiffness } from "../../src/motion/spring";
-import { MotionTarget } from "../../src/motion/target";
-import { AnimatedValue, spring } from "../../src/motion/value";
+import { MotionDocument, MotionKeyframe, MotionTrack, ValueKind, colorValue, linearKeyframe } from "pulse/src/document";
+import { interpolate } from "pulse/src/evaluate";
+import { MotionPlayer, motionOptions } from "pulse/src/player";
+import { MotionPolicy } from "pulse/src/policy";
+import { springByStiffness } from "pulse/src/spring";
+import { MotionTarget } from "pulse/src/target";
+import { AnimatedValue, spring } from "pulse/src/value";
 import { VoidBindings, VoidClock } from "../../src/motion/void";
 
 function near(a: float64, b: float64): boolean {

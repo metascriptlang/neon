@@ -4,7 +4,7 @@ import { Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { Animated } from "../../src/animation/animated";
 import { AnimatedValue, AnimatedNode } from "../../src/animation/nodes";
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { nmTeardown, nmLastPressableTag, nmRotation, nmOpacity, nmTranslateX, nmTransformWrites, nmProp } from "./nativeBridgeMock.h";
 import { createSignal } from "../../src/core/signal";

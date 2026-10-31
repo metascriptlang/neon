@@ -3,7 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, fireEvent, mockHost, mockNode, render } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { framePending, setFrameDriver, useManualFrames } from "../../src/animation/frame";
-import { MotionPolicy } from "../../src/motion/policy";
+import { MotionPolicy } from "pulse/src/policy";
 import { LIKED_SCALE, MotionShowcase } from "../../examples/motionShowcase/showcase";
 
 function textOf(n: MockNode): string {

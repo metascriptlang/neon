@@ -1,5 +1,5 @@
 import { requestFrame, cancelFrame, frameNow } from "./frame";
-import { Easing, EasingFunction, easingOr } from "./easing";
+import { Easing, EasingFunction, easingOr } from "pulse/src/easing";
 
 export interface EndResult {
 	finished: boolean;

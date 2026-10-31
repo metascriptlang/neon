@@ -15,10 +15,10 @@ import {
 } from "../../../void/src/void2d/node";
 import { NodeId3D, Scene3D, Transform3D, liveRow, setLocal } from "../../../void/src/void3d/scene";
 import { Quat, eulerQuat } from "../../../void/src/math/math3d";
-import { Clock, ManualClock } from "./clock";
-import { MotionValue, ValueKind, colorValue, numberValue } from "./document";
-import { MotionBinding } from "./player";
-import { MotionTarget } from "./target";
+import { Clock, ManualClock } from "pulse/src/clock";
+import { MotionValue, ValueKind, colorValue, numberValue } from "pulse/src/document";
+import { MotionBinding } from "pulse/src/player";
+import { MotionTarget } from "pulse/src/target";
 
 export class VoidClock {
 	private manual: ManualClock = new ManualClock();

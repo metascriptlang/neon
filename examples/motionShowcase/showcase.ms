@@ -17,8 +17,8 @@ import {
 	spring,
 	stagger,
 	staggerOptions,
-} from "../../src/motion/index";
-import { MotionPolicy } from "../../src/motion/policy";
+} from "pulse/src/index";
+import { MotionPolicy } from "pulse/src/policy";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
 
 export const CARD_SLOTS: string[] = ["first", "second"];

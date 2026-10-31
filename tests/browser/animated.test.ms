@@ -7,7 +7,7 @@ import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { Animated } from "../../src/animation/animated";
 import { AnimatedValue, AnimatedNode } from "../../src/animation/nodes";
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { LayoutAnimation } from "../../src/animation/layoutAnimation";
 import { setFrameDriver } from "../../src/animation/frame";
 import { EndResult } from "../../src/animation/animation";

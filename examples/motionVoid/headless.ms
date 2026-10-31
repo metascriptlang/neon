@@ -1,8 +1,8 @@
 import { Scene2D, group, local, paint } from "../../../void/src/void2d/node";
 import { create } from "../../../void/src/void2d/scene";
 import { rgba } from "../../../void/src/void2d/types";
-import { MotionDocument, ValueKind, linearKeyframe } from "../../src/motion/index";
-import { MotionPlayer, motionOptions } from "../../src/motion/player";
+import { MotionDocument, ValueKind, linearKeyframe } from "pulse/src/index";
+import { MotionPlayer, motionOptions } from "pulse/src/player";
 import { VoidBindings, VoidClock } from "../../src/motion/void";
 
 function slide(): MotionDocument {

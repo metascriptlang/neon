@@ -1,6 +1,6 @@
 import { Animated } from "../../src/animation/animated";
 import { AnimatedValue } from "../../src/animation/nodes";
-import { Easing } from "../../src/animation/easing";
+import { Easing } from "pulse/src/easing";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
