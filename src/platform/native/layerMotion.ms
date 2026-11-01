@@ -136,3 +136,7 @@ export function bridgeLayerEngine(): LayerEngine {
 		},
 	};
 }
+
+when (ios) {
+	installLayerEngine(bridgeLayerEngine());
+}
