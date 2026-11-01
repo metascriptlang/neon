@@ -139,19 +139,6 @@ function ProductDetail(props: { product: Accessor<Product>; back: () => void; ed
 	</View>;
 }
 
-async function submitEdit(id: string, title: string, description: string, price: string,
-	setSaving: (v: boolean) => void, setProblem: (v: string) => void, saved: (p: Product) => void): Promise<void> {
-	setSaving(true);
-	setProblem("");
-	const result = await saveProduct(id, title, description, price);
-	setSaving(false);
-	if (result.ok) {
-		saved(result.value);
-	} else {
-		setProblem(result.error);
-	}
-}
-
 function ProductEdit(props: { product: Accessor<Product>; cancel: () => void; saved: (p: Product) => void }): NeonNode {
 	const start = untrack((): Product => props.product());
 	const [title, setTitle] = createSignal(start.title);
@@ -159,9 +146,17 @@ function ProductEdit(props: { product: Accessor<Product>; cancel: () => void; sa
 	const [description, setDescription] = createSignal(start.description);
 	const [saving, setSaving] = createSignal(false);
 	const [problem, setProblem] = createSignal("");
-	const submit = (): void => {
-		submitEdit(start.id, title(), description(), price(), (v: boolean): void => { setSaving(v); }, (v: string): void => { setProblem(v); }, props.saved);
-	};
+	async function submit(): Promise<void> {
+		setSaving(true);
+		setProblem("");
+		const result = await saveProduct(start.id, title(), description(), price());
+		setSaving(false);
+		if (result.ok) {
+			props.saved(result.value);
+		} else {
+			setProblem(result.error);
+		}
+	}
 	return <View style={styles.screen}>
 		<View style={styles.header}>
 			<Pressable style={styles.back} accessibilityRole="button" accessibilityLabel="Cancel editing" onPress={(e: NeonEvent): void => { props.cancel(); }}>
