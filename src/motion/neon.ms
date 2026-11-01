@@ -138,18 +138,19 @@ export function useAnimatedValue(
 	return [read, value];
 }
 
-function signalTarget(target: MotionTarget | null | undefined): SignalTarget | null {
+function bindSignalTarget(target: MotionTarget | null | undefined): SignalTarget | null {
 	if (target === null || target === undefined || !(target instanceof SignalTarget)) {
 		return null;
 	}
 	const own = target as SignalTarget;
+	own.signals.playerBound = true;
 	return own.signals.elements.declared.includes(own.slot) ? own : null;
 }
 
 function elementsOf(bindings: MotionBinding[]): MotionElements | null {
 	let found: MotionElements | null = null;
 	for (const binding of bindings) {
-		const own = signalTarget(binding.target);
+		const own = bindSignalTarget(binding.target);
 		if (own === null) { continue; }
 		if (found !== null && found !== own.signals.elements) {
 			throw new Error(
@@ -168,7 +169,7 @@ function animatedValue(
 	target: MotionTarget | null,
 	composition: Composition,
 ): AnimatedValue {
-	const own = signalTarget(target);
+	const own = bindSignalTarget(target);
 	const motion = elementMotion;
 	if (own === null || motion === null || composition !== Composition.Replace) {
 		return new AnimatedValue(initial, neonClock(), policy, target, composition);
@@ -269,6 +270,7 @@ export function cssColor(color: MotionColor): string {
 export class MotionSignals {
 	bindings: MotionBinding[] = [];
 	elements: MotionElements = new MotionElements();
+	playerBound: boolean = false;
 	private slots: OwnedSlot[] = [];
 	private styles: SlotStyle[] = [];
 
@@ -321,6 +323,13 @@ export class MotionSignals {
 	}
 
 	ref(slot: string): (handle: ViewHandle) => void {
+		if (this.playerBound) {
+			throw new Error(
+				"motion: signals.ref(\"" + slot + "\") comes after a player bound these MotionSignals, " +
+					"so that player would drive " + slot + " through signals only; " +
+					"declare every signals.ref before useMotion or useAnimatedValue",
+			);
+		}
 		this.elements.declare(slot);
 		const owned = this.ownedSlot(slot);
 		return (handle: ViewHandle): void => {

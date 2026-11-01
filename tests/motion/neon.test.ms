@@ -337,3 +337,32 @@ test "a binding refuses a value of the other kind" {
 	try { signals.bindings[0].write(colorValue(0, 0, 0, 1)); } catch (e) { error = e.toString(); }
 	assert error.includes("box.opacity") && error.includes("number"), error;
 }
+
+test "a ref declared after a player bound its MotionSignals refuses and names the slot" {
+	const frames = useManualFrames();
+	const played = new MotionSignals();
+	played.number("box", "opacity", 0);
+	const valued = new MotionSignals();
+	valued.number("like", "scale", 1);
+	const early = new MotionSignals();
+	early.number("box", "opacity", 0);
+	let playerError = "";
+	let valueError = "";
+	const dispose = createRoot((dispose: () => void): () => void => {
+		early.ref("box");
+		useMotion(fade(0, 1), early.bindings);
+		useMotion(fade(0, 1), played.bindings);
+		try { played.ref("box"); } catch (e) { playerError = e.toString(); }
+		useAnimatedValue(1, new MotionPolicy(), valued.target("like", "scale"));
+		try { valued.ref("like"); } catch (e) { valueError = e.toString(); }
+		return dispose;
+	});
+	assert playerError.includes("motion: signals.ref(") &&
+		playerError.includes("drive box through signals") &&
+		playerError.includes("before useMotion"), playerError;
+	assert valueError.includes("drive like through signals") &&
+		valueError.includes("useAnimatedValue"), valueError;
+	dispose();
+	frames.runAll();
+	setFrameDriver(null);
+}
