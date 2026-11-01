@@ -10,6 +10,7 @@ import { Text, View } from "../../src/components/primitives";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Accordion, Collapsible, ExpansionTile } from "../../src/components/collapsible";
 import { Accessor } from "../../src/core/signal";
+import { useAnimatedValue } from "../../src/motion/neon";
 
 let disposeLast: Dispose | null = null;
 
@@ -81,6 +82,24 @@ test "a Collapsible animates from zero to its measured height and then lets it s
 	assert (styleOf(outer).height as number) < 120, "closing";
 	clock.runAll();
 	assert styleOf(outer).height === 0 && styleOf(inner).display === "none" && ended === 2, "closed and hidden again";
+	unmount();
+}
+
+let callerShown: Accessor<number> | null = null;
+
+function CallerProgress(): NeonNode {
+	const [shown, progress] = useAnimatedValue(0);
+	callerShown = shown;
+	return element(<Collapsible collapsed={false} progress={progress}>
+		<View style={{ height: 120 }} />
+	</Collapsible>);
+}
+
+test "an open Collapsible syncs a caller's progress after render, not during it" {
+	useManualFrames();
+	mount((): NeonNode => element(<CallerProgress />));
+	flush();
+	assert (callerShown as Accessor<number>)() === 1, "the caller's value reads open once mounted";
 	unmount();
 }
 

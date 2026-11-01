@@ -4,7 +4,7 @@
 // heightFactor); once open and at rest the box lets the content size itself again.
 
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
-import { createRenderEffect } from "../core/effect";
+import { createRenderEffect, onSettled } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { For } from "../macros/ui/flow";
@@ -49,7 +49,10 @@ export function Collapsible(props: {
 	const progress = given === null
 		? useAnimatedValue(startOpen ? 1 : 0)[1]
 		: given as AnimatedValue;
-	progress.set(startOpen ? 1 : 0);
+	onSettled((): Cleanup | null => {
+		progress.set(startOpen ? 1 : 0);
+		return null;
+	});
 	const shown = useValueSignal(progress.source());
 	const [measured, setMeasured] = createSignal<number>(0);
 	const [moving, setMoving] = createSignal<boolean>(false);
