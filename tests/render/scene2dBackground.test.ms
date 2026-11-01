@@ -8,7 +8,7 @@ import { Scene2D, Group, Rect } from "../../src/components/scene2d";
 import { NodeRef, Paint2D, DrawKind, Changed, clearChanges, kind, content, paint, parent, local, setBoxStyle } from "../../../void/src/void2d/node";
 import { Color, rgba, Smooth } from "../../../void/src/void2d/types";
 import { BlendMode } from "../../../void/src/gpu/state";
-import { BoxStyle, create, CornerRadii, BorderWidths, boxStyles } from "../../../void/src/void2d/boxStyle";
+import { BoxStyle, create, uniformRadii, uniformBorders, boxStyles } from "../../../void/src/void2d/boxStyle";
 import { colorMatrixGrayscale } from "../../../void/src/void2d/effect";
 
 function colored(color: Color): Paint2D {
@@ -38,7 +38,7 @@ test "Group background promotes and demotes in place without replacing its child
 	assert group.local().x === 3.0 && group.local().y === 4.0;
 	assert group.content().w === 20.0 && group.content().h === 10.0;
 	assert group.paint().color === rgba(0.2, 0.4, 0.8, 1.0);
-	group.setBoxStyle(BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
+	group.setBoxStyle(BoxStyle.create(uniformRadii(2.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
 	const style = group.scene.payloads[group.id.index];
 	const rows = boxStyles.length;
 	setWidth(30.0); setBackground(null);
@@ -49,7 +49,7 @@ test "Group background promotes and demotes in place without replacing its child
 	setBackground(rgba(0.9, 0.1, 0.2, 1.0));
 	flush();
 	assert group.kind() === DrawKind.Rect && child.parent() === group;
-	group.setBoxStyle(BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
+	group.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
 	assert group.scene.payloads[group.id.index] === style && boxStyles.length === rows;
 	dispose(); setBackground(null); setWidth(1.0);
 	flush();

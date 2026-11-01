@@ -26,7 +26,7 @@ import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../../void/src/void2d/effect";
 import {
-	BoxStyle, create, CornerRadii, BorderWidths, dashed, castShadow, boxStyles,
+	BoxStyle, create, uniformRadii, uniformBorders, dashed, castShadow, boxStyles,
 } from "../../../void/src/void2d/boxStyle";
 import {
 	imageStyle, imageStyles, ObjectFit, fitImage,
@@ -157,7 +157,7 @@ test "Rect boxStyle updates its owned payload and reuses it after removal" {
 			{Show({ when: accessor(() => shown()), children: element(
 				<Rect width={50.0} height={30.0} color={rgba(1.0, 0.0, 0.0, 1.0)}
 					boxStyle={BoxStyle.create(
-						CornerRadii.uniform(radius()), BorderWidths.uniform(2.0), rgba(0.0, 0.0, 1.0, 1.0),
+						uniformRadii(radius()), uniformBorders(2.0), rgba(0.0, 0.0, 1.0, 1.0),
 					).dashed().castShadow(rgba(0.0, 0.0, 0.0, 0.5), 3.0, 1.0, 2.0)}
 					ref={(value: NodeRef): void => { nodes.push(value); }} />
 			) })}
@@ -197,7 +197,7 @@ test "Sprite imageStyle and independent fitted size react without replacing its 
 		<Scene2D ref={(value: VoidScene2D): void => { refs.push(value); }}>
 			{Show({ when: accessor(() => shown()), children: element(
 				<Sprite tile={whiteTile(tileWidth(), 32.0)} width={width()} height={80.0}
-					imageStyle={imageStyle(CornerRadii.uniform(3.0), gray(), ObjectFit.Contain)}
+					imageStyle={imageStyle(uniformRadii(3.0), gray(), ObjectFit.Contain)}
 					ref={(value: NodeRef): void => { nodes.push(value); }} />
 			) })}
 		</Scene2D>
@@ -235,7 +235,7 @@ test "Sprite exposes remaining ObjectFit values and partial dimensions follow re
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
 		<Sprite tile={whiteTile(64.0, 32.0)} width={80.0} height={80.0}
-			imageStyle={imageStyle(CornerRadii.uniform(0.0), false, fit())}
+			imageStyle={imageStyle(uniformRadii(0.0), false, fit())}
 			ref={(value: NodeRef): void => { nodes.push(value); }} />
 		<Sprite tile={whiteTile(10.0, tileHeight())} width={30.0}
 			ref={(value: NodeRef): void => { nodes.push(value); }} />

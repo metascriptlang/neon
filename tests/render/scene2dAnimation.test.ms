@@ -15,7 +15,7 @@ import { Tile, whiteTile, tile, rgba } from "../../../void/src/void2d/types";
 
 import { Texture, create, close } from "../../../void/src/gpu/texture";
 import { imageStyle, imageStyles, ObjectFit } from "../../../void/src/void2d/imageStyle";
-import { CornerRadii } from "../../../void/src/void2d/boxStyle";
+import { uniformRadii } from "../../../void/src/void2d/boxStyle";
 import { labelTexts, cursorShown } from "../../../void/src/void2d/labelText";
 
 test "Anim JSX shows frame zero and advances on the owned Scene2D clock" {
@@ -262,7 +262,7 @@ test "Anim snapshots caller frames and delays while borrowing textures and retai
 	const dispose = render(element(<Void><Scene2D>
 		<Anim frames={changed() ? [tile(other, 32.0, 16.0), whiteTile(8.0, 8.0), whiteTile(12.0, 12.0)] : frames}
 			frameDelays={changed() ? [50, 100, 200] : delays} fps={10.0} width={width()}
-			imageStyle={imageStyle(CornerRadii.uniform(3.0), gray(), ObjectFit.Contain)}
+			imageStyle={imageStyle(uniformRadii(3.0), gray(), ObjectFit.Contain)}
 			ref={(node: NodeRef): void => { nodes.push(node); }} />
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 	try {
