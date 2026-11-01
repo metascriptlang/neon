@@ -8,12 +8,12 @@ function unavailable(api: string): Error {
 }
 
 function refusedPermission(name: string): PermissionReply {
-	return { status: "", canAskAgain: false, error: `Permissions(${name}) is not available on an Ion desktop host yet` };
+	throw new Error(`Permissions(${name}) is not available on an Ion desktop host yet`);
 }
 
 function accessReply(got: Result<MediaAccess, string>): PermissionReply {
-	if (!got.ok) { return { status: "", canAskAgain: false, error: got.error }; }
-	return { status: got.value.status, canAskAgain: got.value.canAskAgain, error: "" };
+	if (!got.ok) { throw new Error(got.error); }
+	return { status: got.value.status, canAskAgain: got.value.canAskAgain };
 }
 
 export const ionPermissionServices: PermissionServices = {

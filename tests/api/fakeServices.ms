@@ -38,6 +38,7 @@ export class FakeServices {
 	permissionNames: string[] = [];
 	permissionStates: string[] = [];
 	answer: string = "granted";
+	refusal: string = "";
 	rationale: boolean = false;
 	currentRequests: LocationRequest[] = [];
 	currentDone: ((fix: LocationFix) => void)[] = [];
@@ -188,9 +189,11 @@ export class FakeServices {
 	installPermissions(): void {
 		const services: PermissionServices = {
 			permissionStatus: async (name: string): Promise<PermissionReply> => {
+				if (this.refusal !== "") { throw new Error(this.refusal); }
 				return this.permission(name);
 			},
 			requestPermission: async (name: string): Promise<PermissionReply> => {
+				if (this.refusal !== "") { throw new Error(this.refusal); }
 				this.log.push("requestPermission " + name);
 				if (this.permission(name).status === "undetermined") { this.setPermission(name, this.answer); }
 				return this.permission(name);
@@ -317,7 +320,7 @@ export class FakeServices {
 	permission(name: string): PermissionReply {
 		const at = this.permissionNames.indexOf(name);
 		const status = at < 0 ? "undetermined" : this.permissionStates[at];
-		return { status, canAskAgain: status === "undetermined", error: "" };
+		return { status, canAskAgain: status === "undetermined" };
 	}
 
 	setPermission(name: string, status: string): void {

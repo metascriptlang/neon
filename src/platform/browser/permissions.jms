@@ -17,21 +17,21 @@ function browserPermission(name: string): string {
 
 function permissionReply(state: string): PermissionReply {
 	return match (state) {
-		"granted" => ({ status: "granted", canAskAgain: false, error: "" }),
-		"denied" => ({ status: "denied", canAskAgain: false, error: "" }),
-		_ => ({ status: "undetermined", canAskAgain: true, error: "" }),
+		"granted" => ({ status: "granted", canAskAgain: false }),
+		"denied" => ({ status: "denied", canAskAgain: false }),
+		_ => ({ status: "undetermined", canAskAgain: true }),
 	};
 }
 
 async function permissionStatus(name: string): Promise<PermissionReply> {
 	const browserName = browserPermission(name);
-	if (browserName === "") { return { status: "", canAskAgain: false, error: "Permissions: unknown permission " + name }; }
+	if (browserName === "") { throw new Error("Permissions: unknown permission " + name); }
 	return permissionReply(await permissionQuery(browserName));
 }
 
 async function requestPermission(name: string): Promise<PermissionReply> {
 	const now = await permissionStatus(name);
-	if (now.status !== "undetermined" || now.error !== "") { return now; }
+	if (now.status !== "undetermined") { return now; }
 	const answer: string = match (name) {
 		"notifications" => await askNotifications(0),
 		"camera" => await askMedia(true),
@@ -51,7 +51,7 @@ async function androidShouldShowRationale(permission: string): Promise<boolean> 
 
 async function androidRequestPermissions(permissions: string[]): Promise<PermissionReply[]> {
 	const denied: PermissionReply[] = [];
-	for (const permission of permissions) { denied.push({ status: "denied", canAskAgain: false, error: "" }); }
+	for (const permission of permissions) { denied.push({ status: "denied", canAskAgain: false }); }
 	return denied;
 }
 

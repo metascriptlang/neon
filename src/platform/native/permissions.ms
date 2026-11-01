@@ -24,9 +24,9 @@ when (ios || android) {
 
 function permissionReply(reply: string): PermissionReply {
 	const error = refusal(reply);
-	if (error !== "") { return { status: "", canAskAgain: false, error }; }
+	if (error !== "") { throw new Error(error); }
 	const fields = reply.split(FIELD);
-	return { status: fields[0], canAskAgain: fields.length > 1 && fields[1] === "1", error: "" };
+	return { status: fields[0], canAskAgain: fields.length > 1 && fields[1] === "1" };
 }
 
 async function permissionStatus(name: string): Promise<PermissionReply> {
@@ -48,10 +48,11 @@ async function androidShouldShowRationale(permission: string): Promise<boolean> 
 async function androidRequestPermissions(permissions: string[]): Promise<PermissionReply[]> {
 	const reply = await ask(command, "permissionsAndroid.request", permissions.join(","));
 	const error = refusal(reply);
+	if (error !== "") { throw new Error(error); }
 	const results: PermissionReply[] = [];
-	const fields = error === "" ? wireFields("Permissions", reply, permissions.length) : [];
+	const fields = wireFields("Permissions", reply, permissions.length);
 	for (let i = 0; i < permissions.length; i += 1) {
-		results.push({ status: error === "" ? fields[i] : "", canAskAgain: false, error });
+		results.push({ status: fields[i], canAskAgain: false });
 	}
 	return results;
 }

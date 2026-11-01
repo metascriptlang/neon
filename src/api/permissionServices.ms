@@ -1,9 +1,6 @@
-// A host refusal travels as `error`, not as a throw inside the service: on C a rejection awaited
-// through a function value is lost (compiler card 2026-10-08-await-through-a-function-field-drops-the-rejection-on-c.md).
 export interface PermissionReply {
 	status: string;
 	canAskAgain: boolean;
-	error: string;
 }
 
 export interface PermissionServices {

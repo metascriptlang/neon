@@ -19,13 +19,7 @@ export interface PermissionResponse {
 	expires: string;
 }
 
-function replyOrThrow(reply: PermissionReply): PermissionReply {
-	if (reply.error !== "") { throw new Error(reply.error); }
-	return reply;
-}
-
-function response(given: PermissionReply): PermissionResponse {
-	const reply = replyOrThrow(given);
+function response(reply: PermissionReply): PermissionResponse {
 	return {
 		status: reply.status as PermissionStatus,
 		granted: reply.status === "granted",
@@ -35,18 +29,14 @@ function response(given: PermissionReply): PermissionResponse {
 }
 
 export class Permissions {
-	// Each throwing call is bound before `return`: on C an exception thrown by the operand of `return`
-	// in an async function is lost (compiler card 2026-10-08-async-return-of-a-throwing-call-loses-the-exception-on-c.md).
 	static async check(permission: PermissionName): Promise<PermissionResponse> {
 		const name: string = permission;
-		const checked = response(await permissionServices("Permissions.check").permissionStatus(name));
-		return checked;
+		return response(await permissionServices("Permissions.check").permissionStatus(name));
 	}
 
 	static async request(permission: PermissionName): Promise<PermissionResponse> {
 		const name: string = permission;
-		const answered = response(await permissionServices("Permissions.request").requestPermission(name));
-		return answered;
+		return response(await permissionServices("Permissions.request").requestPermission(name));
 	}
 }
 
@@ -187,15 +177,14 @@ export class PermissionsAndroid {
 			await showRationale(rationale);
 		}
 		const results = await services.androidRequestPermissions([permission]);
-		const result = replyOrThrow(results[0]);
-		return result.status as PermissionsAndroidResult;
+		return results[0].status as PermissionsAndroidResult;
 	}
 
 	static async requestMultiple(permissions: string[]): Promise<Map<string, PermissionsAndroidResult>> {
 		const results = await permissionServices("PermissionsAndroid.requestMultiple").androidRequestPermissions(permissions);
 		const byPermission = new Map<string, PermissionsAndroidResult>();
 		for (let i = 0; i < permissions.length; i += 1) {
-			byPermission.set(permissions[i], replyOrThrow(results[i]).status as PermissionsAndroidResult);
+			byPermission.set(permissions[i], results[i].status as PermissionsAndroidResult);
 		}
 		return byPermission;
 	}
