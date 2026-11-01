@@ -54,7 +54,7 @@ function expect(what: string, ok: boolean, detail: string): void {
 
 // The centre of a labelled view, from its measured bounds "x,y,w,h".
 function centre(label: string): int32[] {
-	const box: string = harnessMeasure(TITLE, label);
+	const box = harnessMeasure(TITLE, label) as string;
 	const parts = box.split(",");
 	if (parts.length !== 4) { throw `ionNeonUi: ${label} is not on screen (${box})`; }
 	return [(parseFloat(parts[0]) + parseFloat(parts[2]) / 2) as int32, (parseFloat(parts[1]) + parseFloat(parts[3]) / 2) as int32];

@@ -122,8 +122,8 @@ function begin(): void {
 }
 
 function pressRead(): void {
-	expectText("press name", harnessAutomationText("name"), "Press me");
-	expectText("press help", harnessAutomationText("helpText"), "Counts a press");
+	expectText("press name", harnessAutomationText("name") as string, "Press me");
+	expectText("press help", harnessAutomationText("helpText") as string, "Counts a press");
 	expectNumber("press control type", number("controlType"), BUTTON);
 	expectNumber("press invoke pattern", number("hasInvoke"), 1);
 	expectNumber("press enabled", number("enabled"), 1);

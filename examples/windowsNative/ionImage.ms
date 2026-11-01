@@ -22,10 +22,10 @@ when (windows) {
 	@passL("-lgdi32");
 }
 
-const SPLIT = harnessFileUri("examples/windowsNative/split.png");
-const WIDE = harnessFileUri("examples/windowsNative/wide.png");
-const TILE = harnessFileUri("examples/windowsNative/tile.png");
-const MISSING = harnessFileUri("examples/windowsNative/missing.png");
+const SPLIT = harnessFileUri("examples/windowsNative/split.png") as string;
+const WIDE = harnessFileUri("examples/windowsNative/wide.png") as string;
+const TILE = harnessFileUri("examples/windowsNative/tile.png") as string;
+const MISSING = harnessFileUri("examples/windowsNative/missing.png") as string;
 
 const styles = createStyles({
 	base: { width: 480, height: 260, backgroundColor: "#101820" },

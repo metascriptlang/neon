@@ -23,9 +23,9 @@ when (windows) {
 	@passL("-lgdi32");
 }
 
-const SPLIT = harnessFileUri("examples/windowsNative/split.png");
-const WIDE = harnessFileUri("examples/windowsNative/wide.png");
-const MISSING = harnessFileUri("examples/windowsNative/missing.png");
+const SPLIT = harnessFileUri("examples/windowsNative/split.png") as string;
+const WIDE = harnessFileUri("examples/windowsNative/wide.png") as string;
+const MISSING = harnessFileUri("examples/windowsNative/missing.png") as string;
 const REMOTE = "https://raw.githubusercontent.com/github/explore/main/topics/javascript/javascript.png";
 const REMOTE_MISSING = "https://raw.githubusercontent.com/github/explore/main/topics/javascript/neon-missing.png";
 

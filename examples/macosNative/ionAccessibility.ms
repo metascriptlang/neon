@@ -70,7 +70,7 @@ interface Step {
 	logs?: boolean;
 }
 
-function read(label: string): () => string { return (): string => harnessAccessibility(TITLE, label); }
+function read(label: string): () => string { return (): string => harnessAccessibility(TITLE, label) as string; }
 
 function press(label: string): () => string { return (): string => `${harnessAccessibilityPress(TITLE, label)}`; }
 

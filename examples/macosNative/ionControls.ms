@@ -108,7 +108,7 @@ function click(x: number, y: number): void {
 }
 
 function switches(): string {
-	const states: string = harnessSwitchStates(TITLE);
+	const states = harnessSwitchStates(TITLE) as string;
 	return states;
 }
 

@@ -107,7 +107,7 @@ let completed: int32 = 0;
 let directChecks: int32 = 0;
 
 function directBounds(label: string, want: string): void {
-	const got: string = harnessMeasure(TITLE, label);
+	const got = harnessMeasure(TITLE, label) as string;
 	directChecks += 1;
 	expect("native export " + label, got === want, `${got}, want ${want}`);
 }
@@ -167,7 +167,7 @@ function delivered(name: string): void {
 }
 
 function atStart(): void {
-	const nativeRoot: string = harnessMeasureRoot(TITLE);
+	const nativeRoot = harnessMeasureRoot(TITLE) as string;
 	directChecks += 1;
 	expect("native export root", nativeRoot === "0,0,480,320", nativeRoot);
 	directBounds("plain", "20,30,100,50");
