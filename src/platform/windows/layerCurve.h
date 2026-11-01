@@ -75,7 +75,7 @@ inline Curve curveOf(const Period &p, double repeatCount, double startMs, double
 	}
 	if (forever) {
 		curve.repeats = true;
-		curve.repeatBegin = wall(end - p.length);
+		curve.repeatBegin = wall(end);
 		curve.repeatSeconds = p.length / speed / 1000.0;
 	} else {
 		double base = std::floor(end / p.length) * p.length;
