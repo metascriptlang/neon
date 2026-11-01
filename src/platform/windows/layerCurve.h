@@ -88,16 +88,34 @@ inline Curve curveOf(const Period &p, double repeatCount, double startMs, double
 
 // The six matrix elements of a transform track, from keys of five values (scaleX, scaleY, translateX,
 // translateY, rotation in degrees) that matrixOf turns into m11, m12, m21, m22, dx, dy.
+constexpr double kMaxRotationStepDegrees = 2.0;
+
 template <typename MatrixOf>
 inline void transformCurves(const double *keyTimes, int64_t keyCount, const double *values, double durationMs,
 	double repeatCount, bool autoreverses, double startMs, double offsetMs, double speed, MatrixOf matrixOf, Curve curves[6]) {
-	std::vector<double> columns[6];
+	std::vector<double> times, tuples;
 	for (int64_t i = 0; i < keyCount; i++) {
+		const double *at = values + i * 5;
+		if (i > 0 && keyTimes[i] > keyTimes[i - 1]) {
+			const double *before = at - 5;
+			int steps = (int)std::ceil(std::fabs(at[4] - before[4]) / kMaxRotationStepDegrees);
+			for (int step = 1; step < steps; step++) {
+				double f = (double)step / steps;
+				times.push_back(keyTimes[i - 1] + (keyTimes[i] - keyTimes[i - 1]) * f);
+				for (int c = 0; c < 5; c++) tuples.push_back(before[c] + (at[c] - before[c]) * f);
+			}
+		}
+		times.push_back(keyTimes[i]);
+		tuples.insert(tuples.end(), at, at + 5);
+	}
+	std::vector<double> columns[6];
+	for (size_t i = 0; i < times.size(); i++) {
 		float m[6];
-		matrixOf(values + i * 5, m);
+		matrixOf(tuples.data() + i * 5, m);
 		for (int k = 0; k < 6; k++) columns[k].push_back(m[k]);
 	}
 	for (int k = 0; k < 6; k++) {
-		curves[k] = curveOf(periodOf(keyTimes, keyCount, columns[k], durationMs, autoreverses), repeatCount, startMs, offsetMs, speed);
+		curves[k] = curveOf(periodOf(times.data(), (int64_t)times.size(), columns[k], durationMs, autoreverses),
+			repeatCount, startMs, offsetMs, speed);
 	}
 }

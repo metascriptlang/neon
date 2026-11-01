@@ -45,14 +45,42 @@ int32_t wlcAccepted(void) {
 
 const char *wlcRefusal(void) { return g_refusal.c_str(); }
 
-double wlcSample(double seconds) {
-	if (g_curve.repeats && seconds >= g_curve.repeatBegin) {
-		seconds = g_curve.repeatBegin - g_curve.repeatSeconds + std::fmod(seconds - g_curve.repeatBegin, g_curve.repeatSeconds);
-	} else if (!g_curve.repeats && seconds >= g_curve.endSeconds) {
-		return g_curve.endValue;
+static double sampled(const Curve &curve, double seconds);
+
+double wlcSample(double seconds) { return sampled(g_curve, seconds); }
+
+static Curve g_matrix[6];
+
+void wlcBuildUnsizedTransform(const double *keyTimes, int64_t keyCount, const double *values, int64_t valueCount,
+	double durationMs) {
+	(void)valueCount;
+	transformCurves(keyTimes, keyCount, values, durationMs, 1, false, 0, 0, 1,
+		[](const double *at, float m[6]) {
+			double radians = at[4] * M_PI / 180.0;
+			m[0] = (float)(at[0] * std::cos(radians));
+			m[1] = (float)(at[0] * std::sin(radians));
+			m[2] = (float)(-at[1] * std::sin(radians));
+			m[3] = (float)(at[1] * std::cos(radians));
+			m[4] = (float)at[2];
+			m[5] = (float)at[3];
+		},
+		g_matrix);
+}
+
+double wlcShownScaleX(double seconds) { return std::hypot(sampled(g_matrix[0], seconds), sampled(g_matrix[1], seconds)); }
+
+double wlcShownRotationDegrees(double seconds) {
+	return std::atan2(sampled(g_matrix[1], seconds), sampled(g_matrix[0], seconds)) * 180.0 / M_PI;
+}
+
+static double sampled(const Curve &curve, double seconds) {
+	if (curve.repeats && seconds >= curve.repeatBegin) {
+		seconds = curve.repeatBegin - curve.repeatSeconds + std::fmod(seconds - curve.repeatBegin, curve.repeatSeconds);
+	} else if (!curve.repeats && seconds >= curve.endSeconds) {
+		return curve.endValue;
 	}
 	const CurveSegment *at = nullptr;
-	for (const CurveSegment &segment : g_curve.segments) {
+	for (const CurveSegment &segment : curve.segments) {
 		if (segment.begin <= seconds) at = &segment;
 	}
 	if (!at) return NAN;

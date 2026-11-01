@@ -14,6 +14,13 @@ extern function wlcBuild(
 extern function wlcAccepted(): int32;
 extern function wlcRefusal(): cstring;
 extern function wlcSample(seconds: float64): float64;
+extern function wlcBuildUnsizedTransform(
+	keyTimes: Readonly<Span<float64>>,
+	values: Readonly<Span<float64>>,
+	durationMs: float64,
+): void;
+extern function wlcShownScaleX(seconds: float64): float64;
+extern function wlcShownRotationDegrees(seconds: float64): float64;
 
 function near(a: float64, b: float64): boolean { return Math.abs(a - b) < 1e-4; }
 
@@ -56,4 +63,23 @@ test "a delayed finite run holds its first value, then ends on its last" {
 	assert refusal() === "", `${refusal()}`;
 	assert near(wlcSample(0.1), 0) && near(wlcSample(0.8), 0.5), wlcSample(0.8).toString();
 	assert near(wlcSample(1.8), 0.5) && near(wlcSample(5), 1), wlcSample(5).toString();
+}
+
+function spin(degrees: float64): void {
+	const keyTimes: float64[] = [0, 1];
+	const values: float64[] = [1, 1, 0, 0, 0, 1, 1, 0, 0, degrees];
+	wlcBuildUnsizedTransform(keyTimes, values, 1000);
+}
+
+test "a quarter turn between two keys keeps its scale through the turn" {
+	spin(90);
+	assert wlcShownScaleX(0.5) > 0.9998, wlcShownScaleX(0.5).toString();
+	assert Math.abs(wlcShownRotationDegrees(0.5) - 45) < 0.01, wlcShownRotationDegrees(0.5).toString();
+}
+
+test "a whole turn between two keys turns through every angle instead of holding still" {
+	spin(360);
+	assert Math.abs(wlcShownRotationDegrees(0.25) - 90) < 0.01, wlcShownRotationDegrees(0.25).toString();
+	assert Math.abs(Math.abs(wlcShownRotationDegrees(0.5)) - 180) < 0.01, wlcShownRotationDegrees(0.5).toString();
+	assert wlcShownScaleX(0.6) > 0.9998, wlcShownScaleX(0.6).toString();
 }
