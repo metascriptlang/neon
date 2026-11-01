@@ -8,7 +8,7 @@ import { sleepAsync } from "std/core/promise";
 import { Easing } from "pulse/src/easing";
 import { timing } from "pulse/src/value";
 import { createAnimatedValue } from "../../src/motion/neonValues";
-import { LayoutAnimation } from "../../src/motion/layoutAnimation";
+import { LayoutAnimation, takeLayoutAnimation } from "../../src/motion/layoutAnimation";
 import { setFrameDriver } from "../../src/animation/frame";
 import { Show } from "../../src/macros/ui/flow";
 
@@ -106,4 +106,10 @@ test "a view created under a scaleY create grows its height and keeps its opacit
 	await sleepAsync(400);
 	assert shownHeight(el) === 100, "lands: " + shownHeight(el).toString();
 	probe(outer[0]).remove();
+}
+
+test "the browser's next frame consumes configureNext, leaving nothing armed for a later commit" {
+	LayoutAnimation.configureNext(LayoutAnimation.create(100, "linear", "opacity"));
+	assert takeLayoutAnimation() === null, "the browser pass took the config";
+	await sleepAsync(150);
 }

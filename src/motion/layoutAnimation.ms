@@ -122,8 +122,11 @@ export class LayoutAnimation {
 		if (unparsed(config)) {
 			if (onAnimationDidFail !== null) { (onAnimationDidFail as () => void)(); }
 		} else {
-			pending = config;
-			when (js && !server) { animateDomLayout(layoutPlan(config)); }
+			when (js && !server) {
+				animateDomLayout(layoutPlan(config));
+			} else {
+				pending = config;
+			}
 		}
 		if (onAnimationDidEnd === null) { return; }
 		const done = onAnimationDidEnd as () => void;
