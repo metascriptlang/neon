@@ -8,7 +8,7 @@ import { Scene2D, ScaleGrid, TileGroup, Underline, Selection, Rect, Sprite, Grou
 import { Scene2D as VoidScene2D, NodeRef, TileCell, DrawKind, content, isLive, kind } from "../../../void/src/void2d/node";
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { whiteTile, rgba } from "../../../void/src/void2d/types";
-import { BoxStyle, create, dashed, castShadow, castInsetShadow, uniformRadii, uniformBorders, boxStyles } from "../../../void/src/void2d/boxStyle";
+import { BoxStyle, create, dashed, castShadow, castInsetShadow, CornerRadii, BorderWidths, boxStyles } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle, ObjectFit, imageStyle, imageStyles } from "../../../void/src/void2d/imageStyle";
 import { setup2d, preparePipelines, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
 import { BlendMode } from "../../../void/src/gpu/state";
@@ -37,14 +37,14 @@ function cells(): TileCell[] {
 }
 
 function styledBox(): BoxStyle {
-	const style = BoxStyle.create(uniformRadii(changed() ? 8.0 : 4.0),
-		uniformBorders(changed() ? 3.0 : 1.0), rgba(1.0, 0.0, 0.0, 1.0));
+	const style = BoxStyle.create(CornerRadii.uniform(changed() ? 8.0 : 4.0),
+		BorderWidths.uniform(changed() ? 3.0 : 1.0), rgba(1.0, 0.0, 0.0, 1.0));
 	return changed() ? style.dashed().castInsetShadow(rgba(0.0, 0.0, 0.0, 0.8), 3.0) :
 		style.castShadow(rgba(0.0, 0.0, 0.0, 0.5), 2.0, 4.0, 4.0);
 }
 
 function styledImage(): ImageStyle {
-	return imageStyle(uniformRadii(changed() ? 8.0 : 4.0), changed(),
+	return imageStyle(CornerRadii.uniform(changed() ? 8.0 : 4.0), changed(),
 		changed() ? ObjectFit.Cover : ObjectFit.Contain);
 }
 
