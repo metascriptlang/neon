@@ -23,6 +23,7 @@ extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
 #include "../native/loop.h"
+#include "../native/layerMotion.h"
 void ionWakeLoop(void);
 }
 
@@ -36,6 +37,7 @@ struct View {
 	std::vector<View *> children;
 	float x = 0, y = 0, w = 0, h = 0;
 	float scaleX = 1, scaleY = 1, translateX = 0, translateY = 0, rotation = 0;
+	float opacity = 1;
 	bool transformed = false;
 	float radius = 0;
 	bool pressable = false;
@@ -326,6 +328,21 @@ void applyScroll(View *view) {
 	if (s->moved) changed();
 }
 
+void centredMatrix(View *view, float scaleX, float scaleY, float translateX, float translateY, float degrees, float m[6]) {
+	float width = roundf((view->x + view->w) * g_scale) - roundf(view->x * g_scale);
+	float height = roundf((view->y + view->h) * g_scale) - roundf(view->y * g_scale);
+	float radians = degrees * 3.14159265358979f / 180.0f;
+	float c = cosf(radians), s = sinf(radians);
+	float m11 = scaleX * c, m12 = scaleX * s, m21 = -scaleY * s, m22 = scaleY * c;
+	float cx = width / 2, cy = height / 2;
+	m[0] = m11;
+	m[1] = m12;
+	m[2] = m21;
+	m[3] = m22;
+	m[4] = cx + translateX * g_scale - (cx * m11 + cy * m21);
+	m[5] = cy + translateY * g_scale - (cx * m12 + cy * m22);
+}
+
 void applyGeometry(View *view) {
 	float left = roundf(view->x * g_scale);
 	float top = roundf(view->y * g_scale);
@@ -345,15 +362,8 @@ void applyGeometry(View *view) {
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
 	view->transformed = !identity;
-	float radians = view->rotation * 3.14159265358979f / 180.0f;
-	float c = cosf(radians), s = sinf(radians);
-	float m11 = view->scaleX * c, m12 = view->scaleX * s, m21 = -view->scaleY * s, m22 = view->scaleY * c;
-	float cx = (right - left) / 2, cy = (bottom - top) / 2;
-	float m[6] = {
-		m11, m12, m21, m22,
-		cx + view->translateX * g_scale - (cx * m11 + cy * m21),
-		cy + view->translateY * g_scale - (cx * m12 + cy * m22),
-	};
+	float m[6];
+	centredMatrix(view, view->scaleX, view->scaleY, view->translateX, view->translateY, view->rotation, m);
 	view->visual->TransformMatrix(m);
 }
 
@@ -1373,8 +1383,181 @@ void niSetCornerRadius(void *view, float radius) {
 }
 
 void niSetOpacity(void *view, float opacity) {
+	as(view)->opacity = opacity;
 	as(view)->visual->Opacity(opacity);
 	changed();
+}
+
+// --- layerMotion.h: a track handed to DirectComposition, which DWM runs off the UI thread ---
+
+static int64_t layerWidth(int32_t property) {
+	if (property == 0) return 1;
+	if (property == 1) return 5;
+	char message[96];
+	snprintf(message, sizeof message, "layer property %d is neither opacity (0) nor transform (1)", property);
+	fail(message);
+}
+
+void niLayerWrite(void *view, int32_t property, const double *values, int64_t count) {
+	if (count != layerWidth(property)) fail("niLayerWrite: the value count does not match the property");
+	View *v = as(view);
+	if (property == 0) {
+		niSetOpacity(view, (float)values[0]);
+		return;
+	}
+	v->scaleX = (float)values[0];
+	v->scaleY = (float)values[1];
+	v->translateX = (float)values[2];
+	v->translateY = (float)values[3];
+	v->rotation = (float)values[4];
+	v->transformed = true;
+	applyGeometry(v);
+	changed();
+}
+
+double niLayerRead(void *view, int32_t component) {
+	View *v = as(view);
+	switch (component) {
+	case 0: return v->opacity;
+	case 1: return v->scaleX;
+	case 2: return v->scaleY;
+	case 3: return v->translateX;
+	case 4: return v->translateY;
+	case 5: return v->rotation;
+	}
+	fail("niLayerRead: layer component out of range");
+}
+
+namespace {
+
+// One period of the track in active milliseconds: the keys forward, then back again when it autoreverses.
+struct Period {
+	std::vector<double> times;
+	std::vector<double> values;
+	double length = 0;
+
+	double at(double within) const {
+		size_t right = 1;
+		while (right + 1 < times.size() && times[right] < within) right++;
+		double span = times[right] - times[right - 1];
+		double t = span > 0 ? (within - times[right - 1]) / span : 1;
+		t = t < 0 ? 0 : t > 1 ? 1 : t;
+		return values[right - 1] + (values[right] - values[right - 1]) * t;
+	}
+
+	double nextKey(double within) const {
+		for (double time : times) {
+			if (time > within) return time;
+		}
+		return length;
+	}
+};
+
+Period periodOf(const double *keyTimes, int64_t keyCount, const std::vector<double> &column, double durationMs, bool autoreverses) {
+	Period p;
+	for (int64_t i = 0; i < keyCount; i++) {
+		p.times.push_back(keyTimes[i] * durationMs);
+		p.values.push_back(column[(size_t)i]);
+	}
+	if (autoreverses) {
+		for (int64_t i = keyCount - 2; i >= 0; i--) {
+			p.times.push_back(2 * durationMs - keyTimes[i] * durationMs);
+			p.values.push_back(column[(size_t)i]);
+		}
+	}
+	p.length = autoreverses ? 2 * durationMs : durationMs;
+	return p;
+}
+
+Curve curveOf(const Period &p, double repeatCount, double startMs, double offsetMs, double speed) {
+	Curve curve;
+	auto wall = [&](double active) { return (startMs + (active - offsetMs) / speed) / 1000.0; };
+	bool forever = !std::isfinite(repeatCount);
+	double finalActive = forever ? 0 : repeatCount * p.length;
+	double from = offsetMs;
+	double end;
+	if (forever) {
+		double boundary = std::ceil(from / p.length) * p.length;
+		if (boundary <= from) boundary += p.length;
+		end = boundary + p.length;
+	} else {
+		end = finalActive;
+	}
+	if (startMs > 0) {
+		double within = from - std::floor(from / p.length) * p.length;
+		curve.segments.push_back({0.0, (float)p.at(within), 0.0f});
+	}
+	double a = from;
+	while (a < end) {
+		double base = std::floor(a / p.length) * p.length;
+		double within = a - base;
+		double b = std::min(base + p.nextKey(within), end);
+		if (b <= a) b = std::min(base + p.length, end);
+		double va = p.at(within), vb = p.at(b - base);
+		double slopePerSecond = (vb - va) / (b - a) * speed * 1000.0;
+		curve.segments.push_back({wall(a), (float)va, (float)slopePerSecond});
+		a = b;
+	}
+	if (forever) {
+		curve.repeats = true;
+		curve.repeatBegin = wall(end - p.length);
+		curve.repeatSeconds = p.length / speed / 1000.0;
+	} else {
+		double base = std::floor(end / p.length) * p.length;
+		if (base == end && end > 0) base -= p.length;
+		curve.endSeconds = wall(end);
+		curve.endValue = (float)p.at(end - base);
+	}
+	return curve;
+}
+
+}
+
+void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
+	const double *values, int64_t valueCount, double durationMs, double repeatCount,
+	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int64_t width = layerWidth(property);
+	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
+	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
+	View *v = as(view);
+	if (property == 0) {
+		std::vector<double> column(values, values + keyCount);
+		v->visual->AnimatedOpacity(curveOf(periodOf(keyTimes, keyCount, column, durationMs, autoreverses != 0),
+			repeatCount, startMs, offsetMs, speed));
+	} else {
+		std::vector<double> columns[6];
+		for (int64_t i = 0; i < keyCount; i++) {
+			const double *at = values + i * 5;
+			float m[6];
+			centredMatrix(v, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
+			for (int k = 0; k < 6; k++) columns[k].push_back(m[k]);
+		}
+		Curve curves[6];
+		for (int k = 0; k < 6; k++) {
+			curves[k] = curveOf(periodOf(keyTimes, keyCount, columns[k], durationMs, autoreverses != 0),
+				repeatCount, startMs, offsetMs, speed);
+		}
+		v->visual->AnimatedTransform(curves);
+	}
+	changed();
+}
+
+void niLayerRemove(void *view, int32_t property) {
+	View *v = as(view);
+	if (property == 0) {
+		v->visual->Opacity(v->opacity);
+	} else {
+		float m[6];
+		centredMatrix(v, v->scaleX, v->scaleY, v->translateX, v->translateY, v->rotation, m);
+		v->visual->TransformMatrix(m);
+	}
+	changed();
+}
+
+double niLayerPresented(void *view, int32_t component) {
+	(void)view;
+	(void)component;
+	unimplemented("niLayerPresented: DirectComposition reports no animated value back");
 }
 
 void niRegisterApp(msClosure mount) { s_mount = mount; }
