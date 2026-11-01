@@ -14,7 +14,10 @@ import { NeonEvent } from "../render/event";
 import { Style, mergeStyle } from "../render/style";
 import { Text, View } from "./primitives";
 import { MATERIAL_ON_SURFACE, MATERIAL_PRIMARY, colorOr, stateAttr } from "./material";
-import { Animated, AnimatedValue, CompositeAnimation, Easing, EasingFunction, EndResult } from "../animation/index";
+import { Easing, EasingFunction } from "pulse/src/easing";
+import { AnimatedValue, timing } from "pulse/src/value";
+import { useAnimatedValue } from "../motion/neon";
+import { useValueSignal } from "../motion/neonValues";
 
 // react-native-collapsible: duration 300 ms; Flutter ExpansionTile: 200 ms, Curves.easeIn
 // for the size and the icon's half turn.
@@ -43,32 +46,26 @@ export function Collapsible(props: {
 	const onAnimationEnd = props.onAnimationEnd;
 	const given = props.progress;
 	const startOpen = !untrack<boolean>(collapsed);
-	const progress = given === null ? new AnimatedValue(startOpen ? 1 : 0) : given as AnimatedValue;
-	progress.setValue(startOpen ? 1 : 0);
+	const progress = given === null
+		? useAnimatedValue(startOpen ? 1 : 0)[1]
+		: given as AnimatedValue;
+	progress.set(startOpen ? 1 : 0);
+	const shown = useValueSignal(progress.source());
 	const [measured, setMeasured] = createSignal<number>(0);
 	const [moving, setMoving] = createSignal<boolean>(false);
 	const [open, setOpen] = createSignal<boolean>(startOpen);
-	let motion: CompositeAnimation | null = null;
 	let waiting = false;
 	const floor = (): number => heightProp === null ? 0 : heightProp();
 
-	const stop = (): void => {
-		if (motion !== null) {
-			(motion as CompositeAnimation).stop();
-			motion = null;
-		}
-	};
-	onCleanup(stop);
+	onCleanup((): void => {
+		if (!progress.disposed) { progress.cancel(); }
+	});
 	const run = (to: number): void => {
-		stop();
 		waiting = false;
 		const duration = durationProp === null ? COLLAPSIBLE_MS : durationProp();
 		const easing = easingProp === null ? Easing.out(Easing.cubic) : easingProp as EasingFunction;
-		const anim = Animated.timing(progress, { toValue: to, duration, easing });
-		motion = anim;
-		anim.start((result: EndResult): void => {
-			if (motion === anim) { motion = null; }
-			if (!result.finished) { return; }
+		progress.animate(timing(to, { duration, easing }), (finished: boolean): void => {
+			if (!finished) { return; }
 			setMoving(false);
 			if (to === 0) { setOpen(false); }
 			if (onAnimationEnd !== null) { onAnimationEnd(); }
@@ -96,7 +93,7 @@ export function Collapsible(props: {
 		if (open() && !moving()) { return merged; }
 		const low = floor();
 		const high = Math.max(low, measured());
-		const height = low + (high - low) * progress.get();
+		const height = low + (high - low) * shown();
 		return { ...merged, height: height <= 0 && moving() ? MEASURING_HEIGHT : height };
 	});
 	const inner = accessor((): Style => {
@@ -143,7 +140,7 @@ export function ExpansionTile(props: {
 	const startOpen = controlled !== null ? untrack<boolean>(controlled as Accessor<boolean>) : (initialProp !== null && untrack<boolean>(initialProp as Accessor<boolean>));
 	const [inner, setInner] = createSignal<boolean>(startOpen);
 	const expanded = (): boolean => controlled === null ? inner() : controlled();
-	const turns = new AnimatedValue(startOpen ? 1 : 0);
+	const [turned, turns] = useAnimatedValue(startOpen ? 1 : 0);
 
 	const toggle = (e: NeonEvent): void => {
 		const next = !untrack<boolean>(expanded);
@@ -156,7 +153,7 @@ export function ExpansionTile(props: {
 	const iconStyle = accessor((): Style => ({
 		fontSize: 18,
 		color: expanded() ? colorOr(iconProp, MATERIAL_PRIMARY) : colorOr(iconProp, "#757575"),
-		transform: `rotate(${turns.get() * 180}deg)`,
+		transform: `rotate(${turned() * 180}deg)`,
 	}));
 	const trailing: NeonNode = props.trailing === null ? element(<Text style={iconStyle}>▾</Text>) : props.trailing as NeonNode;
 	const leading = props.leading;
