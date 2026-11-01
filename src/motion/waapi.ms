@@ -618,6 +618,7 @@ when (js) {
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
 	import { MotionPolicy } from "pulse/src/policy";
 	import { cssLinear, sampleSpring } from "pulse/src/progress";
+	import { TimeSourceKind } from "pulse/src/scroll";
 	import { SpringSimulation, createSpring } from "pulse/src/spring";
 	import { Composition, MotionTarget } from "pulse/src/target";
 	import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
@@ -959,6 +960,9 @@ when (js) {
 			bindings: MotionBinding[],
 			options: MotionOptions,
 		) {
+			if (options.source.kind !== TimeSourceKind.Time) {
+				fail("an element player runs on time; WAAPI takes no scroll or view source yet");
+			}
 			this.doc = doc;
 			this.elements = elements;
 			const owned: MotionBinding[] = [];

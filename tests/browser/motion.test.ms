@@ -1,3 +1,4 @@
+import { ScrollAxis, ScrollSource, scrollSource } from "pulse/src/scroll";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
@@ -388,6 +389,21 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 	} catch (e) { message = e.message; }
 	assert message ===
 		"motion: no element for slot card of track card.opacity", message;
+	dom(node).remove();
+}
+
+test "a player on a scroll source is refused at construction rather than run its WAAPI tracks on time" {
+	const node = mount();
+	const scroller: ScrollSource = {
+		offset: (axis: ScrollAxis): float64 => 0,
+		max: (axis: ScrollAxis): float64 => 100,
+		viewport: (axis: ScrollAxis): float64 => 50,
+	};
+	let message = "";
+	try {
+		fadeAndSlide(node, { ...paused(), source: scrollSource(scroller) });
+	} catch (e) { message = e.message; }
+	assert message === "motion: an element player runs on time; WAAPI takes no scroll or view source yet", message;
 	dom(node).remove();
 }
 
