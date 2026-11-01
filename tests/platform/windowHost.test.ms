@@ -34,7 +34,7 @@ import {
 	logicalHeight,
 	drawArea,
 } from "../../src/platform/void/windowHost";
-import { areaPointer, setWindowTitle } from "../../src/platform/ion/window";
+import { areaPointer, setWindowTitle, desktopOptions, windowOptionsOf } from "../../src/platform/ion/window";
 import { PointerEvent, PointerKind, DeltaMode, KeyMod } from "../../../ion/src/index";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { useWindowDimensions } from "../../src/render/environment";
@@ -380,4 +380,13 @@ test "an Ion trackpad wheel reaches onWheel in layout points and a notch as one 
 
 test "setWindowTitle before runWindow opened its window names the call" {
 	assert thrown((): void => { setWindowTitle("vim"); }) === "setWindowTitle(\"vim\") ran before runWindow opened its window; the first title goes in desktopOptions", "a title with no window is refused";
+}
+
+test "runWindow opens hidden at Ion's own placement unless the app passes both x and y" {
+	const plain = windowOptionsOf(desktopOptions("t", 640, 360));
+	assert plain.x === 0 && plain.y === 0 && !plain.visible && plain.width === 640, "no position leaves placement to Ion";
+	const half = windowOptionsOf({ ...desktopOptions("t", 640, 360), x: 120 });
+	assert half.x === 0 && half.y === 0, "x alone is not a position";
+	const placed = windowOptionsOf({ ...desktopOptions("t", 640, 360), x: 120, y: 80 });
+	assert placed.x === 120 && placed.y === 80 && !placed.visible && placed.height === 360, "a saved frame reaches Ion";
 }

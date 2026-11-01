@@ -2,7 +2,7 @@ import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, keyName, setTitle,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, WindowOptions, keyName, setTitle,
 	setOptionAsAlt as ionSetOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/host/gpu";
@@ -71,10 +71,12 @@ export interface DesktopOptions {
 	height: number;
 	font: string;
 	fontFamily: string | null;
+	x: number | null;
+	y: number | null;
 }
 
 export function desktopOptions(title: string, width: number, height: number): DesktopOptions {
-	return { title, width, height, font: "assets/font.ttf", fontFamily: null };
+	return { title, width, height, font: "assets/font.ttf", fontFamily: null, x: null, y: null };
 }
 
 interface Area {
@@ -365,8 +367,16 @@ function ionWindowHost(win: Window): Host {
 	});
 }
 
+export function windowOptionsOf(opts: DesktopOptions): WindowOptions {
+	const hidden: WindowOptions = { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false };
+	const x = opts.x;
+	const y = opts.y;
+	if (x === null || y === null) { return hidden; }
+	return { ...hidden, x: x as int32, y: y as int32 };
+}
+
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
-	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
+	const win = createWindow("main", windowOptionsOf(opts));
 	if (win === null) { return EXIT_NO_WINDOW; }
 	const frameWin: Window = win;
 	mainWindow = frameWin;
