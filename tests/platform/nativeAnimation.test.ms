@@ -2,26 +2,34 @@ import { runApp } from "../../src/platform/native/host";
 import { flush } from "../../src/core/runtime";
 import { Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
-import { Animated } from "../../src/animation/animated";
-import { AnimatedValue, AnimatedNode } from "../../src/animation/nodes";
 import { Easing } from "pulse/src/easing";
+import { colorValue } from "pulse/src/document";
+import { interpolate } from "pulse/src/evaluate";
+import { timing } from "pulse/src/value";
+import { cssColor } from "../../src/motion/neon";
+import { createAnimatedValue, useValueSignal } from "../../src/motion/neonValues";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
-import { nmTeardown, nmLastPressableTag, nmRotation, nmOpacity, nmTranslateX, nmTransformWrites, nmProp } from "./nativeBridgeMock.h";
+import {
+	nmTeardown, nmLastPressableTag, nmRotation, nmOpacity, nmTranslateX, nmTransformWrites, nmProp,
+	nmBackgroundAlpha,
+} from "./nativeBridgeMock.h";
 import { createSignal } from "../../src/core/signal";
 
 test "an animated opacity, translateX and rotate are written to the native view each frame" {
 	const clock = useManualFrames();
-	const progress = Animated.Value(0);
-	const spin = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 360] });
-	const app = (): NeonNode => <Pressable onPress={() => {}} style={{
-		width: 100, height: 40,
-		opacity: progress.get(),
-		transform: `translateX(${progress.get() * 50}px) rotate(${spin.get()}deg)`,
-	}} />;
+	const [progress, value] = createAnimatedValue(0);
+	const app = (): NeonNode => {
+		const spin = useValueSignal(value.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }).source());
+		return <Pressable onPress={() => {}} style={{
+			width: 100, height: 40,
+			opacity: progress(),
+			transform: `translateX(${progress() * 50}px) rotate(${spin()}deg)`,
+		}} />;
+	};
 	runApp(app);
 	const tag = nmLastPressableTag();
 	assert nmOpacity(tag) === 0 && nmRotation(tag) === 0, "starts at rest";
-	Animated.timing(progress, { toValue: 1, duration: 160, easing: Easing.linear }).start();
+	value.animate(timing(1, { duration: 160, easing: Easing.linear }));
 	const writes = nmTransformWrites();
 	clock.step(5);
 	assert Math.abs(nmOpacity(tag) - 0.5) < 0.001, "opacity " + nmOpacity(tag).toString();
@@ -36,19 +44,23 @@ test "an animated opacity, translateX and rotate are written to the native view 
 
 test "an rgba background from a colour interpolation parses on native" {
 	const clock = useManualFrames();
-	const v = Animated.Value(0);
-	const bg = v.interpolateString({ inputRange: [0, 1], outputRange: ["#000000", "rgba(255, 0, 0, 0.5)"] });
-	const app = (): NeonNode => <Pressable onPress={() => {}} style={{ width: 10, height: 10, backgroundColor: bg.get() }} />;
+	const [progress, value] = createAnimatedValue(0);
+	const black = colorValue(0, 0, 0, 1);
+	const red = colorValue(1, 0, 0, 0.5);
+	const bg = (): string => cssColor(interpolate(black, red, progress()).color);
+	const app = (): NeonNode => <Pressable onPress={() => {}} style={{ width: 10, height: 10, backgroundColor: bg() }} />;
 	runApp(app);
-	Animated.timing(v, { toValue: 1, duration: 32 }).start();
+	const tag = nmLastPressableTag();
+	value.animate(timing(1, { duration: 32 }));
 	clock.runAll();
-	assert bg.peek() === "rgba(255, 0, 0, 0.5)", bg.peek();
+	assert bg() === "rgba(255, 0, 0, 0.5)", bg();
+	assert Math.abs(nmBackgroundAlpha(tag) - 0.5) < 0.01, "alpha " + nmBackgroundAlpha(tag).toString();
 	nmTeardown();
 	setFrameDriver(null);
 }
 
 function prop(tag: int32, name: string): string {
-	return nmProp(tag, name);
+	return nmProp(tag, name) as string;
 }
 
 test "overflow hidden clips a native view and visible releases it" {

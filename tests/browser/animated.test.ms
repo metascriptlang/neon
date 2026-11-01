@@ -5,12 +5,11 @@ import { element } from "../../src/macros/ui/element";
 import { View, ViewHandle, Pressable } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
-import { Animated } from "../../src/animation/animated";
-import { AnimatedValue, AnimatedNode } from "../../src/animation/nodes";
 import { Easing } from "pulse/src/easing";
+import { timing } from "pulse/src/value";
+import { createAnimatedValue } from "../../src/motion/neonValues";
 import { LayoutAnimation } from "../../src/animation/layoutAnimation";
 import { setFrameDriver } from "../../src/animation/frame";
-import { EndResult } from "../../src/animation/animation";
 
 extern class CSSStyleDeclaration {
 	opacity: string;
@@ -28,19 +27,22 @@ function probe(n: HostNode): HTMLElement {
 	return n as unknown as HTMLElement;
 }
 
-test "Animated.View opacity and translate change across real animation frames" {
+test "an animated value's opacity and translate change across real animation frames" {
 	setFrameDriver(null);
-	const v = new AnimatedValue(0);
+	const [shown, v] = createAnimatedValue(0);
 	const nodes: HostNode[] = [];
-	render(element(<Animated.View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{
+	render(element(<View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{
 		width: 40, height: 40, backgroundColor: "#333",
-		opacity: v.get(),
-		transform: `translateX(${v.get() * 100}px) rotate(${v.get() * 90}deg)`,
+		opacity: shown(),
+		transform: `translateX(${shown() * 100}px) rotate(${shown() * 90}deg)`,
 	}} />), domHost(), documentBody());
 	const el = probe(nodes[0]);
 	assert el.style.opacity === "0", "starts at 0: " + el.style.opacity;
 	let finished = false;
-	Animated.timing(v, { toValue: 1, duration: 400, easing: Easing.linear }).start((r: EndResult): void => { finished = r.finished; });
+	v.animate(
+		timing(1, { duration: 400, easing: Easing.linear }),
+		(done: boolean): void => { finished = done; },
+	);
 	await sleepAsync(200);
 	const mid = parseFloat(el.style.opacity);
 	assert mid > 0.1 && mid < 0.9, "mid-animation opacity " + el.style.opacity;
