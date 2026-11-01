@@ -620,7 +620,15 @@ when (js) {
 	import { MotionPolicy } from "pulse/src/policy";
 	import { Easing, EasingFunction } from "pulse/src/easing";
 	import { cssLinear, sampleEasing, sampleSpring } from "pulse/src/progress";
-	import { TimeSourceKind } from "pulse/src/scroll";
+	import {
+		ScrollAxis,
+		ScrollSource,
+		TimeSource,
+		TimeSourceKind,
+		ViewRange,
+		ViewSubject,
+		sourceProgress,
+	} from "pulse/src/scroll";
 	import { createSpring } from "pulse/src/spring";
 	import { Composition, MotionTarget } from "pulse/src/target";
 	import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
@@ -647,8 +655,118 @@ when (js) {
 		iterations: float64,
 		direction: string,
 		fill: string,
+		timeline: AnimationTimeline | null,
+		range: string,
 	): Animation from
-		"((el, p, o, v, e, duration, delay, iterations, direction, fill) => el.animate(o.map((offset, i) => ({ offset, easing: e[i], [p]: v[i] })), { duration, delay, iterations, direction, fill }))(#, #, #, #, #, #, #, #, #, #)";
+		"((el, p, o, v, e, duration, delay, iterations, direction, fill, timeline, range) => el.animate(o.map((offset, i) => ({ offset, easing: e[i], [p]: v[i] })), { duration, delay, iterations, direction, fill, ...(timeline === null ? {} : { timeline }), ...(range === '' ? {} : { rangeStart: range + ' 0%', rangeEnd: range + ' 100%' }) }))(#, #, #, #, #, #, #, #, #, #, #, #)";
+
+	extern class AnimationTimeline {}
+
+	extern function timelineConstructor(name: string): boolean from
+		"(n => typeof globalThis[n] === 'function')(#)";
+	extern function scrollTimeline(source: HTMLElement, axis: string): AnimationTimeline from
+		"((source, axis) => new ScrollTimeline({ source, axis }))(#, #)";
+	extern function viewTimeline(
+		subject: HTMLElement,
+		axis: string,
+		insetStart: float64,
+		insetEnd: float64,
+	): AnimationTimeline from
+		"((subject, axis, s, e) => new ViewTimeline({ subject, axis, inset: [CSS.px(s), CSS.px(e)] }))(#, #, #, #)";
+	extern function nearestScroller(element: HTMLElement): HTMLElement | null from
+		"(el => { for (let p = el.parentElement; p !== null; p = p.parentElement) { const s = getComputedStyle(p); if (![s.overflowX, s.overflowY].every((o) => o === 'visible' || o === 'clip')) { return p; } } return document.scrollingElement; })(#)";
+	extern function verticalAxis(element: HTMLElement, axis: string): boolean from
+		"((el, a) => a === 'y' || (a !== 'x' && getComputedStyle(el).writingMode.startsWith('horizontal') === (a === 'block')))(#, #)";
+	extern function scrollOffset(element: HTMLElement, vertical: boolean): float64 from
+		"((el, v) => v ? el.scrollTop : el.scrollLeft)(#, #)";
+	extern function scrollRange(element: HTMLElement, vertical: boolean): float64 from
+		"((el, v) => v ? el.scrollHeight - el.clientHeight : el.scrollWidth - el.clientWidth)(#, #)";
+	extern function scrollport(element: HTMLElement, vertical: boolean): float64 from
+		"((el, v) => v ? el.clientHeight : el.clientWidth)(#, #)";
+	extern function subjectStart(subject: HTMLElement, scroller: HTMLElement, vertical: boolean): float64 from
+		"((el, s, v) => { const a = el.getBoundingClientRect(); const b = s.getBoundingClientRect(); return v ? a.top - b.top - s.clientTop + s.scrollTop : a.left - b.left - s.clientLeft + s.scrollLeft; })(#, #, #)";
+	extern function subjectSize(subject: HTMLElement, vertical: boolean): float64 from
+		"((el, v) => v ? el.offsetHeight : el.offsetWidth)(#, #)";
+
+	function axisName(axis: ScrollAxis): string {
+		return match (axis) {
+			ScrollAxis.Block => "block",
+			ScrollAxis.Inline => "inline",
+			ScrollAxis.X => "x",
+			ScrollAxis.Y => "y",
+		};
+	}
+
+	function rangeName(range: ViewRange): string {
+		return match (range) {
+			ViewRange.Cover => "cover",
+			ViewRange.Contain => "contain",
+			ViewRange.Entry => "entry",
+			ViewRange.Exit => "exit",
+		};
+	}
+
+	class ElementScroller {
+		offset: (axis: ScrollAxis) => float64;
+		max: (axis: ScrollAxis) => float64;
+		viewport: (axis: ScrollAxis) => float64;
+		element: HTMLElement;
+
+		constructor(element: HTMLElement) {
+			this.element = element;
+			const vertical = (axis: ScrollAxis): boolean => verticalAxis(element, axisName(axis));
+			this.offset = (axis: ScrollAxis): float64 => scrollOffset(element, vertical(axis));
+			this.max = (axis: ScrollAxis): float64 => scrollRange(element, vertical(axis));
+			this.viewport = (axis: ScrollAxis): float64 => scrollport(element, vertical(axis));
+		}
+	}
+
+	class ElementSubject {
+		start: (axis: ScrollAxis) => float64;
+		size: (axis: ScrollAxis) => float64;
+		element: HTMLElement;
+		scroller: HTMLElement;
+
+		constructor(element: HTMLElement, scroller: HTMLElement) {
+			this.element = element;
+			this.scroller = scroller;
+			const vertical = (axis: ScrollAxis): boolean => verticalAxis(scroller, axisName(axis));
+			this.start = (axis: ScrollAxis): float64 => subjectStart(element, scroller, vertical(axis));
+			this.size = (axis: ScrollAxis): float64 => subjectSize(element, vertical(axis));
+		}
+	}
+
+	function domNode(node: HostNode, what: string): HTMLElement {
+		if (!isDomNode(node)) { fail(what + " is not a DOM element"); }
+		return node as unknown as HTMLElement;
+	}
+
+	export function elementScrollSource(scroller: HostNode): ScrollSource {
+		return new ElementScroller(domNode(scroller, "a scroll source"));
+	}
+
+	export function elementViewSubject(subject: HostNode, scroller: HostNode): ViewSubject {
+		return new ElementSubject(domNode(subject, "a view subject"), domNode(scroller, "a view scroller"));
+	}
+
+	function browserTimeline(source: TimeSource): AnimationTimeline | null {
+		if (source.kind === TimeSourceKind.Time) { return null; }
+		const scroller = source.scroller;
+		if (!(scroller instanceof ElementScroller)) { return null; }
+		const element = (scroller as ElementScroller).element;
+		if (source.kind === TimeSourceKind.Scroll) {
+			return timelineConstructor("ScrollTimeline") ? scrollTimeline(element, axisName(source.axis)) : null;
+		}
+		const subject = source.subject;
+		if (!(subject instanceof ElementSubject) || !timelineConstructor("ViewTimeline")) { return null; }
+		const own = subject as ElementSubject;
+		if (own.scroller !== element || nearestScroller(own.element) !== element) { return null; }
+		return viewTimeline(own.element, axisName(source.axis), source.inset.start, source.inset.end);
+	}
+
+	function timelineRange(source: TimeSource): string {
+		return source.kind === TimeSourceKind.View ? rangeName(source.range) : "";
+	}
 	extern function commitStyles(
 		animation: Animation,
 		element: HTMLElement,
@@ -955,6 +1073,9 @@ when (js) {
 		private elements: MotionElements;
 		private timing: WaapiTiming | null;
 		private evaluated: boolean;
+		private source: TimeSource;
+		private timeline: AnimationTimeline | null;
+		private range: string;
 
 		constructor(
 			doc: MotionDocument,
@@ -962,9 +1083,9 @@ when (js) {
 			bindings: MotionBinding[],
 			options: MotionOptions,
 		) {
-			if (options.source.kind !== TimeSourceKind.Time) {
-				fail("an element player runs on time; WAAPI takes no scroll or view source yet");
-			}
+			this.source = options.source;
+			this.timeline = browserTimeline(options.source);
+			this.range = timelineRange(options.source);
 			this.doc = doc;
 			this.elements = elements;
 			const owned: MotionBinding[] = [];
@@ -985,9 +1106,10 @@ when (js) {
 				),
 			);
 			this.timing = plan.timing;
-			const blend = options.composition === Composition.Blend;
+			const evaluate = options.composition === Composition.Blend ||
+				(this.scrolled() && this.timeline === null);
 			for (const planned of plan.runs) {
-				const css = blend && planned.route === TrackRoute.Waapi
+				const css = evaluate && planned.route === TrackRoute.Waapi
 					? { ...planned, route: TrackRoute.Style }
 					: planned;
 				const fallbacks = css.properties.map(
@@ -1009,8 +1131,31 @@ when (js) {
 			this.wake.wake = (): float64 | null => this.nextWake();
 			this.options = {
 				...options,
-				clock: this.wake.clock,
+				clock: this.scrolled() ? this.holdingClock() : this.wake.clock,
 			};
+		}
+
+		private scrolled(): boolean {
+			return this.source.kind !== TimeSourceKind.Time;
+		}
+
+		private holdingClock(): Clock {
+			const clock = this.wake.clock;
+			return {
+				now: clock.now,
+				request: (callback: (time: float64) => void): int32 => clock.request((time: float64): void => {
+					this.holdWhileInactive();
+					callback(time);
+				}),
+				cancel: clock.cancel,
+			};
+		}
+
+		private holdWhileInactive(): void {
+			if (sourceProgress(this.source) !== null) { return; }
+			for (const run of this.runs) {
+				if (run.animation !== null) { writeStyle(run.dom, run.plan.css, run.cssText()); }
+			}
 		}
 
 		alignAll(): void {
@@ -1027,7 +1172,11 @@ when (js) {
 				run.release();
 				animation.pause();
 				try {
-					if (commit) { commitStyles(animation, run.dom, run.plan.css); }
+					if (commit && this.timeline !== null) {
+						writeStyle(run.dom, run.plan.css, run.cssText());
+					} else if (commit) {
+						commitStyles(animation, run.dom, run.plan.css);
+					}
 				} catch (e) {
 					if (refused === "") { refused = e.message; }
 				}
@@ -1135,12 +1284,14 @@ when (js) {
 				timing.iterations,
 				timing.direction,
 				timing.fill,
+				this.timeline,
+				this.range,
 			);
 		}
 
 		private nextWake(): float64 | null {
 			const player = this.player;
-			if (player === null || this.evaluated || player.onUpdate !== null) {
+			if (player === null || this.evaluated || this.scrolled() || player.onUpdate !== null) {
 				return null;
 			}
 			const at = player.rawTime;
@@ -1188,6 +1339,10 @@ when (js) {
 		private align(run: StyleRun): void {
 			const animation = run.animation;
 			if (animation === null || this.player === null) { return; }
+			if (this.timeline !== null) {
+				if ((this.player as BrowserMotionPlayer).paused) { animation.pause(); } else { animation.play(); }
+				return;
+			}
 			animation.playbackRate = (this.player as BrowserMotionPlayer).timeScale;
 			if (this.running()) { animation.play(); } else { animation.pause(); }
 			animation.currentTime = this.localTime();
@@ -1520,6 +1675,8 @@ when (js) {
 				1,
 				"normal",
 				"both",
+				null,
+				"",
 			);
 			animation.startTime = origin.startTime;
 			this.animation = animation;

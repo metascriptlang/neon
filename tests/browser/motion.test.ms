@@ -22,6 +22,7 @@ import {
 	ElementValue,
 	MotionElement,
 	browserMotionPlayer,
+	elementScrollSource,
 	elementValue,
 	frameClock,
 	motionElements,
@@ -72,6 +73,11 @@ extern function clickOn(el: HTMLElement): void from "(el => el.click())(#)";
 
 extern function bodyText(): string from "(() => document.body.textContent)()";
 
+extern function makeScroller(): HTMLElement from
+	"(() => { const s = document.createElement('div'); s.style.cssText = 'height: 50px; width: 50px; overflow-y: scroll; overflow-x: hidden'; const c = document.createElement('div'); c.style.height = '150px'; s.append(c); document.body.append(s); return s; })()";
+extern function setScrollTop(el: HTMLElement, offset: float64): void from "((el, o) => { el.scrollTop = o; })(#, #)";
+extern function timelinesOf(el: HTMLElement): string from
+	"(el => el.getAnimations().map((a) => a.timeline.constructor.name).join())(#)";
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
 
@@ -393,19 +399,40 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 	dom(node).remove();
 }
 
-test "a player on a scroll source is refused at construction rather than run its WAAPI tracks on time" {
+test "a player on an element's scroll source hands its WAAPI tracks to a ScrollTimeline the scroll drives" {
 	const node = mount();
+	const el = dom(node);
+	const scroller = makeScroller();
+	const source = scrollSource(elementScrollSource(scroller as unknown as HostNode));
+	const player = fadeAndSlide(node, { ...motionOptions(frameClock()), source });
+	await sleepAsync(60);
+	assert timelinesOf(el) === "ScrollTimeline,ScrollTimeline", timelinesOf(el);
+	setScrollTop(scroller, 50);
+	await sleepAsync(60);
+	assert near(translated(el), 50, 0.01) && near(opacity(el), 0.5, 1e-3),
+		computed(el, "translate") + " " + computed(el, "opacity");
+	assert el.style.translate === "", "the scroll moved no inline value: " + el.style.translate;
+	player.dispose();
+	assert el.getAnimations().length === 0 && el.style.translate === "50px", el.style.translate;
+	scroller.remove();
+	el.remove();
+}
+
+test "a scroll source no element backs runs the whole player on the evaluator" {
+	const node = mount();
+	const el = dom(node);
+	let offset: float64 = 0;
 	const scroller: ScrollSource = {
-		offset: (axis: ScrollAxis): float64 => 0,
+		offset: (axis: ScrollAxis): float64 => offset,
 		max: (axis: ScrollAxis): float64 => 100,
 		viewport: (axis: ScrollAxis): float64 => 50,
 	};
-	let message = "";
-	try {
-		fadeAndSlide(node, { ...paused(), source: scrollSource(scroller) });
-	} catch (e) { message = e.message; }
-	assert message === "motion: an element player runs on time; WAAPI takes no scroll or view source yet", message;
-	dom(node).remove();
+	const player = fadeAndSlide(node, { ...motionOptions(frameClock()), source: scrollSource(scroller) });
+	offset = 25;
+	await sleepAsync(60);
+	assert el.getAnimations().length === 0 && el.style.translate === "25px", el.style.translate;
+	player.dispose();
+	el.remove();
 }
 
 function fadeTo(node: HostNode, to: float64): MotionPlayer {
