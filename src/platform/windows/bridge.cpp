@@ -1441,18 +1441,12 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 		v->visual->AnimatedOpacity(curveOf(periodOf(keyTimes, keyCount, column, durationMs, autoreverses != 0),
 			repeatCount, startMs, offsetMs, speed));
 	} else {
-		std::vector<double> columns[6];
-		for (int64_t i = 0; i < keyCount; i++) {
-			const double *at = values + i * 5;
-			float m[6];
-			centredMatrix(v, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
-			for (int k = 0; k < 6; k++) columns[k].push_back(m[k]);
-		}
 		Curve curves[6];
-		for (int k = 0; k < 6; k++) {
-			curves[k] = curveOf(periodOf(keyTimes, keyCount, columns[k], durationMs, autoreverses != 0),
-				repeatCount, startMs, offsetMs, speed);
-		}
+		transformCurves(keyTimes, keyCount, values, durationMs, repeatCount, autoreverses != 0, startMs, offsetMs, speed,
+			[v](const double *at, float m[6]) {
+				centredMatrix(v, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
+			},
+			curves);
 		v->visual->AnimatedTransform(curves);
 	}
 	changed();

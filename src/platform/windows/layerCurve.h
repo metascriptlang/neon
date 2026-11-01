@@ -85,3 +85,19 @@ inline Curve curveOf(const Period &p, double repeatCount, double startMs, double
 	}
 	return curve;
 }
+
+// The six matrix elements of a transform track, from keys of five values (scaleX, scaleY, translateX,
+// translateY, rotation in degrees) that matrixOf turns into m11, m12, m21, m22, dx, dy.
+template <typename MatrixOf>
+inline void transformCurves(const double *keyTimes, int64_t keyCount, const double *values, double durationMs,
+	double repeatCount, bool autoreverses, double startMs, double offsetMs, double speed, MatrixOf matrixOf, Curve curves[6]) {
+	std::vector<double> columns[6];
+	for (int64_t i = 0; i < keyCount; i++) {
+		float m[6];
+		matrixOf(values + i * 5, m);
+		for (int k = 0; k < 6; k++) columns[k].push_back(m[k]);
+	}
+	for (int k = 0; k < 6; k++) {
+		curves[k] = curveOf(periodOf(keyTimes, keyCount, columns[k], durationMs, autoreverses), repeatCount, startMs, offsetMs, speed);
+	}
+}
