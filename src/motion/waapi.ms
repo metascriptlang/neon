@@ -729,6 +729,26 @@ when (js) {
 		return isDomNode(node);
 	}
 
+	export function showStyle(node: HostNode, property: string, value: MotionValue): void {
+		const style = styleProperty(property);
+		if (style === null) { fail("no CSS property " + property); }
+		const element = node as unknown as HTMLElement;
+		if (style.axis === NO_AXIS) {
+			writeStyle(element, style.css, styleValue(style, value));
+			return;
+		}
+		const shown = readStyle(element, style.css).split(" ")
+			.filter((part: string): boolean => part !== "")
+			.map((part: string): float64 => parseFloat(part));
+		const uniform = shown.length === 1 && style.css === "scale";
+		const values: float64[] = [
+			shown.length > 0 ? shown[0] : style.identity,
+			shown.length > 1 ? shown[1] : uniform ? shown[0] : style.identity,
+		];
+		values[style.axis] = value.number;
+		writeStyle(element, style.css, axisValue(style, values));
+	}
+
 	enum RunMode {
 		Unresolved,
 		Dom,

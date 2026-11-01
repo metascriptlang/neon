@@ -884,6 +884,25 @@ export function nativeMotionPlayer(
 	);
 }
 
+function layerTuple(node: HostNode, channel: LayerChannel, value: float64): float64[] {
+	const engine = layerEngine() as LayerEngine;
+	const out = componentsOf(channel.property).map(
+		(component: LayerComponent): float64 => engine.read(node, component),
+	);
+	for (const component of channel.components) {
+		out[componentIndex(component)] = value;
+	}
+	return out;
+}
+
+export function showLayer(node: HostNode, property: string, value: MotionValue): void {
+	const channel = layerChannel(property);
+	if (channel === null) {
+		fail("no native layer property " + property);
+	}
+	(layerEngine() as LayerEngine).write(node, channel.property, layerTuple(node, channel, value.number));
+}
+
 export function nativeOwns(node: HostNode): boolean {
 	return layerEngine() !== null;
 }
@@ -1044,15 +1063,7 @@ export class NativeElementValue extends AnimatedValue {
 	}
 
 	private tuple(value: float64): float64[] {
-		const engine = layerEngine() as LayerEngine;
-		const node = this.parts.node as HostNode;
-		const out = componentsOf(this.parts.channel.property).map(
-			(component: LayerComponent): float64 => engine.read(node, component),
-		);
-		for (const component of this.parts.channel.components) {
-			out[componentIndex(component)] = value;
-		}
-		return out;
+		return layerTuple(this.parts.node as HostNode, this.parts.channel, value);
 	}
 
 	private paint(value: float64): void {

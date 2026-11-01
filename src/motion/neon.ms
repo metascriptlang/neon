@@ -30,10 +30,12 @@ export interface ElementMotion {
 		property: string,
 		target: MotionTarget | null,
 	) => AnimatedValue;
+	show: (node: HostNode, property: string, value: MotionValue) => void;
+	claimsAhead: () => boolean;
 }
 
 when (js) {
-	import { browserMotionPlayer, browserOwns, elementValue, styleProperty } from "./waapi";
+	import { browserMotionPlayer, browserOwns, elementValue, showStyle, styleProperty } from "./waapi";
 
 	function platformMotion(): ElementMotion | null {
 		return {
@@ -41,10 +43,13 @@ when (js) {
 			carries: (property: string): boolean => styleProperty(property) !== null,
 			player: browserMotionPlayer,
 			value: elementValue,
+			show: showStyle,
+			claimsAhead: (): boolean => false,
 		};
 	}
 } else {
-	import { layerChannel, nativeElementValue, nativeMotionPlayer, nativeOwns } from "./native";
+	import { layerChannel, nativeElementValue, nativeMotionPlayer, nativeOwns, showLayer } from "./native";
+	import { layerEngine } from "../platform/native/layerEngine";
 
 	function platformMotion(): ElementMotion | null {
 		return {
@@ -52,6 +57,8 @@ when (js) {
 			carries: (property: string): boolean => layerChannel(property) !== null,
 			player: nativeMotionPlayer,
 			value: nativeElementValue,
+			show: showLayer,
+			claimsAhead: (): boolean => layerEngine() !== null,
 		};
 	}
 }
@@ -127,12 +134,19 @@ export function useAnimatedValue(
 	composition: Composition = Composition.Replace,
 ): [Accessor<float64>, AnimatedValue] {
 	requireOwner("useAnimatedValue");
-	const value = animatedValue(initial, policy, target, composition);
+	const own = bindSignalTarget(target);
+	const motion = elementMotion;
+	const driven = own !== null && motion !== null && composition === Composition.Replace;
+	const value = driven
+		? motion.value(initial, policy, own.signals.elements, own.slot, own.property, own)
+		: new AnimatedValue(initial, neonClock(), policy, target, composition);
 	const [read, write] = createSignal<float64>(initial);
 	const reach = target?.write ?? null;
+	const shown = driven ? null : own;
 	value.subscribe((next: float64): void => {
 		write(next);
 		if (reach !== null) { reach(numberValue(next)); }
+		if (shown !== null) { shown.signals.show(shown.slot, shown.property, numberValue(next)); }
 	});
 	onCleanup((): void => { if (!value.disposed) { value.dispose(); } });
 	return [read, value];
@@ -163,27 +177,6 @@ function elementsOf(bindings: MotionBinding[]): MotionElements | null {
 	return found;
 }
 
-function animatedValue(
-	initial: float64,
-	policy: MotionPolicy,
-	target: MotionTarget | null,
-	composition: Composition,
-): AnimatedValue {
-	const own = bindSignalTarget(target);
-	const motion = elementMotion;
-	if (own === null || motion === null || composition !== Composition.Replace) {
-		return new AnimatedValue(initial, neonClock(), policy, target, composition);
-	}
-	return motion.value(
-		initial,
-		policy,
-		own.signals.elements,
-		own.slot,
-		own.property,
-		own,
-	);
-}
-
 class SignalTarget extends MotionTarget {
 	signals: MotionSignals;
 	slot: string;
@@ -207,6 +200,7 @@ class OwnedSlot {
 	slot: string;
 	owned: Accessor<boolean>;
 	own: (owned: boolean) => void;
+	node: HostNode | null = null;
 
 	constructor(slot: string) {
 		this.slot = slot;
@@ -332,10 +326,18 @@ export class MotionSignals {
 		}
 		this.elements.declare(slot);
 		const owned = this.ownedSlot(slot);
+		const ahead = elementMotion;
+		owned.own(ahead !== null && ahead.claimsAhead());
 		return (handle: ViewHandle): void => {
 			this.elements.set(slot, handle.node);
 			const motion = elementMotion;
-			owned.own(motion !== null && motion.owns(handle.node));
+			const owns = motion !== null && motion.owns(handle.node);
+			owned.node = owns ? handle.node : null;
+			owned.own(owns);
+			for (const binding of this.bindings) {
+				const read = binding.read;
+				if (binding.slot === slot && read !== null) { this.show(slot, binding.property, read()); }
+			}
 		};
 	}
 
@@ -372,6 +374,14 @@ export class MotionSignals {
 			};
 		}
 		return style;
+	}
+
+	show(slot: string, property: string, value: MotionValue): void {
+		const node = this.ownedSlot(slot).node;
+		const motion = elementMotion;
+		if (node !== null && motion !== null && motion.carries(property)) {
+			motion.show(node, property, value);
+		}
 	}
 
 	private ownedSlot(slot: string): OwnedSlot {
