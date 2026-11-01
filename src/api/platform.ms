@@ -25,8 +25,6 @@ function chosen<T>(spec: {
 	throw new Error("Platform.select: no entry for " + os + " and no default");
 }
 
-// Callers write `select`'s type argument until compiler card
-// 2026-10-07-generic-not-inferred-through-optional-object-field.md lands.
 when (android) {
 	export class Platform {
 		static OS: PlatformOSType = "android";
