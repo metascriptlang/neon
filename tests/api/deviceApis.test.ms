@@ -149,6 +149,18 @@ test "Permissions.check and request answer in expo's PermissionResponse shape" {
 	assert fake.joined() === "requestPermission camera;requestPermission location", fake.joined();
 }
 
+test "a service that refuses rejects Permissions.check and request with its message" {
+	const fake = new FakeServices();
+	fake.install();
+	fake.refusal = "camera is blocked by policy";
+	let checked = "";
+	try { await Permissions.check("camera"); } catch (e) { checked = e.message; }
+	let requested = "";
+	try { await Permissions.request("camera"); } catch (e) { requested = e.message; }
+	assert checked === "camera is blocked by policy", "check: " + checked;
+	assert requested === "camera is blocked by policy", "request: " + requested;
+}
+
 test "PermissionsAndroid names RN's permissions and results and maps requestMultiple per permission" {
 	const fake = new FakeServices();
 	fake.install();
