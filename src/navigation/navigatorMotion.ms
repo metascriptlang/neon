@@ -2,15 +2,24 @@ import { Accessor, Signal, untrack } from "../core/signal";
 import { createMemo } from "../core/memo";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
-import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
+import { Easing } from "pulse/src/easing";
+import { AnimatedValue, timing } from "pulse/src/value";
+import { createAnimatedValue } from "../motion/neonValues";
 import { Navigation, NavigatorCore, StackAnimation } from "./core";
 
 export const STACK_DURATION = 350;
 
 export class ScreenMotion {
-	progress: AnimatedValue = new AnimatedValue(1);
+	progress: Accessor<float64>;
+	animated: AnimatedValue;
 	moving: Signal<boolean> = new Signal<boolean>(false);
 	exited: Signal<boolean> = new Signal<boolean>(false);
+
+	constructor() {
+		const [progress, animated] = createAnimatedValue(1);
+		this.progress = progress;
+		this.animated = animated;
+	}
 }
 
 export function transparentOf<P>(entry: Navigation<P>): boolean {
@@ -99,10 +108,10 @@ export class NavigatorMotion<P> {
 		const motion = this.of(entry);
 		const kind = untrack((): StackAnimation => this.animationOf(entry));
 		if (kind === "none") {
-			motion.progress.setValue(1);
+			motion.animated.set(1);
 			return;
 		}
-		motion.progress.setValue(0);
+		motion.animated.set(0);
 		motion.moving.set(true);
 		this.settleIn(entry);
 	}
@@ -110,21 +119,25 @@ export class NavigatorMotion<P> {
 	settleIn(entry: Navigation<P>): void {
 		const motion = this.of(entry);
 		const duration = untrack((): number => this.durationOf(entry));
-		Animated.timing(motion.progress, { toValue: 1, duration, easing: Easing.out(Easing.cubic) })
-			.start((result: EndResult): void => {
-				if (result.finished) { motion.moving.set(false); }
-			});
+		motion.animated.animate(
+			timing(1, { duration, easing: Easing.out(Easing.cubic) }),
+			(finished: boolean): void => {
+				if (finished) { motion.moving.set(false); }
+			},
+		);
 	}
 
 	animateOut(entry: Navigation<P>): void {
 		const motion = this.of(entry);
 		motion.moving.set(true);
 		const duration = untrack((): number => this.durationOf(entry));
-		Animated.timing(motion.progress, { toValue: 0, duration, easing: Easing.in(Easing.cubic) })
-			.start((result: EndResult): void => {
+		motion.animated.animate(
+			timing(0, { duration, easing: Easing.in(Easing.cubic) }),
+			(finished: boolean): void => {
 				motion.moving.set(false);
 				motion.exited.set(true);
-			});
+			},
+		);
 	}
 
 	derive(prev: MotionPlan<P> | null, list: Navigation<P>[], at: int32): MotionPlan<P> {
@@ -174,7 +187,7 @@ export class NavigatorMotion<P> {
 	}
 
 	run(plan: MotionPlan<P>, prev: MotionPlan<P> | null): void {
-		for (const entry of plan.halted) { this.of(entry).progress.stopAnimation(); }
+		for (const entry of plan.halted) { this.of(entry).animated.cancel(); }
 		const applied = prev === null ? [] as Navigation<P>[] : prev.leaving;
 		for (const entry of plan.leaving) {
 			if (!contains(applied, entry)) { this.animateOut(entry); }

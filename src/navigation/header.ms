@@ -10,7 +10,6 @@ import { RowHome, regionNode, builtRow } from "../render/node";
 import { Row } from "../render/reconcile";
 import { Style, TextAlign } from "../render/style";
 import { Platform } from "../api/platform";
-import { AnimatedValue } from "../animation/index";
 import { StackLayout } from "./layout";
 import { NeonEvent } from "../render/event";
 import { createComponent } from "../render/component";
@@ -222,13 +221,13 @@ function backGesture<PL>(
 			return g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
 		},
 		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
-			own.progress.stopAnimation();
+			own.animated.cancel();
 			own.moving.set(true);
 		},
 		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const width = core.layout.extentX();
 			const moved = width > 0 ? Math.max(0, Math.min(1, g.dx / width)) : 0;
-			own.progress.setValue(1 - moved);
+			own.animated.set(1 - moved);
 		},
 		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const width = core.layout.extentX();
@@ -279,7 +278,7 @@ export function screenView<PL>(
 			display: visible() ? "flex" : "none",
 			backgroundColor: transparent() ? null : core.container.theme().colors.background,
 		};
-		const p = motion.of(entry).progress.get();
+		const p = motion.of(entry).progress();
 		if (p >= 1) { return base; }
 		const kind = motion.animationOf(entry);
 		if (kind === "fade") { return { ...base, opacity: p }; }
