@@ -96,32 +96,18 @@ export class AsyncStorage {
 	static flushGetRequests(): void {}
 }
 
-// A class, not an object of async arrows: on JS a function holding an async arrow is emitted
-// async itself (compiler card 2026-10-07-js-outer-function-made-async-by-nested-async.md).
-export class AsyncStorageHook {
-	private key: string;
-
-	constructor(key: string) {
-		this.key = key;
-	}
-
-	async getItem(): Promise<string | null> {
-		return await AsyncStorage.getItem(this.key);
-	}
-
-	async setItem(value: string): Promise<void> {
-		await AsyncStorage.setItem(this.key, value);
-	}
-
-	async mergeItem(value: string): Promise<void> {
-		await AsyncStorage.mergeItem(this.key, value);
-	}
-
-	async removeItem(): Promise<void> {
-		await AsyncStorage.removeItem(this.key);
-	}
+export interface AsyncStorageHook {
+	getItem: () => Promise<string | null>;
+	setItem: (value: string) => Promise<void>;
+	mergeItem: (value: string) => Promise<void>;
+	removeItem: () => Promise<void>;
 }
 
 export function useAsyncStorage(key: string): AsyncStorageHook {
-	return new AsyncStorageHook(key);
+	return {
+		getItem: async (): Promise<string | null> => await AsyncStorage.getItem(key),
+		setItem: async (value: string): Promise<void> => { await AsyncStorage.setItem(key, value); },
+		mergeItem: async (value: string): Promise<void> => { await AsyncStorage.mergeItem(key, value); },
+		removeItem: async (): Promise<void> => { await AsyncStorage.removeItem(key); },
+	};
 }
