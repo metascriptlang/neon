@@ -1,6 +1,6 @@
 import { NativeElementKind, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "../../src/platform/native/contract";
 import { nativeElement, registerNativeElement } from "../../src/platform/native/elements";
-import { Style } from "../../src/render/style";
+import { Style, Display } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 
 test "native tags select view-backed element kinds" {
@@ -62,6 +62,12 @@ test "native styles project onto FlexStyle without filling absent fields" {
 	assert container.flexDirection === "column", "containers default to columns";
 	assert text.flexDirection === null, "text keeps Yoga's direction default";
 	assert scroll.flexDirection === "column" && scroll.overflow === "scroll", "a scroll container lays out its content unshrunk";
+}
+
+test "native display keeps Yoga's three values and leaves the web-only ones absent" {
+	const shown = (display: Display): string => `${nativeFlexStyle({ display } as Style, NativeElementKind.View).display ?? "absent"}`;
+	assert `${shown("flex")} ${shown("none")} ${shown("contents")}` === "flex none contents", "Yoga's display values reach flex";
+	assert `${shown("block")} ${shown("inline-flex")}` === "absent absent", "a web-only display leaves Yoga's default";
 }
 
 test "native percent and auto dimensions reach Yoga as written" {

@@ -60,10 +60,13 @@ function position(v: StylePositionType | null): PositionType | null {
 }
 
 function display(v: StyleDisplay | null): Display | null {
-	if (v === "flex") { return "flex"; }
-	if (v === "none") { return "none"; }
-	if (v === "contents") { return "contents"; }
-	return null;
+	if (v === null) { return null; }
+	return match (v) {
+		"flex" => "flex",
+		"none" => "none",
+		"contents" => "contents",
+		"block" | "inline" | "inline-block" | "inline-flex" => null,
+	};
 }
 
 function overflow(v: StyleOverflow | null): Overflow | null {
