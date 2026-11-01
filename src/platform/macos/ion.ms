@@ -3,7 +3,7 @@ import {
 	onResize, onFrame, onPointer, onWindowEvent, PointerEvent, PointerKind, Window, WindowEventDestroyed,
 } from "../../../../ion/src/index";
 import "./library";
-import { runApp, mountNativeRoot, NativeRootHandle, nativeViewOf } from "../native/host";
+import { runApp, mountNativeRoot, NativeRootHandle, nativeViewOf, ownsNativeView } from "../native/host";
 import { useAppServices, useCaptureServices, imageSize } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
@@ -52,7 +52,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
 	useAppServices({ ...ionAppServices, imageSize });
-	installLayerEngine(bridgeLayerEngine(nativeViewOf));
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 	frameWindows.push(win);
 	nimSetFrameRequester((): void => { requestFrames(); });
 	let mainRoot: Ptr<void> | null = null;

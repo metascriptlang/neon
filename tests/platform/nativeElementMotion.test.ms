@@ -1,4 +1,4 @@
-import { nativeViewOf, runApp } from "../../src/platform/native/host";
+import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { HostNode } from "../../src/render/hostTypes";
@@ -16,9 +16,13 @@ import {
 	MotionDocument,
 	MotionTrack,
 	colorValue,
+	MotionValue,
 	linearKeyframe,
 } from "pulse/src/document";
-import { MotionPlayer } from "pulse/src/player";
+import { MotionPlayer, motionOptions } from "pulse/src/player";
+import { ManualClock } from "pulse/src/clock";
+import { motionElements } from "../../src/motion/waapi";
+import { nativeMotionPlayer, nativeOwns } from "../../src/motion/native";
 import { MotionPolicy } from "pulse/src/policy";
 import { decayConfig } from "pulse/src/decay";
 import { AnimatedValue, decay, spring, timing } from "pulse/src/value";
@@ -100,7 +104,7 @@ function close(): void {
 
 test "useMotion on a slot named by signals.ref hands opacity and transform to the layer, keeping the rest on signals" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf));
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 	const before = nmLayerAnimates();
 	const app = new Showcase();
 	frames.step(1);
@@ -164,7 +168,7 @@ class Like {
 
 test "useAnimatedValue on a named slot hands a spring and a timing to the layer and keeps decay on the evaluator" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf));
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 	const like = new Like();
 	const before = nmLayerAnimates();
 	like.animated.animate(spring(1.5));
@@ -188,5 +192,39 @@ test "useAnimatedValue on a named slot hands a spring and a timing to the layer 
 	frames.step(3);
 	assert nmLayerAnimates() === before + 2, "decay is not handed over";
 	assert like.model() > 1, "decay writes the model each frame: " + like.model().toString();
+	close();
+}
+
+class ForeignNode {
+	name: string = "a node another host made";
+}
+
+test "a node no native host made keeps its track on signals while a layer engine is installed" {
+	const frames = useManualFrames();
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	const app = new Showcase();
+	const foreign: HostNode = new ForeignNode();
+	assert nativeOwns(app.signals.elements.node("box") as HostNode), "a native view is owned";
+	assert !nativeOwns(foreign), "a foreign node is not owned";
+	const signals = new MotionSignals();
+	signals.number("box", "opacity", 0);
+	const before = nmLayerAnimates();
+	const clock = new ManualClock();
+	nativeMotionPlayer(
+		{
+			version: 1,
+			root: "main",
+			clips: [{ id: "main", duration: 1000, tracks: [ramp("opacity", 1)], placements: [], labels: [] }],
+		},
+		motionElements([{ slot: "box", node: foreign }]),
+		signals.bindings,
+		motionOptions(clock.clock),
+	);
+	clock.advance(16);
+	clock.advance(484);
+	const written = (signals.bindings[0].read as () => MotionValue)().number;
+	assert nmLayerAnimates() === before, "nothing handed to a layer";
+	assert Math.abs(written - 0.5) < 1e-9, "the binding carries the track: " + written.toString();
+	frames.runAll();
 	close();
 }

@@ -266,6 +266,10 @@ function nativeNode(view: Ptr<void> | null, isText: boolean, isString: boolean):
 	return new NativeNode(view, isText, isString);
 }
 
+export function ownsNativeView(node: HostNode): boolean {
+	return node instanceof NativeNode && node.view !== null;
+}
+
 export function nativeViewOf(node: HostNode): Ptr<void> {
 	const view = (node as unknown as NativeNode).view;
 	if (view === null) { throw new Error("native host: a text run has no platform view"); }
@@ -276,7 +280,7 @@ when (ios) {
 	import { bridgeLayerEngine } from "./layerMotion";
 	import { installLayerEngine } from "./layerEngine";
 
-	installLayerEngine(bridgeLayerEngine(nativeViewOf));
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 }
 
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----

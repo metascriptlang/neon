@@ -24,6 +24,7 @@ export struct LayerTiming {
 }
 
 export interface LayerEngine {
+	owns: (node: HostNode) => boolean;
 	write: (node: HostNode, property: LayerProperty, values: float64[]) => void;
 	read: (node: HostNode, component: LayerComponent) => float64;
 	animate: (

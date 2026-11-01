@@ -1,4 +1,4 @@
-import { nativeViewOf, runApp } from "../../src/platform/native/host";
+import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
 import { createRoot, runWithOwner } from "../../src/core/owner";
 import { getOwner } from "../../src/core/runtime";
 import { Computation } from "../../src/core/types";
@@ -50,7 +50,7 @@ class Stage {
 			now: (): number => this.time,
 			schedule: (fire: () => void): void => { this.fire = fire; },
 		});
-		installLayerEngine(bridgeLayerEngine(nativeViewOf));
+		installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 		for (const property of properties) {
 			this.names.push(property.name);
 			this.signals.number(property.name, CHANNEL, property.initial);

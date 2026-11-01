@@ -1,5 +1,5 @@
 import { ScrollAxis, ScrollSource, scrollSource } from "pulse/src/scroll";
-import { nativeViewOf, runApp } from "../../src/platform/native/host";
+import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { ElementHandle } from "../../src/render/measure";
 import { NeonNode } from "../../src/render/node";
@@ -61,7 +61,7 @@ class Stage {
 			style={{ width: 100, height: 40 }} />);
 		if (this.handles.length !== 1) { throw new Error("no ref"); }
 		this.tag = nmLastPressableTag();
-		installLayerEngine(bridgeLayerEngine(nativeViewOf));
+		installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
 	}
 
 	options(): MotionOptions { return motionOptions(this.clock.clock); }

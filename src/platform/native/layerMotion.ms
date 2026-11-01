@@ -56,8 +56,10 @@ export function presentedComponent(
 
 export function bridgeLayerEngine(
 	viewOf: (node: HostNode) => Ptr<void>,
+	owns: (node: HostNode) => boolean,
 ): LayerEngine {
 	return {
+		owns,
 		write: (
 			node: HostNode,
 			property: LayerProperty,

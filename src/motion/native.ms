@@ -380,10 +380,8 @@ function elementTarget(node: HostNode, name: string): MotionTarget {
 }
 
 function resolvedNode(elements: MotionElements, slot: string): HostNode | null {
-	if (layerEngine() === null) {
-		return null;
-	}
-	return elements.node(slot);
+	const node = elements.node(slot);
+	return node !== null && nativeOwns(node as HostNode) ? node : null;
 }
 
 function keyedAt(
@@ -906,7 +904,8 @@ export function showLayer(node: HostNode, property: string, value: MotionValue):
 }
 
 export function nativeOwns(node: HostNode): boolean {
-	return layerEngine() !== null;
+	const engine = layerEngine();
+	return engine !== null && engine.owns(node);
 }
 
 class ValueParts {
