@@ -9,13 +9,13 @@ import {
 	motionSampledAtMs,
 } from "./harness.h";
 import { NeonNode } from "../../src/render/node";
-import { ElementHandle } from "../../src/render/measure";
-import { View } from "../../src/components/primitives";
-import { NativeMotionPlayer } from "../../src/motion/native";
-import { MotionElement, frameClock } from "../../src/motion/waapi";
-import { LayerComponent, presentedComponent } from "../../src/platform/native/layerMotion";
+import { HostNode } from "../../src/render/hostTypes";
+import { View, ViewHandle } from "../../src/components/primitives";
+import { MotionSignals, useMotion } from "../../src/motion/neon";
+import { LayerComponent } from "../../src/platform/native/layerEngine";
+import { presentedComponent } from "../../src/platform/native/layerMotion";
 import { MotionDocument, MotionTrack, linearKeyframe } from "pulse/src/document";
-import { motionOptions } from "pulse/src/player";
+import { MotionPlayer } from "pulse/src/player";
 import { exit } from "std/process";
 
 when (macos || ios) {
@@ -24,9 +24,12 @@ when (macos || ios) {
 
 const DURATION_MS: float64 = 2000;
 const BLOCK_MS: float64 = 300;
-const handles: ElementHandle[] = [];
+const signals = new MotionSignals();
+const opacitySignal = signals.number("box", "opacity", 0);
+signals.number("box", "translateX", 0);
 let failures: int32 = 0;
-let player: NativeMotionPlayer | null = null;
+let player: MotionPlayer | null = null;
+let started = false;
 
 function ramp(property: string, to: float64): MotionTrack {
 	return {
@@ -37,23 +40,8 @@ function ramp(property: string, to: float64): MotionTrack {
 	};
 }
 
-function expect(name: string, ok: boolean, detail: string): void {
-	console.log(`${ok ? "ok  " : "FAIL"} ${name}: ${detail}`);
-	if (!ok) { failures += 1; }
-}
-
-export function MotionCheck(): NeonNode {
-	return <View style={{ width: 320, height: 200, backgroundColor: "#101820" }}>
-		<View style={{ position: "absolute", left: 20, top: 50, width: 100, height: 100, backgroundColor: "#2e86de" }}
-			ref={(h: ElementHandle): void => {
-				handles.push(h);
-				if (handles.length === 1) { setTimeout(start, 500); }
-			}} />
-	</View>;
-}
-
-function start(): void {
-	const doc: MotionDocument = {
+function entrance(): MotionDocument {
+	return {
 		version: 1,
 		root: "main",
 		clips: [{
@@ -64,28 +52,49 @@ function start(): void {
 			labels: [],
 		}],
 	};
-	const element: MotionElement = { slot: "box", node: handles[0].node };
-	player = new NativeMotionPlayer(doc, [element], [], motionOptions(frameClock()));
-	setTimeout(block, 400);
-	setTimeout((): void => {
-		console.log("FAIL timeout");
-		exit(2);
-	}, 6000);
+}
+
+function expect(name: string, ok: boolean, detail: string): void {
+	console.log(`${ok ? "ok  " : "FAIL"} ${name}: ${detail}`);
+	if (!ok) { failures += 1; }
+}
+
+function boxView(): Ptr<void> {
+	return nativeViewOf(signals.elements.node("box") as HostNode);
+}
+
+export function MotionCheck(): NeonNode {
+	const ref = signals.ref("box");
+	player = useMotion(entrance(), signals.bindings);
+	return <View style={{ width: 320, height: 200, backgroundColor: "#101820" }}>
+		<View style={[{ position: "absolute", left: 20, top: 50, width: 100, height: 100, backgroundColor: "#2e86de" }, signals.style("box")]}
+			ref={(h: ViewHandle): void => {
+				ref(h);
+				if (started) { return; }
+				started = true;
+				setTimeout(block, 900);
+				setTimeout((): void => {
+					console.log("FAIL timeout");
+					exit(2);
+				}, 6000);
+			}} />
+	</View>;
 }
 
 function block(): void {
-	const node = handles[0].node;
-	const motion = player as NativeMotionPlayer;
-	const opacityBefore = presentedComponent(node, LayerComponent.Opacity);
-	const xBefore = presentedComponent(node, LayerComponent.TranslateX);
+	const view = boxView();
+	const motion = player as MotionPlayer;
+	const opacityBefore = presentedComponent(view, LayerComponent.Opacity);
+	const xBefore = presentedComponent(view, LayerComponent.TranslateX);
 	const timeBefore = motion.time;
-	motionSampleLater(nativeViewOf(node), 50, 250);
+	motionSampleLater(view, 50, 250);
 	const from = performance.now();
 	while (performance.now() - from < BLOCK_MS) {}
 	const blocked = performance.now() - from;
-	const opacityAfter = presentedComponent(node, LayerComponent.Opacity);
+	const opacityAfter = presentedComponent(view, LayerComponent.Opacity);
 	console.log(`blocked ${blocked.toFixed(1)} ms; player.time ${timeBefore.toFixed(1)} -> ${motion.time.toFixed(1)} ms`);
 	console.log(`main thread presented opacity ${opacityBefore.toFixed(4)} -> ${opacityAfter.toFixed(4)}, translateX ${xBefore.toFixed(2)}`);
+	expect("the handed track leaves its signal alone", opacitySignal() === 0, `${opacitySignal()}`);
 	expect("the app-thread player did not tick during the block", motion.time === timeBefore, `${motion.time}`);
 	expect("the presented transform is the platform matrix of the same playhead", Math.abs(xBefore - 200 * opacityBefore) < 2,
 		`translateX ${xBefore.toFixed(2)} at opacity ${opacityBefore.toFixed(4)}`);
@@ -101,10 +110,10 @@ function block(): void {
 }
 
 function cancel(): void {
-	const node = handles[0].node;
-	(player as NativeMotionPlayer).cancel();
-	const opacity = presentedComponent(node, LayerComponent.Opacity);
-	const x = presentedComponent(node, LayerComponent.TranslateX);
+	const view = boxView();
+	(player as MotionPlayer).cancel();
+	const opacity = presentedComponent(view, LayerComponent.Opacity);
+	const x = presentedComponent(view, LayerComponent.TranslateX);
 	console.log(`after cancel: presented opacity ${opacity.toFixed(4)}, translateX ${x.toFixed(2)}`);
 	expect("cancel holds a value inside the run", opacity > 0.1 && opacity < 0.9 && x > 20 && x < 180,
 		`${opacity.toFixed(4)}, ${x.toFixed(2)}`);
