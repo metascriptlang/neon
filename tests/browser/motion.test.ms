@@ -385,3 +385,23 @@ test "a connected element that refuses commitStyles fails the cancel loudly" {
 	assert el.getAnimations().length === 0, "every animation is cancelled before the throw";
 	el.remove();
 }
+
+test "translateX and translateY on one element run as one translate animation" {
+	const node = mount();
+	const el = dom(node);
+	const doc = documentOf(
+		[ramp("box", "translateX", 100), ramp("box", "translateY", 40)],
+	);
+	const player = new BrowserMotionPlayer(doc, [{ slot: "box", node }], [], paused());
+	player.seek(250);
+	assert el.getAnimations().length === 1, "one animation: " +
+		el.getAnimations().length.toString();
+	assert computed(el, "translate") === "25px 10px", computed(el, "translate");
+	player.seek(1000);
+	assert computed(el, "translate") === "100px 40px", computed(el, "translate");
+	player.cancel();
+	assert el.style.translate === "100px 40px", "both axes committed: " +
+		el.style.translate;
+	player.dispose();
+	el.remove();
+}
