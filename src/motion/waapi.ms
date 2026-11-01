@@ -1112,7 +1112,8 @@ when (js) {
 				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
 			}
-			if (run.animation !== null || run.evicted) { return; }
+			if (run.animation !== null) { return; }
+			run.evicted = false;
 			run.animation = this.start(run);
 			claimCss(run);
 			this.align(run);
