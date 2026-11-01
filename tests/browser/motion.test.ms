@@ -26,6 +26,7 @@ import {
 	motionElements,
 } from "../../src/motion/waapi";
 import { MotionPolicy } from "pulse/src/policy";
+import { MotionShowcase } from "../../examples/motionShowcase/showcase";
 import { decay, spring } from "pulse/src/value";
 import { decayConfig } from "pulse/src/decay";
 
@@ -61,6 +62,13 @@ class FrameCount {
 
 extern function countFrames(frames: FrameCount): () => void from
 	"(f => { const raf = globalThis.requestAnimationFrame; globalThis.requestAnimationFrame = (cb) => { f.count += 1; return raf(cb); }; return () => { globalThis.requestAnimationFrame = raf; }; })(#)";
+
+extern function byText(text: string): HTMLElement from
+	"(t => [...document.body.querySelectorAll('*')].find((e) => e.children.length === 0 && e.textContent === t).parentElement)(#)";
+
+extern function clickOn(el: HTMLElement): void from "(el => el.click())(#)";
+
+extern function bodyText(): string from "(() => document.body.textContent)()";
 
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
@@ -661,4 +669,38 @@ test "a player with an evaluated track keeps its frame loop" {
 	restore();
 	player.dispose();
 	el.remove();
+}
+
+test "the showcase plays its staggered entrance and its like spring through WAAPI" {
+	const frames = new FrameCount();
+	const restore = countFrames(frames);
+	const dispose = render(
+		element(<MotionShowcase policy={new MotionPolicy()} />),
+		domHost(),
+		documentBody(),
+	);
+	await sleepAsync(160);
+	const first = byText("card first");
+	const second = byText("card second");
+	assert first.getAnimations().length === 3 && second.getAnimations().length === 3,
+		"cards on WAAPI: " + first.getAnimations().length.toString() + " " +
+			second.getAnimations().length.toString();
+	const writes = new StyleWrites();
+	const stop = watchStyle(second, writes);
+	const started = frames.count;
+	await sleepAsync(150);
+	stop();
+	assert writes.count === 0, "style writes in the entrance: " + writes.count.toString();
+	assert frames.count === started, "frames in the entrance: " +
+		(frames.count - started).toString();
+	await sleepAsync(300);
+	assert bodyText().includes("entered"), bodyText();
+	assert opacity(first) === 1 && opacity(second) === 1;
+	const like = byText("like");
+	clickOn(like);
+	await sleepAsync(50);
+	assert like.getAnimations().length === 1 && firstEasing(like).startsWith("linear("),
+		"like spring on WAAPI: " + firstEasing(like);
+	restore();
+	dispose();
 }

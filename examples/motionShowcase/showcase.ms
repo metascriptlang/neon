@@ -1,11 +1,11 @@
-import { Accessor, createSignal } from "../../src/core/signal";
+import { createSignal } from "../../src/core/signal";
 import { onSettled } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { For } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
-import { View, Text, Pressable } from "../../src/components/primitives";
+import { View, ViewHandle, Text, Pressable } from "../../src/components/primitives";
 import {
 	MotionClip,
 	MotionDocument,
@@ -87,19 +87,17 @@ export function entranceDocument(): MotionDocument {
 
 interface CardMotion {
 	slot: string;
-	opacity: Accessor<float64>;
-	rise: Accessor<float64>;
-	background: Accessor<string>;
+	ref: (handle: ViewHandle) => void;
 }
 
 export function MotionShowcase(props: { policy: MotionPolicy }): NeonNode {
 	const signals = new MotionSignals();
-	const cards = CARD_SLOTS.map((slot: string): CardMotion => ({
-		slot,
-		opacity: signals.number(slot, "opacity", 0),
-		rise: signals.number(slot, "translateY", CARD_RISE_PX),
-		background: signals.color(slot, "backgroundColor", colorValue(0.27, 0.28, 0.35, 1)),
-	}));
+	const cards = CARD_SLOTS.map((slot: string): CardMotion => {
+		signals.number(slot, "opacity", 0);
+		signals.number(slot, "translateY", CARD_RISE_PX);
+		signals.color(slot, "backgroundColor", colorValue(0.27, 0.28, 0.35, 1));
+		return { slot, ref: signals.ref(slot) };
+	});
 	const [entered, setEntered] = createSignal(false);
 	const entrance = useMotion(entranceDocument(), signals.bindings);
 	entrance.onComplete = (): void => { setEntered(true); };
@@ -110,7 +108,10 @@ export function MotionShowcase(props: { policy: MotionPolicy }): NeonNode {
 		});
 	}
 
-	const [scale, likeScale] = useAnimatedValue(1, props.policy);
+	const like = new MotionSignals();
+	like.number("like", "scale", 1);
+	const likeRef = like.ref("like");
+	const likeScale = useAnimatedValue(1, props.policy, like.target("like", "scale"))[1];
 	const [liked, setLiked] = createSignal(false);
 	const toggleLike = (e: NeonEvent): void => {
 		const next = !liked();
@@ -120,15 +121,11 @@ export function MotionShowcase(props: { policy: MotionPolicy }): NeonNode {
 
 	return <View style={styles.screen}>
 		<Text style={styles.label}>{(entered() ? "entered" : "entering") + " · " + (liked() ? "liked" : "not liked")}</Text>
-		<For each={cards}>{(card: CardMotion): NeonNode => <View style={[styles.card, {
-			opacity: card.opacity(),
-			transform: `translateY(${card.rise()}px)`,
-			backgroundColor: card.background(),
-		}]}>
+		<For each={cards}>{(card: CardMotion): NeonNode => <View ref={card.ref} style={[styles.card, signals.style(card.slot)]}>
 			<Text style={styles.title}>{"card " + card.slot}</Text>
 		</View>}</For>
 		<Pressable onPress={toggleLike}>
-			<View style={[styles.like, { transform: `scale(${scale()})` }]}>
+			<View ref={likeRef} style={[styles.like, like.style("like")]}>
 				<Text style={styles.label}>like</Text>
 			</View>
 		</Pressable>
