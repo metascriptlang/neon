@@ -1,8 +1,8 @@
-#import <Cocoa/Cocoa.h>
+#import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #include <stdatomic.h>
 #include <unistd.h>
-#include "motionHarness.h"
+#include "harness.h"
 
 static double g_opacity[2], g_atMs[2];
 static atomic_int g_ready;
@@ -15,7 +15,7 @@ static void sample(CALayer *layer, int index) {
 }
 
 void motionSampleLater(void *view, double firstMs, double secondMs) {
-	CALayer *layer = ((__bridge NSView *)view).layer;
+	CALayer *layer = [(__bridge id)view layer];
 	atomic_store(&g_ready, 0);
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
 		usleep((useconds_t)(firstMs * 1000.0));
