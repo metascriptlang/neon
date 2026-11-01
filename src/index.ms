@@ -115,10 +115,11 @@ export {
 	Notifications,
 } from "./api/notifications";
 export { Easing, EasingFunction } from "pulse/src/easing";
-export { AnimatedValue } from "pulse/src/value";
+export { AnimatedValue, spring, timing } from "pulse/src/value";
+export { MotionPolicy } from "pulse/src/policy";
 export { AnimatedValueXY } from "pulse/src/valueXY";
 export { CompositeAnimation } from "pulse/src/composite";
-export { useAnimatedValue } from "./motion/neon";
+export { MotionSignals, useAnimatedValue, useMotion } from "./motion/neon";
 export { animatedEvent, createAnimatedValue, useValueSignal } from "./motion/neonValues";
 export { LayoutAnimation, LayoutAnimationPresets } from "./motion/layoutAnimation";
 export { Presence } from "./motion/presence";
