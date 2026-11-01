@@ -110,8 +110,10 @@ for with no family at all, is refused by name. `textDecorationStyle` (`solid`, `
 `underlineStyle`, and only the underline takes it; `overline` in `textDecorationLine` sets the run's `overline`.
 `textDecorationColor` colours the run's underline, overline and line-through (a terminal's SGR 58), the text colour when unset.
 The native hosts refuse every line style but `solid`, an `overline`, and `textDecorationColor` by name. They take one `fontFamily` per Text, refuse a family list, and refuse a span that changes it;
-Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
-a device lane proves them.
+Windows draws the family through DirectWrite (an installed family only), macOS and iOS through AppKit and UIKit (an installed
+family, or the generic `monospace`, which both map to the system monospaced font), and Android refuses it by name until a
+device lane proves it. iOS was proven on an iPhone 17 Pro simulator on 2026-11-01: `monospace` in bold, `Menlo`, and a
+span inside a `Menlo` Text.
 
 `fontSizeAdjust` sizes a fallback face to the primary one, so a hanzi or symbol drawn from a later family in
 `fontFamily` matches the first family's proportions. It takes CSS Fonts 5 `font-size-adjust` with the metric
