@@ -6,11 +6,11 @@ import { ValueSource } from "pulse/src/derived";
 import { EventMapping, event } from "pulse/src/event";
 import { MotionPolicy } from "pulse/src/policy";
 import { AnimatedValue } from "pulse/src/value";
-import { neonClock } from "./neon";
+import { hostMotionPolicy, neonClock } from "./neon";
 
 export function createAnimatedValue(
 	initial: float64,
-	policy: MotionPolicy = new MotionPolicy(),
+	policy: MotionPolicy = hostMotionPolicy(),
 ): [Accessor<float64>, AnimatedValue] {
 	const value = new AnimatedValue(initial, neonClock(), policy);
 	const [read, write] = createSignal<float64>(initial);

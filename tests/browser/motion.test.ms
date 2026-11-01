@@ -6,6 +6,9 @@ import {
 	scrollSource,
 	viewSource,
 } from "pulse/src/scroll";
+import { createRoot } from "../../src/core/owner";
+import { useAnimatedValue } from "../../src/motion/neon";
+import { AnimatedValue } from "pulse/src/value";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
@@ -88,6 +91,8 @@ extern function timelinesOf(el: HTMLElement): string from
 	"(el => el.getAnimations().map((a) => a.timeline.constructor.name).join())(#)";
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
+extern function preferReducedMotion(): () => void from
+	"(() => { const real = globalThis.matchMedia; globalThis.matchMedia = (q) => q === '(prefers-reduced-motion: reduce)' ? { matches: true, media: q } : real.call(globalThis, q); return () => { globalThis.matchMedia = real; }; })()";
 extern function hideTypedOmFactories(): () => void from
 	"(() => { const px = CSS.px; delete CSS.px; return () => { CSS.px = px; }; })()";
 extern function hideTimelines(): () => void from
@@ -593,6 +598,25 @@ test "a view player hands its inset to ViewTimeline where CSS Typed OM has no px
 	assert message === "" && timelines === "ViewTimeline,ViewTimeline", message + timelines;
 	scroller.remove();
 	el.remove();
+}
+
+test "a browser user's reduced motion preference is the default policy, and an explicit policy still wins" {
+	const restore = preferReducedMotion();
+	const made: AnimatedValue[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		made.push(useAnimatedValue(0)[1]);
+		made.push(useAnimatedValue(0, new MotionPolicy())[1]);
+		return dispose;
+	});
+	restore();
+	made[0].animate(timing(1, { duration: 1000 }));
+	made[1].animate(timing(1, { duration: 1000 }));
+	const preferred = made[0].get();
+	const reduced = !made[0].isAnimating();
+	const explicit = made[1].isAnimating() && made[1].get() < 1;
+	dispose();
+	assert preferred === 1 && reduced, "the preference jumps to the end: " + preferred.toString();
+	assert explicit, "an explicit policy animates";
 }
 
 function fadeTo(node: HostNode, to: float64): MotionPlayer {

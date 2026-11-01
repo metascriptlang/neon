@@ -38,6 +38,12 @@ when (js) {
 	import { browserMotionPlayer, browserOwns, elementValue, showStyle, styleProperty } from "./waapi";
 
 	extern function documentPresent(): boolean from "(typeof document !== 'undefined')";
+	extern function prefersReducedMotion(): boolean from
+		"(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)";
+
+	export function hostMotionPolicy(): MotionPolicy {
+		return new MotionPolicy(prefersReducedMotion());
+	}
 
 	function platformMotion(): ElementMotion | null {
 		return {
@@ -52,6 +58,10 @@ when (js) {
 } else {
 	import { layerChannel, nativeElementValue, nativeMotionPlayer, nativeOwns, showLayer } from "./native";
 	import { layerEngine } from "../platform/native/layerEngine";
+
+	export function hostMotionPolicy(): MotionPolicy {
+		return new MotionPolicy();
+	}
 
 	function platformMotion(): ElementMotion | null {
 		return {
@@ -131,7 +141,7 @@ export function useMotion(
 
 export function useAnimatedValue(
 	initial: float64,
-	policy: MotionPolicy = new MotionPolicy(),
+	policy: MotionPolicy = hostMotionPolicy(),
 	target: MotionTarget | null = null,
 	composition: Composition = Composition.Replace,
 ): [Accessor<float64>, AnimatedValue] {
