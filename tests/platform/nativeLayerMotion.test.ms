@@ -1,13 +1,14 @@
-import { runApp } from "../../src/platform/native/host";
+import { nativeViewOf, runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { ElementHandle } from "../../src/render/measure";
 import { NeonNode } from "../../src/render/node";
-import { MotionElement } from "../../src/motion/waapi";
-import { NativeMotionPlayer } from "../../src/motion/native";
-import { bridgeLayerEngine, installLayerEngine } from "../../src/platform/native/layerMotion";
+import { MotionElement, motionElements } from "../../src/motion/waapi";
+import { nativeMotionPlayer } from "../../src/motion/native";
+import { bridgeLayerEngine } from "../../src/platform/native/layerMotion";
+import { installLayerEngine } from "../../src/platform/native/layerEngine";
 import { ManualClock } from "pulse/src/clock";
 import { MotionDocument, MotionTrack, linearKeyframe } from "pulse/src/document";
-import { MotionOptions, motionOptions } from "pulse/src/player";
+import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
 import {
 	nmTeardown,
 	nmLastPressableTag,
@@ -59,16 +60,16 @@ class Stage {
 			style={{ width: 100, height: 40 }} />);
 		if (this.handles.length !== 1) { throw new Error("no ref"); }
 		this.tag = nmLastPressableTag();
-		installLayerEngine(bridgeLayerEngine());
+		installLayerEngine(bridgeLayerEngine(nativeViewOf));
 	}
 
 	options(): MotionOptions { return motionOptions(this.clock.clock); }
 
-	play(tracks: MotionTrack[], options: MotionOptions): NativeMotionPlayer {
+	play(tracks: MotionTrack[], options: MotionOptions): MotionPlayer {
 		const element: MotionElement = { slot: "box", node: this.handles[0].node };
-		return new NativeMotionPlayer(
+		return nativeMotionPlayer(
 			documentOf(tracks),
-			[element],
+			motionElements([element]),
 			[],
 			options,
 		);

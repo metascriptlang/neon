@@ -15,6 +15,7 @@ import { MotionElements } from "./waapi";
 
 export interface ElementMotion {
 	owns: (node: HostNode) => boolean;
+	carries: (property: string) => boolean;
 	player: (
 		doc: MotionDocument,
 		elements: MotionElements,
@@ -32,18 +33,26 @@ export interface ElementMotion {
 }
 
 when (js) {
-	import { browserMotionPlayer, browserOwns, elementValue } from "./waapi";
+	import { browserMotionPlayer, browserOwns, elementValue, styleProperty } from "./waapi";
 
 	function platformMotion(): ElementMotion | null {
 		return {
 			owns: browserOwns,
+			carries: (property: string): boolean => styleProperty(property) !== null,
 			player: browserMotionPlayer,
 			value: elementValue,
 		};
 	}
 } else {
+	import { layerChannel, nativeElementValue, nativeMotionPlayer, nativeOwns } from "./native";
+
 	function platformMotion(): ElementMotion | null {
-		return null;
+		return {
+			owns: nativeOwns,
+			carries: (property: string): boolean => layerChannel(property) !== null,
+			player: nativeMotionPlayer,
+			value: nativeElementValue,
+		};
 	}
 }
 
@@ -323,18 +332,21 @@ export class MotionSignals {
 
 	style(slot: string): Style {
 		const style: Style = {};
-		if (this.ownedSlot(slot).owned()) { return style; }
+		const owned = this.ownedSlot(slot).owned();
+		const motion = elementMotion;
+		const shows = (property: string): boolean =>
+			!owned || motion === null || !motion.carries(property);
 		const parts: string[] = [];
 		for (const property of TRANSFORM_ORDER) {
 			for (const entry of this.styles) {
-				if (entry.slot === slot && entry.property === property) {
+				if (entry.slot === slot && entry.property === property && shows(property)) {
 					parts.push(transformPart(property, entry.number()));
 				}
 			}
 		}
 		if (parts.length > 0) { style.transform = parts.join(" "); }
 		for (const entry of this.styles) {
-			if (entry.slot !== slot) { continue; }
+			if (entry.slot !== slot || !shows(entry.property)) { continue; }
 			match (entry.property) {
 				"opacity" => { style.opacity = entry.number(); },
 				"width" => { style.width = entry.number(); },

@@ -6,8 +6,8 @@ import {
 	LayerTiming,
 	componentCount,
 	layerEngine,
-} from "../platform/native/layerMotion";
-import { MotionElement } from "./waapi";
+} from "../platform/native/layerEngine";
+import { MotionElements, frameClock } from "./waapi";
 import { Clock } from "pulse/src/clock";
 import { ComposedTrack, flatten, localTime } from "pulse/src/compose";
 import {
@@ -20,7 +20,11 @@ import {
 } from "pulse/src/document";
 import { sampleTrack } from "pulse/src/evaluate";
 import { MotionBinding, MotionOptions, MotionPlayer } from "pulse/src/player";
+import { MotionPolicy } from "pulse/src/policy";
+import { ProgressCurve, sampleEasing, sampleSpring } from "pulse/src/progress";
+import { createSpring } from "pulse/src/spring";
 import { Composition, MotionTarget } from "pulse/src/target";
+import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
 
 const SAMPLE_STEP_MS: float64 = 10;
 
@@ -266,65 +270,150 @@ export function sampleTimes(run: LayerRun, iterationMs: float64): float64[] {
 	return times.sort((a: float64, b: float64): float64 => a - b);
 }
 
-class LayerTarget {
+class LayerHold {
+	yieldLayer: () => void;
+
+	constructor(yieldLayer: () => void) {
+		this.yieldLayer = yieldLayer;
+	}
+}
+
+class LayerSlot {
 	node: HostNode;
 	property: LayerProperty;
-	target: MotionTarget = new MotionTarget();
-	run: NativeRun | null = null;
-	users: int32 = 0;
+	user: LayerHold | null = null;
 
 	constructor(node: HostNode, property: LayerProperty) {
 		this.node = node;
 		this.property = property;
-		this.target.onClaim = (): void => {
-			this.evict();
-		};
-	}
-
-	evict(): void {
-		const run = this.run;
-		if (run === null) {
-			return;
-		}
-		this.run = null;
-		run.evicted = true;
-		if (run.live) {
-			run.halt(run.presented());
-		}
-	}
-
-	read(engine: LayerEngine, component: LayerComponent): float64 {
-		const run = this.run;
-		if (run !== null && run.live) {
-			return run.presented()[componentIndex(component)];
-		}
-		return engine.read(this.node, component);
 	}
 }
 
-let layerTargets: LayerTarget[] = [];
+let layerSlots: LayerSlot[] = [];
 
-function layerTarget(node: HostNode, property: LayerProperty): LayerTarget {
-	layerTargets = layerTargets.filter(
-		(entry: LayerTarget): boolean => entry.users > 0,
-	);
-	for (const entry of layerTargets) {
+function occupy(
+	node: HostNode,
+	property: LayerProperty,
+	user: LayerHold,
+): void {
+	let found: LayerSlot | null = null;
+	for (const entry of layerSlots) {
 		if (entry.node === node && entry.property === property) {
-			entry.users += 1;
+			found = entry;
+		}
+	}
+	const slot = found ?? new LayerSlot(node, property);
+	if (found === null) {
+		layerSlots.push(slot);
+	}
+	const rival = slot.user;
+	slot.user = user;
+	if (rival !== null && rival !== user) {
+		rival.yieldLayer();
+	}
+}
+
+function vacate(user: LayerHold): void {
+	for (const entry of layerSlots) {
+		if (entry.user === user) {
+			entry.user = null;
+		}
+	}
+	layerSlots = layerSlots.filter(
+		(entry: LayerSlot): boolean => entry.user !== null,
+	);
+}
+
+class TargetEntry {
+	target: MotionTarget;
+	holder: LayerHold | null = null;
+
+	constructor(target: MotionTarget) {
+		this.target = target;
+		target.onClaim = (): void => {
+			const holder = this.holder;
+			this.holder = null;
+			if (holder !== null) {
+				holder.yieldLayer();
+			}
+		};
+	}
+}
+
+let targetEntries: TargetEntry[] = [];
+
+function entryOf(target: MotionTarget): TargetEntry {
+	for (const entry of targetEntries) {
+		if (entry.target === target) {
 			return entry;
 		}
 	}
-	const entry = new LayerTarget(node, property);
-	entry.users = 1;
-	layerTargets.push(entry);
+	const entry = new TargetEntry(target);
+	targetEntries.push(entry);
 	return entry;
 }
 
-class NativeRun {
-	plan: LayerRun;
+class ElementTarget {
 	node: HostNode;
-	owner: LayerTarget;
-	engine: LayerEngine;
+	name: string;
+	target: MotionTarget = new MotionTarget();
+
+	constructor(node: HostNode, name: string) {
+		this.node = node;
+		this.name = name;
+	}
+}
+
+let elementTargets: ElementTarget[] = [];
+
+function elementTarget(node: HostNode, name: string): MotionTarget {
+	for (const entry of elementTargets) {
+		if (entry.node === node && entry.name === name) {
+			return entry.target;
+		}
+	}
+	const entry = new ElementTarget(node, name);
+	elementTargets.push(entry);
+	return entry.target;
+}
+
+function resolvedNode(elements: MotionElements, slot: string): HostNode | null {
+	if (layerEngine() === null) {
+		return null;
+	}
+	return elements.node(slot);
+}
+
+function keyedAt(
+	keys: float64[],
+	values: float64[],
+	width: int32,
+	progress: float64,
+): float64[] {
+	let right: int32 = 1;
+	while (right < keys.length - 1 && keys[right] < progress) {
+		right += 1;
+	}
+	const left = right - 1;
+	const span = keys[right] - keys[left];
+	const t =
+		span > 0 ? Math.min(1, Math.max(0, (progress - keys[left]) / span)) : 1;
+	const out: float64[] = [];
+	for (let i: int32 = 0; i < width; i += 1) {
+		const a = values[left * width + i];
+		const b = values[right * width + i];
+		out.push(a + (b - a) * t);
+	}
+	return out;
+}
+
+class NativeRun {
+	hold: LayerHold = new LayerHold((): void => {});
+	plan: LayerRun;
+	elements: MotionElements;
+	fallbacks: (MotionBinding | null)[];
+	entries: TargetEntry[] = [];
+	node: HostNode | null = null;
 	clock: Clock;
 	times: float64[];
 	iterationMs: float64;
@@ -346,31 +435,59 @@ class NativeRun {
 
 	constructor(
 		plan: LayerRun,
-		node: HostNode,
-		engine: LayerEngine,
+		elements: MotionElements,
+		fallbacks: (MotionBinding | null)[],
 		clock: Clock,
 		iterationMs: float64,
 	) {
 		this.plan = plan;
-		this.node = node;
-		this.engine = engine;
+		this.elements = elements;
+		this.fallbacks = fallbacks;
 		this.clock = clock;
 		this.iterationMs = iterationMs;
-		this.owner = layerTarget(node, plan.property);
 		this.times =
 			plan.route === LayerRoute.Compositor
 				? sampleTimes(plan, iterationMs)
 				: [];
+		this.hold = new LayerHold((): void => this.yieldLayer());
+		const eager = elements.node(plan.slot);
+		for (let i: int32 = 0; i < plan.tracks.length; i += 1) {
+			const fallback = fallbacks[i];
+			const own = fallback === null ? null : (fallback.target ?? null);
+			const name = plan.tracks[i].channel.name;
+			if (own !== null) {
+				this.entries.push(entryOf(own as MotionTarget));
+			} else if (eager !== null) {
+				this.entries.push(entryOf(elementTarget(eager as HostNode, name)));
+			} else {
+				fail("no element and no binding for track " + plan.slot + "." + name);
+			}
+		}
 	}
 
 	get width(): int32 {
 		return componentCount(this.plan.property);
 	}
 
+	get engine(): LayerEngine {
+		return layerEngine() as LayerEngine;
+	}
+
+	get layerNode(): HostNode {
+		return this.node as HostNode;
+	}
+
+	resolve(): boolean {
+		if (this.node === null) {
+			this.node = resolvedNode(this.elements, this.plan.slot);
+		}
+		return this.node !== null;
+	}
+
 	modelNow(): float64[] {
 		return componentsOf(this.plan.property).map(
 			(component: LayerComponent): float64 =>
-				this.engine.read(this.node, component),
+				this.engine.read(this.layerNode, component),
 		);
 	}
 
@@ -381,6 +498,19 @@ class NativeRun {
 		for (const component of this.plan.tracks[index].channel.components) {
 			this.last[componentIndex(component)] = value;
 		}
+	}
+
+	read(index: int32): MotionValue {
+		const component = this.plan.tracks[index].channel.components[0];
+		if (this.resolve()) {
+			const value = this.live
+				? this.presented()[componentIndex(component)]
+				: this.engine.read(this.layerNode, component);
+			return numberValue(value);
+		}
+		const fallback = this.fallbacks[index];
+		const read = fallback === null ? null : fallback.read;
+		return read === null ? numberValue(0) : read();
 	}
 
 	tupleAt(time: float64): float64[] {
@@ -444,9 +574,10 @@ class NativeRun {
 				values.push(value);
 			}
 		}
-		this.engine.write(this.node, this.plan.property, end);
+		occupy(this.layerNode, this.plan.property, this.hold);
+		this.engine.write(this.layerNode, this.plan.property, end);
 		this.engine.animate(
-			this.node,
+			this.layerNode,
 			this.plan.property,
 			keyTimes,
 			values,
@@ -458,7 +589,6 @@ class NativeRun {
 		this.values = values;
 		this.model = end;
 		this.timing = timing;
-		this.owner.run = this;
 	}
 
 	presented(): float64[] {
@@ -472,262 +602,119 @@ class NativeRun {
 		}
 		const within = active % period;
 		const time = within > duration ? period - within : within;
-		return this.keyedAt(time / duration);
-	}
-
-	private keyedAt(progress: float64): float64[] {
-		const keys = this.keyTimes;
-		const width = this.width;
-		let right: int32 = 1;
-		while (right < keys.length - 1 && keys[right] < progress) {
-			right += 1;
-		}
-		const left = right - 1;
-		const span = keys[right] - keys[left];
-		const t =
-			span > 0 ? Math.min(1, Math.max(0, (progress - keys[left]) / span)) : 1;
-		const out: float64[] = [];
-		for (let i: int32 = 0; i < width; i += 1) {
-			const a = this.values[left * width + i];
-			const b = this.values[right * width + i];
-			out.push(a + (b - a) * t);
-		}
-		return out;
+		return keyedAt(this.keyTimes, this.values, this.width, time / duration);
 	}
 
 	stop(): void {
 		if (!this.live) {
 			return;
 		}
-		this.engine.remove(this.node, this.plan.property);
 		this.live = false;
+		vacate(this.hold);
+		for (const entry of this.entries) {
+			if (entry.holder === this.hold) {
+				entry.holder = null;
+			}
+		}
+		this.engine.remove(this.layerNode, this.plan.property);
 	}
 
 	halt(values: float64[]): void {
 		this.stop();
 		this.last = values.slice(0);
-		this.engine.write(this.node, this.plan.property, this.last);
+		this.engine.write(this.layerNode, this.plan.property, this.last);
 	}
-}
 
-function notify(listener: (() => void) | null): void {
-	if (listener !== null) {
-		listener();
-	}
-}
-
-function nodeFor(elements: MotionElement[], run: LayerRun): HostNode {
-	for (const entry of elements) {
-		if (entry.slot === run.slot) {
-			return entry.node;
+	yieldLayer(): void {
+		this.evicted = true;
+		if (this.live) {
+			this.halt(this.presented());
 		}
 	}
-	fail("no element for slot " + run.slot);
 }
 
-function requireEngine(): LayerEngine {
-	const engine = layerEngine();
-	if (engine === null) {
-		fail(
-			"this host has no layer engine for element tracks; " +
-				"bind them through MotionSignals",
-		);
+function fallbackOf(
+	owned: MotionBinding[],
+	slot: string,
+	property: string,
+): MotionBinding | null {
+	for (const binding of owned) {
+		if (binding.slot === slot && binding.property === property) {
+			return binding;
+		}
 	}
-	return engine;
+	return null;
 }
 
-export class NativeMotionPlayer {
-	onStart: (() => void) | null = null;
-	onUpdate: (() => void) | null = null;
-	onRepeat: (() => void) | null = null;
-	onComplete: (() => void) | null = null;
-	onReverseComplete: (() => void) | null = null;
-
-	private master: MotionPlayer;
-	private runs: NativeRun[] = [];
+class NativeRuns {
+	doc: MotionDocument;
+	options: MotionOptions;
+	bindings: MotionBinding[] = [];
+	runs: NativeRun[] = [];
+	player: NativeMotionPlayer | null = null;
 	private iterations: float64;
 	private yoyo: boolean;
 
 	constructor(
 		doc: MotionDocument,
-		elements: MotionElement[],
+		elements: MotionElements,
 		bindings: MotionBinding[],
 		options: MotionOptions,
 	) {
-		const custom = bindings.map(
-			(binding: MotionBinding): string => binding.slot + "." + binding.property,
+		this.doc = doc;
+		this.options = options;
+		const owned: MotionBinding[] = [];
+		for (const binding of bindings) {
+			if (
+				elements.declared.includes(binding.slot) &&
+				layerChannel(binding.property) !== null
+			) {
+				owned.push(binding);
+			} else {
+				this.bindings.push(binding);
+			}
+		}
+		const plan = planLayers(
+			doc,
+			options,
+			this.bindings.map(
+				(binding: MotionBinding): string =>
+					binding.slot + "." + binding.property,
+			),
 		);
-		const plan = planLayers(doc, options, custom);
 		this.iterations =
 			options.repeat < 0 ? Infinity : (options.repeat + 1) as float64;
 		this.yoyo = options.yoyo;
-		const all: MotionBinding[] = bindings.slice(0);
-		if (plan.runs.length > 0) {
-			const engine = requireEngine();
-			for (const planned of plan.runs) {
-				const run = new NativeRun(
-					planned,
-					nodeFor(elements, planned),
-					engine,
-					options.clock,
-					plan.iterationMs,
+		for (const planned of plan.runs) {
+			const fallbacks = planned.tracks.map(
+				(track: LayerTrack): MotionBinding | null =>
+					fallbackOf(owned, planned.slot, track.channel.name),
+			);
+			if (layerEngine() === null && fallbacks.includes(null)) {
+				fail(
+					"this host has no layer engine for element tracks; " +
+						"bind them through MotionSignals",
 				);
-				this.runs.push(run);
-				for (let i: int32 = 0; i < planned.tracks.length; i += 1) {
-					all.push(this.bind(run, i));
-				}
+			}
+			const run = new NativeRun(
+				planned,
+				elements,
+				fallbacks,
+				options.clock,
+				plan.iterationMs,
+			);
+			this.runs.push(run);
+			for (let i: int32 = 0; i < planned.tracks.length; i += 1) {
+				this.bindings.push(this.bind(run, i));
 			}
 		}
-		this.master = new MotionPlayer(doc, all, options);
-		this.master.onStart = (): void => notify(this.onStart);
-		this.master.onUpdate = (): void => notify(this.onUpdate);
-		this.master.onRepeat = (): void => notify(this.onRepeat);
-		this.master.onComplete = (): void => notify(this.onComplete);
-		this.master.onReverseComplete = (): void => notify(this.onReverseComplete);
 	}
 
-	get disposed(): boolean {
-		return this.master.disposed;
-	}
-	get paused(): boolean {
-		return this.master.paused;
-	}
-	get cancelled(): boolean {
-		return this.master.cancelled;
-	}
-	get reversed(): boolean {
-		return this.master.reversed;
-	}
-	get timeScale(): float64 {
-		return this.master.timeScale;
-	}
-	get time(): float64 {
-		return this.master.time;
-	}
-	get totalTime(): float64 {
-		return this.master.totalTime;
-	}
-	get rawTime(): float64 {
-		return this.master.rawTime;
-	}
-	get duration(): float64 {
-		return this.master.duration;
-	}
-	get totalDuration(): float64 {
-		return this.master.totalDuration;
-	}
-	get iteration(): int32 {
-		return this.master.iteration;
-	}
-	get progress(): float64 {
-		return this.master.progress;
-	}
-	get totalProgress(): float64 {
-		return this.master.totalProgress;
-	}
-	get isActive(): boolean {
-		return this.master.isActive;
+	get master(): NativeMotionPlayer {
+		return this.player as NativeMotionPlayer;
 	}
 
-	play(from: float64 | null = null, suppressEvents: boolean = true): void {
-		this.master.play(from, suppressEvents);
-		this.alignAll();
-	}
-
-	reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
-		this.master.reverse(from, suppressEvents);
-		this.alignAll();
-	}
-
-	pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
-		this.master.pause(atTime, suppressEvents);
-		this.alignAll();
-	}
-
-	resume(): void {
-		this.master.resume();
-		this.alignAll();
-	}
-
-	restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
-		this.master.restart(includeDelay, suppressEvents);
-		this.alignAll();
-	}
-
-	seek(position: float64, suppressEvents: boolean = true): void {
-		this.master.seek(position, suppressEvents);
-		this.alignAll();
-	}
-
-	setTotalTime(value: float64, suppressEvents: boolean = false): void {
-		this.master.setTotalTime(value, suppressEvents);
-		this.alignAll();
-	}
-
-	setTime(value: float64, suppressEvents: boolean = false): void {
-		this.master.setTime(value, suppressEvents);
-		this.alignAll();
-	}
-
-	setTotalProgress(value: float64, suppressEvents: boolean = false): void {
-		this.master.setTotalProgress(value, suppressEvents);
-		this.alignAll();
-	}
-
-	setProgress(value: float64, suppressEvents: boolean = false): void {
-		this.master.setProgress(value, suppressEvents);
-		this.alignAll();
-	}
-
-	setTimeScale(value: float64): void {
-		this.master.setTimeScale(value);
-		this.alignAll();
-	}
-
-	finish(): void {
-		this.master.finish();
-		this.alignAll();
-	}
-
-	cancel(): void {
-		this.master.cancel();
-		this.holdPresented();
-	}
-
-	revert(): void {
-		this.master.revert();
-		this.alignAll();
-	}
-
-	dispose(): void {
-		this.holdPresented();
-		this.master.dispose();
-		for (const run of this.runs) {
-			if (run.owner.run === run) {
-				run.owner.run = null;
-			}
-			run.owner.users -= 1;
-		}
-		this.onStart = null;
-		this.onUpdate = null;
-		this.onRepeat = null;
-		this.onComplete = null;
-		this.onReverseComplete = null;
-	}
-
-	private bind(run: NativeRun, index: int32): MotionBinding {
-		const track = run.plan.tracks[index];
-		const binding: MotionBinding = {
-			slot: run.plan.slot,
-			property: track.channel.name,
-			write: (value: MotionValue): void => this.write(run, index, value),
-			read: (): MotionValue =>
-				numberValue(run.owner.read(run.engine, track.channel.components[0])),
-		};
-		return index === 0 ? { ...binding, target: run.owner.target } : binding;
-	}
-
-	private running(): boolean {
+	running(): boolean {
 		const master = this.master;
 		if (master.disposed || master.paused) {
 			return false;
@@ -736,44 +723,18 @@ export class NativeMotionPlayer {
 		return master.timeScale > 0 ? at < master.totalDuration : at > 0;
 	}
 
-	private write(run: NativeRun, index: int32, value: MotionValue): void {
-		run.record(index, value.number);
-		if (index === 0) {
-			run.evicted = false;
-			run.owner.run = run;
-		} else if (run.evicted) {
-			return;
-		}
-		if (run.plan.route === LayerRoute.Compositor && this.running()) {
-			if (!run.live) {
-				this.handOver(run);
-			}
-			return;
-		}
-		run.stop();
-		run.engine.write(run.node, run.plan.property, run.last);
-	}
-
-	private handOver(run: NativeRun): void {
-		run.handOver(
-			this.master.rawTime,
-			this.master.timeScale,
-			this.iterations,
-			this.yoyo,
-		);
-	}
-
-	private alignAll(): void {
+	alignAll(): void {
 		if (this.master.disposed) {
 			return;
 		}
 		const running = this.running();
 		for (const run of this.runs) {
 			if (running) {
+				run.evicted = false;
 				const handed =
 					run.plan.route === LayerRoute.Compositor &&
-					!run.evicted &&
-					run.last.length > 0;
+					run.last.length > 0 &&
+					run.resolve();
 				if (handed) {
 					this.handOver(run);
 				}
@@ -783,11 +744,375 @@ export class NativeMotionPlayer {
 		}
 	}
 
-	private holdPresented(): void {
+	holdPresented(): void {
 		for (const run of this.runs) {
 			if (run.live) {
 				run.halt(run.presented());
 			}
 		}
 	}
+
+	private bind(run: NativeRun, index: int32): MotionBinding {
+		const track = run.plan.tracks[index];
+		return {
+			slot: run.plan.slot,
+			property: track.channel.name,
+			write: (value: MotionValue): void => this.write(run, index, value),
+			read: (): MotionValue => run.read(index),
+			target: run.entries[index].target,
+		};
+	}
+
+	private write(run: NativeRun, index: int32, value: MotionValue): void {
+		if (run.evicted) {
+			return;
+		}
+		if (!run.resolve()) {
+			const fallback = run.fallbacks[index];
+			if (fallback === null) {
+				fail("no element for slot " + run.plan.slot);
+			}
+			fallback.write(value);
+			return;
+		}
+		run.record(index, value.number);
+		if (run.plan.route === LayerRoute.Compositor && this.running()) {
+			if (!run.live) {
+				this.handOver(run);
+			}
+			run.entries[index].holder = run.hold;
+			return;
+		}
+		run.stop();
+		run.engine.write(run.layerNode, run.plan.property, run.last);
+	}
+
+	private handOver(run: NativeRun): void {
+		const master = this.master;
+		run.handOver(master.rawTime, master.timeScale, this.iterations, this.yoyo);
+	}
+}
+
+export class NativeMotionPlayer extends MotionPlayer {
+	private setup: NativeRuns;
+
+	constructor(setup: NativeRuns) {
+		super(setup.doc, setup.bindings, setup.options);
+		this.setup = setup;
+		setup.player = this;
+	}
+
+	play(from: float64 | null = null, suppressEvents: boolean = true): void {
+		super.play(from, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
+		super.reverse(from, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
+		super.pause(atTime, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	resume(): void {
+		super.resume();
+		this.setup.alignAll();
+	}
+
+	restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
+		super.restart(includeDelay, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	seek(position: float64, suppressEvents: boolean = true): void {
+		super.seek(position, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	setTotalTime(value: float64, suppressEvents: boolean = false): void {
+		super.setTotalTime(value, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	setTime(value: float64, suppressEvents: boolean = false): void {
+		super.setTime(value, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	setTotalProgress(value: float64, suppressEvents: boolean = false): void {
+		super.setTotalProgress(value, suppressEvents);
+		this.setup.alignAll();
+	}
+
+	setTimeScale(value: float64): void {
+		super.setTimeScale(value);
+		this.setup.alignAll();
+	}
+
+	finish(): void {
+		super.finish();
+		this.setup.alignAll();
+	}
+
+	cancel(): void {
+		super.cancel();
+		this.setup.holdPresented();
+	}
+
+	revert(): void {
+		super.revert();
+		this.setup.alignAll();
+	}
+
+	dispose(): void {
+		this.setup.holdPresented();
+		super.dispose();
+	}
+}
+
+export function nativeMotionPlayer(
+	doc: MotionDocument,
+	elements: MotionElements,
+	bindings: MotionBinding[],
+	options: MotionOptions,
+): MotionPlayer {
+	return new NativeMotionPlayer(
+		new NativeRuns(doc, elements, bindings, options),
+	);
+}
+
+export function nativeOwns(node: HostNode): boolean {
+	return layerEngine() !== null;
+}
+
+class ValueParts {
+	initial: float64;
+	policy: MotionPolicy;
+	elements: MotionElements;
+	slot: string;
+	channel: LayerChannel;
+	target: MotionTarget | null;
+	clock: Clock = frameClock();
+	node: HostNode | null = null;
+
+	constructor(
+		initial: float64,
+		policy: MotionPolicy,
+		elements: MotionElements,
+		slot: string,
+		channel: LayerChannel,
+		target: MotionTarget | null,
+	) {
+		this.initial = initial;
+		this.policy = policy;
+		this.elements = elements;
+		this.slot = slot;
+		this.channel = channel;
+		const eager = resolvedNode(elements, slot);
+		this.target =
+			target ??
+			(eager === null ? null : elementTarget(eager as HostNode, channel.name));
+	}
+}
+
+export class NativeElementValue extends AnimatedValue {
+	private hold: LayerHold = new LayerHold((): void => {});
+	private parts: ValueParts;
+	private entry: TargetEntry | null;
+	private handed: boolean = false;
+	private from: float64 = 0;
+	private to: float64 = 0;
+	private begin: float64 = 0;
+	private curve: ProgressCurve = { durationMs: 0, progress: [] };
+
+	constructor(parts: ValueParts) {
+		super(parts.initial, parts.clock, parts.policy, parts.target);
+		this.parts = parts;
+		this.hold = new LayerHold((): void => this.yieldLayer());
+		const target = parts.target;
+		this.entry = target === null ? null : entryOf(target as MotionTarget);
+		this.subscribe((next: float64): void => {
+			if (!this.handed && this.element() !== null) {
+				this.paint(next);
+			}
+		});
+	}
+
+	get handedOver(): boolean {
+		return this.handed;
+	}
+
+	animate(
+		spec: AnimationSpec,
+		onEnd: ((finished: boolean) => void) | null = null,
+	): void {
+		const from = super.get();
+		const carried = super.velocity();
+		this.settle(false);
+		super.animate(spec, (finished: boolean): void => {
+			this.settle(false);
+			if (onEnd !== null) {
+				onEnd(finished);
+			}
+		});
+		if (!super.isAnimating() || this.element() === null || from === spec.to) {
+			return;
+		}
+		if (spec.kind === AnimationKind.Spring) {
+			const spring = createSpring(
+				spec.spring,
+				from,
+				spec.to,
+				carried + spec.velocityPerSecond,
+			);
+			this.handOver(from, spec.to, sampleSpring(spring));
+		} else if (spec.kind === AnimationKind.Timing && spec.durationMs > 0) {
+			this.handOver(from, spec.to, sampleEasing(spec.easing, spec.durationMs));
+		}
+	}
+
+	set(value: float64): void {
+		this.settle(false);
+		super.set(value);
+	}
+
+	cancel(): void {
+		this.settle(false);
+		super.cancel();
+	}
+
+	dispose(): void {
+		if (!this.disposed) {
+			this.settle(false);
+		}
+		super.dispose();
+	}
+
+	yieldLayer(): void {
+		this.settle(true);
+	}
+
+	presented(): float64 {
+		const duration = this.curve.durationMs;
+		const progress =
+			duration > 0
+				? Math.min(
+						1,
+						Math.max(0, (this.parts.clock.now() - this.begin) / duration),
+					)
+				: 1;
+		const points = this.curve.progress;
+		const last = (points.length - 1) as float64;
+		const keys = points.map(
+			(_: float64, i: number): float64 => (i as float64) / last,
+		);
+		const eased = keyedAt(keys, points, 1, progress)[0];
+		return this.from + (this.to - this.from) * eased;
+	}
+
+	private settle(commit: boolean): void {
+		if (!this.handed) {
+			return;
+		}
+		const shown = this.presented();
+		this.handed = false;
+		vacate(this.hold);
+		const entry = this.entry;
+		if (entry !== null && entry.holder === this.hold) {
+			entry.holder = null;
+		}
+		const engine = layerEngine() as LayerEngine;
+		engine.remove(this.parts.node as HostNode, this.parts.channel.property);
+		this.paint(commit ? shown : super.get());
+	}
+
+	private element(): HostNode | null {
+		const parts = this.parts;
+		if (parts.node !== null || this.disposed) {
+			return parts.node;
+		}
+		const node = resolvedNode(parts.elements, parts.slot);
+		if (node === null) {
+			return null;
+		}
+		parts.node = node;
+		this.paint(super.get());
+		return node;
+	}
+
+	private tuple(value: float64): float64[] {
+		const engine = layerEngine() as LayerEngine;
+		const node = this.parts.node as HostNode;
+		const out = componentsOf(this.parts.channel.property).map(
+			(component: LayerComponent): float64 => engine.read(node, component),
+		);
+		for (const component of this.parts.channel.components) {
+			out[componentIndex(component)] = value;
+		}
+		return out;
+	}
+
+	private paint(value: float64): void {
+		const engine = layerEngine() as LayerEngine;
+		engine.write(
+			this.parts.node as HostNode,
+			this.parts.channel.property,
+			this.tuple(value),
+		);
+	}
+
+	private handOver(from: float64, to: float64, curve: ProgressCurve): void {
+		const node = this.parts.node as HostNode;
+		const property = this.parts.channel.property;
+		const count = curve.progress.length;
+		const last = (count - 1) as float64;
+		const keyTimes: float64[] = [];
+		const values: float64[] = [];
+		for (let i: int32 = 0; i < count; i += 1) {
+			keyTimes.push((i as float64) / last);
+			for (const part of this.tuple(from + (to - from) * curve.progress[i])) {
+				values.push(part);
+			}
+		}
+		occupy(node, property, this.hold);
+		const engine = layerEngine() as LayerEngine;
+		engine.write(node, property, this.tuple(to));
+		engine.animate(node, property, keyTimes, values, {
+			durationMs: curve.durationMs,
+			repeatCount: 1,
+			autoreverses: false,
+			startMs: 0,
+			offsetMs: 0,
+			speed: 1,
+		});
+		this.handed = true;
+		this.from = from;
+		this.to = to;
+		this.begin = this.parts.clock.now();
+		this.curve = curve;
+		const entry = this.entry;
+		if (entry !== null) {
+			entry.holder = this.hold;
+		}
+	}
+}
+
+export function nativeElementValue(
+	initial: float64,
+	policy: MotionPolicy,
+	elements: MotionElements,
+	slot: string,
+	property: string,
+	target: MotionTarget | null = null,
+): AnimatedValue {
+	const channel = layerChannel(property);
+	if (channel === null) {
+		fail("an animated value has no native layer property " + property);
+	}
+	return new NativeElementValue(
+		new ValueParts(initial, policy, elements, slot, channel, target),
+	);
 }

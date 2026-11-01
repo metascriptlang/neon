@@ -272,6 +272,13 @@ export function nativeViewOf(node: HostNode): Ptr<void> {
 	return view as Ptr<void>;
 }
 
+when (ios) {
+	import { bridgeLayerEngine } from "./layerMotion";
+	import { installLayerEngine } from "./layerEngine";
+
+	installLayerEngine(bridgeLayerEngine(nativeViewOf));
+}
+
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
 
 export function layoutChildCount(this n: NativeNode): int32 { return tree.childrenOf(n).length as int32; }
