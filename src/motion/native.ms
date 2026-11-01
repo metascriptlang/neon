@@ -22,6 +22,7 @@ import { sampleTrack } from "pulse/src/evaluate";
 import { MotionBinding, MotionOptions, MotionPlayer } from "pulse/src/player";
 import { MotionPolicy } from "pulse/src/policy";
 import { ProgressCurve, sampleEasing, sampleSpring } from "pulse/src/progress";
+import { TimeSourceKind } from "pulse/src/scroll";
 import { createSpring } from "pulse/src/spring";
 import { Composition, MotionTarget } from "pulse/src/target";
 import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
@@ -661,6 +662,9 @@ class NativeRuns {
 		bindings: MotionBinding[],
 		options: MotionOptions,
 	) {
+		if (options.source.kind !== TimeSourceKind.Time) {
+			fail("an element player runs on time; the layer engine takes no scroll or view source");
+		}
 		this.doc = doc;
 		this.options = options;
 		const owned: MotionBinding[] = [];

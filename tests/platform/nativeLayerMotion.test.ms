@@ -1,3 +1,4 @@
+import { ScrollAxis, ScrollSource, scrollSource } from "pulse/src/scroll";
 import { nativeViewOf, runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { ElementHandle } from "../../src/render/measure";
@@ -203,5 +204,20 @@ test "a property the layer cannot carry is refused at construction" {
 		message = (e as Error).message;
 	}
 	assert message.includes("no native layer binding for track box.width"), message;
+	stage.close();
+}
+
+test "a player on a scroll source is refused at construction rather than run its layer tracks on time" {
+	const stage = new Stage();
+	const scroller: ScrollSource = {
+		offset: (axis: ScrollAxis): float64 => 0,
+		max: (axis: ScrollAxis): float64 => 100,
+		viewport: (axis: ScrollAxis): float64 => 50,
+	};
+	let message = "";
+	try {
+		stage.play([ramp("opacity", 0, 1)], { ...stage.options(), source: scrollSource(scroller) });
+	} catch (e) { message = e.message; }
+	assert message === "motion: an element player runs on time; the layer engine takes no scroll or view source", message;
 	stage.close();
 }
