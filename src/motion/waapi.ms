@@ -1262,6 +1262,7 @@ when (js) {
 		}
 
 		cancel(): void {
+			this.setup.wake.flush();
 			super.cancel();
 			this.setup.halt(true);
 		}
