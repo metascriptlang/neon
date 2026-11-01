@@ -1,6 +1,7 @@
 import {
 	ScrollAxis,
 	ScrollSource,
+	TimeSource,
 	ViewRange,
 	scrollSource,
 	viewSource,
@@ -89,11 +90,27 @@ extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
 extern function hideTypedOmFactories(): () => void from
 	"(() => { const px = CSS.px; delete CSS.px; return () => { CSS.px = px; }; })()";
+extern function hideTimelines(): () => void from
+	"(() => { const saved = [globalThis.ScrollTimeline, globalThis.ViewTimeline]; delete globalThis.ScrollTimeline; delete globalThis.ViewTimeline; return () => { globalThis.ScrollTimeline = saved[0]; globalThis.ViewTimeline = saved[1]; }; })()";
 extern function renderedFrames(): Promise<void> from
 	"new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))";
 extern function makeScrollBox(style: string): HTMLElement from
 	"(st => { const s = document.createElement('div'); s.style.cssText = 'width: 50px; height: 50px; overflow: scroll; ' + st; const c = document.createElement('div'); c.style.cssText = 'position: relative; width: 150px; height: 150px'; const subject = document.createElement('div'); subject.style.cssText = 'position: absolute; inset-inline-start: 70px; inset-block-start: 70px; width: 10px; height: 10px'; c.append(subject); s.append(c); document.body.append(s); return s; })(#)";
 extern function boxSubject(scroller: HTMLElement): HTMLElement from "(s => s.firstChild.firstChild)(#)";
+extern function scrollBoxTo(scroller: HTMLElement, left: float64, top: float64): void from
+	"((s, l, t) => { s.scrollLeft = l; s.scrollTop = t; })(#, #, #)";
+extern function rootScroller(): HTMLElement from "(() => document.scrollingElement)()";
+extern function scrollPage(top: float64): void from "(t => { window.scrollTo(0, t); })(#)";
+extern function makePageSubject(): HTMLElement from
+	"(() => { const subject = document.createElement('div'); subject.style.cssText = 'position: absolute; top: 900px; left: 0; width: 10px; height: 10px'; const spacer = document.createElement('div'); spacer.style.height = '3000px'; subject.append(spacer); document.body.append(subject); return subject; })()";
+
+class ScrollReads {
+	styles: int32 = 0;
+	offsets: int32 = 0;
+}
+
+extern function countScrollReads(scroller: HTMLElement, reads: ScrollReads): () => void from
+	"((el, r) => { const style = globalThis.getComputedStyle; globalThis.getComputedStyle = (...a) => { r.styles += 1; return style.apply(globalThis, a); }; const d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop'); Object.defineProperty(el, 'scrollTop', { configurable: true, get() { r.offsets += 1; return d.get.call(this); }, set(v) { d.set.call(this, v); } }); return () => { globalThis.getComputedStyle = style; delete el.scrollTop; }; })(#, #)";
 
 function browserPlayer(
 	doc: MotionDocument,
@@ -447,6 +464,103 @@ test "a scroll source no element backs runs the whole player on the evaluator" {
 	assert el.getAnimations().length === 0 && el.style.translate === "25px", el.style.translate;
 	player.dispose();
 	el.remove();
+}
+
+async function slideOn(source: () => TimeSource, timelines: boolean): Promise<float64> {
+	const node = mount();
+	const el = dom(node);
+	const restore = timelines ? null : hideTimelines();
+	const player = browserPlayer(
+		documentOf([ramp("box", "translateX", 100)]),
+		[{ slot: "box", node }],
+		[],
+		{ ...motionOptions(frameClock()), source: source() },
+	);
+	if (restore !== null) { restore(); }
+	await renderedFrames();
+	await renderedFrames();
+	const shown = translated(el);
+	player.dispose();
+	el.remove();
+	return shown;
+}
+
+async function sameWithoutTimelines(what: string, source: () => TimeSource): Promise<string> {
+	const native = await slideOn(source, true);
+	const evaluated = await slideOn(source, false);
+	return near(native, evaluated, 0.5) ? "" : what + ": Chrome " + native.toString() +
+		", evaluator " + evaluated.toString() + "; ";
+}
+
+test "without scroll timelines an rtl or vertical-rl scroller drives the evaluator from its start edge, as Chrome's timelines do" {
+	let failures = "";
+	for (const style of ["direction: rtl", "writing-mode: vertical-rl"]) {
+		const scroller = makeScrollBox(style);
+		scrollBoxTo(scroller, -25, 30);
+		const node = scroller as unknown as HostNode;
+		for (const axis of [ScrollAxis.Block, ScrollAxis.Inline]) {
+			const name = style + (axis === ScrollAxis.Block ? " block" : " inline");
+			failures += await sameWithoutTimelines(
+				name + " scroll",
+				(): TimeSource => scrollSource(elementScrollSource(node), axis),
+			);
+			failures += await sameWithoutTimelines(
+				name + " view",
+				(): TimeSource => viewSource(
+					elementScrollSource(node),
+					elementViewSubject(boxSubject(scroller) as unknown as HostNode, node),
+					ViewRange.Cover,
+					{ start: 0, end: 0 },
+					axis,
+				),
+			);
+		}
+		scroller.remove();
+	}
+	assert failures === "", failures;
+}
+
+test "without scroll timelines a view of the page scroller places its subject as Chrome's ViewTimeline does" {
+	const subject = makePageSubject();
+	scrollPage(500);
+	const page = rootScroller() as unknown as HostNode;
+	const failures = await sameWithoutTimelines(
+		"page view",
+		(): TimeSource => viewSource(
+			elementScrollSource(page),
+			elementViewSubject(subject as unknown as HostNode, page),
+		),
+	);
+	scrollPage(0);
+	subject.remove();
+	assert failures === "", failures;
+}
+
+test "without scroll timelines a scroll player reads the computed style once and the offset once per frame" {
+	const node = mount();
+	const el = dom(node);
+	const scroller = makeScroller();
+	setScrollTop(scroller, 30);
+	const restore = hideTimelines();
+	const source = scrollSource(elementScrollSource(scroller as unknown as HostNode));
+	const player = fadeAndSlide(node, { ...motionOptions(frameClock()), source });
+	restore();
+	await renderedFrames();
+	const frames = new FrameCount();
+	const stopFrames = countFrames(frames);
+	const reads = new ScrollReads();
+	const stopReads = countScrollReads(scroller, reads);
+	await sleepAsync(100);
+	stopReads();
+	stopFrames();
+	const shown = translated(el);
+	player.dispose();
+	scroller.remove();
+	el.remove();
+	assert near(shown, 30, 0.01), shown.toString();
+	assert frames.count > 3 && reads.styles === 0 && reads.offsets <= frames.count,
+		"frames " + frames.count.toString() + ", computed styles " + reads.styles.toString() +
+			", offsets " + reads.offsets.toString();
 }
 
 test "a view player hands its inset to ViewTimeline where CSS Typed OM has no px factory" {

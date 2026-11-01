@@ -675,18 +675,18 @@ when (js) {
 		"((subject, axis, s, e) => new ViewTimeline({ subject, axis, inset: s + 'px ' + e + 'px' }))(#, #, #, #)";
 	extern function nearestScroller(element: HTMLElement): HTMLElement | null from
 		"(el => { for (let p = el.parentElement; p !== null; p = p.parentElement) { const s = getComputedStyle(p); if (![s.overflowX, s.overflowY].every((o) => o === 'visible' || o === 'clip')) { return p; } } return document.scrollingElement; })(#)";
-	extern function verticalAxis(element: HTMLElement, axis: string): boolean from
-		"((el, a) => a === 'y' || (a !== 'x' && getComputedStyle(el).writingMode.startsWith('horizontal') === (a === 'block')))(#, #)";
-	extern function scrollOffset(element: HTMLElement, vertical: boolean): float64 from
-		"((el, v) => v ? el.scrollTop : el.scrollLeft)(#, #)";
-	extern function scrollRange(element: HTMLElement, vertical: boolean): float64 from
-		"((el, v) => v ? el.scrollHeight - el.clientHeight : el.scrollWidth - el.clientWidth)(#, #)";
-	extern function scrollport(element: HTMLElement, vertical: boolean): float64 from
-		"((el, v) => v ? el.clientHeight : el.clientWidth)(#, #)";
-	extern function subjectStart(subject: HTMLElement, scroller: HTMLElement, vertical: boolean): float64 from
-		"((el, s, v) => { const a = el.getBoundingClientRect(); const b = s.getBoundingClientRect(); return v ? a.top - b.top - s.clientTop + s.scrollTop : a.left - b.left - s.clientLeft + s.scrollLeft; })(#, #, #)";
-	extern function subjectSize(subject: HTMLElement, vertical: boolean): float64 from
-		"((el, v) => v ? el.offsetHeight : el.offsetWidth)(#, #)";
+	extern function scrollStartEdge(element: HTMLElement, axis: string): string from
+		"((el, a) => { const s = getComputedStyle(el); const w = s.writingMode; if (w === '') { return ''; } const text = w.startsWith('horizontal'); const rtl = s.direction === 'rtl'; if (a === 'x' || (a !== 'y' && text !== (a === 'block'))) { return (text ? rtl : w.endsWith('-rl')) ? 'right' : 'left'; } return !text && (w === 'sideways-lr') !== rtl ? 'bottom' : 'top'; })(#, #)";
+	extern function scrollOffset(element: HTMLElement, edge: string): float64 from
+		"((el, e) => Math.abs(e === 'left' || e === 'right' ? el.scrollLeft : el.scrollTop))(#, #)";
+	extern function scrollRange(element: HTMLElement, edge: string): float64 from
+		"((el, e) => e === 'left' || e === 'right' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight)(#, #)";
+	extern function scrollport(element: HTMLElement, edge: string): float64 from
+		"((el, e) => e === 'left' || e === 'right' ? el.clientWidth : el.clientHeight)(#, #)";
+	extern function subjectStart(subject: HTMLElement, scroller: HTMLElement, edge: string): float64 from
+		"((el, s, e) => { const a = el.getBoundingClientRect(); const page = s === document.scrollingElement; const b = page ? null : s.getBoundingClientRect(); const left = page ? 0 : b.left + s.clientLeft; const top = page ? 0 : b.top + s.clientTop; const x = Math.abs(s.scrollLeft); const y = Math.abs(s.scrollTop); return e === 'left' ? a.left - left + x : e === 'right' ? left + s.clientWidth - a.right + x : e === 'bottom' ? top + s.clientHeight - a.bottom + y : a.top - top + y; })(#, #, #)";
+	extern function subjectSize(subject: HTMLElement, edge: string): float64 from
+		"((el, e) => e === 'left' || e === 'right' ? el.offsetWidth : el.offsetHeight)(#, #)";
 
 	function axisName(axis: ScrollAxis): string {
 		return match (axis) {
@@ -706,6 +706,28 @@ when (js) {
 		};
 	}
 
+	class ScrollEdges {
+		private element: HTMLElement;
+		private edges: string[] = ["", "", "", ""];
+
+		constructor(element: HTMLElement) {
+			this.element = element;
+		}
+
+		of(axis: ScrollAxis): string {
+			const index: int32 = match (axis) {
+				ScrollAxis.Block => 0,
+				ScrollAxis.Inline => 1,
+				ScrollAxis.X => 2,
+				ScrollAxis.Y => 3,
+			};
+			if (this.edges[index] === "") {
+				this.edges[index] = scrollStartEdge(this.element, axisName(axis));
+			}
+			return this.edges[index];
+		}
+	}
+
 	class ElementScroller {
 		offset: (axis: ScrollAxis) => float64;
 		max: (axis: ScrollAxis) => float64;
@@ -714,10 +736,10 @@ when (js) {
 
 		constructor(element: HTMLElement) {
 			this.element = element;
-			const vertical = (axis: ScrollAxis): boolean => verticalAxis(element, axisName(axis));
-			this.offset = (axis: ScrollAxis): float64 => scrollOffset(element, vertical(axis));
-			this.max = (axis: ScrollAxis): float64 => scrollRange(element, vertical(axis));
-			this.viewport = (axis: ScrollAxis): float64 => scrollport(element, vertical(axis));
+			const edges = new ScrollEdges(element);
+			this.offset = (axis: ScrollAxis): float64 => scrollOffset(element, edges.of(axis));
+			this.max = (axis: ScrollAxis): float64 => scrollRange(element, edges.of(axis));
+			this.viewport = (axis: ScrollAxis): float64 => scrollport(element, edges.of(axis));
 		}
 	}
 
@@ -730,9 +752,9 @@ when (js) {
 		constructor(element: HTMLElement, scroller: HTMLElement) {
 			this.element = element;
 			this.scroller = scroller;
-			const vertical = (axis: ScrollAxis): boolean => verticalAxis(scroller, axisName(axis));
-			this.start = (axis: ScrollAxis): float64 => subjectStart(element, scroller, vertical(axis));
-			this.size = (axis: ScrollAxis): float64 => subjectSize(element, vertical(axis));
+			const edges = new ScrollEdges(scroller);
+			this.start = (axis: ScrollAxis): float64 => subjectStart(element, scroller, edges.of(axis));
+			this.size = (axis: ScrollAxis): float64 => subjectSize(element, edges.of(axis));
 		}
 	}
 
@@ -1131,7 +1153,7 @@ when (js) {
 			this.wake.wake = (): float64 | null => this.nextWake();
 			this.options = {
 				...options,
-				clock: this.scrolled() ? this.holdingClock() : this.wake.clock,
+				clock: this.timeline !== null ? this.holdingClock() : this.wake.clock,
 			};
 		}
 
