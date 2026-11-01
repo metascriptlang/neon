@@ -14,7 +14,7 @@ import {
 	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
 import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
-import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
+import { BoxStyle, BoxShadow, CornerRadii, BorderWidths } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
@@ -533,7 +533,7 @@ export function applyPaint(n: VoidNode, s: Style): void {
 		ref.setBoxStyle(box as BoxStyle);
 		n.boxed = true;
 	} else if (n.boxed) {
-		if (ref.kind() === DrawKind.Rect) { ref.setBoxStyle(BoxStyle.create(uniformRadii(0.0), uniformBorders(0.0), CLEAR)); }
+		if (ref.kind() === DrawKind.Rect) { ref.setBoxStyle(BoxStyle.create(CornerRadii.uniform(0.0), BorderWidths.uniform(0.0), CLEAR)); }
 		n.boxed = false;
 	}
 }
@@ -549,7 +549,7 @@ function boxStyleOf(s: Style): BoxStyle | null {
 	const radius: float32 = s.borderRadius !== null ? s.borderRadius as float32 : 0.0;
 	const width: float32 = s.borderWidth !== null ? s.borderWidth as float32 : 0.0;
 	const color = s.borderColor !== null ? colorOf(s.borderColor as string, "borderColor") : BLACK;
-	const box = BoxStyle.create(uniformRadii(radius), uniformBorders(width), color);
+	const box = BoxStyle.create(CornerRadii.uniform(radius), BorderWidths.uniform(width), color);
 	return s.boxShadow !== null ? box.castShadows(boxShadows(s.boxShadow as string)) : box;
 }
 
