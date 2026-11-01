@@ -177,7 +177,8 @@ function handable(
 	options: MotionOptions,
 	iterationMs: float64,
 ): boolean {
-	if (iterationMs <= 0 || options.composition === Composition.Blend) {
+	if (iterationMs <= 0 || options.composition === Composition.Blend ||
+		options.source.kind !== TimeSourceKind.Time) {
 		return false;
 	}
 	if (options.repeat !== 0 && options.repeatDelay !== 0) {
@@ -662,9 +663,6 @@ class NativeRuns {
 		bindings: MotionBinding[],
 		options: MotionOptions,
 	) {
-		if (options.source.kind !== TimeSourceKind.Time) {
-			fail("an element player runs on time; the layer engine takes no scroll or view source");
-		}
 		this.doc = doc;
 		this.options = options;
 		const owned: MotionBinding[] = [];

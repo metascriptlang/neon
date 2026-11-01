@@ -207,17 +207,22 @@ test "a property the layer cannot carry is refused at construction" {
 	stage.close();
 }
 
-test "a player on a scroll source is refused at construction rather than run its layer tracks on time" {
+test "a player on a scroll source writes the layer model from the scroll offset and hands the layer nothing" {
 	const stage = new Stage();
+	let offset: float64 = 0;
 	const scroller: ScrollSource = {
-		offset: (axis: ScrollAxis): float64 => 0,
+		offset: (axis: ScrollAxis): float64 => offset,
 		max: (axis: ScrollAxis): float64 => 100,
 		viewport: (axis: ScrollAxis): float64 => 50,
 	};
-	let message = "";
-	try {
-		stage.play([ramp("opacity", 0, 1)], { ...stage.options(), source: scrollSource(scroller) });
-	} catch (e) { message = e.message; }
-	assert message === "motion: an element player runs on time; the layer engine takes no scroll or view source", message;
+	const before = nmLayerAnimates();
+	stage.play([ramp("opacity", 0, 1)], { ...stage.options(), source: scrollSource(scroller) });
+	offset = 25;
+	stage.clock.advance(16);
+	assert near(nmOpacity(stage.tag), 0.25), "opacity " + nmOpacity(stage.tag).toString();
+	offset = 80;
+	stage.clock.advance(16);
+	assert near(nmOpacity(stage.tag), 0.8), "opacity " + nmOpacity(stage.tag).toString();
+	assert nmLayerAnimates() === before, "no layer animation";
 	stage.close();
 }
