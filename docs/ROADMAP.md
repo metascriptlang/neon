@@ -382,8 +382,8 @@ animation is JS-driven), LayoutAnimation `delete` and `scale*` properties.
 
 ### React Native gaps (state 2026-10-08, `wt/rn-gaps`, msc `0d83c4867`)
 
-Closed on the three hosts: real safe-area insets (`niSafeAreaInset`; the root stays inside the safe
-area until `<StatusBar translucent />` takes it edge to edge), native `textAlign` (an aligned label
+Closed on the three hosts: real safe-area insets (`niSafeAreaInset`; the iOS root fills the window as RN's does, and on
+Android `<StatusBar translucent />` takes it edge to edge), native `textAlign` (an aligned label
 spans its parent), nested `<Text>` spans in one native label (`textSpans`: colour, size, bold,
 italic, underline, line-through) with `Text.onPress` and pressable spans, multiline `TextInput`
 growth to `maxHeight` and `selection`/`onSelectionChange`, `Image` `resizeMode="repeat"`,
