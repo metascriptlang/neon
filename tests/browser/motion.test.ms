@@ -47,6 +47,13 @@ class StyleWrites {
 extern function watchStyle(el: HTMLElement, writes: StyleWrites): () => void from
 	"((el, w) => { const o = new MutationObserver((list) => { w.count += list.length; }); o.observe(el, { attributes: true, attributeFilter: ['style'] }); return () => { w.count += o.takeRecords().length; o.disconnect(); }; })(#, #)";
 
+class FrameCount {
+	count: int32 = 0;
+}
+
+extern function countFrames(frames: FrameCount): () => void from
+	"(f => { const raf = globalThis.requestAnimationFrame; globalThis.requestAnimationFrame = (cb) => { f.count += 1; return raf(cb); }; return () => { globalThis.requestAnimationFrame = raf; }; })(#)";
+
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
 
@@ -572,5 +579,59 @@ test "a player claiming an element-bound spring's property replaces its browser 
 		computed(el, "opacity");
 	player.dispose();
 	value.dispose();
+	el.remove();
+}
+
+test "a fully handed-over player asks for no animation frame while it plays, and still reports its events" {
+	const node = mount();
+	const el = dom(node);
+	const frames = new FrameCount();
+	const restore = countFrames(frames);
+	const player = fadeAndSlide(
+		node,
+		{
+			...motionOptions(frameClock()),
+			repeat: 1,
+			timeScale: 4,
+		},
+	);
+	let repeated = 0;
+	let completed = 0;
+	player.onRepeat = (): void => { repeated += 1; };
+	player.onComplete = (): void => { completed += 1; };
+	await sleepAsync(60);
+	const started = frames.count;
+	const writes = new StyleWrites();
+	const stop = watchStyle(el, writes);
+	await sleepAsync(300);
+	stop();
+	assert frames.count === started, "frames while playing: " +
+		(frames.count - started).toString();
+	assert writes.count === 0, "style writes: " + writes.count.toString();
+	assert repeated === 1, "repeat " + repeated.toString();
+	await sleepAsync(300);
+	assert completed === 1 && opacity(el) === 1, "completed " + completed.toString();
+	assert near(player.time, 1000, 1e-9), "the playhead reached the end";
+	restore();
+	player.dispose();
+	el.remove();
+}
+
+test "a player with an evaluated track keeps its frame loop" {
+	const node = mount();
+	const el = dom(node);
+	const frames = new FrameCount();
+	const restore = countFrames(frames);
+	const recorder = new Recorder();
+	const player = new BrowserMotionPlayer(
+		documentOf([ramp("box", "opacity", 1), ramp("box", "progress", 1)]),
+		[{ slot: "box", node }],
+		[recorder.binding()],
+		motionOptions(frameClock()),
+	);
+	await sleepAsync(300);
+	assert frames.count > 5, "frames: " + frames.count.toString();
+	restore();
+	player.dispose();
 	el.remove();
 }

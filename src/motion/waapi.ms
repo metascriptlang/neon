@@ -992,7 +992,6 @@ when (js) {
 
 	export class BrowserMotionPlayer {
 		onStart: (() => void) | null = null;
-		onUpdate: (() => void) | null = null;
 		onRepeat: (() => void) | null = null;
 		onComplete: (() => void) | null = null;
 		onReverseComplete: (() => void) | null = null;
@@ -1001,6 +1000,10 @@ when (js) {
 		private timing: WaapiTiming | null;
 		private runs: StyleRun[] = [];
 		private reverting: boolean = false;
+		private wake: WakeClock = new WakeClock();
+		private evaluated: boolean;
+		private ready: boolean = false;
+		private update: (() => void) | null = null;
 
 		constructor(
 			doc: MotionDocument,
@@ -1013,6 +1016,7 @@ when (js) {
 			);
 			const plan = planWaapi(doc, options, custom);
 			this.timing = plan.timing;
+			this.evaluated = bindings.length > 0;
 			const all: MotionBinding[] = bindings.slice(0);
 			const blend = options.composition === Composition.Blend;
 			for (const planned of plan.runs) {
@@ -1025,12 +1029,28 @@ when (js) {
 					all.push(this.bind(run, i));
 				}
 			}
-			this.master = new MotionPlayer(doc, all, options);
+			this.wake.wake = (): float64 | null => this.nextWake();
+			this.master = new MotionPlayer(
+				doc,
+				all,
+				{
+					...options,
+					clock: this.wake.clock,
+				},
+			);
+			this.ready = true;
 			this.master.onStart = (): void => notify(this.onStart);
-			this.master.onUpdate = (): void => notify(this.onUpdate);
+			this.master.onUpdate = (): void => notify(this.update);
 			this.master.onRepeat = (): void => notify(this.onRepeat);
 			this.master.onComplete = (): void => notify(this.onComplete);
 			this.master.onReverseComplete = (): void => notify(this.onReverseComplete);
+		}
+
+		get onUpdate(): (() => void) | null { return this.update; }
+
+		set onUpdate(listener: (() => void) | null) {
+			this.update = listener;
+			this.wake.reschedule();
 		}
 
 		get disposed(): boolean { return this.master.disposed; }
@@ -1038,77 +1058,111 @@ when (js) {
 		get cancelled(): boolean { return this.master.cancelled; }
 		get reversed(): boolean { return this.master.reversed; }
 		get timeScale(): float64 { return this.master.timeScale; }
-		get time(): float64 { return this.master.time; }
-		get totalTime(): float64 { return this.master.totalTime; }
-		get rawTime(): float64 { return this.master.rawTime; }
+		get time(): float64 {
+			this.wake.flush();
+			return this.master.time;
+		}
+		get totalTime(): float64 {
+			this.wake.flush();
+			return this.master.totalTime;
+		}
+		get rawTime(): float64 {
+			this.wake.flush();
+			return this.master.rawTime;
+		}
 		get duration(): float64 { return this.master.duration; }
 		get totalDuration(): float64 { return this.master.totalDuration; }
-		get iteration(): int32 { return this.master.iteration; }
-		get progress(): float64 { return this.master.progress; }
-		get totalProgress(): float64 { return this.master.totalProgress; }
-		get isActive(): boolean { return this.master.isActive; }
+		get iteration(): int32 {
+			this.wake.flush();
+			return this.master.iteration;
+		}
+		get progress(): float64 {
+			this.wake.flush();
+			return this.master.progress;
+		}
+		get totalProgress(): float64 {
+			this.wake.flush();
+			return this.master.totalProgress;
+		}
+		get isActive(): boolean {
+			this.wake.flush();
+			return this.master.isActive;
+		}
 
 		play(from: float64 | null = null, suppressEvents: boolean = true): void {
+			this.wake.flush();
 			this.master.play(from, suppressEvents);
 			this.alignAll();
 		}
 
 		reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
+			this.wake.flush();
 			this.master.reverse(from, suppressEvents);
 			this.alignAll();
 		}
 
 		pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
+			this.wake.flush();
 			this.master.pause(atTime, suppressEvents);
 			this.alignAll();
 		}
 
 		resume(): void {
+			this.wake.flush();
 			this.master.resume();
 			this.alignAll();
 		}
 
 		restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
+			this.wake.flush();
 			this.master.restart(includeDelay, suppressEvents);
 			this.alignAll();
 		}
 
 		seek(position: float64, suppressEvents: boolean = true): void {
+			this.wake.flush();
 			this.master.seek(position, suppressEvents);
 			this.alignAll();
 		}
 
 		setTotalTime(value: float64, suppressEvents: boolean = false): void {
+			this.wake.flush();
 			this.master.setTotalTime(value, suppressEvents);
 			this.alignAll();
 		}
 
 		setTime(value: float64, suppressEvents: boolean = false): void {
+			this.wake.flush();
 			this.master.setTime(value, suppressEvents);
 			this.alignAll();
 		}
 
 		setTotalProgress(value: float64, suppressEvents: boolean = false): void {
+			this.wake.flush();
 			this.master.setTotalProgress(value, suppressEvents);
 			this.alignAll();
 		}
 
 		setProgress(value: float64, suppressEvents: boolean = false): void {
+			this.wake.flush();
 			this.master.setProgress(value, suppressEvents);
 			this.alignAll();
 		}
 
 		setTimeScale(value: float64): void {
+			this.wake.flush();
 			this.master.setTimeScale(value);
 			this.alignAll();
 		}
 
 		finish(): void {
+			this.wake.flush();
 			this.master.finish();
 			this.alignAll();
 		}
 
 		cancel(): void {
+			this.wake.flush();
 			this.master.cancel();
 			this.halt(true);
 		}
@@ -1124,6 +1178,7 @@ when (js) {
 		}
 
 		dispose(): void {
+			this.wake.flush();
 			this.halt(true);
 			this.master.dispose();
 			for (const run of this.runs) {
@@ -1181,6 +1236,32 @@ when (js) {
 				timing.direction,
 				timing.fill,
 			);
+		}
+
+		private nextWake(): float64 | null {
+			if (!this.ready || this.evaluated || this.update !== null) { return null; }
+			const master = this.master;
+			const at = master.rawTime;
+			const forward = master.timeScale > 0;
+			const marks: float64[] = [0, master.totalDuration];
+			for (const run of this.runs) {
+				if (run.plan.route !== TrackRoute.Waapi) { return null; }
+				if (run.animation !== null || run.evicted) { continue; }
+				if (run.plan.delay <= at) { return 1; }
+				marks.push(run.plan.delay);
+			}
+			const cycle = master.duration;
+			const index = Math.floor(at / cycle);
+			marks.push(index * cycle);
+			marks.push((index + 1) * cycle);
+			let next = forward ? Infinity : -Infinity;
+			for (const mark of marks) {
+				if (forward ? mark > at && mark < next : mark < at && mark > next) {
+					next = mark;
+				}
+			}
+			if (!Number.isFinite(next)) { return null; }
+			return Math.abs(next - at) / Math.abs(master.timeScale) + 1;
 		}
 
 		private running(): boolean {
