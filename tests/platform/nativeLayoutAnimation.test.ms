@@ -6,7 +6,15 @@ import { createSignal } from "../../src/core/signal";
 import { LayoutAnimation, LayoutAnimationPresets } from "../../src/motion/layoutAnimation";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Show } from "../../src/macros/ui/flow";
-import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutY, nmOpacity, nmTap } from "./nativeBridgeMock.h";
+import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutWidth, nmLayoutY, nmOpacity, nmTap, nmVisualX, nmVisualY } from "./nativeBridgeMock.h";
+
+function shownWidth(tag: int32): number {
+	return (nmVisualX(tag, nmLayoutWidth(tag)) - nmVisualX(tag, 0)) as number;
+}
+
+function shownHeight(tag: int32): number {
+	return (nmVisualY(tag, nmLayoutHeight(tag)) - nmVisualY(tag, 0)) as number;
+}
 
 test "configureNext tweens the next layout's frame changes, and only the next" {
 	const clock = useManualFrames();
@@ -78,6 +86,47 @@ test "the spring preset overshoots a growing frame and lands on it" {
 	assert highest > 200.5, "damping 0.4 overshoots " + highest.toString();
 	clock.runAll();
 	assert nmLayoutHeight(tag) === 200, "lands " + nmLayoutHeight(tag).toString();
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "a created view grows from nothing under a scaleXY create and keeps its opacity" {
+	const clock = useManualFrames();
+	const [shown, setShown] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<Show when={shown()}><View style={{ width: 100, height: 50 }}><Pressable onPress={() => {}} style={{ width: 100, height: 50 }} /></View></Show>
+	</View>;
+	runApp(app);
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "scaleXY"));
+	setShown(true);
+	flush();
+	const created = nmLastPressableTag();
+	clock.step(5);
+	assert Math.abs(shownWidth(created) - 50) < 1 && Math.abs(shownHeight(created) - 25) < 1,
+		"half grown " + shownWidth(created).toString() + "x" + shownHeight(created).toString();
+	assert nmOpacity(created) === 1, "scale leaves opacity alone " + nmOpacity(created).toString();
+	clock.runAll();
+	assert shownWidth(created) === 100 && shownHeight(created) === 50;
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "a scaleY create grows only the height" {
+	const clock = useManualFrames();
+	const [shown, setShown] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<Show when={shown()}><View style={{ width: 100, height: 50 }}><Pressable onPress={() => {}} style={{ width: 100, height: 50 }} /></View></Show>
+	</View>;
+	runApp(app);
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "scaleY"));
+	setShown(true);
+	flush();
+	const created = nmLastPressableTag();
+	clock.step(5);
+	assert shownWidth(created) === 100 && Math.abs(shownHeight(created) - 25) < 1,
+		"only the height grows " + shownWidth(created).toString() + "x" + shownHeight(created).toString();
+	clock.runAll();
+	assert shownHeight(created) === 50;
 	nmTeardown();
 	setFrameDriver(null);
 }

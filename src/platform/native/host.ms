@@ -321,13 +321,33 @@ function tweenFrame(n: NativeNode, phase: LayoutPhase): void {
 	});
 }
 
-function fadeIn(n: NativeNode, phase: LayoutPhase): void {
-	const view = n.view;
-	if (view === null) { return; }
+function ownOpacity(n: NativeNode): number {
 	const style = n.styleCache;
-	const target = style !== null && (style as Style).opacity !== null ? ((style as Style).opacity as number) : 1.0;
+	return style !== null && (style as Style).opacity !== null ? ((style as Style).opacity as number) : 1.0;
+}
+
+function showAppearance(view: Ptr<void>, n: NativeNode, phase: LayoutPhase, shown: number): void {
+	const property = phase.property;
+	if (property === "opacity") {
+		niSetOpacity(view, (ownOpacity(n) * shown) as float32);
+		return;
+	}
+	const own = nativeTransform(n.transformCss);
+	const fromX = property === "scaleY" ? 1.0 : 0.0;
+	const fromY = property === "scaleX" ? 1.0 : 0.0;
+	niSetTransform(
+		view,
+		lerp(fromX as float32, own.scaleX as float32, shown),
+		lerp(fromY as float32, own.scaleY as float32, shown),
+		lerp(0.0, own.translateX as float32, shown),
+		lerp(0.0, own.translateY as float32, shown),
+	);
+}
+
+function animateIn(n: NativeNode, phase: LayoutPhase): void {
+	if (n.view === null) { return; }
 	runLayoutTween(phase, (t: number): void => {
-		if (n.view !== null) { niSetOpacity(n.view, (target * t) as float32); }
+		if (n.view !== null) { showAppearance(n.view as Ptr<void>, n, phase, t); }
 	}, (): void => {});
 }
 
@@ -351,7 +371,7 @@ export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: fl
 			return;
 		}
 		n.fadePass = layoutPassId;
-		fadeIn(n, (plan as LayoutAnimationPlan).create as LayoutPhase);
+		animateIn(n, (plan as LayoutAnimationPlan).create as LayoutPhase);
 	}
 }
 
