@@ -68,7 +68,7 @@ test "AsyncStorage goes through the storage commands; a stored value is marked s
 		"storage.keys()",
 		"storage.clear()",
 	];
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log === expected.join(";"), log;
 	nmTeardown();
 }
@@ -92,7 +92,7 @@ test "NetInfo decodes the host's state on watch, fetch and the netinfo event" {
 	assert network(state()) === "cellular/1/0/metered", network(state());
 	nmAppReply("netinfo.fetch", "none" + FIELD + "0" + FIELD + "0" + FIELD + "0");
 	assert network(await NetInfo.fetch()) === "none/0/0/-";
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log === "netinfo.watch();netinfo.fetch()", log;
 	nmTeardown();
 }
@@ -145,7 +145,7 @@ test "Permissions answer at once when the host replies, else on the reply event 
 	nmAppReply("permission.request", "");
 	const pending = Permissions.request("location");
 	await sleepAsync(5);
-	const asked: string = nmAppLog();
+	const asked = nmAppLog() as string;
 	const id = requestId(asked, "permission.request");
 	assert asked.endsWith("permission.request(" + id + FIELD + "location)"), asked;
 	nmAppEvent(REPLY, "999" + FIELD + "granted" + FIELD + "0");
@@ -177,7 +177,7 @@ test "PermissionsAndroid sends raw permission names and reads one result per per
 	const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
 	const results = await PermissionsAndroid.requestMultiple([fine, coarse]);
 	assert results.get(fine) === "granted" && results.get(coarse) === "never_ask_again";
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	const id = requestId(log, "permissionsAndroid.request");
 	assert log === "permissionsAndroid.check(android.permission.CAMERA);permissionsAndroid.request(" + id + FIELD + fine + "," + coarse + ")", log;
 	nmTeardown();
@@ -200,7 +200,7 @@ test "Geolocation encodes its options, decodes fixes with absent fields as null 
 	);
 	await sleepAsync(20);
 	assert read === "10.5,106.25 alt null acc 35 heading 90 speed 1.5", read;
-	const current: string = nmAppLog();
+	const current = nmAppLog() as string;
 	const id = requestId(current, "location.current");
 	assert current.endsWith("location.current(" + id + FIELD + "1" + FIELD + "5000" + FIELD + "1000" + FIELD + "0" + FIELD + "10000)"), current;
 	nmAppLogClear();
@@ -217,7 +217,7 @@ test "Geolocation encodes its options, decodes fixes with absent fields as null 
 	Geolocation.clearWatch(watch);
 	nmAppEvent(LOCATION, watch.toString() + FIELD + fix);
 	assert seen.join(";") === "1;2 No location provider is enabled", seen.join(";");
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	const permission = requestId(log, "permission.request");
 	assert log === "permission.request(" + permission + FIELD + "location);location.watch(" + watch.toString() + FIELD + "0" + FIELD +
 		"-1" + FIELD + "-1" + FIELD + "100" + FIELD + "10000);location.clear(" + watch.toString() + ")", log;
@@ -242,7 +242,7 @@ test "Haptics, DeviceInfo and the locale readout go through their commands and d
 	const locales = getLocales();
 	assert locales.length === 2 && locales[0].currencySymbol === "€" && locales[1].textDirection === "rtl";
 	assert getCalendars()[0].timeZone === "Europe/Paris" && getCalendars()[0].firstWeekday === 2;
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log.startsWith("haptics.impact(rigid);haptics.selection();device.info()"), log;
 	nmTeardown();
 }
@@ -256,7 +256,7 @@ test "Notifications encode the schedule request, read the received and response 
 		trigger: { seconds: 2 },
 	});
 	await sleepAsync(5);
-	const asked: string = nmAppLog();
+	const asked = nmAppLog() as string;
 	const id = requestId(asked, "notification.schedule");
 	assert asked.endsWith("notification.schedule(" + id + FIELD + ["water", "Reminder", "", "Water the plants", "", "1", "-1", "2", "0", "-1"].join(FIELD) + ")"), asked;
 	nmAppEvent(REPLY, id + FIELD + "water");
@@ -281,7 +281,7 @@ test "Notifications encode the schedule request, read the received and response 
 	responses.remove();
 	Notifications.setNotificationHandler(null);
 	assert seen.join(";") === "received Reminder 1700;response water open", seen.join(";");
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log === "notification.handler(1);notification.present(water" + FIELD + "1" + FIELD + "0" + FIELD + "0);notification.handler(0)", log;
 	nmTeardown();
 }

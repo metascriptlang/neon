@@ -100,7 +100,7 @@ test "Alert encodes title, message and buttons and runs the button the native di
 		{ text: "Cancel", style: "cancel", onPress: (): void => { chose = "cancel"; } },
 		{ text: "OK", onPress: (): void => { chose = "ok"; } },
 	]);
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	const id = log.substring(6, log.indexOf(FIELD));
 	assert log === "alert(" + id + FIELD + "Title" + FIELD + "Body" + FIELD + "0" + "\u001e" + "Cancel" + FIELD + "cancel" +
 		"\u001e" + "OK" + FIELD + "default)", log;
@@ -140,7 +140,7 @@ test "Linking, Clipboard, Vibration and AccessibilityInfo go through the native 
 		"keyboard.dismiss()",
 		"exitApp()",
 	];
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log === expected.join(";"), log;
 	nmAppReply("linking.open", "0");
 	let message = "";
@@ -205,7 +205,7 @@ test "AccessibilityInfo queries and announcements go to the native commands the 
 	assert await AccessibilityInfo.getRecommendedTimeoutMillis(3000) === 3000;
 	AccessibilityInfo.announceForAccessibilityWithOptions("Queued", { queue: true });
 	AccessibilityInfo.announceForAccessibilityWithOptions("Plain", {});
-	const iosLog: string = nmAppLog();
+	const iosLog = nmAppLog() as string;
 	assert iosLog === "a11y.boldText();a11y.grayscale();a11y.invertColors();a11y.reduceTransparency();a11y.darkerSystemColors();a11y.crossFade();" +
 		"a11y.announceQueue(1" + FIELD + "Queued);a11y.announce(Plain)", iosLog;
 	Platform.OS = "android";
@@ -215,7 +215,7 @@ test "AccessibilityInfo queries and announcements go to the native commands the 
 	assert await AccessibilityInfo.isAccessibilityServiceEnabled();
 	assert await AccessibilityInfo.getRecommendedTimeoutMillis(3000) === 9000;
 	AccessibilityInfo.announceForAccessibilityWithOptions("Queued", { queue: true });
-	const androidLog: string = nmAppLog();
+	const androidLog = nmAppLog() as string;
 	assert androidLog === "a11y.highTextContrast();a11y.accessibilityService();a11y.timeout(3000);a11y.announce(Queued)", androidLog;
 	Platform.OS = os;
 	nmTeardown();

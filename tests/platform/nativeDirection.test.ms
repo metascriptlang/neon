@@ -41,10 +41,10 @@ test "writingDirection reaches the bridge on a Text and a TextInput" {
 	</View>;
 	runApp(app);
 	const field = nmTagWithProp("accessibilityLabel", "field");
-	const rtl = `${nmLabelProp("mirrored", "writingDirection")} ${nmProp(field, "writingDirection")}`;
+	const rtl = `${nmLabelProp("mirrored", "writingDirection") as string} ${nmProp(field, "writingDirection") as string}`;
 	setDirection("ltr");
 	flush();
-	const ltr = `${nmLabelProp("mirrored", "writingDirection")} ${nmProp(field, "writingDirection")}`;
+	const ltr = `${nmLabelProp("mirrored", "writingDirection") as string} ${nmProp(field, "writingDirection") as string}`;
 	nmTeardown();
 	assert rtl === "rtl rtl", "rtl: " + rtl;
 	assert ltr === "ltr ltr", "ltr after the change: " + ltr;

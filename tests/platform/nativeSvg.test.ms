@@ -23,13 +23,13 @@ test "an Svg is one native view laid out by its size, holding the display list" 
 	runApp(app);
 	const tag = nmLastControlTag(SVG_KIND);
 	assert laidOut === "120x60" && nmLayoutWidth(tag) === 120 && nmLayoutHeight(tag) === 60, "layout " + laidOut;
-	const label: string = nmProp(tag, "accessibilityLabel");
+	const label = nmProp(tag, "accessibilityLabel") as string;
 	assert label === "chart", "label " + label;
-	const first: string = nmDisplayList(tag);
+	const first = nmDisplayList(tag) as string;
 	assert first.startsWith("M 0 0 L 120 0 L 120 60 L 0 60 Z F c 238 238 238 1 S n E 0 O M 40 30 C 40 35.5228"), first;
 	setR(20);
 	flush();
-	const second: string = nmDisplayList(tag);
+	const second = nmDisplayList(tag) as string;
 	assert second.indexOf("M 50 30 C 50 41.0457") > 0, second;
 	nmTeardown();
 }
@@ -43,7 +43,7 @@ test "an Svg without a size takes the size layout gives it" {
 	runApp(app);
 	const tag = nmLastControlTag(SVG_KIND);
 	assert nmLayoutWidth(tag) === 200 && nmLayoutHeight(tag) === 100, `${nmLayoutWidth(tag)}x${nmLayoutHeight(tag)}`;
-	const list: string = nmDisplayList(tag);
+	const list = nmDisplayList(tag) as string;
 	assert list.startsWith("V 0 0 10 10 5 0 M 0 0"), list;
 	nmTeardown();
 }
@@ -51,7 +51,7 @@ test "an Svg without a size takes the size layout gives it" {
 test "SvgXml reaches the native view through the same channel" {
 	const app = (): NeonNode => <SvgXml width={32} height={32} xml={"<svg viewBox='0 0 2 2'><circle cx='1' cy='1' r='1' fill='#00f'/></svg>"} />;
 	runApp(app);
-	const list: string = nmDisplayList(0);
+	const list = nmDisplayList(0) as string;
 	assert list.startsWith("V 0 0 2 2 5 0 M 2 1 C") && list.endsWith("F c 0 0 255 1 S n E 0 O"), list;
 	nmTeardown();
 }

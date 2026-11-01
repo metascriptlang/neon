@@ -322,7 +322,7 @@ test "native exact span owner is distinct from plain run container and ancestor 
 		</Pressable>);
 		const parent = nmTagWithProp("accessibilityLabel", "activation-span-parent");
 		const label = nmTagWithProp("accessibilityLabel", "activation-span-label");
-		const encoded = nmProp(label, "textSpans");
+		const encoded = nmProp(label, "textSpans") as string;
 		const fields = encoded.split("\u001e")[0].split("\u001f");
 		const span = parseInt(fields[7]) as int32;
 		assert span !== 0 && span !== label;

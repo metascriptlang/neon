@@ -638,7 +638,7 @@ test "a native sticky list paints and routes its retained header above rows, the
 }
 
 function prop(tag: int32, name: string): string {
-	return nmProp(tag, name);
+	return nmProp(tag, name) as string;
 }
 
 test "AccessibilityInfo.setAccessibilityFocus reaches the native view while it is mounted" {
@@ -1018,7 +1018,7 @@ test "a native TouchableHighlight paints its underlay while pressed and clears i
 }
 
 function anyProp(name: string): string {
-	return nmAnyProp(name);
+	return nmAnyProp(name) as string;
 }
 
 test "a native StatusBar sends its bar style and visibility through the prop channel and takes no space" {

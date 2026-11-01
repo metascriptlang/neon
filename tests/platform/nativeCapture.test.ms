@@ -23,7 +23,7 @@ const RECORDING: int32 = 14;
 const CAMERA: int32 = 12;
 
 function prop(tag: int32, name: string): string {
-	return nmProp(tag, name);
+	return nmProp(tag, name) as string;
 }
 
 function mount(): void {
@@ -52,7 +52,7 @@ test "the library picker sends the options, waits for the reply event and decode
 	nmAppReply("capture.pick", "");
 	const pending = ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.5, allowsMultipleSelection: true });
 	await sleepAsync(5);
-	const asked: string = nmAppLog();
+	const asked = nmAppLog() as string;
 	const id = requestId(asked, "capture.pick");
 	assert asked.endsWith("capture.pick(" + id + FIELD + ["0", "1", "1", "0", "0.5", "0", "1", "0", "back"].join(FIELD) + ")"), asked;
 	nmAppEvent(REPLY, id + FIELD + "ok" + RECORD + asset("file:///cache/a.jpg", "4032", "3024", "image", "1234567") + RECORD +
@@ -93,13 +93,13 @@ test "the camera picker needs the camera permission before it opens" {
 		message = (e as Error).message;
 	}
 	assert message === "ImagePicker.launchCameraAsync: Missing camera permission", message;
-	const before: string = nmAppLog();
+	const before = nmAppLog() as string;
 	assert before.indexOf("capture.pick") < 0, "the picker never opened";
 	nmAppReply("permission.check", "granted" + FIELD + "0");
 	nmAppReply("capture.pick", "ok" + RECORD + asset("file:///cache/c.jpg", "640", "480", "image", "2048"));
 	const shot = await ImagePicker.launchCameraAsync({ cameraType: "front", base64: true });
 	assert shot.assets[0].uri === "file:///cache/c.jpg", shot.assets[0].uri;
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log.endsWith(FIELD + ["1", "1", "0", "0", "1", "1", "0", "0", "front"].join(FIELD) + ")"), log;
 	nmTeardown();
 }
@@ -116,7 +116,7 @@ test "a Sound loads through the reply event, plays by command and reports status
 		seen.push(`${s.isPlaying ? "playing" : "idle"}@${s.positionMillis}${s.didJustFinish ? " finished" : ""}`);
 	});
 	await sleepAsync(5);
-	const asked: string = nmAppLog();
+	const asked = nmAppLog() as string;
 	const id = requestId(asked, "sound.load");
 	assert asked.indexOf(FIELD + "file:///clip.wav" + FIELD + "0" + FIELD + "0.5" + FIELD) > 0, asked;
 	nmAppEvent(REPLY, id + FIELD + status(true, false, "0", false));
@@ -134,7 +134,7 @@ test "a Sound loads through the reply event, plays by command and reports status
 	nmAppReply("sound.unload", status(false, false, "0", false));
 	await sound.unloadAsync();
 	assert seen.join(",") === "idle@0,playing@0,playing@1500,idle@3000 finished,idle@1000,idle@0", seen.join(",");
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log.indexOf("sound.play(" + soundId + FIELD + "0)") > 0 && log.indexOf("sound.seek(" + soundId + FIELD + "1000)") > 0, log;
 	let message = "";
 	try {
@@ -184,7 +184,7 @@ test "a Recording asks for the microphone, records by command and gives back a u
 	});
 	const recording: Recording = made.recording;
 	assert made.status.isRecording && recording.getURI() === "file:///cache/rec.m4a", "recording";
-	const log: string = nmAppLog();
+	const log = nmAppLog() as string;
 	assert log.indexOf("audio.mode(1" + FIELD + "1)") >= 0, log;
 	assert log.indexOf(FIELD + ".m4a" + FIELD + "44100" + FIELD + "1" + FIELD + "64000" + FIELD + "500)") > 0, log;
 	const recId = log.substring(log.indexOf("recording.start(") + 16, log.length).split(FIELD)[0];

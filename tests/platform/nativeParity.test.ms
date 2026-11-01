@@ -49,14 +49,14 @@ test "a native Text sends its textAlign to the label and a centred label spans i
 		<Text>plain</Text>
 	</View>;
 	runApp(app);
-	const centred = `${nmLabelProp("mid", "textAlign")} ${nmTextWidth("mid")}`;
+	const centred = `${nmLabelProp("mid", "textAlign") as string} ${nmTextWidth("mid")}`;
 	setAlign("right");
 	flush();
-	const right = `${nmLabelProp("mid", "textAlign")} ${nmTextWidth("mid")}`;
+	const right = `${nmLabelProp("mid", "textAlign") as string} ${nmTextWidth("mid")}`;
 	setAlign("left");
 	flush();
-	const left = `${nmLabelProp("mid", "textAlign")} ${nmTextWidth("mid")}`;
-	const plain = `${nmLabelProp("plain", "textAlign")} ${nmTextWidth("plain")}`;
+	const left = `${nmLabelProp("mid", "textAlign") as string} ${nmTextWidth("mid")}`;
+	const plain = `${nmLabelProp("plain", "textAlign") as string} ${nmTextWidth("plain")}`;
 	nmTeardown();
 	assert centred === "center 300", "centred: " + centred;
 	assert right === "right 300", "right: " + right;
@@ -65,19 +65,19 @@ test "a native Text sends its textAlign to the label and a centred label spans i
 }
 
 function anyProp(name: string): string {
-	return nmAnyProp(name);
+	return nmAnyProp(name) as string;
 }
 
 function appLog(): string {
-	return nmAppLog();
+	return nmAppLog() as string;
 }
 
 function prop(tag: int32, name: string): string {
-	return nmProp(tag, name);
+	return nmProp(tag, name) as string;
 }
 
 function labelProp(text: string, name: string): string {
-	return nmLabelProp(text, name);
+	return nmLabelProp(text, name) as string;
 }
 
 test "a nested native Text is a styled span of its outer label, and a pressable span takes the press" {

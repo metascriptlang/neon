@@ -19,7 +19,7 @@ import {
 } from "./nativeBridgeMock.h";
 
 function prop(tag: int32, name: string): string {
-	return nmProp(tag, name);
+	return nmProp(tag, name) as string;
 }
 
 test "a native WebView is a media view created by name: source, page events, the synchronous load decision and commands" {
