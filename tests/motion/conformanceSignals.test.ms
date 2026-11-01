@@ -14,6 +14,7 @@ import {
 	ConformanceCase,
 	ConformancePlayer,
 	ConformanceProperty,
+	ConformanceScrollGeometry,
 	ConformanceSupport,
 	ConformanceTiming,
 	ConformanceValue,
@@ -27,7 +28,7 @@ import { MotionBinding, MotionPlayer, motionOptions } from "pulse/src/player";
 import { MotionPolicy } from "pulse/src/policy";
 import { Composition } from "pulse/src/target";
 import { AnimatedValue, AnimationSpec } from "pulse/src/value";
-import { CHANNEL, boundDocument, conformanceReport, translateOf } from "./conformanceBindings";
+import { CHANNEL, ConformanceScroller, boundDocument, conformanceReport, translateOf } from "./conformanceBindings";
 
 // The path of every host without a layer engine: MotionSignals bindings, Neon's frame loop as the
 // clock, and each property shown through signals.style on a View of the mock host.
@@ -39,9 +40,11 @@ class Stage {
 	root: MockNode;
 	disposers: (() => void)[] = [];
 	owner: Computation | null = null;
+	scroller: ConformanceScroller;
 
-	constructor(properties: ConformanceProperty[], policy: MotionPolicy) {
+	constructor(scroller: ConformanceScroller, properties: ConformanceProperty[], policy: MotionPolicy) {
 		this.policy = policy;
+		this.scroller = scroller;
 		const host = mockHost();
 		const root = host.createElement("root");
 		this.root = root as unknown as MockNode;
@@ -78,6 +81,7 @@ class Stage {
 			timeScale: timing.timeScale,
 			paused: timing.paused,
 			composition: timing.composition,
+			source: this.scroller.source(timing.timeline),
 		}));
 		player.onStart = (): void => { emit("start"); };
 		player.onRepeat = (): void => { emit("repeat"); };
@@ -137,6 +141,7 @@ class Stage {
 
 class SignalsConformance {
 	stage: Stage | null = null;
+	scroller: ConformanceScroller = new ConformanceScroller();
 	adapter: ConformanceAdapter;
 
 	constructor() {
@@ -144,7 +149,8 @@ class SignalsConformance {
 			name: "neon signals",
 			support: (testCase: ConformanceCase): ConformanceSupport => ConformanceSupport.Evaluator,
 			begin: (properties: ConformanceProperty[], policy: MotionPolicy): void => {
-				this.stage = new Stage(properties, policy);
+				this.scroller = new ConformanceScroller();
+				this.stage = new Stage(this.scroller, properties, policy);
 			},
 			player: (document: MotionDocument, timing: ConformanceTiming, emit: (event: string) => void): ConformancePlayer =>
 				this.live().player(document, timing, emit),
@@ -156,6 +162,10 @@ class SignalsConformance {
 				const stage = this.stage;
 				this.stage = null;
 				if (stage !== null) { stage.close(); }
+			},
+			scroll: {
+				place: (geometry: ConformanceScrollGeometry): void => { this.scroller.place(geometry); },
+				scrollTo: (offset: float64): void => { this.scroller.scrollTo(offset); },
 			},
 		};
 	}

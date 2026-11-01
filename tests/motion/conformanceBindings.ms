@@ -1,4 +1,19 @@
-import { ConformanceResult, ConformanceSupport } from "pulse/src/conformance";
+import {
+	ConformanceResult,
+	ConformanceScrollGeometry,
+	ConformanceSupport,
+	ConformanceTimeline,
+} from "pulse/src/conformance";
+import {
+	ScrollAxis,
+	ScrollSource,
+	TimeSource,
+	TimeSourceKind,
+	ViewSubject,
+	scrollSource,
+	timeSource,
+	viewSource,
+} from "pulse/src/scroll";
 import { MotionClip, MotionDocument, MotionTrack } from "pulse/src/document";
 
 // Each conformance property ("box.x") becomes its own element slot on translateX: every Neon host
@@ -59,4 +74,36 @@ export function conformanceReport(adapter: string, results: ConformanceResult[])
 			", Refused " + refused.toString(),
 	);
 	return failures;
+}
+
+export class ConformanceScroller {
+	geometry: ConformanceScrollGeometry = { viewport: 0, max: 0, subjectStart: 0, subjectSize: 0 };
+	offset: float64 = 0;
+
+	place(geometry: ConformanceScrollGeometry): void {
+		this.geometry = geometry;
+		this.scrollTo(this.offset);
+	}
+
+	scrollTo(offset: float64): void {
+		this.offset = Math.min(Math.max(offset, 0), this.geometry.max);
+	}
+
+	source(timeline: ConformanceTimeline | null): TimeSource {
+		if (timeline === null) { return timeSource(); }
+		const scroller: ScrollSource = {
+			offset: (axis: ScrollAxis): float64 => this.offset,
+			max: (axis: ScrollAxis): float64 => this.geometry.max,
+			viewport: (axis: ScrollAxis): float64 => this.geometry.viewport,
+		};
+		const subject: ViewSubject = {
+			start: (axis: ScrollAxis): float64 => this.geometry.subjectStart,
+			size: (axis: ScrollAxis): float64 => this.geometry.subjectSize,
+		};
+		return match (timeline.kind) {
+			TimeSourceKind.Time => timeSource(),
+			TimeSourceKind.Scroll => scrollSource(scroller, timeline.axis),
+			TimeSourceKind.View => viewSource(scroller, subject, timeline.range, timeline.inset, timeline.axis),
+		};
+	}
 }
