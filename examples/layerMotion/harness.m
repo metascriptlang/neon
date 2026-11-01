@@ -3,6 +3,13 @@
 #include <stdatomic.h>
 #include <unistd.h>
 #include "harness.h"
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+typedef UIView PlatformView;
+#else
+#import <AppKit/AppKit.h>
+typedef NSView PlatformView;
+#endif
 
 static double g_opacity[2], g_atMs[2];
 static atomic_int g_ready;
@@ -43,3 +50,23 @@ void motionLayerClock(void *view, double ms) {
 }
 
 void motionCommit(void) { [CATransaction flush]; }
+
+static PlatformView *g_detachedParent;
+
+void motionDetach(void *view) {
+	PlatformView *v = (__bridge PlatformView *)view;
+	g_detachedParent = v.superview;
+	[v removeFromSuperview];
+	[CATransaction flush];
+}
+
+void motionReattach(void *view) {
+	[g_detachedParent addSubview:(__bridge PlatformView *)view];
+	g_detachedParent = nil;
+	[CATransaction flush];
+}
+
+int32_t motionHasAnimation(void *view, int32_t property) {
+	CALayer *layer = [(__bridge PlatformView *)view layer];
+	return [layer animationForKey:property == 0 ? @"neon.opacity" : @"neon.transform"] != nil;
+}

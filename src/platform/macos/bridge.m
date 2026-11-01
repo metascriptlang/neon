@@ -60,6 +60,22 @@ static NSColor *rgba(float r, float g, float b, float a) {
 
 // --- views ---
 
+@interface NeonLayerTrack : NSObject
+@property(nonatomic) int32_t property;
+@property(nonatomic, strong) CAKeyframeAnimation *animation;
+@property(nonatomic, copy) NSData *tuples;
+@property(nonatomic) float builtW, builtH;
+@end
+
+@implementation NeonLayerTrack
+@end
+
+@interface NeonView ()
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NeonLayerTrack *> *layerTracks;
+@end
+
+static void rehandLayerTracks(NeonView *v);
+
 @implementation NeonView
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -113,6 +129,12 @@ static CATransform3D centredTransform(NeonView *v, float scaleX, float scaleY, f
 - (void)setFrameSize:(NSSize)size {
 	[super setFrameSize:size];
 	[self neonApply];
+	rehandLayerTracks(self);
+}
+
+- (void)viewDidMoveToWindow {
+	[super viewDidMoveToWindow];
+	rehandLayerTracks(self);
 }
 
 - (NSView *)neonChildHost { return self; }
@@ -1835,6 +1857,22 @@ double niLayerRead(void *view, int32_t component) {
 	return 0;
 }
 
+static NSArray *layerFrames(NeonView *v, int32_t property, NSData *tuples) {
+	int64_t width = layerWidth(property);
+	const double *values = tuples.bytes;
+	NSUInteger count = tuples.length / sizeof(double) / (NSUInteger)width;
+	NSMutableArray *frames = [NSMutableArray arrayWithCapacity:count];
+	for (NSUInteger i = 0; i < count; i++) {
+		const double *at = values + i * width;
+		if (property == 0) {
+			[frames addObject:@(at[0])];
+		} else {
+			[frames addObject:[NSValue valueWithCATransform3D:centredTransform(v, at[0], at[1], at[2], at[3], at[4])]];
+		}
+	}
+	return frames;
+}
+
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
 	const double *values, int64_t valueCount, double durationMs, double repeatCount,
 	int32_t autoreverses, double startMs, double offsetMs, double speed) {
@@ -1843,20 +1881,12 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
 	NeonView *v = as(view);
 	CALayer *layer = v.layer;
+	NSData *tuples = [NSData dataWithBytes:values length:(NSUInteger)valueCount * sizeof(double)];
 	NSMutableArray<NSNumber *> *times = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
-	NSMutableArray *frames = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
-	for (int64_t i = 0; i < keyCount; i++) {
-		[times addObject:@(keyTimes[i])];
-		const double *at = values + i * width;
-		if (property == 0) {
-			[frames addObject:@(at[0])];
-		} else {
-			[frames addObject:[NSValue valueWithCATransform3D:centredTransform(v, at[0], at[1], at[2], at[3], at[4])]];
-		}
-	}
+	for (int64_t i = 0; i < keyCount; i++) [times addObject:@(keyTimes[i])];
 	CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:property == 0 ? @"opacity" : @"transform"];
 	animation.keyTimes = times;
-	animation.values = frames;
+	animation.values = layerFrames(v, property, tuples);
 	animation.calculationMode = kCAAnimationLinear;
 	animation.duration = durationMs / 1000.0;
 	animation.repeatCount = (float)repeatCount;
@@ -1867,10 +1897,47 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	animation.fillMode = kCAFillModeBackwards;
 	animation.removedOnCompletion = YES;
 	[layer addAnimation:animation forKey:layerKey(property)];
+	NeonLayerTrack *track = [NeonLayerTrack new];
+	track.property = property;
+	track.animation = animation;
+	track.tuples = tuples;
+	track.builtW = v.w;
+	track.builtH = v.h;
+	if (!v.layerTracks) v.layerTracks = [NSMutableDictionary dictionary];
+	v.layerTracks[layerKey(property)] = track;
 }
 
 void niLayerRemove(void *view, int32_t property) {
+	[as(view).layerTracks removeObjectForKey:layerKey(property)];
 	[as(view).layer removeAnimationForKey:layerKey(property)];
+}
+
+static CFTimeInterval layerTrackEnd(CAKeyframeAnimation *animation) {
+	float repeats = animation.repeatCount > 0 ? animation.repeatCount : 1;
+	double active = animation.duration * repeats * (animation.autoreverses ? 2 : 1);
+	return animation.beginTime + (active - animation.timeOffset) / animation.speed;
+}
+
+// AppKit drops a layer's animations when its view leaves the window (macOS 26, 2026-11-01); re-add them on
+// return as lottie-ios's CoreAnimationLayer does, at their own beginTime so they keep the mirror's playhead.
+static void rehandLayerTracks(NeonView *v) {
+	if (!v.layerTracks.count || !v.window) return;
+	CALayer *layer = v.layer;
+	CFTimeInterval now = [layer convertTime:CACurrentMediaTime() fromLayer:nil];
+	for (NSString *key in v.layerTracks.allKeys) {
+		NeonLayerTrack *track = v.layerTracks[key];
+		if (now >= layerTrackEnd(track.animation)) {
+			[v.layerTracks removeObjectForKey:key];
+			continue;
+		}
+		BOOL resized = track.property == 1 && (track.builtW != v.w || track.builtH != v.h);
+		if (resized) {
+			track.animation.values = layerFrames(v, track.property, track.tuples);
+			track.builtW = v.w;
+			track.builtH = v.h;
+		}
+		if (resized || ![layer animationForKey:key]) [layer addAnimation:track.animation forKey:key];
+	}
 }
 
 double niLayerPresented(void *view, int32_t component) {
