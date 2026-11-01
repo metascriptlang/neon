@@ -12,10 +12,12 @@ import {
 } from "pulse/src/document";
 import { MotionOptions, motionOptions } from "pulse/src/player";
 import {
+	CssRun,
 	RoutedTrack,
 	StyleProperty,
 	TrackRoute,
 	WaapiPlan,
+	WaapiKeyframe,
 	WaapiTiming,
 	planWaapi,
 	styleProperty,
@@ -329,11 +331,54 @@ test "a nested clip at the start with its own rate lowers by scaling its keyfram
 	assert routed.keyframes.map((k): float64 => k.offset).join(",") === "0,0.2,1";
 }
 
-test "a late placement, a keyframe outside its clip and two writers run on the evaluator" {
+test "a late placement plays once as a WAAPI delay, its keyframes spread over the rest of the clip" {
 	const late = only(
 		planWaapi(
 			nested(200, 1, [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)]),
 			options(),
+			[],
+		),
+	);
+	assert late.route === TrackRoute.Waapi && late.delay === 200;
+	assert late.keyframes.map((k): float64 => k.offset).join(",") === "0,0.5,1";
+	assert late.keyframes.map((k): string => k.value).join(",") === "0,1,1";
+	const staggered = planWaapi(
+		{
+			version: 1,
+			root: "main",
+			clips: [
+				clip(
+					"main",
+					1000,
+					[],
+					[
+						{ clip: "child", start: 0, rate: 1, slots: [] },
+						{ clip: "child", start: 300, rate: 1, slots: [{ from: "box", to: "card" }] },
+					],
+				),
+				clip(
+					"child",
+					400,
+					[track("box", "opacity", [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)])],
+					[],
+				),
+			],
+		},
+		options(),
+		[],
+	);
+	assert staggered.runs.map((r: CssRun): string => r.slot + "@" + r.delay.toString()).join(",") ===
+		"box@0,card@300";
+}
+
+test "a repeated late placement, a keyframe outside its clip and two writers run on the evaluator" {
+	const late = only(
+		planWaapi(
+			nested(200, 1, [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)]),
+			{
+				...options(),
+				repeat: 1,
+			},
 			[],
 		),
 	);
@@ -392,12 +437,130 @@ test "a track the browser cannot run is refused by name" {
 	);
 	assert refusal(() => { planWaapi(wrongKind, options(), []); }) ===
 		"motion: track box.backgroundColor holds a number but CSS backgroundColor takes a colour";
-	const shared = single(
+	const uniform = single(
 		[
-			track("box", "translateX", [linearKeyframe("a", 0, 0)]),
-			track("box", "translateY", [linearKeyframe("a", 0, 0)]),
+			track("box", "scale", [linearKeyframe("a", 0, 1)]),
+			track("box", "scaleX", [linearKeyframe("a", 0, 1)]),
 		],
 	);
-	assert refusal(() => { planWaapi(shared, options(), []); }) ===
-		"motion: box.translateX and box.translateY both write CSS translate";
+	assert refusal(() => { planWaapi(uniform, options(), []); }) ===
+		"motion: box.scale and box.scaleX both write CSS scale: a uniform value and an axis have no exact merge";
+}
+
+function onlyRun(plan: WaapiPlan): CssRun {
+	if (plan.runs.length !== 1) {
+		throw new Error("one run: " + plan.runs.length.toString());
+	}
+	return plan.runs[0];
+}
+
+function ramp(property: string, times: float64[], values: float64[]): MotionTrack {
+	const keys: MotionKeyframe[] = [];
+	for (let i: int32 = 0; i < times.length; i += 1) {
+		keys.push(linearKeyframe("k" + i.toString(), times[i], values[i]));
+	}
+	return track("box", property, keys);
+}
+
+function shape(run: CssRun): string {
+	return run.keyframes.map(
+		(k: WaapiKeyframe): string => k.offset.toString() + "=" + k.value + "@" +
+			k.easing,
+	).join(" | ");
+}
+
+test "translateX and translateY merge into one translate animation at the union of their offsets" {
+	const run = onlyRun(
+		planWaapi(
+			single(
+				[
+					ramp("translateY", [0, 500, 1000], [0, 20, 40]),
+					ramp("translateX", [0, 1000], [0, 100]),
+				],
+			),
+			options(),
+			[],
+		),
+	);
+	assert run.route === TrackRoute.Waapi && run.css === "translate";
+	assert run.properties.join(",") === "translateX,translateY";
+	assert shape(run) ===
+		"0=0px 0px@linear | 0.5=50px 20px@linear | 1=100px 40px@linear", shape(run);
+}
+
+test "a curve shared by both axes, or beside a constant axis, merges exactly" {
+	const same = onlyRun(
+		planWaapi(
+			single(
+				[
+					track(
+						"box",
+						"scaleX",
+						[key("a", 0, numberValue(1)), key("b", 1000, numberValue(2))],
+					),
+					track(
+						"box",
+						"scaleY",
+						[key("a", 0, numberValue(1)), key("b", 1000, numberValue(3))],
+					),
+				],
+			),
+			options(),
+			[],
+		),
+	);
+	assert shape(same) ===
+		"0=1 1@cubic-bezier(0.25, 0.9, 0.6, 0.1) | 1=2 3@linear", shape(same);
+	const still = onlyRun(
+		planWaapi(
+			single(
+				[
+					ramp("translateX", [0, 1000], [5, 5]),
+					track(
+						"box",
+						"translateY",
+						[key("a", 0, numberValue(0)), key("b", 1000, numberValue(9))],
+					),
+				],
+			),
+			options(),
+			[],
+		),
+	);
+	assert shape(still) ===
+		"0=5px 0px@cubic-bezier(0.25, 0.9, 0.6, 0.1) | 1=5px 9px@linear", shape(still);
+}
+
+test "axes whose curves split or differ have no exact merge and run together on the evaluator" {
+	const split = planWaapi(
+		single(
+			[
+				track(
+					"box",
+					"translateX",
+					[key("a", 0, numberValue(0)), key("b", 1000, numberValue(100))],
+				),
+				ramp("translateY", [0, 500, 1000], [0, 20, 40]),
+			],
+		),
+		options(),
+		[],
+	);
+	assert onlyRun(split).route === TrackRoute.Style;
+	assert split.tracks.every((t: RoutedTrack): boolean => t.route === TrackRoute.Style);
+	const differ = planWaapi(
+		single(
+			[
+				track(
+					"box",
+					"translateX",
+					[key("a", 0, numberValue(0)), key("b", 1000, numberValue(100))],
+				),
+				ramp("translateY", [0, 1000], [0, 40]),
+			],
+		),
+		options(),
+		[],
+	);
+	assert onlyRun(differ).route === TrackRoute.Style;
 }

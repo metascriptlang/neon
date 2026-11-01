@@ -7,6 +7,7 @@
 #import "component.h"
 #import "modules.h"
 #include "../native/loop.h"
+#include "../native/layerMotion.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1403,14 +1404,23 @@ static void setInputAccessoryID(UIView *input, const char *value) {
 static const void *kNeonRotationKey = &kNeonRotationKey;
 static const void *kNeonAffineKey = &kNeonAffineKey;
 
-static void neonApplyTransform(UIView *v) {
+static CGAffineTransform neonAffine(CGFloat sx, CGFloat sy, CGFloat tx, CGFloat ty, CGFloat degrees) {
+	CGAffineTransform t = CGAffineTransformMakeTranslation(tx, ty);
+	t = CGAffineTransformRotate(t, degrees * M_PI / 180.0);
+	return CGAffineTransformScale(t, sx, sy);
+}
+
+static double neonTransformPart(UIView *v, int index) {
 	NSArray<NSNumber *> *affine = objc_getAssociatedObject(v, kNeonAffineKey);
 	NSNumber *rotation = objc_getAssociatedObject(v, kNeonRotationKey);
-	CGFloat sx = affine ? affine[0].doubleValue : 1, sy = affine ? affine[1].doubleValue : 1;
-	CGFloat tx = affine ? affine[2].doubleValue : 0, ty = affine ? affine[3].doubleValue : 0;
-	CGAffineTransform t = CGAffineTransformMakeTranslation(tx, ty);
-	t = CGAffineTransformRotate(t, (rotation ? rotation.doubleValue : 0) * M_PI / 180.0);
-	v.transform = CGAffineTransformScale(t, sx, sy);
+	if (index == 4) return rotation ? rotation.doubleValue : 0;
+	if (affine) return affine[index].doubleValue;
+	return index < 2 ? 1 : 0;
+}
+
+static void neonApplyTransform(UIView *v) {
+	v.transform = neonAffine(neonTransformPart(v, 0), neonTransformPart(v, 1), neonTransformPart(v, 2),
+		neonTransformPart(v, 3), neonTransformPart(v, 4));
 }
 
 void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
@@ -1514,6 +1524,101 @@ void niSetCornerRadius(void *view, float radius) {
 void niSetOpacity(void *view, float opacity) {
 	UIView *v = (__bridge UIView *)view;
 	v.alpha = opacity;
+}
+
+// --- layerMotion.h: a track handed to Core Animation, which the render server runs off the main thread ---
+
+static NSString *layerKey(int32_t property) {
+	if (property == 0) return @"neon.opacity";
+	if (property == 1) return @"neon.transform";
+	char message[96];
+	snprintf(message, sizeof message, "layer property %d is neither opacity (0) nor transform (1)", property);
+	fail(message);
+	return nil;
+}
+
+static int64_t layerWidth(int32_t property) {
+	(void)layerKey(property);
+	return property == 0 ? 1 : 5;
+}
+
+void niLayerWrite(void *view, int32_t property, const double *values, int64_t count) {
+	if (count != layerWidth(property)) fail("niLayerWrite: the value count does not match the property");
+	UIView *v = (__bridge UIView *)view;
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	if (property == 0) {
+		v.layer.opacity = (float)values[0];
+	} else {
+		objc_setAssociatedObject(v, kNeonAffineKey, @[@(values[0]), @(values[1]), @(values[2]), @(values[3])],
+			OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		objc_setAssociatedObject(v, kNeonRotationKey, @(values[4]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		neonApplyTransform(v);
+	}
+	[CATransaction commit];
+}
+
+double niLayerRead(void *view, int32_t component) {
+	UIView *v = (__bridge UIView *)view;
+	if (component == 0) return v.layer.opacity;
+	if (component >= 1 && component <= 5) return neonTransformPart(v, component - 1);
+	fail("niLayerRead: layer component out of range");
+	return 0;
+}
+
+void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
+	const double *values, int64_t valueCount, double durationMs, double repeatCount,
+	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int64_t width = layerWidth(property);
+	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
+	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
+	CALayer *layer = ((__bridge UIView *)view).layer;
+	NSMutableArray<NSNumber *> *times = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
+	NSMutableArray *frames = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
+	for (int64_t i = 0; i < keyCount; i++) {
+		[times addObject:@(keyTimes[i])];
+		const double *at = values + i * width;
+		if (property == 0) {
+			[frames addObject:@(at[0])];
+		} else {
+			CGAffineTransform t = neonAffine(at[0], at[1], at[2], at[3], at[4]);
+			[frames addObject:[NSValue valueWithCATransform3D:CATransform3DMakeAffineTransform(t)]];
+		}
+	}
+	CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:property == 0 ? @"opacity" : @"transform"];
+	animation.keyTimes = times;
+	animation.values = frames;
+	animation.calculationMode = kCAAnimationLinear;
+	animation.duration = durationMs / 1000.0;
+	animation.repeatCount = (float)repeatCount;
+	animation.autoreverses = autoreverses != 0;
+	animation.speed = (float)speed;
+	animation.timeOffset = offsetMs / 1000.0;
+	animation.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] + startMs / 1000.0;
+	animation.fillMode = kCAFillModeBackwards;
+	animation.removedOnCompletion = YES;
+	[layer addAnimation:animation forKey:layerKey(property)];
+}
+
+void niLayerRemove(void *view, int32_t property) {
+	[((__bridge UIView *)view).layer removeAnimationForKey:layerKey(property)];
+}
+
+double niLayerPresented(void *view, int32_t component) {
+	CALayer *layer = ((__bridge UIView *)view).layer;
+	CALayer *shown = layer.presentationLayer ?: layer;
+	if (component == 0) return shown.opacity;
+	CATransform3D t = shown.transform;
+	double scaleX = hypot(t.m11, t.m12);
+	switch (component) {
+	case 1: return scaleX;
+	case 2: return scaleX > 0 ? (t.m11 * t.m22 - t.m12 * t.m21) / scaleX : 0;
+	case 3: return t.m41;
+	case 4: return t.m42;
+	case 5: return atan2(t.m12, t.m11) * 180.0 / M_PI;
+	}
+	fail("niLayerPresented: layer component out of range");
+	return 0;
 }
 
 // --- text ---
