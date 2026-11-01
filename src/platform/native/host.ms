@@ -266,6 +266,12 @@ function nativeNode(view: Ptr<void> | null, isText: boolean, isString: boolean):
 	return new NativeNode(view, isText, isString);
 }
 
+export function nativeViewOf(node: HostNode): Ptr<void> {
+	const view = (node as unknown as NativeNode).view;
+	if (view === null) { throw new Error("native host: a text run has no platform view"); }
+	return view as Ptr<void>;
+}
+
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
 
 export function layoutChildCount(this n: NativeNode): int32 { return tree.childrenOf(n).length as int32; }

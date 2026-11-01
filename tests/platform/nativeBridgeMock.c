@@ -1,6 +1,7 @@
 #include "../../src/platform/native/bridge.h"
 #include "../../src/platform/native/components.h"
 #include "../../src/platform/native/loop.h"
+#include "../../src/platform/native/layerMotion.h"
 #include "nativeBridgeMock.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -755,3 +756,133 @@ const char *nmDisplayList(int32_t tag) {
 	}
 	return "<no svg view>";
 }
+
+typedef struct LayerRecord {
+	struct LayerRecord *next;
+	MockView *view;
+	int property;
+	int live;
+	int64_t keyCount, valueCount;
+	double *keyTimes, *values;
+	double timing[6];
+} LayerRecord;
+
+static LayerRecord *g_layers;
+static int g_layerAnimates, g_layerRemoves;
+
+static LayerRecord *layerRecord(MockView *v, int property, int create) {
+	for (LayerRecord *r = g_layers; r; r = r->next) {
+		if (r->view == v && r->property == property) return r;
+	}
+	if (!create) return NULL;
+	LayerRecord *r = calloc(1, sizeof(LayerRecord));
+	r->view = v;
+	r->property = property;
+	r->next = g_layers;
+	g_layers = r;
+	return r;
+}
+
+static void requireProperty(int32_t property, int64_t keys, int64_t count, const char *op) {
+	int64_t width = property == 0 ? 1 : property == 1 ? 5 : -1;
+	if (width < 0 || count != keys * width) {
+		fprintf(stderr, "mock bridge: %s with property %d and %lld values\n", op, property, (long long)count);
+		abort();
+	}
+}
+
+void niLayerWrite(void *view, int32_t property, const double *values, int64_t count) {
+	MockView *v = live(view, "niLayerWrite");
+	requireProperty(property, 1, count, "niLayerWrite");
+	if (property == 0) { v->opacity = (float)values[0]; return; }
+	v->scaleX = (float)values[0];
+	v->scaleY = (float)values[1];
+	v->translateX = (float)values[2];
+	v->translateY = (float)values[3];
+	v->rotation = (float)values[4];
+	g_transformWrites++;
+}
+
+double niLayerRead(void *view, int32_t component) {
+	MockView *v = live(view, "niLayerRead");
+	switch (component) {
+	case 0: return v->opacity;
+	case 1: return v->scaleX;
+	case 2: return v->scaleY;
+	case 3: return v->translateX;
+	case 4: return v->translateY;
+	case 5: return v->rotation;
+	}
+	fprintf(stderr, "mock bridge: niLayerRead of component %d\n", component);
+	abort();
+}
+
+void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
+	const double *values, int64_t valueCount, double durationMs, double repeatCount,
+	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	MockView *v = live(view, "niLayerAnimate");
+	requireProperty(property, keyCount, valueCount, "niLayerAnimate");
+	if (keyCount < 2) {
+		fprintf(stderr, "mock bridge: niLayerAnimate with %lld keys\n", (long long)keyCount);
+		abort();
+	}
+	LayerRecord *r = layerRecord(v, property, 1);
+	free(r->keyTimes);
+	free(r->values);
+	r->keyTimes = malloc(sizeof(double) * (size_t)keyCount);
+	r->values = malloc(sizeof(double) * (size_t)valueCount);
+	memcpy(r->keyTimes, keyTimes, sizeof(double) * (size_t)keyCount);
+	memcpy(r->values, values, sizeof(double) * (size_t)valueCount);
+	r->keyCount = keyCount;
+	r->valueCount = valueCount;
+	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
+	memcpy(r->timing, timing, sizeof timing);
+	r->live = 1;
+	g_layerAnimates++;
+}
+
+void niLayerRemove(void *view, int32_t property) {
+	LayerRecord *r = layerRecord(live(view, "niLayerRemove"), property, 0);
+	if (r) r->live = 0;
+	g_layerRemoves++;
+}
+
+double niLayerPresented(void *view, int32_t component) { return niLayerRead(view, component); }
+
+static LayerRecord *taggedLayer(int32_t tag, int32_t property) {
+	LayerRecord *r = layerRecord(tagged(tag), property, 0);
+	if (!r) {
+		fprintf(stderr, "mock bridge: tag %d never animated property %d\n", tag, property);
+		abort();
+	}
+	return r;
+}
+
+static void requireIndex(int64_t index, int64_t count, const char *op) {
+	if (index >= 0 && index < count) return;
+	fprintf(stderr, "mock bridge: %s index %lld of %lld\n", op, (long long)index, (long long)count);
+	abort();
+}
+
+int32_t nmLayerAnimates(void) { return g_layerAnimates; }
+int32_t nmLayerRemoves(void) { return g_layerRemoves; }
+int32_t nmLayerLive(int32_t tag, int32_t property) {
+	LayerRecord *r = layerRecord(tagged(tag), property, 0);
+	return r && r->live;
+}
+int32_t nmLayerKeyCount(int32_t tag, int32_t property) { return (int32_t)taggedLayer(tag, property)->keyCount; }
+double nmLayerKeyTime(int32_t tag, int32_t property, int32_t index) {
+	LayerRecord *r = taggedLayer(tag, property);
+	requireIndex(index, r->keyCount, "nmLayerKeyTime");
+	return r->keyTimes[index];
+}
+double nmLayerValue(int32_t tag, int32_t property, int32_t index) {
+	LayerRecord *r = taggedLayer(tag, property);
+	requireIndex(index, r->valueCount, "nmLayerValue");
+	return r->values[index];
+}
+double nmLayerTiming(int32_t tag, int32_t property, int32_t field) {
+	requireIndex(field, 6, "nmLayerTiming");
+	return taggedLayer(tag, property)->timing[field];
+}
+float nmTranslateY(int32_t tag) { return tagged(tag)->translateY; }
