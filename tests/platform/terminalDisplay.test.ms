@@ -9,7 +9,7 @@ import { View, Text, Pressable } from "../../src/components/primitives";
 import { TerminalNode, createTerminalNode } from "../../src/platform/terminal/types";
 import { terminalHost, fireTerminalEvent } from "../../src/platform/terminal/host";
 import { paintTree } from "../../src/platform/terminal/paint";
-import { ManualFrames, useManualFrames } from "../../src/animation/index";
+import { ManualFrames, useManualFrames } from "../../src/animation/frame";
 import {
 	ScreenProps, NavigationContainer, createStackNavigator, createBottomTabNavigator,
 } from "../../src/navigation/index";

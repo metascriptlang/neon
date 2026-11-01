@@ -1,7 +1,7 @@
 import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { neonEvent } from "../../src/render/event";
-import { ManualFrames } from "../../src/animation/index";
+import { ManualFrames } from "../../src/animation/frame";
 import { Style } from "../../src/render/style";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith, fireTouch } from "../../src/render/host";
 import { View, Text } from "../../src/components/primitives";

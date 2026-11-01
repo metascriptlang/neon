@@ -2,7 +2,7 @@ import { MockNode } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { fireEvent } from "../../src/render/host";
 import { flush } from "../../src/core/runtime";
-import { ManualFrames, useManualFrames } from "../../src/animation/index";
+import { ManualFrames, useManualFrames } from "../../src/animation/frame";
 
 export const clock: ManualFrames = useManualFrames();
 

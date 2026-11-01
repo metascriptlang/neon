@@ -114,11 +114,14 @@ export {
 	NotificationHandler, NotificationRequest, NotificationRequestInput, NotificationResponse, NotificationTriggerInput,
 	Notifications,
 } from "./api/notifications";
-export {
-	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
-	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
-	LayoutAnimationPresets, Presence, EndResult,
-} from "./animation/index";
+export { Easing, EasingFunction } from "pulse/src/easing";
+export { AnimatedValue } from "pulse/src/value";
+export { AnimatedValueXY } from "pulse/src/valueXY";
+export { CompositeAnimation } from "pulse/src/composite";
+export { useAnimatedValue } from "./motion/neon";
+export { animatedEvent, createAnimatedValue, useValueSignal } from "./motion/neonValues";
+export { LayoutAnimation, LayoutAnimationPresets } from "./motion/layoutAnimation";
+export { Presence } from "./motion/presence";
 
 export * from "./navigation/index";
 export { lazy } from "./macros/lazy";
