@@ -71,6 +71,21 @@ function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase 
 	};
 }
 
+function absent<T>(value: T | null | undefined): boolean {
+	return value === null || value === undefined;
+}
+
+function animUnparsed(anim: LayoutAnimationAnim | null | undefined, withProperty: boolean): boolean {
+	if (absent(anim)) { return false; }
+	const a = anim as LayoutAnimationAnim;
+	return absent(a.type) || (withProperty && absent(a.property));
+}
+
+function unparsed(config: LayoutAnimationConfig): boolean {
+	return animUnparsed(config.create, true) || animUnparsed(config.update, false) ||
+		animUnparsed(config.delete, true);
+}
+
 export function layoutPlan(config: LayoutAnimationConfig): LayoutAnimationPlan {
 	return { update: phase(config.update, config.duration), create: phase(config.create, config.duration) };
 }
@@ -104,8 +119,12 @@ export class LayoutAnimation {
 		onAnimationDidEnd: (() => void) | null = null,
 		onAnimationDidFail: (() => void) | null = null,
 	): void {
-		pending = config;
-		when (js && !server) { animateDomLayout(layoutPlan(config)); }
+		if (unparsed(config)) {
+			if (onAnimationDidFail !== null) { (onAnimationDidFail as () => void)(); }
+		} else {
+			pending = config;
+			when (js && !server) { animateDomLayout(layoutPlan(config)); }
+		}
 		if (onAnimationDidEnd === null) { return; }
 		const done = onAnimationDidEnd as () => void;
 		const due = frameNow() + config.duration + 17;
