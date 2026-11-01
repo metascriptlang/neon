@@ -1,5 +1,4 @@
-// Parking on the void host. tests/platform/void.test.ms does not compile while its
-// "parseFlexStyle maps numeric + enum keys" cell is parked (BUGS.md), so these cells live here.
+// Parking on the void host.
 
 import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";

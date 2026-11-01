@@ -72,17 +72,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   8 bytes under web-train-3. 131072 bytes of it are the actor pid table in an app with no actor. The
   budgets stay until the compiler card `2026-10-26-terminal-app-links-actor-pid-table-and-grew-200kb.md`
   is answered, since terminal size is the deliverable.
-- **OPEN 2026-10-26 — `tests/ssrParity/run.sh` C server aborts.** `pages.server` built with `-d:server`
-  on C panics `load of value 112, which is not valid for type 'MS_BOOL'` in `msAsyncStepAs`
-  (`runtime/promise/dispatchFull.c:1299`), msc 32b8ce353, on main and on web-train-3 alike; the JS
-  server lane of the same pages passes. Reduced 2026-10-26: `serve()`'s `finally` resumed after an
-  `await` calls `Router.dispose()` through a temporary assigned only on the early-return path; card
-  `2026-10-19-c-async-finally-after-a-return-reads-a-wild-pointer.md` (second sighting).
-- **OPEN 2026-10-26 — `tests/core/store.test.ms` segfaults on C.** `msc test tests/core/store.test.ms`
-  ends `test binary terminated by signal 11` on msc 32b8ce353, on main ea4a6977 and on web-train-3
-  alike; it passed on the msc before. JS not affected. Reduced 2026-10-26: the cycle collector frees a live
-  `Computation` because a generic subclass built in a generic method traces its inherited fields twice; card
-  `2026-10-26-a-generic-subclass-built-in-a-generic-method-traces-its-inherited-fields-twice-and-orc-frees-live-objects.md`.
 
 - **OPEN 2026-10-27 — the iPhone booking form keeps its check-in date.** `ControlsUITests.testBookingForm`
   (`IOS_DEVICE=<udid> tests/ios/iphone.sh ControlsUITests:controls`, iPhone 13 Pro, iOS 27.0.1) fails
@@ -322,14 +311,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `bash tests/ios/run.sh` stops at `build-flatlist` on it (`examples/components/bigList.ms:117`, msc
   `807d96ef7`, 2026-10-20), after the counter and list apps generate and build.
   Parked at those two files.
-
-- **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
-  `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
-  value is refused against it on C and JS; with a written target type the `===` against a number then
-  fails in clang. Card and the five-file matrix:
-  `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
-  Parked at `tests/platform/void.test.ms`, the "parseFlexStyle maps numeric + enum keys" cell; the file
-  fails to compile on that cell alone, so `msc test tests/platform/void.test.ms` stays red until the card lands.
 
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
