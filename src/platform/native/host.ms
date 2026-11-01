@@ -1728,7 +1728,17 @@ function closeRoot(r: NativeRoot): void {
 	settlePress();
 }
 
+function declaredStatusBar(): void {
+	when (ios) {
+		const view = niContainerView();
+		when (statusBarLight) { niSetProp(view, "statusBarStyle", "light-content"); }
+		when (statusBarDark) { niSetProp(view, "statusBarStyle", "dark-content"); }
+		when (statusBarHidden) { niSetProp(view, "statusBarHidden", "true"); }
+	}
+}
+
 function mountApp(): void {
+	declaredStatusBar();
 	mountInto(mainRoot, createNativeHost());
 	when (hcr || testBuild) {
 		setDevDriver({
