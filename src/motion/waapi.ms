@@ -672,7 +672,7 @@ when (js) {
 		insetStart: float64,
 		insetEnd: float64,
 	): AnimationTimeline from
-		"((subject, axis, s, e) => new ViewTimeline({ subject, axis, inset: [CSS.px(s), CSS.px(e)] }))(#, #, #, #)";
+		"((subject, axis, s, e) => new ViewTimeline({ subject, axis, inset: s + 'px ' + e + 'px' }))(#, #, #, #)";
 	extern function nearestScroller(element: HTMLElement): HTMLElement | null from
 		"(el => { for (let p = el.parentElement; p !== null; p = p.parentElement) { const s = getComputedStyle(p); if (![s.overflowX, s.overflowY].every((o) => o === 'visible' || o === 'clip')) { return p; } } return document.scrollingElement; })(#)";
 	extern function verticalAxis(element: HTMLElement, axis: string): boolean from

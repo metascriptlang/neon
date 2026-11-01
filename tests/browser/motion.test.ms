@@ -1,4 +1,10 @@
-import { ScrollAxis, ScrollSource, scrollSource } from "pulse/src/scroll";
+import {
+	ScrollAxis,
+	ScrollSource,
+	ViewRange,
+	scrollSource,
+	viewSource,
+} from "pulse/src/scroll";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
@@ -24,6 +30,7 @@ import {
 	browserMotionPlayer,
 	elementScrollSource,
 	elementValue,
+	elementViewSubject,
 	frameClock,
 	motionElements,
 } from "../../src/motion/waapi";
@@ -80,6 +87,13 @@ extern function timelinesOf(el: HTMLElement): string from
 	"(el => el.getAnimations().map((a) => a.timeline.constructor.name).join())(#)";
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
+extern function hideTypedOmFactories(): () => void from
+	"(() => { const px = CSS.px; delete CSS.px; return () => { CSS.px = px; }; })()";
+extern function renderedFrames(): Promise<void> from
+	"new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))";
+extern function makeScrollBox(style: string): HTMLElement from
+	"(st => { const s = document.createElement('div'); s.style.cssText = 'width: 50px; height: 50px; overflow: scroll; ' + st; const c = document.createElement('div'); c.style.cssText = 'position: relative; width: 150px; height: 150px'; const subject = document.createElement('div'); subject.style.cssText = 'position: absolute; inset-inline-start: 70px; inset-block-start: 70px; width: 10px; height: 10px'; c.append(subject); s.append(c); document.body.append(s); return s; })(#)";
+extern function boxSubject(scroller: HTMLElement): HTMLElement from "(s => s.firstChild.firstChild)(#)";
 
 function browserPlayer(
 	doc: MotionDocument,
@@ -432,6 +446,34 @@ test "a scroll source no element backs runs the whole player on the evaluator" {
 	await sleepAsync(60);
 	assert el.getAnimations().length === 0 && el.style.translate === "25px", el.style.translate;
 	player.dispose();
+	el.remove();
+}
+
+test "a view player hands its inset to ViewTimeline where CSS Typed OM has no px factory" {
+	const node = mount();
+	const el = dom(node);
+	const scroller = makeScrollBox("");
+	const scrolled = scroller as unknown as HostNode;
+	const restore = hideTypedOmFactories();
+	let message = "";
+	let timelines = "";
+	try {
+		const player = fadeAndSlide(node, {
+			...motionOptions(frameClock()),
+			source: viewSource(
+				elementScrollSource(scrolled),
+				elementViewSubject(boxSubject(scroller) as unknown as HostNode, scrolled),
+				ViewRange.Cover,
+				{ start: 10, end: 5 },
+			),
+		});
+		await renderedFrames();
+		timelines = timelinesOf(el);
+		player.dispose();
+	} catch (e) { message = e.message; }
+	restore();
+	assert message === "" && timelines === "ViewTimeline,ViewTimeline", message + timelines;
+	scroller.remove();
 	el.remove();
 }
 
