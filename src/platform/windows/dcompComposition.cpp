@@ -61,7 +61,8 @@ public:
 
 private:
 	void markDirty();
-	ComPtr<IDCompositionAnimation> animation(const Curve &curve);
+	LARGE_INTEGER compositionNow();
+	ComPtr<IDCompositionAnimation> animation(const Curve &curve, LARGE_INTEGER begin);
 
 	DCompContext *context;
 	ComPtr<IDCompositionVisual2> visual;
@@ -147,9 +148,16 @@ void DCompVisual::TransformMatrix(const float m[6]) {
 	must(visual->SetTransform(matrix), "SetTransform");
 }
 
-ComPtr<IDCompositionAnimation> DCompVisual::animation(const Curve &curve) {
+LARGE_INTEGER DCompVisual::compositionNow() {
+	DCOMPOSITION_FRAME_STATISTICS statistics = {};
+	must(context->device->GetFrameStatistics(&statistics), "GetFrameStatistics");
+	return statistics.currentTime;
+}
+
+ComPtr<IDCompositionAnimation> DCompVisual::animation(const Curve &curve, LARGE_INTEGER begin) {
 	ComPtr<IDCompositionAnimation> out;
 	must(context->device->CreateAnimation(&out), "CreateAnimation");
+	must(out->SetAbsoluteBeginTime(begin), "SetAbsoluteBeginTime");
 	for (const CurveSegment &segment : curve.segments) {
 		must(out->AddCubic(segment.begin, segment.value, segment.slope, 0.0f, 0.0f), "AddCubic");
 	}
@@ -166,15 +174,16 @@ void DCompVisual::AnimatedOpacity(const Curve &curve) {
 		must(context->device->CreateEffectGroup(&effect), "CreateEffectGroup");
 		must(visual->SetEffect(effect.Get()), "SetEffect");
 	}
-	must(effect->SetOpacity(animation(curve).Get()), "SetOpacity");
+	must(effect->SetOpacity(animation(curve, compositionNow()).Get()), "SetOpacity");
 }
 
 void DCompVisual::AnimatedTransform(const Curve curves[6]) {
 	static const int rows[6] = {0, 0, 1, 1, 2, 2}, columns[6] = {0, 1, 0, 1, 0, 1};
 	ComPtr<IDCompositionMatrixTransform> transform;
 	must(context->device->CreateMatrixTransform(&transform), "CreateMatrixTransform");
+	LARGE_INTEGER begin = compositionNow();
 	for (int i = 0; i < 6; i++) {
-		must(transform->SetMatrixElement(rows[i], columns[i], animation(curves[i]).Get()), "SetMatrixElement");
+		must(transform->SetMatrixElement(rows[i], columns[i], animation(curves[i], begin).Get()), "SetMatrixElement");
 	}
 	must(visual->SetTransform(transform.Get()), "SetTransform");
 }

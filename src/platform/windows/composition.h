@@ -7,7 +7,7 @@ struct Color {
 };
 
 // One value over time, as DirectComposition plays it: each segment holds value + slope * (t - begin)
-// from its begin (seconds after the animation is applied) until the next one; then it either repeats
+// from its begin (seconds after the Animated call that hands it over) until the next one; then it either repeats
 // from repeatBegin for repeatSeconds, or holds endValue from endSeconds.
 struct CurveSegment {
 	double begin;
