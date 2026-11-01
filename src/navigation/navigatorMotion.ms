@@ -1,6 +1,7 @@
 import { Accessor, Signal, untrack } from "../core/signal";
 import { createMemo } from "../core/memo";
 import { createRenderEffect } from "../core/effect";
+import { onCleanup } from "../core/cleanup";
 import { Cleanup } from "../core/types";
 import { Easing } from "pulse/src/easing";
 import { AnimatedValue, timing } from "pulse/src/value";
@@ -207,6 +208,11 @@ export function createNavigatorMotion<P>(
 	stacked: boolean,
 ): NavigatorMotion<P> {
 	const motion = new NavigatorMotion<P>(core, stacked);
+	onCleanup((): void => {
+		for (const screen of motion.motions.values()) {
+			if (!screen.animated.disposed) { screen.animated.dispose(); }
+		}
+	});
 	createRenderEffect<MotionPlan<P>>(
 		(prev: MotionPlan<P> | null): MotionPlan<P> => motion.plan(),
 		(plan: MotionPlan<P>, prev: MotionPlan<P> | null): Cleanup | null => {

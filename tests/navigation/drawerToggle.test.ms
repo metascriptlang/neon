@@ -9,7 +9,8 @@ import {
 	createDrawerNavigator,
 	createNavigationContainerRef,
 } from "../../src/navigation/index";
-import { findLabel } from "./navHarness";
+import { framePending } from "../../src/animation/frame";
+import { clock, findLabel } from "./navHarness";
 
 interface NavParams {
 	Home: null;
@@ -49,4 +50,22 @@ test "two drawer toggles in one flush leave the drawer closed" {
 	flush();
 	assert findLabel(root, "Close navigation menu") !== null, "a single toggle opens the drawer";
 	dispose();
+}
+
+test "a drawer unmounted while it slides leaves no frame pending" {
+	leaving = null;
+	const ref = createNavigationContainerRef();
+	const root = mockNode("root");
+	const dispose = render(<NavigationContainer ref={ref}>
+		<Drawer.Navigator screenOptions={{ lazy: false }}>
+			<Drawer.Screen name="Home" component={Remembered} />
+			<Drawer.Screen name="Other" component={Plain} />
+		</Drawer.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	(leaving as Navigation<NavParams>).toggleDrawer();
+	flush();
+	clock.step(2);
+	assert framePending(), "the drawer slides";
+	dispose();
+	assert !framePending(), "the drawer's motion was cancelled with its navigator";
 }

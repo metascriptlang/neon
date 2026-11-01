@@ -10,7 +10,8 @@ import {
 	createNavigationContainerRef,
 	createStackNavigator,
 } from "../../src/navigation/index";
-import { settle } from "./navHarness";
+import { framePending } from "../../src/animation/frame";
+import { clock, settle } from "./navHarness";
 
 interface NavParams {
 	Home: null;
@@ -105,4 +106,21 @@ test "a screen popped to the top with an exit animation is built once" {
 	assert ref.currentPath() === "Home", ref.currentPath();
 	assert bodies === 1 && cleanups === 1, bodies.toString() + "/" + cleanups.toString();
 	dispose();
+}
+
+test "a navigator unmounted mid-transition leaves no frame pending" {
+	const ref = createNavigationContainerRef();
+	const root = mockNode("root");
+	const dispose = render(<NavigationContainer ref={ref}>
+		<Stack.Navigator>
+			<Stack.Screen name="Home" component={Plain} />
+			<Stack.Screen name="Detail" component={Plain} />
+		</Stack.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	ref.navigate("Detail");
+	flush();
+	clock.step(2);
+	assert framePending(), "the push animates";
+	dispose();
+	assert !framePending(), "the screen's motion was cancelled with its navigator";
 }

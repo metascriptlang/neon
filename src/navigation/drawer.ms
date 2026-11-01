@@ -5,7 +5,7 @@ import { Cleanup } from "../core/types";
 import { QueryParams } from "./queryParams";
 import { Easing } from "pulse/src/easing";
 import { AnimatedValue, timing } from "pulse/src/value";
-import { createAnimatedValue } from "../motion/neonValues";
+import { useAnimatedValue } from "../motion/neon";
 import {
 	GestureResponderHandlers,
 	PanResponder,
@@ -86,7 +86,7 @@ class DrawerMotion {
 		swipe: Accessor<boolean>,
 	) {
 		const start = untrack((): boolean => open());
-		const [progress, animated] = createAnimatedValue(start ? 1 : 0);
+		const [progress, animated] = useAnimatedValue(start ? 1 : 0);
 		this.progress = progress;
 		this.animated = animated;
 		const [shown, writeShown] = createSignal<boolean>(start);
