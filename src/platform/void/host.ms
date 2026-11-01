@@ -19,7 +19,7 @@ import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/voi
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
 import { Style, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
@@ -210,6 +210,7 @@ export function freeVoidLayoutTree(tree: VoidTree, n: VoidNode): void {
 
 export function layoutGetYg(this l: VoidLayout): Ptr<YGNode> | null { return l.node.yg; }
 export function layoutSetYg(this l: VoidLayout, yg: Ptr<YGNode> | null): void { l.node.yg = yg; }
+export function layoutGetMeasure(this l: VoidLayout): LayoutMeasure | null { return null; }
 export function layoutSetFrame(this l: VoidLayout, x: float32, y: float32, w: float32, h: float32): void {
 	const n = l.node;
 	n.ref.setPosition(x, y).setSize(w, h);
