@@ -1549,8 +1549,19 @@ when (js) {
 		startTime: float64;
 	}
 
-	function timingEasing(easing: EasingFunction, durationMs: float64): string {
-		return easing === Easing.linear ? "linear" : cssLinear(sampleEasing(easing, durationMs));
+	extern function linearEasingProbe(): boolean from
+		"(() => { try { document.createElement('div').animate({ opacity: 0 }, { easing: 'linear(0, 1)' }); } catch (e) { return false; } return true; })()";
+
+	let linearEasingSupport: boolean | null = null;
+
+	function supportsLinearEasing(): boolean {
+		if (linearEasingSupport === null) { linearEasingSupport = linearEasingProbe(); }
+		return linearEasingSupport as boolean;
+	}
+
+	function timingEasing(easing: EasingFunction, durationMs: float64): string | null {
+		if (easing === Easing.linear) { return "linear"; }
+		return supportsLinearEasing() ? cssLinear(sampleEasing(easing, durationMs)) : null;
 	}
 
 	export class ElementValue extends AnimatedValue {
@@ -1622,7 +1633,7 @@ when (js) {
 			});
 			const element = this.element();
 			if (!super.isAnimating() || element === null) { return; }
-			if (spec.kind === AnimationKind.Spring) {
+			if (spec.kind === AnimationKind.Spring && supportsLinearEasing()) {
 				const curve = sampleSpring(
 					createSpring(spec.spring, from, spec.to, carried + spec.velocityPerSecond),
 				);
@@ -1635,8 +1646,9 @@ when (js) {
 				const continues = previous !== null && previous.kind === AnimationKind.Timing &&
 					previous.to === spec.to;
 				const origin = continues ? handed : this.timingOrigin(spec);
-				if (origin !== null) {
-					this.handOver(element, origin, timingEasing(spec.easing, spec.durationMs), spec.durationMs);
+				const easing = timingEasing(spec.easing, spec.durationMs);
+				if (origin !== null && easing !== null) {
+					this.handOver(element, origin, easing, spec.durationMs);
 					this.handedTiming = origin;
 				}
 			}
