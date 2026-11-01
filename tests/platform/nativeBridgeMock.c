@@ -765,10 +765,14 @@ typedef struct LayerRecord {
 	int64_t keyCount, valueCount;
 	double *keyTimes, *values;
 	double timing[6];
+	double beginMs;
 } LayerRecord;
 
 static LayerRecord *g_layers;
 static int g_layerAnimates, g_layerRemoves;
+static double g_layerNowMs;
+
+void nmLayerSetNow(double ms) { g_layerNowMs = ms; }
 
 static LayerRecord *layerRecord(MockView *v, int property, int create) {
 	for (LayerRecord *r = g_layers; r; r = r->next) {
@@ -837,6 +841,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	r->valueCount = valueCount;
 	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
 	memcpy(r->timing, timing, sizeof timing);
+	r->beginMs = g_layerNowMs;
 	r->live = 1;
 	g_layerAnimates++;
 }
@@ -847,7 +852,30 @@ void niLayerRemove(void *view, int32_t property) {
 	g_layerRemoves++;
 }
 
-double niLayerPresented(void *view, int32_t component) { return niLayerRead(view, component); }
+// Core Animation's presentation of the bridge's CAKeyframeAnimation (macos/bridge.m niLayerAnimate):
+// linear keys, fillMode backwards, removedOnCompletion, at the clock nmLayerSetNow last set.
+double niLayerPresented(void *view, int32_t component) {
+	int property = component == 0 ? 0 : 1;
+	LayerRecord *r = layerRecord(live(view, "niLayerPresented"), property, 0);
+	if (!r || !r->live) return niLayerRead(view, component);
+	double duration = r->timing[0], repeat = r->timing[1], startMs = r->timing[3];
+	double offset = r->timing[4], speed = r->timing[5];
+	double period = r->timing[2] != 0 ? duration * 2 : duration;
+	double elapsed = g_layerNowMs - r->beginMs - startMs;
+	double active = elapsed < 0 ? offset : elapsed * speed + offset;
+	if (active >= repeat * period) return niLayerRead(view, component);
+	double within = active - period * (double)(int64_t)(active / period);
+	double progress = (within > duration ? period - within : within) / duration;
+	int64_t right = 1;
+	while (right < r->keyCount - 1 && r->keyTimes[right] < progress) right++;
+	double span = r->keyTimes[right] - r->keyTimes[right - 1];
+	double t = span > 0 ? (progress - r->keyTimes[right - 1]) / span : 1;
+	t = t < 0 ? 0 : t > 1 ? 1 : t;
+	int64_t width = property == 0 ? 1 : 5;
+	int64_t index = component == 0 ? 0 : component - 1;
+	double a = r->values[(right - 1) * width + index], b = r->values[right * width + index];
+	return a + (b - a) * t;
+}
 
 static LayerRecord *taggedLayer(int32_t tag, int32_t property) {
 	LayerRecord *r = layerRecord(tagged(tag), property, 0);

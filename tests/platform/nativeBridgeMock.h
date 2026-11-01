@@ -73,4 +73,5 @@ int32_t nmLayerKeyCount(int32_t tag, int32_t property);
 double nmLayerKeyTime(int32_t tag, int32_t property, int32_t index);
 double nmLayerValue(int32_t tag, int32_t property, int32_t index);
 double nmLayerTiming(int32_t tag, int32_t property, int32_t field);
+void nmLayerSetNow(double ms);
 float nmTranslateY(int32_t tag);
