@@ -28,8 +28,9 @@ import {
 } from "../../src/motion/waapi";
 import { MotionPolicy } from "pulse/src/policy";
 import { MotionShowcase } from "../../examples/motionShowcase/showcase";
-import { decay, spring } from "pulse/src/value";
+import { decay, spring, timing } from "pulse/src/value";
 import { decayConfig } from "pulse/src/decay";
+import { Easing } from "pulse/src/easing";
 
 extern class Animation {}
 
@@ -594,6 +595,32 @@ test "a retarget samples position and velocity, cancels and starts a new sampled
 	value.dispose();
 	assert el.getAnimations().length === 0;
 	el.remove();
+}
+
+test "an element-bound timing runs as one WAAPI animation, linear by keyword and any other easing as a sampled linear()" {
+	const node = mount();
+	const el = dom(node);
+	const value = boxValue(0, new MotionPolicy(), node, "translateX");
+	value.animate(timing(100, { duration: 400, easing: Easing.linear }));
+	assert value.handedOver && firstEasing(el) === "linear", firstEasing(el);
+	await sleepAsync(150);
+	assert near(value.get(), translateX(el), 0.5), value.get().toString() + " vs " + computed(el, "translate");
+	value.animate(timing(100, { duration: 800, easing: Easing.linear }));
+	assert value.handedOver && near(value.get(), translateX(el), 0.5),
+		"a timing to the same end keeps its start: " + value.get().toString() + " vs " + computed(el, "translate");
+	const other = mount();
+	const eased = boxValue(0, new MotionPolicy(), other, "opacity");
+	eased.animate(timing(1, { duration: 300 }));
+	assert eased.handedOver && firstEasing(dom(other)).startsWith("linear("), firstEasing(dom(other));
+	await sleepAsync(120);
+	assert near(eased.get(), opacity(dom(other)), 0.01), eased.get().toString() + " vs " + computed(dom(other), "opacity");
+	await sleepAsync(900);
+	assert !value.handedOver && el.style.translate === "100px", el.style.translate;
+	assert !eased.handedOver && dom(other).style.opacity === "1", dom(other).style.opacity;
+	value.dispose();
+	eased.dispose();
+	el.remove();
+	dom(other).remove();
 }
 
 test "a spring that starts on its target, reduced motion and decay hand nothing to WAAPI" {

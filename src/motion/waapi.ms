@@ -618,9 +618,10 @@ when (js) {
 	import { numberValue } from "pulse/src/document";
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
 	import { MotionPolicy } from "pulse/src/policy";
-	import { cssLinear, sampleSpring } from "pulse/src/progress";
+	import { Easing, EasingFunction } from "pulse/src/easing";
+	import { cssLinear, sampleEasing, sampleSpring } from "pulse/src/progress";
 	import { TimeSourceKind } from "pulse/src/scroll";
-	import { SpringSimulation, createSpring } from "pulse/src/spring";
+	import { createSpring } from "pulse/src/spring";
 	import { Composition, MotionTarget } from "pulse/src/target";
 	import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
 
@@ -1331,9 +1332,22 @@ when (js) {
 		}
 	}
 
+	struct HandedTiming {
+		from: float64;
+		to: float64;
+		startTime: float64;
+	}
+
+	function timingEasing(easing: EasingFunction, durationMs: float64): string {
+		return easing === Easing.linear ? "linear" : cssLinear(sampleEasing(easing, durationMs));
+	}
+
 	export class ElementValue extends AnimatedValue {
 		private parts: ValueParts;
 		private animation: Animation | null = null;
+		private handedTiming: HandedTiming | null = null;
+		private lastSpec: AnimationSpec | null = null;
+		private observers: int32 = 0;
 		private entry: TargetEntry | null;
 
 		constructor(parts: ValueParts) {
@@ -1341,14 +1355,28 @@ when (js) {
 			this.parts = parts;
 			const target = parts.target;
 			this.entry = target === null ? null : entryOf(target);
-			this.subscribe((next: float64): void => {
+			super.subscribe((next: float64): void => {
 				const element = this.element();
-				if (element !== null) { this.paint(element, next); }
+				if (element !== null && this.animation === null) { this.paint(element, next); }
 			});
 		}
 
 		get handedOver(): boolean {
 			return this.animation !== null;
+		}
+
+		subscribe(callback: (value: float64) => void): () => void {
+			const unsubscribe = super.subscribe(callback);
+			this.observers += 1;
+			this.parts.wake.undefer();
+			this.parts.wake.reschedule();
+			let subscribed = true;
+			return (): void => {
+				if (!subscribed) { return; }
+				subscribed = false;
+				this.observers -= 1;
+				unsubscribe();
+			};
 		}
 
 		get(): float64 {
@@ -1373,24 +1401,44 @@ when (js) {
 			this.parts.wake.flush();
 			const from = super.get();
 			const carried = super.velocity();
+			const previous = super.isAnimating() ? this.lastSpec : null;
+			const handed = this.handedTiming;
+			this.lastSpec = spec;
 			this.settle(false);
 			super.animate(spec, (finished: boolean): void => {
 				this.settle(false);
 				if (onEnd !== null) { onEnd(finished); }
 			});
 			const element = this.element();
-			if (spec.kind === AnimationKind.Spring && super.isAnimating() &&
-				element !== null) {
-				this.handOver(
-					element,
-					createSpring(
-						spec.spring,
-						from,
-						spec.to,
-						carried + spec.velocityPerSecond,
-					),
+			if (!super.isAnimating() || element === null) { return; }
+			if (spec.kind === AnimationKind.Spring) {
+				const curve = sampleSpring(
+					createSpring(spec.spring, from, spec.to, carried + spec.velocityPerSecond),
 				);
+				this.handOver(element, {
+					from,
+					to: spec.to,
+					startTime: this.parts.wake.now(),
+				}, cssLinear(curve), curve.durationMs);
+			} else if (spec.kind === AnimationKind.Timing) {
+				const continues = previous !== null && previous.kind === AnimationKind.Timing &&
+					previous.to === spec.to;
+				const origin = continues ? handed : this.timingOrigin(spec);
+				if (origin !== null) {
+					this.handOver(element, origin, timingEasing(spec.easing, spec.durationMs), spec.durationMs);
+					this.handedTiming = origin;
+				}
 			}
+		}
+
+		private timingOrigin(spec: AnimationSpec): HandedTiming | null {
+			const eased = spec.easing(0);
+			if (eased === 1) { return null; }
+			return {
+				from: (super.get() - spec.to * eased) / (1 - eased),
+				to: spec.to,
+				startTime: this.parts.wake.now(),
+			};
 		}
 
 		set(value: float64): void {
@@ -1416,6 +1464,7 @@ when (js) {
 			const animation = this.animation;
 			if (animation === null) { return; }
 			this.animation = null;
+			this.handedTiming = null;
 			this.parts.wake.undefer();
 			const entry = this.entry;
 			if (entry !== null && entry.holder === this) { entry.holder = null; }
@@ -1431,6 +1480,7 @@ when (js) {
 			} finally {
 				animation.cancel();
 			}
+			if (!commit) { this.paint(this.parts.element as HTMLElement, super.get()); }
 		}
 
 		private element(): HTMLElement | null {
@@ -1449,29 +1499,35 @@ when (js) {
 			writeStyle(element, style.css, styleValue(style, numberValue(value)));
 		}
 
-		private handOver(element: HTMLElement, spring: SpringSimulation): void {
-			const curve = sampleSpring(spring);
+		private handOver(
+			element: HTMLElement,
+			origin: HandedTiming,
+			easing: string,
+			durationMs: float64,
+		): void {
 			const style = this.parts.style;
 			const animation = animateStyle(
 				element,
 				style.css,
 				[0, 1],
 				[
-					styleValue(style, numberValue(spring.from)),
-					styleValue(style, numberValue(spring.to)),
+					styleValue(style, numberValue(origin.from)),
+					styleValue(style, numberValue(origin.to)),
 				],
-				[cssLinear(curve), "linear"],
-				curve.durationMs,
+				[easing, "linear"],
+				durationMs,
 				0,
 				1,
 				"normal",
 				"both",
 			);
-			animation.startTime = this.parts.wake.now();
+			animation.startTime = origin.startTime;
 			this.animation = animation;
 			const entry = this.entry;
 			if (entry !== null) { entry.holder = this; }
-			this.parts.wake.defer(curve.durationMs);
+			if (this.observers === 0) {
+				this.parts.wake.defer(origin.startTime + durationMs - this.parts.wake.now());
+			}
 		}
 	}
 

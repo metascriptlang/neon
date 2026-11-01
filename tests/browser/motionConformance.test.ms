@@ -56,20 +56,8 @@ extern function removeVirtualClock(clock: VirtualClock): void from
 const REPEAT_DELAY: string[] = ["time.repeat"];
 // neon.ms useAnimatedValue: a value that is not Replace runs through signals.
 const NOT_REPLACE: string[] = ["contention.blend", "contention.none"];
-// waapi.ms ElementValue.animate hands over a spring only; timing, decay, sequence and a reduced
-// spring stay on Pulse.
-const UNHANDED_VALUES: string[] = [
-	"retarget.timing",
-	"contention.replace",
-	"reducedMotion",
-	"decay",
-	"sequence",
-	"composite.parallel",
-	"composite.parallelStop",
-	"composite.staggered",
-	"composite.loop",
-	"event",
-];
+// waapi.ms ElementValue.animate hands over a spring or a timing; decay and a sequence stay on Pulse.
+const UNHANDED_VALUES: string[] = ["decay", "sequence"];
 // The reads are derived values Pulse computes; WAAPI would mix a colour in sRGB.
 const DERIVED_READS: string[] = ["derived", "derived.color"];
 
