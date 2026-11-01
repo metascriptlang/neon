@@ -136,7 +136,7 @@ function readNumber(ref c: PathCursor): Result<float64, PathError> {
 			while (isDigit(codeAt(c))) { c.at += 1; }
 		}
 	}
-	const value: float64 = parseFloat(c.text.substring(start, c.at));
+	const value = parseFloat(c.text.substring(start, c.at));
 	skipSeparator(c);
 	return Result.ok(value);
 }
