@@ -192,3 +192,29 @@ test "a lone useFrame within Void asks its area for a frame every tick and none 
 		assert frameRequests(outer) === asleep;
 	} finally { dispose(); setFrameDriver(null); }
 }
+
+function wakingInTick(log: float64[]): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		let wake: (() => void) | null = null;
+		wake = useVoidClock(
+			(): boolean => true,
+			(seconds: float64): void => { log.push(seconds); (wake as () => void)(); },
+		);
+		(wake as () => void)();
+	};
+}
+
+test "a wake from inside a tick schedules the next tick once" {
+	const frames = useManualFrames();
+	const log: float64[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		{wakingInTick(log)}
+	</Void>), mockHost(), root as unknown as HostNode);
+	try {
+		frames.advance(16);
+		frames.advance(16);
+		frames.advance(16);
+		assert log.length === 3, "ticks: " + log.length.toString();
+	} finally { dispose(); setFrameDriver(null); }
+}

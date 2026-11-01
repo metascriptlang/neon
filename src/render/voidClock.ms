@@ -15,6 +15,7 @@ interface AreaClock {
 	hub: AreaHub | null;
 	subscribers: ClockSubscriber[];
 	pending: int32;
+	ticking: boolean;
 	generation: int32;
 	last: float64;
 }
@@ -39,6 +40,7 @@ function schedule(clock: AreaClock): void {
 		// cancelFrame cannot remove callbacks already copied into the due batch.
 		if (token !== clock.generation) { return; }
 		clock.pending = 0;
+		clock.ticking = true;
 		const seconds = Math.max(0.0, now - clock.last) / 1000.0;
 		clock.last = now;
 		let advanced = false;
@@ -48,6 +50,7 @@ function schedule(clock: AreaClock): void {
 				advanced = true;
 			}
 		}
+		clock.ticking = false;
 		const hub = clock.hub;
 		if (advanced && hub !== null) { hub.handle.requestFrame(); }
 		if (anyActive(clock)) { schedule(clock); }
@@ -55,6 +58,7 @@ function schedule(clock: AreaClock): void {
 }
 
 function wake(clock: AreaClock): void {
+	if (clock.ticking) { return; }
 	if (!anyActive(clock)) { cancel(clock); return; }
 	if (clock.pending !== 0 && frameRequested(clock.pending)) { return; }
 	clock.last = frameNow();
@@ -65,7 +69,7 @@ function clockOf(hub: AreaHub | null): AreaClock {
 	for (const clock of clocks) {
 		if (clock.hub === hub) { return clock; }
 	}
-	const clock: AreaClock = { hub, subscribers: [], pending: 0, generation: 0, last: 0.0 };
+	const clock: AreaClock = { hub, subscribers: [], pending: 0, ticking: false, generation: 0, last: 0.0 };
 	clocks.push(clock);
 	return clock;
 }
