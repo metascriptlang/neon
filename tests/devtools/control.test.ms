@@ -6,7 +6,7 @@ import { flush } from "../../src/core/runtime";
 import { refreshComponent0, refreshBoundary0, refreshModule, refreshState, refreshReset } from "../../src/render/refresh";
 import { DevNode, setDevDriver } from "../../src/devtools/driver";
 import { devEvent, devEventLine } from "../../src/devtools/events";
-import { ControlClient, ControlSession, CONTROL_METHODS, MAX_REQUEST_LINE, feedClient, handleRequest, closeSession } from "../../src/devtools/control";
+import { ControlClient, ControlSession, CONTROL_METHODS, MAX_REQUEST_LINE, feedBytes, feedClient, handleRequest, closeSession } from "../../src/devtools/control";
 import { jsonString } from "std/serialize/json/builder";
 
 function session(): string[] {
@@ -139,7 +139,7 @@ test "control: components lists mounted boundaries with their live kept state, a
 }
 
 function client(lines: string[]): ControlClient {
-	return { fd: -1, input: "", output: "", session: new ControlSession((line: string): void => { lines.push(line); }) };
+	return { fd: -1, pending: [], input: "", output: "", session: new ControlSession((line: string): void => { lines.push(line); }) };
 }
 
 test "control: the method list is the dispatch table" {
@@ -157,6 +157,33 @@ test "control: a request split across chunks is answered once, and the next one 
 	assert feedClient(c, `ng"}\n`), "tail";
 	assert lines.length === 2 && lines[1].indexOf(`"id":2`) >= 0, "second answered";
 	assert c.input === "", "nothing left over";
+}
+
+test "control: bytes split inside a UTF-8 character are decoded whole once the line ends" {
+	setDevDriver(null);
+	const lines: string[] = [];
+	const c = client(lines);
+	const bytes = `{"jsonrpc":"2.0","id":"café","method":"ping"}\n`.asBytes();
+	const cut = bytes.indexOf(0xC3 as uint8) + 1;
+	assert feedBytes(c, bytes.slice(0, cut)), "first half";
+	assert lines.length === 0, "nothing before the newline";
+	assert feedBytes(c, bytes.slice(cut)), "second half";
+	assert lines.length === 1 && (lines[0].indexOf("café") >= 0 || lines[0].indexOf("caf\\u00e9") >= 0), lines.join("|");
+	assert c.pending.length === 0 && c.input === "", "nothing left over";
+}
+
+test "control: bytes past the cap with no newline are refused and the client is dropped" {
+	const lines: string[] = [];
+	const c = client(lines);
+	const block = "x".repeat(65536).asBytes();
+	let kept = true;
+	let sent = 0;
+	while (kept && sent <= MAX_REQUEST_LINE) {
+		kept = feedBytes(c, block);
+		sent += 65536;
+	}
+	assert !kept, "dropped";
+	assert lines.length === 1 && lines[0].indexOf("exceeds") >= 0, lines.join("|");
 }
 
 test "control: a request line past the cap is refused with an error reply and the client is dropped" {

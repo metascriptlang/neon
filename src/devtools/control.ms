@@ -207,6 +207,7 @@ export const MAX_REQUEST_LINE = 1048576;
 
 export interface ControlClient {
 	fd: int32;
+	pending: uint8[];
 	input: string;
 	output: string;
 	session: ControlSession;
@@ -247,6 +248,19 @@ export function feedClient(c: ControlClient, chunk: string): boolean {
 	return false;
 }
 
+export function feedBytes(c: ControlClient, chunk: Readonly<Span<uint8>>): boolean {
+	for (let i = 0; i < chunk.length; i += 1) { c.pending.push(chunk[i]); }
+	let end = c.pending.length;
+	while (end > 0 && c.pending[end - 1] !== 10) { end -= 1; }
+	if (end === 0) {
+		if (c.pending.length <= MAX_REQUEST_LINE) { return true; }
+		end = c.pending.length;
+	}
+	const lines = c.pending.slice(0, end);
+	c.pending = c.pending.slice(end);
+	return feedClient(c, lines.asString());
+}
+
 function flush(c: ControlClient): boolean {
 	when (hcr) {
 		while (c.output.length > 0) {
@@ -275,15 +289,15 @@ export function pollControl(): void {
 	when (hcr) {
 		for (let fd = acceptNonBlock(listener); fd >= 0; fd = acceptNonBlock(listener)) {
 			setNonBlocking(fd);
-			const c: ControlClient = { fd, input: "", output: "", session: new ControlSession((line: string): void => {}) };
+			const c: ControlClient = { fd, pending: [], input: "", output: "", session: new ControlSession((line: string): void => {}) };
 			c.session.send = (line: string): void => { c.output += line + "\n"; };
 			clients.push(c);
 		}
 		for (let i = clients.length - 1; i >= 0; i -= 1) {
 			const c = clients[i];
 			let keep = true;
-			for (let chunk = recvNonBlock(c.fd, 8192 as int32); keep && chunk !== ""; chunk = recvNonBlock(c.fd, 8192 as int32)) {
-				keep = feedClient(c, chunk);
+			for (let chunk = recvNonBlock(c.fd, 8192 as int32); keep && chunk.length > 0; chunk = recvNonBlock(c.fd, 8192 as int32)) {
+				keep = feedBytes(c, chunk);
 			}
 			if (!keep) {
 				flush(c);
