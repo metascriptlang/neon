@@ -69,6 +69,7 @@ export struct WaapiPlan {
 }
 
 const NO_AXIS: int32 = -1;
+const MARK_EPSILON_MS: float64 = 1e-8;
 
 function numeric(
 	name: string,
@@ -900,7 +901,7 @@ when (js) {
 				this.deferredUntil = -1;
 				return null;
 			}
-			return left + 1;
+			return left;
 		}
 
 		private schedule(): void {
@@ -1158,12 +1159,17 @@ when (js) {
 			marks.push((index + 1) * cycle);
 			let next = forward ? Infinity : -Infinity;
 			for (const mark of marks) {
+				if (Math.abs(mark - at) < MARK_EPSILON_MS) {
+					const interior = forward ? mark < player.totalDuration : mark > 0;
+					if (interior) { return 1; }
+					continue;
+				}
 				if (forward ? mark > at && mark < next : mark < at && mark > next) {
 					next = mark;
 				}
 			}
 			if (!Number.isFinite(next)) { return null; }
-			return Math.abs(next - at) / Math.abs(player.timeScale) + 1;
+			return Math.abs(next - at) / Math.abs(player.timeScale);
 		}
 
 		private running(): boolean {
