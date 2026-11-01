@@ -33,45 +33,65 @@ function snapshot(): Map<HTMLElement, Measured> {
 	return out;
 }
 
+class Written {
+	read: () => string;
+	write: (value: string) => void;
+	kept: string;
+	set: string = "";
+
+	constructor(read: () => string, write: (value: string) => void) {
+		this.read = read;
+		this.write = write;
+		this.kept = read();
+	}
+
+	put(value: string): void {
+		this.write(value);
+		this.set = this.read();
+	}
+
+	restore(): void {
+		if (this.read() === this.set) { this.write(this.kept); }
+	}
+}
+
+function restoreLater(written: Written[], phase: LayoutPhase): void {
+	setTimeout((): void => {
+		for (const entry of written) { entry.restore(); }
+	}, phase.duration + phase.delay + 34);
+}
+
 function resize(el: HTMLElement, before: Measured, phase: LayoutPhase): void {
 	const width = el.offsetWidth;
 	const height = el.offsetHeight;
 	if (width === before.width && height === before.height) { return; }
 	const style = el.style;
-	const keepWidth = style.width;
-	const keepHeight = style.height;
-	const keepOverflow = style.overflow;
-	const keepTransition = style.transition;
-	style.transition = "none";
-	style.width = `${before.width}px`;
-	style.height = `${before.height}px`;
-	style.overflow = "hidden";
+	const transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
+	const w = new Written((): string => style.width, (v: string): void => { style.width = v; });
+	const h = new Written((): string => style.height, (v: string): void => { style.height = v; });
+	const overflow = new Written((): string => style.overflow, (v: string): void => { style.overflow = v; });
+	transition.put("none");
+	w.put(`${before.width}px`);
+	h.put(`${before.height}px`);
+	overflow.put("hidden");
 	reflowSink += el.offsetHeight;
 	const timing = `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
-	style.transition = `width ${timing}, height ${timing}`;
-	style.width = `${width}px`;
-	style.height = `${height}px`;
-	setTimeout((): void => {
-		style.transition = keepTransition;
-		style.width = keepWidth;
-		style.height = keepHeight;
-		style.overflow = keepOverflow;
-	}, phase.duration + phase.delay + 34);
+	transition.put(`width ${timing}, height ${timing}`);
+	w.put(`${width}px`);
+	h.put(`${height}px`);
+	restoreLater([transition, w, h, overflow], phase);
 }
 
 function fadeIn(el: HTMLElement, phase: LayoutPhase): void {
 	const style = el.style;
-	const keepOpacity = style.opacity;
-	const keepTransition = style.transition;
-	style.transition = "none";
-	style.opacity = "0";
+	const transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
+	const opacity = new Written((): string => style.opacity, (v: string): void => { style.opacity = v; });
+	transition.put("none");
+	opacity.put("0");
 	reflowSink += el.offsetHeight;
-	style.transition = `opacity ${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
-	style.opacity = keepOpacity === "" ? "1" : keepOpacity;
-	setTimeout((): void => {
-		style.transition = keepTransition;
-		style.opacity = keepOpacity;
-	}, phase.duration + phase.delay + 34);
+	transition.put(`opacity ${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`);
+	opacity.put(opacity.kept === "" ? "1" : opacity.kept);
+	restoreLater([transition, opacity], phase);
 }
 
 // RN-web leaves LayoutAnimation a no-op; this measures every element before

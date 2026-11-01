@@ -67,3 +67,17 @@ test "LayoutAnimation.configureNext transitions a height change in the browser" 
 	assert el.offsetHeight === 200, "lands at 200: " + el.offsetHeight.toString();
 	el.remove();
 }
+
+test "a height written while LayoutAnimation runs survives the animation's restore" {
+	const [height, setHeight] = createSignal(20);
+	const nodes: HostNode[] = [];
+	render(element(<View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{ width: 100, height: height(), backgroundColor: "#00a" }} />), domHost(), documentBody());
+	const el = probe(nodes[0]);
+	LayoutAnimation.configureNext(LayoutAnimation.create(200, "linear", "opacity"));
+	setHeight(200);
+	await sleepAsync(100);
+	setHeight(60);
+	await sleepAsync(400);
+	assert el.offsetHeight === 60, "the later write stands: " + el.offsetHeight.toString();
+	el.remove();
+}
