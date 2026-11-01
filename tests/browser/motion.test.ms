@@ -14,9 +14,17 @@ import {
 import {
 	MotionBinding,
 	MotionOptions,
+	MotionPlayer,
 	motionOptions,
 } from "pulse/src/player";
-import { BrowserMotionPlayer, elementValue, frameClock } from "../../src/motion/waapi";
+import {
+	ElementValue,
+	MotionElement,
+	browserMotionPlayer,
+	elementValue,
+	frameClock,
+	motionElements,
+} from "../../src/motion/waapi";
 import { MotionPolicy } from "pulse/src/policy";
 import { decay, spring } from "pulse/src/value";
 import { decayConfig } from "pulse/src/decay";
@@ -56,6 +64,25 @@ extern function countFrames(frames: FrameCount): () => void from
 
 extern function firstEasing(el: HTMLElement): string from
 	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
+
+function browserPlayer(
+	doc: MotionDocument,
+	elements: MotionElement[],
+	bindings: MotionBinding[],
+	options: MotionOptions,
+): MotionPlayer {
+	return browserMotionPlayer(doc, motionElements(elements), bindings, options);
+}
+
+function boxValue(
+	initial: float64,
+	policy: MotionPolicy,
+	node: HostNode,
+	property: string,
+): ElementValue {
+	const elements = motionElements([{ slot: "box", node }]);
+	return elementValue(initial, policy, elements, "box", property) as ElementValue;
+}
 
 function ramp(slot: string, property: string, to: float64): MotionTrack {
 	return {
@@ -127,11 +154,11 @@ function paused(): MotionOptions {
 function fadeAndSlide(
 	node: HostNode,
 	options: MotionOptions,
-): BrowserMotionPlayer {
+): MotionPlayer {
 	const doc = documentOf(
 		[ramp("box", "opacity", 1), ramp("box", "translateX", 100)],
 	);
-	return new BrowserMotionPlayer(
+	return browserPlayer(
 		doc,
 		[
 			{
@@ -268,7 +295,7 @@ test "a track WAAPI cannot run stays in step with the browser's track after paus
 	const doc = documentOf(
 		[ramp("box", "opacity", 1), ramp("box", "progress", 1)],
 	);
-	const player = new BrowserMotionPlayer(
+	const player = browserPlayer(
 		doc,
 		[
 			{
@@ -322,7 +349,7 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 	const doc = documentOf([ramp("box", "progress", 1)]);
 	let message = "";
 	try {
-		new BrowserMotionPlayer(
+		browserPlayer(
 			doc,
 			[
 				{
@@ -339,7 +366,7 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 	const orphan = documentOf([ramp("card", "opacity", 1)]);
 	message = "";
 	try {
-		new BrowserMotionPlayer(
+		browserPlayer(
 			orphan,
 			[
 				{
@@ -356,9 +383,9 @@ test "a track with neither a CSS property nor a binding is refused at constructi
 	dom(node).remove();
 }
 
-function fadeTo(node: HostNode, to: float64): BrowserMotionPlayer {
+function fadeTo(node: HostNode, to: float64): MotionPlayer {
 	const doc = documentOf([ramp("box", "opacity", to)]);
-	return new BrowserMotionPlayer(doc, [{ slot: "box", node }], [], paused());
+	return browserPlayer(doc, [{ slot: "box", node }], [], paused());
 }
 
 test "a second player on one element's opacity replaces the first's browser animation with no jump" {
@@ -412,7 +439,7 @@ test "translateX and translateY on one element run as one translate animation" {
 	const doc = documentOf(
 		[ramp("box", "translateX", 100), ramp("box", "translateY", 40)],
 	);
-	const player = new BrowserMotionPlayer(doc, [{ slot: "box", node }], [], paused());
+	const player = browserPlayer(doc, [{ slot: "box", node }], [], paused());
 	player.seek(250);
 	assert el.getAnimations().length === 1, "one animation: " +
 		el.getAnimations().length.toString();
@@ -464,7 +491,7 @@ test "a staggered placement runs on WAAPI with its start as the delay" {
 	const secondNode = mount();
 	const first = dom(firstNode);
 	const second = dom(secondNode);
-	const player = new BrowserMotionPlayer(
+	const player = browserPlayer(
 		staggered(),
 		[{ slot: "first", node: firstNode }, { slot: "second", node: secondNode }],
 		[],
@@ -500,7 +527,7 @@ function translateX(el: HTMLElement): float64 {
 test "an element-bound spring runs as one WAAPI linear() animation with no style write from JS in flight" {
 	const node = mount();
 	const el = dom(node);
-	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	const value = boxValue(0, new MotionPolicy(), node, "translateX");
 	let ended = "";
 	value.animate(spring(100), (finished: boolean): void => {
 		ended = finished ? "finished" : "interrupted";
@@ -526,7 +553,7 @@ test "an element-bound spring runs as one WAAPI linear() animation with no style
 test "a retarget samples position and velocity, cancels and starts a new sampled spring" {
 	const node = mount();
 	const el = dom(node);
-	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	const value = boxValue(0, new MotionPolicy(), node, "translateX");
 	value.animate(spring(100));
 	await sleepAsync(120);
 	const before = translateX(el);
@@ -548,11 +575,11 @@ test "a retarget samples position and velocity, cancels and starts a new sampled
 test "a spring that starts on its target, reduced motion and decay hand nothing to WAAPI" {
 	const node = mount();
 	const el = dom(node);
-	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	const value = boxValue(0, new MotionPolicy(), node, "translateX");
 	let ended = false;
 	value.animate(spring(0), (finished: boolean): void => { ended = finished; });
 	assert ended && !value.handedOver && el.getAnimations().length === 0, "no motion";
-	const reduced = elementValue(0, new MotionPolicy(true), node, "opacity");
+	const reduced = boxValue(0, new MotionPolicy(true), node, "opacity");
 	reduced.animate(spring(0.5));
 	assert !reduced.handedOver && el.style.opacity === "0.5", el.style.opacity;
 	value.animate(decay(decayConfig(), 400));
@@ -568,7 +595,7 @@ test "a spring that starts on its target, reduced motion and decay hand nothing 
 test "a player claiming an element-bound spring's property replaces its browser animation" {
 	const node = mount();
 	const el = dom(node);
-	const value = elementValue(0, new MotionPolicy(), node, "opacity");
+	const value = boxValue(0, new MotionPolicy(), node, "opacity");
 	value.animate(spring(1));
 	await sleepAsync(80);
 	assert value.handedOver && el.getAnimations().length === 1;
@@ -623,7 +650,7 @@ test "a player with an evaluated track keeps its frame loop" {
 	const frames = new FrameCount();
 	const restore = countFrames(frames);
 	const recorder = new Recorder();
-	const player = new BrowserMotionPlayer(
+	const player = browserPlayer(
 		documentOf([ramp("box", "opacity", 1), ramp("box", "progress", 1)]),
 		[{ slot: "box", node }],
 		[recorder.binding()],

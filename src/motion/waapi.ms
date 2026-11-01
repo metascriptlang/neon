@@ -583,6 +583,36 @@ export struct MotionElement {
 	node: HostNode;
 }
 
+export class MotionElements {
+	declared: string[] = [];
+	private entries: MotionElement[] = [];
+
+	declare(slot: string): void {
+		if (!this.declared.includes(slot)) { this.declared.push(slot); }
+	}
+
+	set(slot: string, node: HostNode): void {
+		this.declare(slot);
+		this.entries = this.entries.filter(
+			(entry: MotionElement): boolean => entry.slot !== slot,
+		);
+		this.entries.push({ slot, node });
+	}
+
+	node(slot: string): HostNode | null {
+		for (const entry of this.entries) {
+			if (entry.slot === slot) { return entry.node; }
+		}
+		return null;
+	}
+}
+
+export function motionElements(entries: MotionElement[]): MotionElements {
+	const elements = new MotionElements();
+	for (const entry of entries) { elements.set(entry.slot, entry.node); }
+	return elements;
+}
+
 when (js) {
 	import { numberValue } from "pulse/src/document";
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
@@ -630,29 +660,112 @@ when (js) {
 	extern function stopTimer(id: float64): void from "clearTimeout(#)";
 	extern function readStyle(element: HTMLElement, property: string): string from
 		"((el, p) => el.style[p])(#, #)";
+	extern function domElement(node: HTMLElement): boolean from
+		"(n => typeof HTMLElement !== 'undefined' && n instanceof HTMLElement)(#)";
 	extern function writeStyle(element: HTMLElement, property: string, value: string): void from
 		"((el, p, v) => { el.style[p] = v; })(#, #, #)";
 
-	class StyleRun {
+	class TargetEntry {
+		target: MotionTarget;
+		run: StyleRun | null = null;
+		holder: ElementValue | null = null;
+
+		constructor(target: MotionTarget) {
+			this.target = target;
+			target.onClaim = (): void => {
+				const run = this.run;
+				if (run !== null) { run.evict(); }
+				const holder = this.holder;
+				if (holder !== null) { holder.settle(true); }
+			};
+		}
+	}
+
+	class ElementSlot {
 		element: HTMLElement;
+		property: string;
+		target: MotionTarget = new MotionTarget();
+
+		constructor(element: HTMLElement, property: string) {
+			this.element = element;
+			this.property = property;
+		}
+	}
+
+	let targetEntries: TargetEntry[] = [];
+	let elementSlots: ElementSlot[] = [];
+	let liveRuns: StyleRun[] = [];
+
+	function isDomNode(node: HostNode): boolean {
+		return domElement(node as unknown as HTMLElement);
+	}
+
+	function entryOf(target: MotionTarget): TargetEntry {
+		for (const entry of targetEntries) {
+			if (entry.target === target) { return entry; }
+		}
+		const entry = new TargetEntry(target);
+		targetEntries.push(entry);
+		return entry;
+	}
+
+	function elementTarget(element: HTMLElement, property: string): MotionTarget {
+		for (const slot of elementSlots) {
+			if (slot.element === element && slot.property === property) {
+				return slot.target;
+			}
+		}
+		const slot = new ElementSlot(element, property);
+		elementSlots.push(slot);
+		return slot.target;
+	}
+
+	export function browserOwns(node: HostNode): boolean {
+		return isDomNode(node);
+	}
+
+	enum RunMode {
+		Unresolved,
+		Dom,
+		Fallback,
+	}
+
+	class StyleRun {
 		plan: CssRun;
 		styles: StyleProperty[];
-		owners: ElementTarget[] = [];
+		fallbacks: (MotionBinding | null)[];
+		entries: TargetEntry[] = [];
 		values: MotionValue[] = [];
+		element: HTMLElement | null = null;
+		mode: RunMode = RunMode.Unresolved;
 		animation: Animation | null = null;
 		evicted: boolean = false;
 		baseline: string = "";
 
-		constructor(element: HTMLElement, plan: CssRun) {
-			this.element = element;
+		constructor(
+			plan: CssRun,
+			fallbacks: (MotionBinding | null)[],
+			eager: HTMLElement | null,
+		) {
 			this.plan = plan;
+			this.fallbacks = fallbacks;
 			this.styles = plan.properties.map(
 				(name: string): StyleProperty => styleProperty(name) as StyleProperty,
 			);
-			for (const style of this.styles) {
-				this.owners.push(elementTarget(element, style.name));
-				this.values.push(numberValue(style.identity));
+			for (let i: int32 = 0; i < this.styles.length; i += 1) {
+				const fallback = fallbacks[i];
+				const own = fallback === null ? null : fallback.target;
+				const target = own ?? elementTarget(
+					eager as HTMLElement,
+					this.styles[i].name,
+				);
+				this.entries.push(entryOf(target));
+				this.values.push(numberValue(this.styles[i].identity));
 			}
+		}
+
+		get dom(): HTMLElement {
+			return this.element as HTMLElement;
 		}
 
 		cssText(): string {
@@ -673,38 +786,33 @@ when (js) {
 			this.release();
 			animation.pause();
 			try {
-				commitStyles(animation, this.element, this.plan.css);
+				commitStyles(animation, this.dom, this.plan.css);
 			} finally {
 				animation.cancel();
 			}
 		}
 
 		release(): void {
-			for (const owner of this.owners) {
-				if (owner.run === this) { owner.run = null; }
+			for (const entry of this.entries) {
+				if (entry.run === this) { entry.run = null; }
 			}
 			liveRuns = liveRuns.filter((run: StyleRun): boolean => run !== this);
 		}
 	}
 
-	class ElementTarget {
-		element: HTMLElement;
-		property: string;
-		target: MotionTarget = new MotionTarget();
-		run: StyleRun | null = null;
-		holder: ElementValue | null = null;
-		users: int32 = 0;
+	function claimCss(run: StyleRun): void {
+		const rivals = liveRuns.filter(
+			(other: StyleRun): boolean => other.element === run.element &&
+				other.plan.css === run.plan.css,
+		);
+		for (const rival of rivals) { rival.evict(); }
+		liveRuns.push(run);
+	}
 
-		constructor(element: HTMLElement, property: string) {
-			this.element = element;
-			this.property = property;
-			this.target.onClaim = (): void => {
-				const run = this.run;
-				if (run !== null) { run.evict(); }
-				const holder = this.holder;
-				if (holder !== null) { holder.settle(true); }
-			};
-		}
+	function everyBound(fallbacks: (MotionBinding | null)[]): boolean {
+		return fallbacks.every(
+			(fallback: MotionBinding | null): boolean => fallback !== null,
+		);
 	}
 
 	class WakeClock {
@@ -808,395 +916,135 @@ when (js) {
 		}
 	}
 
-	export class ElementValue {
-		readonly value: AnimatedValue;
-		private element: HTMLElement;
-		private style: StyleProperty;
-		private owner: ElementTarget;
-		private wake: WakeClock = new WakeClock();
-		private animation: Animation | null = null;
-
-		constructor(
-			initial: float64,
-			policy: MotionPolicy,
-			element: HTMLElement,
-			style: StyleProperty,
-		) {
-			this.element = element;
-			this.style = style;
-			this.owner = elementTarget(element, style.name);
-			this.value = new AnimatedValue(
-				initial,
-				this.wake.clock,
-				policy,
-				this.owner.target,
-			);
-			this.value.subscribe((next: float64): void => {
-				writeStyle(element, style.css, styleValue(style, numberValue(next)));
-			});
-		}
-
-		get disposed(): boolean {
-			return this.value.disposed;
-		}
-
-		get handedOver(): boolean {
-			return this.animation !== null;
-		}
-
-		get(): float64 {
-			this.wake.flush();
-			return this.value.get();
-		}
-
-		velocity(): float64 {
-			this.wake.flush();
-			return this.value.velocity();
-		}
-
-		isAnimating(): boolean {
-			this.wake.flush();
-			return this.value.isAnimating();
-		}
-
-		subscribe(callback: (value: float64) => void): () => void {
-			return this.value.subscribe(callback);
-		}
-
-		animate(
-			spec: AnimationSpec,
-			onEnd: ((finished: boolean) => void) | null = null,
-		): void {
-			this.wake.flush();
-			const from = this.value.get();
-			const carried = this.value.velocity();
-			this.settle(false);
-			this.value.animate(spec, (finished: boolean): void => {
-				this.settle(false);
-				if (onEnd !== null) { onEnd(finished); }
-			});
-			if (spec.kind === AnimationKind.Spring && this.value.isAnimating()) {
-				this.handOver(
-					createSpring(
-						spec.spring,
-						from,
-						spec.to,
-						carried + spec.velocityPerSecond,
-					),
-				);
-			}
-		}
-
-		set(next: float64): void {
-			this.settle(false);
-			this.value.set(next);
-		}
-
-		cancel(): void {
-			this.wake.flush();
-			this.settle(false);
-			this.value.cancel();
-		}
-
-		dispose(): void {
-			this.wake.flush();
-			this.settle(false);
-			this.value.dispose();
-			this.owner.users -= 1;
-		}
-
-		settle(commit: boolean): void {
-			const animation = this.animation;
-			if (animation === null) { return; }
-			this.animation = null;
-			this.wake.undefer();
-			if (this.owner.holder === this) { this.owner.holder = null; }
-			animation.pause();
-			try {
-				if (commit) { commitStyles(animation, this.element, this.style.css); }
-			} finally {
-				animation.cancel();
-			}
-		}
-
-		private handOver(spring: SpringSimulation): void {
-			const curve = sampleSpring(spring);
-			this.animation = animateStyle(
-				this.element,
-				this.style.css,
-				[0, 1],
-				[
-					styleValue(this.style, numberValue(spring.from)),
-					styleValue(this.style, numberValue(spring.to)),
-				],
-				[cssLinear(curve), "linear"],
-				curve.durationMs,
-				0,
-				1,
-				"normal",
-				"both",
-			);
-			this.animation.startTime = this.wake.now();
-			this.owner.holder = this;
-			this.wake.defer(curve.durationMs);
-		}
-	}
-
-	export function elementValue(
-		initial: float64,
-		policy: MotionPolicy,
-		node: HostNode,
-		property: string,
-	): ElementValue {
-		const style = styleProperty(property);
-		if (style === null || style.kind !== ValueKind.Number) {
-			fail("an animated value has no numeric CSS property " + property);
-		}
-		return new ElementValue(
-			initial,
-			policy,
-			node as unknown as HTMLElement,
-			style,
-		);
-	}
-
-	let elementTargets: ElementTarget[] = [];
-	let liveRuns: StyleRun[] = [];
-
-	function elementTarget(element: HTMLElement, property: string): ElementTarget {
-		elementTargets = elementTargets.filter((entry: ElementTarget): boolean => entry.users > 0);
-		for (const entry of elementTargets) {
-			if (entry.element === element && entry.property === property) {
-				entry.users += 1;
-				return entry;
-			}
-		}
-		const entry = new ElementTarget(element, property);
-		entry.users = 1;
-		elementTargets.push(entry);
-		return entry;
-	}
-
-	function claimCss(run: StyleRun): void {
-		const rivals = liveRuns.filter(
-			(other: StyleRun): boolean => other.element === run.element &&
-				other.plan.css === run.plan.css,
-		);
-		for (const rival of rivals) { rival.evict(); }
-		liveRuns.push(run);
-	}
-
-	function notify(listener: (() => void) | null): void {
-		if (listener !== null) { listener(); }
-	}
-
-	function elementFor(elements: MotionElement[], run: CssRun): HTMLElement {
-		const name = run.slot + "." + run.properties[0];
-		for (const entry of elements) {
-			if (entry.slot === run.slot) { return entry.node as unknown as HTMLElement; }
-		}
-		fail("no element for slot " + run.slot + " of track " + name);
-	}
-
-	export class BrowserMotionPlayer {
-		onStart: (() => void) | null = null;
-		onRepeat: (() => void) | null = null;
-		onComplete: (() => void) | null = null;
-		onReverseComplete: (() => void) | null = null;
-
-		private master: MotionPlayer;
+	class BrowserRuns {
+		doc: MotionDocument;
+		options: MotionOptions;
+		bindings: MotionBinding[] = [];
+		runs: StyleRun[] = [];
+		wake: WakeClock = new WakeClock();
+		player: BrowserMotionPlayer | null = null;
+		reverting: boolean = false;
+		private elements: MotionElements;
 		private timing: WaapiTiming | null;
-		private runs: StyleRun[] = [];
-		private reverting: boolean = false;
-		private wake: WakeClock = new WakeClock();
 		private evaluated: boolean;
-		private ready: boolean = false;
-		private update: (() => void) | null = null;
 
 		constructor(
 			doc: MotionDocument,
-			elements: MotionElement[],
+			elements: MotionElements,
 			bindings: MotionBinding[],
 			options: MotionOptions,
 		) {
-			const custom = bindings.map(
-				(binding: MotionBinding): string => binding.slot + "." + binding.property,
+			this.doc = doc;
+			this.elements = elements;
+			const owned: MotionBinding[] = [];
+			for (const binding of bindings) {
+				if (elements.declared.includes(binding.slot) &&
+					styleProperty(binding.property) !== null) {
+					owned.push(binding);
+				} else {
+					this.bindings.push(binding);
+				}
+			}
+			this.evaluated = this.bindings.length > 0;
+			const plan = planWaapi(
+				doc,
+				options,
+				this.bindings.map(
+					(binding: MotionBinding): string => binding.slot + "." + binding.property,
+				),
 			);
-			const plan = planWaapi(doc, options, custom);
 			this.timing = plan.timing;
-			this.evaluated = bindings.length > 0;
-			const all: MotionBinding[] = bindings.slice(0);
 			const blend = options.composition === Composition.Blend;
 			for (const planned of plan.runs) {
 				const css = blend && planned.route === TrackRoute.Waapi
 					? { ...planned, route: TrackRoute.Style }
 					: planned;
-				const run = new StyleRun(elementFor(elements, css), css);
+				const fallbacks = css.properties.map(
+					(property: string): MotionBinding | null => {
+						for (const binding of owned) {
+							if (binding.slot === css.slot && binding.property === property) {
+								return binding;
+							}
+						}
+						return null;
+					},
+				);
+				const run = new StyleRun(css, fallbacks, this.eager(css, fallbacks));
 				this.runs.push(run);
 				for (let i: int32 = 0; i < run.styles.length; i += 1) {
-					all.push(this.bind(run, i));
+					this.bindings.push(this.bind(run, i));
 				}
 			}
 			this.wake.wake = (): float64 | null => this.nextWake();
-			this.master = new MotionPlayer(
-				doc,
-				all,
-				{
-					...options,
-					clock: this.wake.clock,
-				},
-			);
-			this.ready = true;
-			this.master.onStart = (): void => notify(this.onStart);
-			this.master.onUpdate = (): void => notify(this.update);
-			this.master.onRepeat = (): void => notify(this.onRepeat);
-			this.master.onComplete = (): void => notify(this.onComplete);
-			this.master.onReverseComplete = (): void => notify(this.onReverseComplete);
+			this.options = {
+				...options,
+				clock: this.wake.clock,
+			};
 		}
 
-		get onUpdate(): (() => void) | null { return this.update; }
-
-		set onUpdate(listener: (() => void) | null) {
-			this.update = listener;
-			this.wake.reschedule();
+		alignAll(): void {
+			for (const run of this.runs) { this.align(run); }
 		}
 
-		get disposed(): boolean { return this.master.disposed; }
-		get paused(): boolean { return this.master.paused; }
-		get cancelled(): boolean { return this.master.cancelled; }
-		get reversed(): boolean { return this.master.reversed; }
-		get timeScale(): float64 { return this.master.timeScale; }
-		get time(): float64 {
-			this.wake.flush();
-			return this.master.time;
-		}
-		get totalTime(): float64 {
-			this.wake.flush();
-			return this.master.totalTime;
-		}
-		get rawTime(): float64 {
-			this.wake.flush();
-			return this.master.rawTime;
-		}
-		get duration(): float64 { return this.master.duration; }
-		get totalDuration(): float64 { return this.master.totalDuration; }
-		get iteration(): int32 {
-			this.wake.flush();
-			return this.master.iteration;
-		}
-		get progress(): float64 {
-			this.wake.flush();
-			return this.master.progress;
-		}
-		get totalProgress(): float64 {
-			this.wake.flush();
-			return this.master.totalProgress;
-		}
-		get isActive(): boolean {
-			this.wake.flush();
-			return this.master.isActive;
-		}
-
-		play(from: float64 | null = null, suppressEvents: boolean = true): void {
-			this.wake.flush();
-			this.master.play(from, suppressEvents);
-			this.alignAll();
-		}
-
-		reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
-			this.wake.flush();
-			this.master.reverse(from, suppressEvents);
-			this.alignAll();
-		}
-
-		pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
-			this.wake.flush();
-			this.master.pause(atTime, suppressEvents);
-			this.alignAll();
-		}
-
-		resume(): void {
-			this.wake.flush();
-			this.master.resume();
-			this.alignAll();
-		}
-
-		restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
-			this.wake.flush();
-			this.master.restart(includeDelay, suppressEvents);
-			this.alignAll();
-		}
-
-		seek(position: float64, suppressEvents: boolean = true): void {
-			this.wake.flush();
-			this.master.seek(position, suppressEvents);
-			this.alignAll();
-		}
-
-		setTotalTime(value: float64, suppressEvents: boolean = false): void {
-			this.wake.flush();
-			this.master.setTotalTime(value, suppressEvents);
-			this.alignAll();
-		}
-
-		setTime(value: float64, suppressEvents: boolean = false): void {
-			this.wake.flush();
-			this.master.setTime(value, suppressEvents);
-			this.alignAll();
-		}
-
-		setTotalProgress(value: float64, suppressEvents: boolean = false): void {
-			this.wake.flush();
-			this.master.setTotalProgress(value, suppressEvents);
-			this.alignAll();
-		}
-
-		setProgress(value: float64, suppressEvents: boolean = false): void {
-			this.wake.flush();
-			this.master.setProgress(value, suppressEvents);
-			this.alignAll();
-		}
-
-		setTimeScale(value: float64): void {
-			this.wake.flush();
-			this.master.setTimeScale(value);
-			this.alignAll();
-		}
-
-		finish(): void {
-			this.wake.flush();
-			this.master.finish();
-			this.alignAll();
-		}
-
-		cancel(): void {
-			this.wake.flush();
-			this.master.cancel();
-			this.halt(true);
-		}
-
-		revert(): void {
-			this.reverting = true;
-			try {
-				this.master.revert();
-			} finally {
-				this.reverting = false;
-			}
-			this.halt(false);
-		}
-
-		dispose(): void {
-			this.wake.flush();
-			this.halt(true);
-			this.master.dispose();
+		halt(commit: boolean): void {
+			let refused = "";
 			for (const run of this.runs) {
-				for (const owner of run.owners) { owner.users -= 1; }
+				run.evicted = false;
+				const animation = run.animation;
+				if (animation === null) { continue; }
+				run.animation = null;
+				run.release();
+				animation.pause();
+				try {
+					if (commit) { commitStyles(animation, run.dom, run.plan.css); }
+				} catch (e) {
+					if (refused === "") { refused = e.message; }
+				}
+				animation.cancel();
 			}
-			this.onStart = null;
-			this.onUpdate = null;
-			this.onRepeat = null;
-			this.onComplete = null;
-			this.onReverseComplete = null;
+			if (refused !== "") { throw new Error(refused); }
+		}
+
+		private eager(
+			run: CssRun,
+			fallbacks: (MotionBinding | null)[],
+		): HTMLElement | null {
+			if (everyBound(fallbacks)) { return null; }
+			const node = this.elements.node(run.slot);
+			if (node === null || !isDomNode(node)) {
+				fail(
+					"no element for slot " + run.slot + " of track " + run.slot + "." +
+						run.properties[0],
+				);
+			}
+			return node as unknown as HTMLElement;
+		}
+
+		private resolveAll(): void {
+			for (const run of this.runs) {
+				if (run.mode !== RunMode.Unresolved) { continue; }
+				const node = this.elements.node(run.plan.slot);
+				if (node !== null && isDomNode(node)) {
+					run.element = node as unknown as HTMLElement;
+					run.mode = RunMode.Dom;
+					this.adopt(run);
+				} else {
+					run.mode = RunMode.Fallback;
+				}
+			}
+		}
+
+		private adopt(run: StyleRun): void {
+			let known = false;
+			for (let i: int32 = 0; i < run.styles.length; i += 1) {
+				const fallback = run.fallbacks[i];
+				const read = fallback === null ? null : fallback.read;
+				if (read !== null) {
+					run.values[i] = read();
+					known = true;
+				}
+			}
+			if (known) { writeStyle(run.dom, run.plan.css, run.cssText()); }
 		}
 
 		private bind(run: StyleRun, index: int32): MotionBinding {
@@ -1204,23 +1052,35 @@ when (js) {
 				slot: run.plan.slot,
 				property: run.plan.properties[index],
 				write: (value: MotionValue): void => this.write(run, index, value),
-				read: (): MotionValue => {
-					run.baseline = readStyle(run.element, run.plan.css);
-					return numberValue(0);
-				},
-				target: run.owners[index].target,
+				read: (): MotionValue => this.read(run, index),
+				target: run.entries[index].target,
 			};
 		}
 
+		private read(run: StyleRun, index: int32): MotionValue {
+			this.resolveAll();
+			const fallback = run.fallbacks[index];
+			const own = fallback === null ? null : fallback.read;
+			if (run.mode === RunMode.Dom) {
+				run.baseline = readStyle(run.dom, run.plan.css);
+			}
+			return own === null ? numberValue(0) : own();
+		}
+
 		private write(run: StyleRun, index: int32, value: MotionValue): void {
+			this.resolveAll();
+			if (run.mode === RunMode.Fallback) {
+				(run.fallbacks[index] as MotionBinding).write(value);
+				return;
+			}
 			if (this.reverting) {
-				writeStyle(run.element, run.plan.css, run.baseline);
+				writeStyle(run.dom, run.plan.css, run.baseline);
 				return;
 			}
 			run.values[index] = value;
-			run.owners[index].run = run;
+			run.entries[index].run = run;
 			if (run.plan.route === TrackRoute.Style) {
-				writeStyle(run.element, run.plan.css, run.cssText());
+				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
 			}
 			if (run.animation !== null || run.evicted) { return; }
@@ -1233,7 +1093,7 @@ when (js) {
 			const timing = this.timing as WaapiTiming;
 			const keyframes = run.plan.keyframes;
 			return animateStyle(
-				run.element,
+				run.dom,
 				run.plan.css,
 				keyframes.map((keyframe: WaapiKeyframe): float64 => keyframe.offset),
 				keyframes.map((keyframe: WaapiKeyframe): string => keyframe.value),
@@ -1247,18 +1107,22 @@ when (js) {
 		}
 
 		private nextWake(): float64 | null {
-			if (!this.ready || this.evaluated || this.update !== null) { return null; }
-			const master = this.master;
-			const at = master.rawTime;
-			const forward = master.timeScale > 0;
-			const marks: float64[] = [0, master.totalDuration];
+			const player = this.player;
+			if (player === null || this.evaluated || player.onUpdate !== null) {
+				return null;
+			}
+			const at = player.rawTime;
+			const forward = player.timeScale > 0;
+			const marks: float64[] = [0, player.totalDuration];
 			for (const run of this.runs) {
-				if (run.plan.route !== TrackRoute.Waapi) { return null; }
+				if (run.mode !== RunMode.Dom || run.plan.route !== TrackRoute.Waapi) {
+					return null;
+				}
 				if (run.animation !== null || run.evicted) { continue; }
 				if (run.plan.delay <= at) { return 1; }
 				marks.push(run.plan.delay);
 			}
-			const cycle = master.duration;
+			const cycle = player.duration;
 			const index = Math.floor(at / cycle);
 			marks.push(index * cycle);
 			marks.push((index + 1) * cycle);
@@ -1269,50 +1133,326 @@ when (js) {
 				}
 			}
 			if (!Number.isFinite(next)) { return null; }
-			return Math.abs(next - at) / Math.abs(master.timeScale) + 1;
+			return Math.abs(next - at) / Math.abs(player.timeScale) + 1;
 		}
 
 		private running(): boolean {
-			const master = this.master;
-			if (master.paused) { return false; }
-			const at = master.rawTime;
-			return master.timeScale > 0 ? at < master.totalDuration : at > 0;
+			const player = this.player as BrowserMotionPlayer;
+			if (player.paused) { return false; }
+			const at = player.rawTime;
+			return player.timeScale > 0 ? at < player.totalDuration : at > 0;
 		}
 
 		private localTime(): float64 {
-			return this.master.rawTime + (this.timing as WaapiTiming).delay;
+			const player = this.player as BrowserMotionPlayer;
+			return player.rawTime + (this.timing as WaapiTiming).delay;
 		}
 
 		private align(run: StyleRun): void {
 			const animation = run.animation;
-			if (animation === null) { return; }
-			animation.playbackRate = this.master.timeScale;
+			if (animation === null || this.player === null) { return; }
+			animation.playbackRate = (this.player as BrowserMotionPlayer).timeScale;
 			if (this.running()) { animation.play(); } else { animation.pause(); }
 			animation.currentTime = this.localTime();
 		}
+	}
 
-		private alignAll(): void {
-			for (const run of this.runs) { this.align(run); }
+	export class BrowserMotionPlayer extends MotionPlayer {
+		private setup: BrowserRuns;
+
+		constructor(setup: BrowserRuns) {
+			super(setup.doc, setup.bindings, setup.options);
+			this.setup = setup;
+			setup.player = this;
 		}
 
-		private halt(commit: boolean): void {
-			let refused = "";
-			for (const run of this.runs) {
-				run.evicted = false;
-				const animation = run.animation;
-				if (animation === null) { continue; }
-				run.animation = null;
-				run.release();
-				animation.pause();
-				animation.currentTime = this.localTime();
-				try {
-					if (commit) { commitStyles(animation, run.element, run.plan.css); }
-				} catch (e) {
-					if (refused === "") { refused = e.message; }
+		play(from: float64 | null = null, suppressEvents: boolean = true): void {
+			this.setup.wake.flush();
+			super.play(from, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
+			this.setup.wake.flush();
+			super.reverse(from, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
+			this.setup.wake.flush();
+			super.pause(atTime, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		resume(): void {
+			this.setup.wake.flush();
+			super.resume();
+			this.setup.alignAll();
+		}
+
+		restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
+			this.setup.wake.flush();
+			super.restart(includeDelay, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		seek(position: float64, suppressEvents: boolean = true): void {
+			this.setup.wake.flush();
+			super.seek(position, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		setTotalTime(value: float64, suppressEvents: boolean = false): void {
+			this.setup.wake.flush();
+			super.setTotalTime(value, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		setTime(value: float64, suppressEvents: boolean = false): void {
+			this.setup.wake.flush();
+			super.setTime(value, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		setTotalProgress(value: float64, suppressEvents: boolean = false): void {
+			this.setup.wake.flush();
+			super.setTotalProgress(value, suppressEvents);
+			this.setup.alignAll();
+		}
+
+		setTimeScale(value: float64): void {
+			this.setup.wake.flush();
+			super.setTimeScale(value);
+			this.setup.alignAll();
+		}
+
+		finish(): void {
+			this.setup.wake.flush();
+			super.finish();
+			this.setup.alignAll();
+		}
+
+		cancel(): void {
+			super.cancel();
+			this.setup.halt(true);
+		}
+
+		revert(): void {
+			this.setup.reverting = true;
+			try {
+				super.revert();
+			} finally {
+				this.setup.reverting = false;
+			}
+			this.setup.halt(false);
+		}
+
+		dispose(): void {
+			this.setup.halt(true);
+			super.dispose();
+		}
+	}
+
+	export function browserMotionPlayer(
+		doc: MotionDocument,
+		elements: MotionElements,
+		bindings: MotionBinding[],
+		options: MotionOptions,
+	): MotionPlayer {
+		return new BrowserMotionPlayer(
+			new BrowserRuns(doc, elements, bindings, options),
+		);
+	}
+
+	class ValueParts {
+		initial: float64;
+		policy: MotionPolicy;
+		elements: MotionElements;
+		slot: string;
+		style: StyleProperty;
+		target: MotionTarget | null;
+		wake: WakeClock = new WakeClock();
+		element: HTMLElement | null = null;
+
+		constructor(
+			initial: float64,
+			policy: MotionPolicy,
+			elements: MotionElements,
+			slot: string,
+			style: StyleProperty,
+			target: MotionTarget | null,
+		) {
+			this.initial = initial;
+			this.policy = policy;
+			this.elements = elements;
+			this.slot = slot;
+			this.style = style;
+			const node = elements.node(slot);
+			this.target = target ?? (node !== null && isDomNode(node)
+				? elementTarget(node as unknown as HTMLElement, style.name)
+				: null);
+		}
+	}
+
+	export class ElementValue extends AnimatedValue {
+		private parts: ValueParts;
+		private animation: Animation | null = null;
+		private entry: TargetEntry | null;
+
+		constructor(parts: ValueParts) {
+			super(parts.initial, parts.wake.clock, parts.policy, parts.target);
+			this.parts = parts;
+			const target = parts.target;
+			this.entry = target === null ? null : entryOf(target);
+			this.subscribe((next: float64): void => {
+				const element = this.element();
+				if (element !== null) { this.paint(element, next); }
+			});
+			requestFrame((time: float64): void => { this.element(); });
+		}
+
+		get handedOver(): boolean {
+			return this.animation !== null;
+		}
+
+		get(): float64 {
+			this.parts.wake.flush();
+			return super.get();
+		}
+
+		velocity(): float64 {
+			this.parts.wake.flush();
+			return super.velocity();
+		}
+
+		isAnimating(): boolean {
+			this.parts.wake.flush();
+			return super.isAnimating();
+		}
+
+		animate(
+			spec: AnimationSpec,
+			onEnd: ((finished: boolean) => void) | null = null,
+		): void {
+			this.parts.wake.flush();
+			const from = super.get();
+			const carried = super.velocity();
+			this.settle(false);
+			super.animate(spec, (finished: boolean): void => {
+				this.settle(false);
+				if (onEnd !== null) { onEnd(finished); }
+			});
+			const element = this.element();
+			if (spec.kind === AnimationKind.Spring && super.isAnimating() &&
+				element !== null) {
+				this.handOver(
+					element,
+					createSpring(
+						spec.spring,
+						from,
+						spec.to,
+						carried + spec.velocityPerSecond,
+					),
+				);
+			}
+		}
+
+		set(value: float64): void {
+			this.settle(false);
+			super.set(value);
+		}
+
+		cancel(): void {
+			this.parts.wake.flush();
+			this.settle(false);
+			super.cancel();
+		}
+
+		dispose(): void {
+			if (!this.disposed) {
+				this.parts.wake.flush();
+				this.settle(false);
+			}
+			super.dispose();
+		}
+
+		settle(commit: boolean): void {
+			const animation = this.animation;
+			if (animation === null) { return; }
+			this.animation = null;
+			this.parts.wake.undefer();
+			const entry = this.entry;
+			if (entry !== null && entry.holder === this) { entry.holder = null; }
+			animation.pause();
+			try {
+				if (commit) {
+					commitStyles(
+						animation,
+						this.parts.element as HTMLElement,
+						this.parts.style.css,
+					);
 				}
+			} finally {
 				animation.cancel();
 			}
-			if (refused !== "") { throw new Error(refused); }
 		}
+
+		private element(): HTMLElement | null {
+			const parts = this.parts;
+			if (parts.element !== null || this.disposed) { return parts.element; }
+			const node = parts.elements.node(parts.slot);
+			if (node === null || !isDomNode(node)) { return null; }
+			const element = node as unknown as HTMLElement;
+			parts.element = element;
+			this.paint(element, super.get());
+			return element;
+		}
+
+		private paint(element: HTMLElement, value: float64): void {
+			const style = this.parts.style;
+			writeStyle(element, style.css, styleValue(style, numberValue(value)));
+		}
+
+		private handOver(element: HTMLElement, spring: SpringSimulation): void {
+			const curve = sampleSpring(spring);
+			const style = this.parts.style;
+			const animation = animateStyle(
+				element,
+				style.css,
+				[0, 1],
+				[
+					styleValue(style, numberValue(spring.from)),
+					styleValue(style, numberValue(spring.to)),
+				],
+				[cssLinear(curve), "linear"],
+				curve.durationMs,
+				0,
+				1,
+				"normal",
+				"both",
+			);
+			animation.startTime = this.parts.wake.now();
+			this.animation = animation;
+			const entry = this.entry;
+			if (entry !== null) { entry.holder = this; }
+			this.parts.wake.defer(curve.durationMs);
+		}
+	}
+
+	export function elementValue(
+		initial: float64,
+		policy: MotionPolicy,
+		elements: MotionElements,
+		slot: string,
+		property: string,
+		target: MotionTarget | null = null,
+	): AnimatedValue {
+		const style = styleProperty(property);
+		if (style === null || style.kind !== ValueKind.Number) {
+			fail("an animated value has no numeric CSS property " + property);
+		}
+		return new ElementValue(
+			new ValueParts(initial, policy, elements, slot, style, target),
+		);
 	}
 }
