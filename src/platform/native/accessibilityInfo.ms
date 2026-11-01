@@ -12,7 +12,7 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		return niAccessibilityCommand(name, arg);
+		return niAccessibilityCommand(name, arg) as string;
 	}
 } else {
 	const command: AppCommand = appCall;

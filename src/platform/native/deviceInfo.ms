@@ -12,7 +12,7 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		return niDeviceCommand(name, arg);
+		return niDeviceCommand(name, arg) as string;
 	}
 } else {
 	const command: AppCommand = appCall;

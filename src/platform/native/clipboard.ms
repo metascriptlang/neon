@@ -13,7 +13,7 @@ when (ios) {
 
 when (ios || android) {
 	function command(name: string, arg: string): string {
-		return niClipboardCommand(name, arg);
+		return niClipboardCommand(name, arg) as string;
 	}
 } else {
 	const command: AppCommand = appCall;
