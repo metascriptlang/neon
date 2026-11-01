@@ -20,13 +20,6 @@ export struct WindowScroll {
 	zoomScale: float64;
 }
 
-// Parked: an (int32 | null)[] result cannot be built on C —
-// ~/metascript/.inbox/compiler/2026-10-03-nullable-int32-array-push.md
-export struct OffsetHit {
-	found: boolean;
-	index: int32;
-}
-
 enum FillPreference {
 	After,
 	Before,
@@ -53,8 +46,8 @@ export function shouldRenderWithPriority(count: int32, range: CellRange, metrics
 	return false;
 }
 
-export function elementsThatOverlapOffsets(offsets: float64[], itemCount: int32, metricsAt: (index: int32) => CellMetrics, zoomScale: float64): OffsetHit[] {
-	const result: OffsetHit[] = [];
+export function elementsThatOverlapOffsets(offsets: float64[], itemCount: int32, metricsAt: (index: int32) => CellMetrics, zoomScale: float64): (int32 | null)[] {
+	const result: (int32 | null)[] = [];
 	for (let offsetIndex = 0; offsetIndex < offsets.length; offsetIndex += 1) {
 		const current = offsets[offsetIndex];
 		let left: int32 = 0;
@@ -69,8 +62,8 @@ export function elementsThatOverlapOffsets(offsets: float64[], itemCount: int32,
 			} else if (current > end) {
 				left = mid + 1;
 			} else {
-				while (result.length < offsetIndex) { result.push({ found: false, index: 0 }); }
-				result.push({ found: true, index: mid });
+				while (result.length < offsetIndex) { result.push(null); }
+				result.push(mid);
 				break;
 			}
 		}
@@ -78,10 +71,10 @@ export function elementsThatOverlapOffsets(offsets: float64[], itemCount: int32,
 	return result;
 }
 
-function hitOr(hits: OffsetHit[], at: int32, fallback: int32): int32 {
+function hitOr(hits: (int32 | null)[], at: int32, fallback: int32): int32 {
 	if (at >= hits.length) { return fallback; }
 	const hit = hits[at];
-	return hit.found ? hit.index : fallback;
+	return hit === null ? fallback : hit;
 }
 
 // RN's fixVirtualizeListCollapseWindowSize branch (ReactNativeFeatureFlags.config.js:1002,

@@ -1,5 +1,5 @@
 import {
-	CellMetrics, CellRange, OffsetHit, WindowScroll, newRangeCount, elementsThatOverlapOffsets, computeWindowedRenderLimits, shouldRenderWithPriority,
+	CellMetrics, CellRange, WindowScroll, newRangeCount, elementsThatOverlapOffsets, computeWindowedRenderLimits, shouldRenderWithPriority,
 } from "../../../src/components/list/virtualizeUtils";
 
 // Ported from React Native packages/virtualized-lists/Lists/__tests__/VirtualizeUtils-test.js;
@@ -17,11 +17,11 @@ function fixedFrames(length: float64): (index: int32) => CellMetrics {
 	return (index: int32): CellMetrics => ({ index, length, offset: length * (index as float64), isMounted: true });
 }
 
-function hits(found: OffsetHit[]): string {
+function hits(found: (int32 | null)[]): string {
 	let out = "";
 	for (let i = 0; i < found.length; i += 1) {
 		const h = found[i];
-		out += (i > 0 ? "," : "") + (h.found ? `${h.index}` : "_");
+		out += (i > 0 ? "," : "") + (h === null ? "_" : `${h}`);
 	}
 	return out;
 }
