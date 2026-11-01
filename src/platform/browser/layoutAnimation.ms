@@ -82,16 +82,30 @@ function resize(el: HTMLElement, before: Measured, phase: LayoutPhase): void {
 	restoreLater([transition, w, h, overflow], phase);
 }
 
-function fadeIn(el: HTMLElement, phase: LayoutPhase): void {
+function appear(el: HTMLElement, phase: LayoutPhase): void {
 	const style = el.style;
 	const transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
-	const opacity = new Written((): string => style.opacity, (v: string): void => { style.opacity = v; });
+	const timing = `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
+	if (phase.property === "opacity") {
+		const opacity = new Written((): string => style.opacity, (v: string): void => { style.opacity = v; });
+		transition.put("none");
+		opacity.put("0");
+		reflowSink += el.offsetHeight;
+		transition.put(`opacity ${timing}`);
+		opacity.put(opacity.kept === "" ? "1" : opacity.kept);
+		restoreLater([transition, opacity], phase);
+		return;
+	}
+	const transform = new Written((): string => style.transform, (v: string): void => { style.transform = v; });
+	const own = transform.kept === "" || transform.kept === "none" ? "" : `${transform.kept} `;
+	const x = phase.property === "scaleY" ? 1 : 0;
+	const y = phase.property === "scaleX" ? 1 : 0;
 	transition.put("none");
-	opacity.put("0");
+	transform.put(`${own}scale(${x}, ${y})`);
 	reflowSink += el.offsetHeight;
-	transition.put(`opacity ${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`);
-	opacity.put(opacity.kept === "" ? "1" : opacity.kept);
-	restoreLater([transition, opacity], phase);
+	transition.put(`transform ${timing}`);
+	transform.put(transform.kept === "" ? "none" : transform.kept);
+	restoreLater([transition, transform], phase);
 }
 
 // RN-web leaves LayoutAnimation a no-op; this measures every element before
@@ -108,6 +122,6 @@ export function animateDomLayout(plan: LayoutAnimationPlan): void {
 			const parent = el.parentElement;
 			if (plan.create !== null && parent !== null && before.has(parent as HTMLElement)) { created.push(el); }
 		}
-		for (const el of created) { fadeIn(el, plan.create as LayoutPhase); }
+		for (const el of created) { appear(el, plan.create as LayoutPhase); }
 	});
 }

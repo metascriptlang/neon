@@ -10,6 +10,7 @@ import { timing } from "pulse/src/value";
 import { createAnimatedValue } from "../../src/motion/neonValues";
 import { LayoutAnimation } from "../../src/motion/layoutAnimation";
 import { setFrameDriver } from "../../src/animation/frame";
+import { Show } from "../../src/macros/ui/flow";
 
 extern class CSSStyleDeclaration {
 	opacity: string;
@@ -22,6 +23,10 @@ extern class HTMLElement {
 	extern remove(): void;
 	extern setAttribute(name: cstring, value: cstring): void;
 }
+
+extern function shownWidth(el: HTMLElement): number from "(e => e.getBoundingClientRect().width)(#)";
+extern function shownHeight(el: HTMLElement): number from "(e => e.getBoundingClientRect().height)(#)";
+extern function shownOpacity(el: HTMLElement): string from "(e => getComputedStyle(e).opacity)(#)";
 
 function probe(n: HostNode): HTMLElement {
 	return n as unknown as HTMLElement;
@@ -80,4 +85,25 @@ test "a height written while LayoutAnimation runs survives the animation's resto
 	await sleepAsync(400);
 	assert el.offsetHeight === 60, "the later write stands: " + el.offsetHeight.toString();
 	el.remove();
+}
+
+test "a view created under a scaleY create grows its height and keeps its opacity" {
+	const [shown, setShown] = createSignal(false);
+	const nodes: HostNode[] = [];
+	const outer: HostNode[] = [];
+	render(element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+		<Show when={shown()}>
+			<View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{ width: 100, height: 100, backgroundColor: "#a0a" }} />
+		</Show>
+	</View>), domHost(), documentBody());
+	LayoutAnimation.configureNext(LayoutAnimation.create(400, "linear", "scaleY"));
+	setShown(true);
+	await sleepAsync(200);
+	const el = probe(nodes[0]);
+	const midHeight = shownHeight(el);
+	assert shownWidth(el) === 100 && midHeight > 10 && midHeight < 90, "grows tall only: " + shownWidth(el).toString() + "x" + midHeight.toString();
+	assert shownOpacity(el) === "1", "scale leaves opacity alone: " + shownOpacity(el);
+	await sleepAsync(400);
+	assert shownHeight(el) === 100, "lands: " + shownHeight(el).toString();
+	probe(outer[0]).remove();
 }
