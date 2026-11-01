@@ -396,6 +396,13 @@ test "scheduleNotificationAsync flattens expo's request, names it and refuses a 
 		trigger: { seconds: 5 },
 	});
 	assert id.startsWith("neon-"), id;
+	const stamp = id.split("-")[1];
+	let digits = stamp.length > 0;
+	for (let i = 0; i < stamp.length; i += 1) {
+		const c = stamp.charCodeAt(i);
+		if (c < 48 || c > 57) { digits = false; }
+	}
+	assert digits, `the identifier carries Date.now() as digits: ${id}`;
 	const first = fake.notifications[0];
 	assert first.identifier === id && first.title === "Reminder" && first.subtitle === "" && first.body === "Water the plants";
 	assert first.data === "{\"plant\":3}" && first.seconds === 5 && !first.repeats && first.date === -1 && first.badge === -1;
