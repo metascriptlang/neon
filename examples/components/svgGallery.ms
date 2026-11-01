@@ -1,5 +1,3 @@
-// react-native-svg's everyday uses on Neon: an icon row, a donut chart, a line chart with a
-// gradient area, a progress ring driven by Animated, and a logo from an SVG document.
 
 import { Accessor, createSignal } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
@@ -7,7 +5,9 @@ import { For } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable } from "../../src/components/primitives";
-import { Animated, Easing, EndResult, useAnimatedValue } from "../../src/animation/index";
+import { Easing } from "pulse/src/easing";
+import { timing } from "pulse/src/value";
+import { useAnimatedValue } from "../../src/motion/neon";
 import {
 	Svg,
 	G,
@@ -98,16 +98,17 @@ function chartPoints(): string {
 const RING = 2 * Math.PI * 50;
 
 export function SvgGallery(): NeonNode {
-	const progress = useAnimatedValue(0);
+	const [shown, progress] = useAnimatedValue(0);
 	const [status, setStatus] = createSignal("status progress 0%");
 	const slices = donutSlices();
 	const linePoints = chartPoints();
 	const area = `M 1 120 L ${linePoints.split(" ").join(" ")} L 379 120 Z`;
 	const animate = (e: NeonEvent): void => {
-		const target = progress.peek() > 0.5 ? 0 : 0.75;
+		const target = progress.get() > 0.5 ? 0 : 0.75;
 		setStatus("status progress moving");
-		Animated.timing(progress, { toValue: target, duration: 600, easing: Easing.inOut(Easing.quad) }).start((r: EndResult): void => {
-			if (r.finished) { setStatus(`status progress ${Math.round(target * 100)}%`); }
+		const toTarget = timing(target, { duration: 600, easing: Easing.inOut(Easing.quad) });
+		progress.animate(toTarget, (finished: boolean): void => {
+			if (finished) { setStatus(`status progress ${Math.round(target * 100)}%`); }
 		});
 	};
 	return <View style={styles.screen}>
@@ -130,9 +131,9 @@ export function SvgGallery(): NeonNode {
 			<Svg width={140} height={140} accessibilityLabel="progress ring">
 				<Circle cx={70} cy={70} r={50} stroke="#e0e0e0" strokeWidth={12} fill="none" />
 				<Circle cx={70} cy={70} r={50} stroke="#8e24aa" strokeWidth={12} fill="none" strokeLinecap="round"
-					strokeDasharray={[RING, RING]} strokeDashoffset={RING * (1 - progress.get())}
-					strokeOpacity={progress.get() > 0.001 ? 1.0 : 0.0} rotation={-90} originX={70} originY={70} />
-				<SvgText x={70} y={78} fontSize={24} fontWeight="bold" textAnchor="middle" fill="#8e24aa">{`${Math.round(progress.get() * 100)}%`}</SvgText>
+					strokeDasharray={[RING, RING]} strokeDashoffset={RING * (1 - shown())}
+					strokeOpacity={shown() > 0.001 ? 1.0 : 0.0} rotation={-90} originX={70} originY={70} />
+				<SvgText x={70} y={78} fontSize={24} fontWeight="bold" textAnchor="middle" fill="#8e24aa">{`${Math.round(shown() * 100)}%`}</SvgText>
 			</Svg>
 		</View>
 		<Pressable style={styles.button} onPress={animate}><Text style={styles.buttonText}>animate</Text></Pressable>
