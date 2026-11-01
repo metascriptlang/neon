@@ -8,6 +8,7 @@ import { useAppServices, useCaptureServices, imageSize } from "../native/appServ
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { useIonStorage } from "../ion/storage";
+import { bridgeLayerEngine, installLayerEngine } from "../native/layerMotion";
 import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { NeonNode } from "../../render/node";
 import { Dispose } from "../../core/types";
@@ -50,6 +51,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
 	useAppServices({ ...ionAppServices, imageSize });
+	installLayerEngine(bridgeLayerEngine());
 	frameWindows.push(win);
 	nimSetFrameRequester((): void => { requestFrames(); });
 	let mainRoot: Ptr<void> | null = null;

@@ -4,6 +4,7 @@
 #include "../native/app.h"
 #include "../native/components.h"
 #include "../native/loop.h"
+#include "../native/layerMotion.h"
 #include "handoff.h"
 #import "view.h"
 #include <math.h>
@@ -78,12 +79,16 @@ static NSColor *rgba(float r, float g, float b, float a) {
 - (BOOL)acceptsFirstResponder { return NO; }
 - (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
 
-- (CATransform3D)neonTransform {
-	float radians = self.rotation * (float)M_PI / 180.0f;
-	CATransform3D t = CATransform3DMakeTranslation(self.w / 2 + self.translateX, self.h / 2 + self.translateY, 0);
+static CATransform3D centredTransform(NeonView *v, float scaleX, float scaleY, float translateX, float translateY, float degrees) {
+	float radians = degrees * (float)M_PI / 180.0f;
+	CATransform3D t = CATransform3DMakeTranslation(v.w / 2 + translateX, v.h / 2 + translateY, 0);
 	t = CATransform3DRotate(t, radians, 0, 0, 1);
-	t = CATransform3DScale(t, self.scaleX, self.scaleY, 1);
-	return CATransform3DTranslate(t, -self.w / 2, -self.h / 2, 0);
+	t = CATransform3DScale(t, scaleX, scaleY, 1);
+	return CATransform3DTranslate(t, -v.w / 2, -v.h / 2, 0);
+}
+
+- (CATransform3D)neonTransform {
+	return centredTransform(self, self.scaleX, self.scaleY, self.translateX, self.translateY, self.rotation);
 }
 
 // RN macOS RCTUIView: AppKit resets layer.transform during its display cycle and its layers anchor at
@@ -1766,6 +1771,113 @@ void niSetCornerRadius(void *view, float radius) {
 void niSetOpacity(void *view, float opacity) {
 	as(view).alphaValue = opacity;
 	requestHostFrame();
+}
+
+// --- layerMotion.h: a track handed to Core Animation, which the render server runs off the main thread ---
+
+static NSString *layerKey(int32_t property) {
+	if (property == 0) return @"neon.opacity";
+	if (property == 1) return @"neon.transform";
+	char message[96];
+	snprintf(message, sizeof message, "layer property %d is neither opacity (0) nor transform (1)", property);
+	fail(message);
+	return nil;
+}
+
+static int64_t layerWidth(int32_t property) {
+	(void)layerKey(property);
+	return property == 0 ? 1 : 5;
+}
+
+void niLayerWrite(void *view, int32_t property, const double *values, int64_t count) {
+	if (count != layerWidth(property)) fail("niLayerWrite: the value count does not match the property");
+	NeonView *v = as(view);
+	if (property == 0) {
+		[CATransaction begin];
+		[CATransaction setDisableActions:YES];
+		v.alphaValue = values[0];
+		[CATransaction commit];
+	} else {
+		v.scaleX = values[0];
+		v.scaleY = values[1];
+		v.translateX = values[2];
+		v.translateY = values[3];
+		v.rotation = values[4];
+		[v neonApply];
+	}
+	requestHostFrame();
+}
+
+static double transformComponent(NeonView *v, CATransform3D t, int32_t component) {
+	double scaleX = hypot(t.m11, t.m12);
+	switch (component) {
+	case 1: return scaleX;
+	case 2: return scaleX > 0 ? (t.m11 * t.m22 - t.m12 * t.m21) / scaleX : 0;
+	case 3: return v.w / 2 * t.m11 + v.h / 2 * t.m21 + t.m41 - v.w / 2;
+	case 4: return v.w / 2 * t.m12 + v.h / 2 * t.m22 + t.m42 - v.h / 2;
+	case 5: return atan2(t.m12, t.m11) * 180.0 / M_PI;
+	}
+	fail("layer component out of range");
+	return 0;
+}
+
+double niLayerRead(void *view, int32_t component) {
+	NeonView *v = as(view);
+	switch (component) {
+	case 0: return v.alphaValue;
+	case 1: return v.scaleX;
+	case 2: return v.scaleY;
+	case 3: return v.translateX;
+	case 4: return v.translateY;
+	case 5: return v.rotation;
+	}
+	fail("niLayerRead: layer component out of range");
+	return 0;
+}
+
+void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
+	const double *values, int64_t valueCount, double durationMs, double repeatCount,
+	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int64_t width = layerWidth(property);
+	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
+	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
+	NeonView *v = as(view);
+	CALayer *layer = v.layer;
+	NSMutableArray<NSNumber *> *times = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
+	NSMutableArray *frames = [NSMutableArray arrayWithCapacity:(NSUInteger)keyCount];
+	for (int64_t i = 0; i < keyCount; i++) {
+		[times addObject:@(keyTimes[i])];
+		const double *at = values + i * width;
+		if (property == 0) {
+			[frames addObject:@(at[0])];
+		} else {
+			[frames addObject:[NSValue valueWithCATransform3D:centredTransform(v, at[0], at[1], at[2], at[3], at[4])]];
+		}
+	}
+	CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:property == 0 ? @"opacity" : @"transform"];
+	animation.keyTimes = times;
+	animation.values = frames;
+	animation.calculationMode = kCAAnimationLinear;
+	animation.duration = durationMs / 1000.0;
+	animation.repeatCount = (float)repeatCount;
+	animation.autoreverses = autoreverses != 0;
+	animation.speed = (float)speed;
+	animation.timeOffset = offsetMs / 1000.0;
+	animation.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] + startMs / 1000.0;
+	animation.fillMode = kCAFillModeBackwards;
+	animation.removedOnCompletion = YES;
+	[layer addAnimation:animation forKey:layerKey(property)];
+}
+
+void niLayerRemove(void *view, int32_t property) {
+	[as(view).layer removeAnimationForKey:layerKey(property)];
+}
+
+double niLayerPresented(void *view, int32_t component) {
+	NeonView *v = as(view);
+	CALayer *shown = v.layer.presentationLayer ?: v.layer;
+	if (component == 0) return shown.opacity;
+	return transformComponent(v, shown.transform, component);
 }
 
 // --- bridge.h: geometry, the bounds of a view in the window's content, through the same model the hit test
