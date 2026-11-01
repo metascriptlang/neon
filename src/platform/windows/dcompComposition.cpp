@@ -49,6 +49,8 @@ public:
 	void Remove(IVisual *visual) override;
 	void Opacity(float opacity) override;
 	void TransformMatrix(const float m[6]) override;
+	void AnimatedOpacity(const Curve &curve) override;
+	void AnimatedTransform(const Curve curves[6]) override;
 	void Size(float width, float height) override;
 	void Offset(float x, float y) override;
 	void CornerRadius(float radius) override;
@@ -59,6 +61,7 @@ public:
 
 private:
 	void markDirty();
+	ComPtr<IDCompositionAnimation> animation(const Curve &curve);
 
 	DCompContext *context;
 	ComPtr<IDCompositionVisual2> visual;
@@ -142,6 +145,38 @@ void DCompVisual::Opacity(float opacity) {
 void DCompVisual::TransformMatrix(const float m[6]) {
 	D2D1_MATRIX_3X2_F matrix = {m[0], m[1], m[2], m[3], m[4], m[5]};
 	must(visual->SetTransform(matrix), "SetTransform");
+}
+
+ComPtr<IDCompositionAnimation> DCompVisual::animation(const Curve &curve) {
+	ComPtr<IDCompositionAnimation> out;
+	must(context->device->CreateAnimation(&out), "CreateAnimation");
+	for (const CurveSegment &segment : curve.segments) {
+		must(out->AddCubic(segment.begin, segment.value, segment.slope, 0.0f, 0.0f), "AddCubic");
+	}
+	if (curve.repeats) {
+		must(out->AddRepeat(curve.repeatBegin, curve.repeatSeconds), "AddRepeat");
+	} else {
+		must(out->End(curve.endSeconds, curve.endValue), "End");
+	}
+	return out;
+}
+
+void DCompVisual::AnimatedOpacity(const Curve &curve) {
+	if (!effect) {
+		must(context->device->CreateEffectGroup(&effect), "CreateEffectGroup");
+		must(visual->SetEffect(effect.Get()), "SetEffect");
+	}
+	must(effect->SetOpacity(animation(curve).Get()), "SetOpacity");
+}
+
+void DCompVisual::AnimatedTransform(const Curve curves[6]) {
+	static const int rows[6] = {0, 0, 1, 1, 2, 2}, columns[6] = {0, 1, 0, 1, 0, 1};
+	ComPtr<IDCompositionMatrixTransform> transform;
+	must(context->device->CreateMatrixTransform(&transform), "CreateMatrixTransform");
+	for (int i = 0; i < 6; i++) {
+		must(transform->SetMatrixElement(rows[i], columns[i], animation(curves[i]).Get()), "SetMatrixElement");
+	}
+	must(visual->SetTransform(transform.Get()), "SetTransform");
 }
 
 void DCompVisual::Size(float w, float h) {
