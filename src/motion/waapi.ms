@@ -644,6 +644,9 @@ when (js) {
 
 	extern class HTMLElement {}
 
+	extern function onFinish(animation: Animation, callback: () => void): void from
+		"((a, f) => { a.onfinish = f; })(#, #)";
+
 	extern function animateStyle(
 		element: HTMLElement,
 		property: string,
@@ -908,6 +911,7 @@ when (js) {
 		mode: RunMode = RunMode.Unresolved;
 		animation: Animation | null = null;
 		evicted: boolean = false;
+		ended: boolean = false;
 		baseline: string = "";
 
 		constructor(
@@ -1286,6 +1290,10 @@ when (js) {
 				return;
 			}
 			if (run.animation !== null) { return; }
+			if (run.ended) {
+				writeStyle(run.dom, run.plan.css, run.cssText());
+				return;
+			}
 			run.evicted = false;
 			run.animation = this.start(run);
 			claimCss(run);
@@ -1295,7 +1303,7 @@ when (js) {
 		private start(run: StyleRun): Animation {
 			const timing = this.timing as WaapiTiming;
 			const keyframes = run.plan.keyframes;
-			return animateStyle(
+			const animation = animateStyle(
 				run.dom,
 				run.plan.css,
 				keyframes.map((keyframe: WaapiKeyframe): float64 => keyframe.offset),
@@ -1309,6 +1317,32 @@ when (js) {
 				this.timeline,
 				this.range,
 			);
+			if (this.timeline === null) {
+				onFinish(animation, (): void => this.finished(run, animation));
+			}
+			return animation;
+		}
+
+		private finished(run: StyleRun, animation: Animation): void {
+			if (run.animation !== animation) { return; }
+			run.animation = null;
+			run.ended = true;
+			run.release();
+			writeStyle(run.dom, run.plan.css, this.finalKeyframe(run).value);
+			animation.cancel();
+		}
+
+		private finalKeyframe(run: StyleRun): WaapiKeyframe {
+			const timing = this.timing as WaapiTiming;
+			const keyframes = run.plan.keyframes;
+			const first = (this.player as BrowserMotionPlayer).timeScale < 0 ||
+				(timing.direction === "alternate" && timing.iterations % 2 === 0);
+			return keyframes[first ? 0 : keyframes.length - 1];
+		}
+
+		control(): void {
+			this.wake.flush();
+			for (const run of this.runs) { run.ended = false; }
 		}
 
 		private nextWake(): float64 | null {
@@ -1381,73 +1415,73 @@ when (js) {
 		}
 
 		play(from: float64 | null = null, suppressEvents: boolean = true): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.play(from, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.reverse(from, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.pause(atTime, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		resume(): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.resume();
 			this.setup.alignAll();
 		}
 
 		restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.restart(includeDelay, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		seek(position: float64, suppressEvents: boolean = true): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.seek(position, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		setTotalTime(value: float64, suppressEvents: boolean = false): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.setTotalTime(value, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		setTime(value: float64, suppressEvents: boolean = false): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.setTime(value, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		setTotalProgress(value: float64, suppressEvents: boolean = false): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.setTotalProgress(value, suppressEvents);
 			this.setup.alignAll();
 		}
 
 		setTimeScale(value: float64): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.setTimeScale(value);
 			this.setup.alignAll();
 		}
 
 		finish(): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.finish();
 			this.setup.alignAll();
 		}
 
 		cancel(): void {
-			this.setup.wake.flush();
+			this.setup.control();
 			super.cancel();
 			this.setup.halt(true);
 		}

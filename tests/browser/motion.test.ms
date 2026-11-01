@@ -231,7 +231,7 @@ class Recorder {
 	}
 }
 
-test "a View's opacity and translate run as WAAPI animations with no inline writes" {
+test "a View's opacity and translate run as WAAPI animations with no inline writes until they finish" {
 	const node = mount();
 	const el = dom(node);
 	const player = fadeAndSlide(node, motionOptions(frameClock()));
@@ -253,8 +253,12 @@ test "a View's opacity and translate run as WAAPI animations with no inline writ
 	assert opacity(el) === 1 && translated(el) === 100, computed(el, "opacity") +
 		" " +
 		computed(el, "translate");
-	assert el.style.opacity === "", "no inline write at the end: " +
-		el.style.opacity;
+	assert el.getAnimations().length === 0, "a finished animation is cancelled: " +
+		el.getAnimations().length.toString();
+	assert el.style.opacity === "1" && el.style.translate === "100px", "the end values are inline: " +
+		el.style.opacity + " " + el.style.translate;
+	el.style.opacity = "0.3";
+	assert opacity(el) === 0.3, "a later inline style shows: " + computed(el, "opacity");
 	player.dispose();
 	el.remove();
 }
