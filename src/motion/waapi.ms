@@ -50,6 +50,7 @@ export struct RoutedTrack {
 	route: TrackRoute;
 	style: StyleProperty | null;
 	keyframes: WaapiKeyframe[];
+	delay: float64;
 }
 
 export struct CssRun {
@@ -58,6 +59,7 @@ export struct CssRun {
 	properties: string[];
 	route: TrackRoute;
 	keyframes: WaapiKeyframe[];
+	delay: float64;
 }
 
 export struct WaapiPlan {
@@ -212,15 +214,17 @@ function segmentLinear(left: MotionKeyframe, right: MotionKeyframe): boolean {
 function offsetKeys(
 	writer: ComposedTrack,
 	duration: float64,
+	delayable: boolean,
 ): OffsetKey[] | null {
-	if (writer.start !== 0) { return null; }
+	if (writer.start !== 0 && !delayable) { return null; }
 	const keys = writer.track.keyframes;
 	for (const key of keys) {
 		if (key.time < 0 || key.time > writer.duration) { return null; }
 	}
+	const span = duration - writer.start;
 	const offset = (time: float64): float64 => Math.min(
 		1,
-		Math.round(time / writer.rate / duration * 1e8) / 1e8,
+		Math.round(time / writer.rate / span * 1e8) / 1e8,
 	);
 	const out: OffsetKey[] = [];
 	const first = keys[0];
@@ -263,8 +267,9 @@ export function waapiKeyframes(
 	writer: ComposedTrack,
 	property: StyleProperty,
 	duration: float64,
+	delayable: boolean = false,
 ): WaapiKeyframe[] | null {
-	const keys = offsetKeys(writer, duration);
+	const keys = offsetKeys(writer, duration, delayable);
 	if (keys === null) { return null; }
 	return keys.map(
 		(key: OffsetKey): WaapiKeyframe => ({
@@ -362,6 +367,10 @@ function mergeAxes(
 	return out;
 }
 
+function delayable(timing: WaapiTiming | null): boolean {
+	return timing !== null && timing.iterations === 1;
+}
+
 function kindName(kind: ValueKind): string {
 	return match (kind) {
 		ValueKind.Number => "number",ValueKind.Color => "colour",
@@ -384,6 +393,7 @@ function routeTrack(
 			route: TrackRoute.Custom,
 			style: null,
 			keyframes: [],
+			delay: 0,
 		};
 	}
 	const style = styleProperty(track.property);
@@ -397,7 +407,7 @@ function routeTrack(
 		);
 	}
 	const keyframes = timing !== null && writers.length === 1
-		? waapiKeyframes(writers[0], style, duration)
+		? waapiKeyframes(writers[0], style, duration, delayable(timing))
 		: null;
 	if (keyframes === null) {
 		return {
@@ -406,6 +416,7 @@ function routeTrack(
 			route: TrackRoute.Style,
 			style,
 			keyframes: [],
+			delay: 0,
 		};
 	}
 	return {
@@ -414,6 +425,7 @@ function routeTrack(
 		route: TrackRoute.Waapi,
 		style,
 		keyframes,
+		delay: writers[0].start,
 	};
 }
 
@@ -421,6 +433,7 @@ function cssRuns(
 	tracks: RoutedTrack[],
 	groups: ComposedTrack[][],
 	duration: float64,
+	timing: WaapiTiming | null,
 ): CssRun[] {
 	const runs: CssRun[] = [];
 	const members: int32[][] = [];
@@ -441,6 +454,7 @@ function cssRuns(
 					properties: [],
 					route: tracks[i].route,
 					keyframes: tracks[i].keyframes,
+					delay: tracks[i].delay,
 				},
 			);
 			members.push([]);
@@ -453,7 +467,7 @@ function cssRuns(
 	for (let r: int32 = 0; r < runs.length; r += 1) {
 		out.push(
 			members[r].length > 1
-				? mergeRun(runs[r], members[r], tracks, groups, duration)
+				? mergeRun(runs[r], members[r], tracks, groups, duration, timing)
 				: runs[r],
 		);
 	}
@@ -466,6 +480,7 @@ function mergeRun(
 	tracks: RoutedTrack[],
 	groups: ComposedTrack[][],
 	duration: float64,
+	timing: WaapiTiming | null,
 ): CssRun {
 	const members = unordered.slice(0);
 	const named = members.map(
@@ -484,9 +499,11 @@ function mergeRun(
 			(tracks[b].style as StyleProperty).axis,
 	);
 	const keys: OffsetKey[][] = [];
+	const delay = tracks[members[0]].delay;
 	for (const i of members) {
-		const own = tracks[i].route === TrackRoute.Waapi
-			? offsetKeys(groups[i][0], duration)
+		const own = tracks[i].route === TrackRoute.Waapi &&
+				tracks[i].delay === delay
+			? offsetKeys(groups[i][0], duration, delayable(timing))
 			: null;
 		if (own !== null) { keys.push(own); }
 	}
@@ -499,6 +516,7 @@ function mergeRun(
 		properties: members.map((i: int32): string => tracks[i].property),
 		route: merged === null ? TrackRoute.Style : TrackRoute.Waapi,
 		keyframes: merged ?? [],
+		delay: merged === null ? 0 : delay,
 	};
 }
 
@@ -537,7 +555,7 @@ export function planWaapi(
 			duration,
 		),
 	);
-	const runs = cssRuns(tracks, groups, duration);
+	const runs = cssRuns(tracks, groups, duration, timing);
 	return {
 		timing,
 		tracks: tracks.map(
@@ -898,8 +916,8 @@ when (js) {
 				keyframes.map((keyframe: WaapiKeyframe): float64 => keyframe.offset),
 				keyframes.map((keyframe: WaapiKeyframe): string => keyframe.value),
 				keyframes.map((keyframe: WaapiKeyframe): string => keyframe.easing),
-				timing.duration,
-				timing.delay,
+				timing.duration - run.plan.delay,
+				timing.delay + run.plan.delay,
 				timing.iterations,
 				timing.direction,
 				timing.fill,

@@ -405,3 +405,69 @@ test "translateX and translateY on one element run as one translate animation" {
 	player.dispose();
 	el.remove();
 }
+
+function staggered(): MotionDocument {
+	return {
+		version: 1,
+		root: "main",
+		clips: [
+			{
+				id: "main",
+				duration: 1000,
+				tracks: [],
+				placements: [
+					{ clip: "fade", start: 0, rate: 1, slots: [{ from: "box", to: "first" }] },
+					{ clip: "fade", start: 300, rate: 1, slots: [{ from: "box", to: "second" }] },
+				],
+				labels: [],
+			},
+			{
+				id: "fade",
+				duration: 500,
+				tracks: [
+					{
+						slot: "box",
+						property: "opacity",
+						kind: numberValue(0).kind,
+						keyframes: [linearKeyframe("a", 0, 0), linearKeyframe("b", 500, 1)],
+					},
+				],
+				placements: [],
+				labels: [],
+			},
+		],
+	};
+}
+
+test "a staggered placement runs on WAAPI with its start as the delay" {
+	const firstNode = mount();
+	const secondNode = mount();
+	const first = dom(firstNode);
+	const second = dom(secondNode);
+	const player = new BrowserMotionPlayer(
+		staggered(),
+		[{ slot: "first", node: firstNode }, { slot: "second", node: secondNode }],
+		[],
+		paused(),
+	);
+	player.seek(100);
+	assert near(opacity(first), 0.2, 1e-3), computed(first, "opacity");
+	assert second.getAnimations().length === 0 && opacity(second) === 1,
+		"before its start the second element keeps its own value";
+	player.seek(400);
+	assert first.getAnimations().length === 1 &&
+		second.getAnimations().length === 1, "both on WAAPI";
+	assert second.style.opacity === "", "no inline write";
+	assert near(opacity(first), 0.8, 1e-3) && near(opacity(second), 0.2, 1e-3),
+		computed(first, "opacity") + " " + computed(second, "opacity");
+	player.seek(100);
+	assert near(opacity(second), 0, 1e-3), "a reached placement holds its first key: " +
+		computed(second, "opacity");
+	player.play();
+	await sleepAsync(450);
+	assert opacity(second) > 0.2 && opacity(second) < 0.9, "the second plays: " +
+		computed(second, "opacity");
+	player.dispose();
+	first.remove();
+	second.remove();
+}

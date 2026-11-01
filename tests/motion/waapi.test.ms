@@ -331,11 +331,54 @@ test "a nested clip at the start with its own rate lowers by scaling its keyfram
 	assert routed.keyframes.map((k): float64 => k.offset).join(",") === "0,0.2,1";
 }
 
-test "a late placement, a keyframe outside its clip and two writers run on the evaluator" {
+test "a late placement plays once as a WAAPI delay, its keyframes spread over the rest of the clip" {
 	const late = only(
 		planWaapi(
 			nested(200, 1, [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)]),
 			options(),
+			[],
+		),
+	);
+	assert late.route === TrackRoute.Waapi && late.delay === 200;
+	assert late.keyframes.map((k): float64 => k.offset).join(",") === "0,0.5,1";
+	assert late.keyframes.map((k): string => k.value).join(",") === "0,1,1";
+	const staggered = planWaapi(
+		{
+			version: 1,
+			root: "main",
+			clips: [
+				clip(
+					"main",
+					1000,
+					[],
+					[
+						{ clip: "child", start: 0, rate: 1, slots: [] },
+						{ clip: "child", start: 300, rate: 1, slots: [{ from: "box", to: "card" }] },
+					],
+				),
+				clip(
+					"child",
+					400,
+					[track("box", "opacity", [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)])],
+					[],
+				),
+			],
+		},
+		options(),
+		[],
+	);
+	assert staggered.runs.map((r: CssRun): string => r.slot + "@" + r.delay.toString()).join(",") ===
+		"box@0,card@300";
+}
+
+test "a repeated late placement, a keyframe outside its clip and two writers run on the evaluator" {
+	const late = only(
+		planWaapi(
+			nested(200, 1, [linearKeyframe("a", 0, 0), linearKeyframe("b", 400, 1)]),
+			{
+				...options(),
+				repeat: 1,
+			},
 			[],
 		),
 	);
