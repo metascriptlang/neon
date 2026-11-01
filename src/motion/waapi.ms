@@ -652,15 +652,20 @@ when (js) {
 		property: string,
 	): void from
 		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { throw new Error(`motion: the browser refused to commit ${p} on a connected element: ${e.message}`); } })(#, #, #)";
-	extern function timelineNow(): float64 from
-		"(document.timeline.currentTime ?? performance.now())";
+	extern function timelineTime(): float64 from
+		"((typeof document === 'undefined' || document.timeline.currentTime === null) ? -1 : document.timeline.currentTime)";
+
+	function timelineNow(): float64 {
+		const time = timelineTime();
+		return time < 0 ? frameNow() : time;
+	}
 	extern function liveNow(): float64 from "performance.now()";
 	extern function startTimer(callback: () => void, ms: float64): float64 from
 		"setTimeout(#, #)";
 	extern function stopTimer(id: float64): void from "clearTimeout(#)";
 	extern function readStyle(element: HTMLElement, property: string): string from
 		"((el, p) => el.style[p])(#, #)";
-	extern function domElement(node: HTMLElement): boolean from
+	extern function domElement<T>(node: T): boolean from
 		"(n => typeof HTMLElement !== 'undefined' && n instanceof HTMLElement)(#)";
 	extern function writeStyle(element: HTMLElement, property: string, value: string): void from
 		"((el, p, v) => { el.style[p] = v; })(#, #, #)";
@@ -697,7 +702,7 @@ when (js) {
 	let liveRuns: StyleRun[] = [];
 
 	function isDomNode(node: HostNode): boolean {
-		return domElement(node as unknown as HTMLElement);
+		return domElement(node);
 	}
 
 	function entryOf(target: MotionTarget): TargetEntry {
@@ -1308,7 +1313,6 @@ when (js) {
 				const element = this.element();
 				if (element !== null) { this.paint(element, next); }
 			});
-			requestFrame((time: float64): void => { this.element(); });
 		}
 
 		get handedOver(): boolean {
