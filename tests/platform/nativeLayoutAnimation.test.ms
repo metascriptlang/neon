@@ -3,7 +3,7 @@ import { flush } from "../../src/core/runtime";
 import { View, Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
-import { LayoutAnimation, LayoutAnimationPresets } from "../../src/animation/layoutAnimation";
+import { LayoutAnimation, LayoutAnimationPresets } from "../../src/motion/layoutAnimation";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Show } from "../../src/macros/ui/flow";
 import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutY, nmOpacity, nmTap } from "./nativeBridgeMock.h";
@@ -55,6 +55,29 @@ test "a created view fades in under the easeInEaseOut preset; siblings below sli
 	assert nmOpacity(created) === 1, "only the inserted root fades, not its children " + nmOpacity(created).toString();
 	clock.runAll();
 	assert nmLayoutY(below) === 50 && nmOpacity(created) === 1;
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "the spring preset overshoots a growing frame and lands on it" {
+	const clock = useManualFrames();
+	const [open, setOpen] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<Pressable onPress={() => {}} style={{ width: 100, height: open() ? 200 : 40 }} />
+	</View>;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	LayoutAnimation.spring();
+	setOpen(true);
+	flush();
+	let highest = 0.0;
+	for (let i = 0; i < 60; i += 1) {
+		clock.step(1);
+		highest = Math.max(highest, nmLayoutHeight(tag) as float64);
+	}
+	assert highest > 200.5, "damping 0.4 overshoots " + highest.toString();
+	clock.runAll();
+	assert nmLayoutHeight(tag) === 200, "lands " + nmLayoutHeight(tag).toString();
 	nmTeardown();
 	setFrameDriver(null);
 }

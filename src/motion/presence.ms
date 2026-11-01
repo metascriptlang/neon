@@ -6,10 +6,9 @@ import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
 import { Style } from "../render/style";
 import { View } from "../components/primitives";
-import { Animated, CompositeAnimation } from "./animated";
-import { AnimatedValue } from "./nodes";
-import { EndResult } from "./animation";
 import { Easing } from "pulse/src/easing";
+import { timing } from "pulse/src/value";
+import { useAnimatedValue } from "./neon";
 
 export type PresenceType = "fade" | "scale" | "slide-up" | "slide-down" | "slide-left" | "slide-right";
 
@@ -40,26 +39,18 @@ function slideTransform(type: PresenceType, offset: number): string {
 export function Presence(props: PresenceProps): NeonNode {
 	const { when, type, duration, distance, style, onEntered, onExited } = props;
 	const initial = untrack((): boolean => when());
-	const progress = new AnimatedValue(initial ? 1 : 0);
+	const [progress, value] = useAnimatedValue(initial ? 1 : 0);
 	const [mounted, setMounted] = createSignal(initial);
-	let running: CompositeAnimation | null = null;
 	const kind = (): PresenceType => type === null ? "fade" : (type as Accessor<PresenceType>)();
 	const ms = (): number => duration === null ? 220 : (duration as Accessor<number>)();
 	const span = (): number => distance === null ? 24 : (distance as Accessor<number>)();
 	createRenderEffect<boolean>(
 		(prev: boolean | null): boolean => when(),
 		(show: boolean, prev: boolean | null): Cleanup | null => {
-			if (running !== null) { (running as CompositeAnimation).stop(); }
 			if (show) { setMounted(true); }
-			const animation = Animated.timing(progress, {
-				toValue: show ? 1 : 0,
-				duration: ms(),
-				easing: show ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-			});
-			running = animation;
-			animation.start((result: EndResult): void => {
-				if (!result.finished) { return; }
-				running = null;
+			const easing = show ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic);
+			value.animate(timing(show ? 1 : 0, { duration: ms(), easing }), (finished: boolean): void => {
+				if (!finished) { return; }
 				if (show) {
 					if (onEntered !== null) { (onEntered as () => void)(); }
 				} else {
@@ -72,7 +63,7 @@ export function Presence(props: PresenceProps): NeonNode {
 		{ defer: true },
 	);
 	const box = accessor((): Style => {
-		const p = progress.get();
+		const p = progress();
 		const base: Style = style === null ? {} : (style as Accessor<Style>)();
 		const t = kind();
 		const offset = t === "scale" ? (1 - p) * 10 : (1 - p) * span();

@@ -17,7 +17,7 @@ import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, pu
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
-import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
+import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../motion/layoutAnimation";
 import "../android/library";
 when (hcr) {
 	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";

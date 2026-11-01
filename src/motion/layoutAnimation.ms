@@ -1,5 +1,9 @@
-import { requestFrame, frameNow } from "./frame";
+import { requestFrame, frameNow } from "../animation/frame";
 import { Easing, EasingFunction, bezier } from "pulse/src/easing";
+import { MotionPolicy } from "pulse/src/policy";
+import { createSpring, position, springByDuration } from "pulse/src/spring";
+import { AnimatedValue, delay, timing } from "pulse/src/value";
+import { neonClock } from "./neon";
 
 when (js && !server) {
 	import { animateDomLayout } from "../platform/browser/layoutAnimation";
@@ -28,7 +32,6 @@ export interface LayoutPhase {
 	duration: number;
 	delay: number;
 	curve: EasingFunction;
-	cssCurve: string;
 	property: LayoutAnimationProperty;
 }
 
@@ -39,47 +42,31 @@ export interface LayoutAnimationPlan {
 
 let pending: LayoutAnimationConfig | null = null;
 
-// RN Android's SpringInterpolator for `type: "spring"`; keep the formula as is.
-function springCurve(damping: number): EasingFunction {
-	const factor = damping > 0 ? damping : 0.5;
-	return (t: number): number => {
-		if (t >= 1) { return 1; }
-		return 1 + Math.pow(2, -10 * t) * Math.sin(((t - factor / 4) * (2 * Math.PI)) / factor);
-	};
+function springCurve(duration: number, damping: number, velocity: number): EasingFunction {
+	const simulation = createSpring(springByDuration(duration, damping), 0, 1, velocity);
+	return (t: number): number => t >= 1 ? 1 : simulation.position(t * duration);
 }
 
-function curveFor(anim: LayoutAnimationAnim): EasingFunction {
+function curveFor(anim: LayoutAnimationAnim, duration: number): EasingFunction {
 	const type = anim.type ?? "easeInEaseOut";
 	return match (type) {
 		"linear" => Easing.linear,
 		"easeIn" => bezier(0.42, 0, 1, 1),
 		"easeOut" => bezier(0, 0, 0.58, 1),
 		"keyboard" => bezier(0.17, 0.59, 0.4, 0.77),
-		"spring" => springCurve(anim.springDamping ?? 0.5),
+		"spring" => springCurve(duration, anim.springDamping ?? 0.5, anim.initialVelocity ?? 0),
 		_ => bezier(0.42, 0, 0.58, 1),
-	};
-}
-
-function cssCurveFor(anim: LayoutAnimationAnim): string {
-	const type = anim.type ?? "easeInEaseOut";
-	return match (type) {
-		"linear" => "linear",
-		"easeIn" => "cubic-bezier(0.42, 0, 1, 1)",
-		"easeOut" => "cubic-bezier(0, 0, 0.58, 1)",
-		"keyboard" => "cubic-bezier(0.17, 0.59, 0.4, 0.77)",
-		"spring" => "cubic-bezier(0.5, 1.6, 0.4, 0.8)",
-		_ => "cubic-bezier(0.42, 0, 0.58, 1)",
 	};
 }
 
 function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase | null {
 	if (anim === null || anim === undefined) { return null; }
 	const a = anim as LayoutAnimationAnim;
+	const length = a.duration ?? duration;
 	return {
-		duration: a.duration ?? duration,
+		duration: length,
 		delay: a.delay ?? 0,
-		curve: curveFor(a),
-		cssCurve: cssCurveFor(a),
+		curve: curveFor(a, length),
 		property: a.property ?? "opacity",
 	};
 }
@@ -169,21 +156,11 @@ export function runLayoutTween(
 	step: (progress: number) => void,
 	finished: () => void,
 ): void {
-	const start = frameNow() + phaseOf.delay;
-	const tick = (time: number): void => {
-		const now = frameNow();
-		if (now < start) {
-			requestFrame(tick);
-			return;
-		}
-		const linear = phaseOf.duration <= 0 ? 1 : Math.min(1, (now - start) / phaseOf.duration);
-		step(linear >= 1 ? 1 : phaseOf.curve(linear));
-		if (linear >= 1) {
-			finished();
-			return;
-		}
-		requestFrame(tick);
-	};
+	const progress = new AnimatedValue(0, neonClock(), new MotionPolicy());
+	progress.subscribe(step);
 	step(0);
-	requestFrame(tick);
+	const tween = timing(1, { duration: phaseOf.duration, easing: phaseOf.curve });
+	progress.animate(delay(phaseOf.delay, tween), (done: boolean): void => {
+		if (done) { finished(); }
+	});
 }

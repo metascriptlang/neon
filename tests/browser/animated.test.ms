@@ -8,7 +8,7 @@ import { sleepAsync } from "std/core/promise";
 import { Easing } from "pulse/src/easing";
 import { timing } from "pulse/src/value";
 import { createAnimatedValue } from "../../src/motion/neonValues";
-import { LayoutAnimation } from "../../src/animation/layoutAnimation";
+import { LayoutAnimation } from "../../src/motion/layoutAnimation";
 import { setFrameDriver } from "../../src/animation/frame";
 
 extern class CSSStyleDeclaration {

@@ -11,7 +11,7 @@ export { Easing, EasingFunction, bezier } from "pulse/src/easing";
 export {
 	LayoutAnimation, LayoutAnimationPresets, LayoutAnimationConfig, LayoutAnimationAnim, LayoutAnimationType,
 	LayoutAnimationProperty,
-} from "./layoutAnimation";
-export { Presence, PresenceProps, PresenceType } from "./presence";
+} from "../motion/layoutAnimation";
+export { Presence, PresenceProps, PresenceType } from "../motion/presence";
 export { FrameDriver, ManualFrames, setFrameDriver, useManualFrames, requestFrame, cancelFrame, frameNow } from "./frame";
 export { useFrame } from "../render/voidClock";
