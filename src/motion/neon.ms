@@ -37,6 +37,8 @@ export interface ElementMotion {
 when (js) {
 	import { browserMotionPlayer, browserOwns, elementValue, showStyle, styleProperty } from "./waapi";
 
+	extern function documentPresent(): boolean from "(typeof document !== 'undefined')";
+
 	function platformMotion(): ElementMotion | null {
 		return {
 			owns: browserOwns,
@@ -44,7 +46,7 @@ when (js) {
 			player: browserMotionPlayer,
 			value: elementValue,
 			show: showStyle,
-			claimsAhead: (): boolean => false,
+			claimsAhead: (): boolean => documentPresent(),
 		};
 	}
 } else {
@@ -202,9 +204,9 @@ class OwnedSlot {
 	own: (owned: boolean) => void;
 	node: HostNode | null = null;
 
-	constructor(slot: string) {
+	constructor(slot: string, initial: boolean) {
 		this.slot = slot;
-		const [owned, setOwned] = createSignal(false, { ownedWrite: true });
+		const [owned, setOwned] = createSignal(initial, { ownedWrite: true });
 		this.owned = owned;
 		this.own = (next: boolean): void => { setOwned(next); };
 	}
@@ -325,9 +327,8 @@ export class MotionSignals {
 			);
 		}
 		this.elements.declare(slot);
-		const owned = this.ownedSlot(slot);
 		const ahead = elementMotion;
-		owned.own(ahead !== null && ahead.claimsAhead());
+		const owned = this.ownedSlot(slot, ahead !== null && ahead.claimsAhead());
 		return (handle: ViewHandle): void => {
 			this.elements.set(slot, handle.node);
 			const motion = elementMotion;
@@ -384,11 +385,11 @@ export class MotionSignals {
 		}
 	}
 
-	private ownedSlot(slot: string): OwnedSlot {
+	private ownedSlot(slot: string, ahead: boolean = false): OwnedSlot {
 		for (const owned of this.slots) {
 			if (owned.slot === slot) { return owned; }
 		}
-		const owned = new OwnedSlot(slot);
+		const owned = new OwnedSlot(slot, ahead);
 		this.slots.push(owned);
 		return owned;
 	}
