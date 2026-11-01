@@ -1,7 +1,7 @@
 import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
 import { onCleanup } from "../core/cleanup";
 import { getOwner } from "../core/runtime";
-import { Accessor, createSignal } from "../core/signal";
+import { Accessor, createSignal, untrack } from "../core/signal";
 import { Clock } from "pulse/src/clock";
 import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "pulse/src/document";
 import { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
@@ -210,15 +210,29 @@ class SignalTarget extends MotionTarget {
 
 class OwnedSlot {
 	slot: string;
+	ahead: boolean;
 	owned: Accessor<boolean>;
 	own: (owned: boolean) => void;
 	node: HostNode | null = null;
+	current: HostNode | null = null;
+	element: () => HostNode | null;
+	place: (node: HostNode | null) => void;
 
-	constructor(slot: string, initial: boolean) {
+	constructor(slot: string, ahead: boolean) {
 		this.slot = slot;
-		const [owned, setOwned] = createSignal(initial, { ownedWrite: true });
+		this.ahead = ahead;
+		const [owned, setOwned] = createSignal(ahead, { ownedWrite: true });
 		this.owned = owned;
 		this.own = (next: boolean): void => { setOwned(next); };
+		const [placed, setPlaced] = createSignal<int32>(0, { ownedWrite: true });
+		this.element = (): HostNode | null => {
+			placed();
+			return this.current;
+		};
+		this.place = (node: HostNode | null): void => {
+			this.current = node;
+			setPlaced(untrack((): int32 => placed()) + 1);
+		};
 	}
 }
 
@@ -340,16 +354,28 @@ export class MotionSignals {
 		const ahead = elementMotion;
 		const owned = this.ownedSlot(slot, ahead !== null && ahead.claimsAhead());
 		return (handle: ViewHandle): void => {
-			this.elements.set(slot, handle.node);
+			const node = handle.node;
+			this.elements.set(slot, node);
 			const motion = elementMotion;
-			const owns = motion !== null && motion.owns(handle.node);
-			owned.node = owns ? handle.node : null;
+			const owns = motion !== null && motion.owns(node);
+			owned.node = owns ? node : null;
 			owned.own(owns);
+			owned.place(node);
+			onCleanup((): void => {
+				if (owned.current !== node) { return; }
+				owned.node = null;
+				owned.own(owned.ahead);
+				owned.place(null);
+			});
 			for (const binding of this.bindings) {
 				const read = binding.read;
 				if (binding.slot === slot && read !== null) { this.show(slot, binding.property, read()); }
 			}
 		};
+	}
+
+	element(slot: string): HostNode | null {
+		return this.ownedSlot(slot).element();
 	}
 
 	style(slot: string): Style {

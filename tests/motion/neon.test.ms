@@ -17,7 +17,10 @@ import {
 import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
 import { MotionPolicy } from "pulse/src/policy";
 import { AnimatedValue, spring, timing } from "pulse/src/value";
-import { MotionSignals, neonClock, useAnimatedValue, useMotion } from "../../src/motion/neon";
+import { MotionSignals, installElementMotion, neonClock, useAnimatedValue, useMotion } from "../../src/motion/neon";
+import { createSignal } from "../../src/core/signal";
+import { Show } from "../../src/macros/ui/flow";
+import { MotionValue, numberValue } from "pulse/src/document";
 
 function fadeDocument(): MotionDocument {
 	const red: MotionKeyframe = { ...linearKeyframe("r0", 0, 0), value: colorValue(1, 0, 0, 1) };
@@ -364,5 +367,46 @@ test "a ref declared after a player bound its MotionSignals refuses and names th
 		valueError.includes("useAnimatedValue"), valueError;
 	dispose();
 	frames.runAll();
+	setFrameDriver(null);
+}
+
+class ShownOn {
+	nodes: HostNode[] = [];
+}
+
+test "a ref clears its slot on unmount and picks up the remounted element" {
+	useManualFrames();
+	const shownOn = new ShownOn();
+	installElementMotion({
+		owns: (node: HostNode): boolean => true,
+		carries: (property: string): boolean => property === "opacity",
+		player: (doc, elements, bindings, options): MotionPlayer => new MotionPlayer(doc, bindings, options),
+		value: (initial, policy, elements, slot, property, target): AnimatedValue =>
+			new AnimatedValue(initial, neonClock(), policy, target),
+		show: (node: HostNode, property: string, value: MotionValue): void => { shownOn.nodes.push(node); },
+		claimsAhead: (): boolean => false,
+	});
+	const signals = new MotionSignals();
+	signals.number("box", "opacity", 0);
+	const [present, setPresent] = createSignal(true);
+	const [root, dispose] = mount((): NeonNode => {
+		const ref = signals.ref("box");
+		return <Show when={present()}><View ref={ref} style={signals.style("box")} /></Show>;
+	});
+	const first = root.children[0] as unknown as HostNode;
+	assert shownOn.nodes.length === 1 && shownOn.nodes[0] === first, "the mounted element shows the binding";
+	assert signals.element("box") === first;
+	setPresent(false);
+	flush();
+	signals.show("box", "opacity", numberValue(0.5));
+	assert shownOn.nodes.length === 1, "an unmounted element is never written";
+	assert signals.element("box") === null, "the slot names no element while unmounted";
+	setPresent(true);
+	flush();
+	const second = root.children[0] as unknown as HostNode;
+	assert second !== first && shownOn.nodes[shownOn.nodes.length - 1] === second, "the remounted element is picked up";
+	assert signals.element("box") === second;
+	dispose();
+	installElementMotion(null);
 	setFrameDriver(null);
 }
