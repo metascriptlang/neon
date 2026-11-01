@@ -624,6 +624,7 @@ when (js) {
 		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { throw new Error(`motion: the browser refused to commit ${p} on a connected element: ${e.message}`); } })(#, #, #)";
 	extern function timelineNow(): float64 from
 		"(document.timeline.currentTime ?? performance.now())";
+	extern function liveNow(): float64 from "performance.now()";
 	extern function startTimer(callback: () => void, ms: float64): float64 from
 		"setTimeout(#, #)";
 	extern function stopTimer(id: float64): void from "clearTimeout(#)";
@@ -714,13 +715,19 @@ when (js) {
 		private frame: int32 = 0;
 		private timer: float64 = -1;
 		private deferredUntil: float64 = -1;
+		private latest: float64 = 0;
 
 		constructor() {
 			this.clock = {
-				now: (): float64 => timelineNow(),
+				now: (): float64 => this.now(),
 				request: (callback: (time: float64) => void): int32 => this.request(callback),
 				cancel: (id: int32): void => { if (id === this.ticket) { this.drop(); } },
 			};
+		}
+
+		now(): float64 {
+			this.latest = Math.max(this.latest, timelineNow());
+			return this.latest;
 		}
 
 		flush(): void {
@@ -728,7 +735,7 @@ when (js) {
 		}
 
 		defer(ms: float64): void {
-			this.deferredUntil = timelineNow() + ms;
+			this.deferredUntil = this.now() + ms;
 			this.reschedule();
 		}
 
@@ -754,7 +761,7 @@ when (js) {
 			const wake = this.wake;
 			if (wake !== null) { return wake(); }
 			if (this.deferredUntil < 0) { return null; }
-			const left = this.deferredUntil - timelineNow();
+			const left = this.deferredUntil - this.now();
 			if (left <= 0) {
 				this.deferredUntil = -1;
 				return null;
@@ -773,6 +780,7 @@ when (js) {
 			}
 			this.timer = startTimer((): void => {
 				this.timer = -1;
+				this.latest = Math.max(this.latest, liveNow());
 				this.fire();
 			}, wait);
 		}
@@ -796,7 +804,7 @@ when (js) {
 		private fire(): void {
 			const callback = this.callback;
 			this.drop();
-			if (callback !== null) { callback(timelineNow()); }
+			if (callback !== null) { callback(this.now()); }
 		}
 	}
 
@@ -928,7 +936,7 @@ when (js) {
 				"normal",
 				"both",
 			);
-			this.animation.startTime = timelineNow();
+			this.animation.startTime = this.wake.now();
 			this.owner.holder = this;
 			this.wake.defer(curve.durationMs);
 		}
