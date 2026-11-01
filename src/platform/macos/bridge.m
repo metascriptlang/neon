@@ -368,7 +368,9 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 
 static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic) {
 	NSFont *font;
-	if (family.length) {
+	if ([family isEqualToString:@"monospace"]) {
+		font = [NSFont monospacedSystemFontOfSize:size weight:bold ? NSFontWeightBold : NSFontWeightRegular];
+	} else if (family.length) {
 		font = [NSFont fontWithName:family size:size];
 		if (!font) {
 			char message[192];

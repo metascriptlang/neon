@@ -120,10 +120,50 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 
 @end
 
+static void fail(const char *message) {
+	fprintf(stderr, "neon ios bridge: %s\n", message);
+	fflush(stderr);
+	abort();
+}
+
+static char kNeonFontFamily;
+
+static NSString *fontFamilyOf(UIView *view) {
+	NSString *family = objc_getAssociatedObject(view, &kNeonFontFamily);
+	return family ? family : @"";
+}
+
+static UIFont *neonFont(NSString *family, CGFloat size, BOOL bold, BOOL italic) {
+	UIFont *font;
+	if ([family isEqualToString:@"monospace"]) {
+		font = [UIFont monospacedSystemFontOfSize:size weight:bold ? UIFontWeightBold : UIFontWeightRegular];
+		bold = NO;
+	} else if (family.length) {
+		font = [UIFont fontWithName:family size:size];
+		if (!font) {
+			char message[192];
+			snprintf(message, sizeof message, "fontFamily \"%s\" names no installed font", family.UTF8String);
+			fail(message);
+		}
+	} else {
+		font = [UIFont systemFontOfSize:size weight:bold ? UIFontWeightBold : UIFontWeightRegular];
+		bold = NO;
+	}
+	UIFontDescriptorSymbolicTraits traits = 0;
+	if (bold) traits |= UIFontDescriptorTraitBold;
+	if (italic) traits |= UIFontDescriptorTraitItalic;
+	if (traits) {
+		UIFontDescriptor *styled = [font.fontDescriptor fontDescriptorWithSymbolicTraits:font.fontDescriptor.symbolicTraits | traits];
+		if (styled) font = [UIFont fontWithDescriptor:styled size:size];
+	}
+	return font;
+}
+
 @interface NeonLabel : UILabel
 @property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
 @property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
 @property (nonatomic) NSWritingDirection neonWritingDirection;
+@property (nonatomic, copy) NSString *neonSpansText;
 @end
 
 @implementation NeonLabel
@@ -483,6 +523,7 @@ static void setTextDirection(NSMutableAttributedString *text, NSWritingDirection
 // textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic,
 // underline, line-through, press tag.
 static void setLabelSpans(NeonLabel *label, const char *text) {
+	label.neonSpansText = [NSString stringWithUTF8String:text];
 	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] init];
 	NSMutableArray<NSValue *> *ranges = [NSMutableArray array];
 	NSMutableArray<NSNumber *> *tags = [NSMutableArray array];
@@ -493,14 +534,7 @@ static void setLabelSpans(NeonLabel *label, const char *text) {
 		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
 		if (f.count < 8) continue;
 		CGFloat size = f[2].doubleValue > 0 ? f[2].doubleValue : 17;
-		UIFontDescriptorSymbolicTraits traits = 0;
-		if ([f[3] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitBold;
-		if ([f[4] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitItalic;
-		UIFont *font = [UIFont systemFontOfSize:size];
-		if (traits) {
-			UIFontDescriptor *styled = [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
-			if (styled) font = [UIFont fontWithDescriptor:styled size:size];
-		}
+		UIFont *font = neonFont(fontFamilyOf(label), size, [f[3] isEqualToString:@"1"], [f[4] isEqualToString:@"1"]);
 		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
 		attributes[NSFontAttributeName] = font;
 		attributes[NSParagraphStyleAttributeName] = paragraph;
@@ -1254,6 +1288,15 @@ void niSetProp(void *view, const char *name, const char *value) {
 			if (area.textStorage.length) setTextDirection(area.textStorage, direction);
 		}
 	}
+	else if (strcmp(name, "fontFamily") == 0 && [v respondsToSelector:@selector(setFont:)]) {
+		NSString *family = [NSString stringWithUTF8String:text];
+		objc_setAssociatedObject(v, &kNeonFontFamily, family, OBJC_ASSOCIATION_COPY_NONATOMIC);
+		UIFont *current = [(id)v font];
+		BOOL bold = (current.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+		[(id)v setFont:neonFont(family, current.pointSize > 0 ? current.pointSize : 17, bold, NO)];
+		if ([v isKindOfClass:NeonTextArea.class]) ((NeonTextArea *)v).neonPlaceholder.font = ((NeonTextArea *)v).font;
+		if ([v isKindOfClass:NeonLabel.class] && ((NeonLabel *)v).neonSpansText.length) setLabelSpans((NeonLabel *)v, ((NeonLabel *)v).neonSpansText.UTF8String);
+	}
 	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
 		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
 			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
@@ -1498,7 +1541,7 @@ void niSetTextColor(void *label, float r, float g, float b, float a) {
 
 void niSetFont(void *label, float size, int bold) {
 	UILabel *l = (__bridge UILabel *)label;
-	l.font = bold ? [UIFont boldSystemFontOfSize:size] : [UIFont systemFontOfSize:size];
+	l.font = neonFont(fontFamilyOf(l), size, bold, NO);
 }
 
 void niMeasureText(void *label, float maxWidth) {

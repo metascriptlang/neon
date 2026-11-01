@@ -764,7 +764,7 @@ function onResize(): void {
 const SPAN_RECORD = "\u001e";
 const SPAN_FIELD = "\u001f";
 
-when (ios || android) {
+when (android) {
 	function sendFontFamily(n: NativeNode, family: string): void {
 		if (family !== "") { throw `native host: fontFamily "${family}" is not wired to this platform's text stack yet`; }
 	}
