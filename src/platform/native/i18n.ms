@@ -11,7 +11,7 @@ when (ios) {
 }
 
 function state(): I18nState {
-	const reply: string = niLocaleCommand("i18n.info", "");
+	const reply: string = niLocaleCommand("i18n.info", "") as string;
 	return decodeI18n(reply);
 }
 

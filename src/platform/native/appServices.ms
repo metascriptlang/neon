@@ -78,7 +78,7 @@ function settleShare(value: string): void {
 }
 
 function onAppEvent(): void {
-	const value: string = niLastAppValue();
+	const value: string = niLastAppValue() as string;
 	const kind = appEventOf(niLastAppEvent());
 	match (kind) {
 		AppEvent.State => publishAppState(appStateOf(value)),

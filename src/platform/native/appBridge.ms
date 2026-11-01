@@ -34,7 +34,7 @@ const INT32_MAX = 2147483647;
 export type AppCommand = (name: string, arg: string) => string;
 
 export function appCall(name: string, arg: string): string {
-	return niAppCall(name, arg);
+	return niAppCall(name, arg) as string;
 }
 
 export function appEventOf(kind: int32): AppEvent {

@@ -965,7 +965,7 @@ function onScroll(): void {
 function onControl(): void {
 	const tag = niLastControlTag();
 	const phase = niLastControlPhase();
-	const value: string = niLastControlValue();
+	const value: string = niLastControlValue() as string;
 	const width = niLastControlWidth();
 	const height = niLastControlHeight();
 	const input = nodesByTag.has(tag) ? nodesByTag.get(tag) as NativeNode : null;
