@@ -1,6 +1,6 @@
 import { flush } from "../../src/core/runtime";
 import { Motion } from "../../examples/components/motion";
-import { useManualFrames, setFrameDriver } from "../../src/animation/index";
+import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, fireEventWith } from "../../src/render/host";
 import { Style } from "../../src/render/style";

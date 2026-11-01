@@ -3,7 +3,9 @@ import { flush } from "../core/runtime";
 import { createEffect, createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { QueryParams } from "./queryParams";
-import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
+import { Easing } from "pulse/src/easing";
+import { AnimatedValue, timing } from "pulse/src/value";
+import { createAnimatedValue } from "../motion/neonValues";
 import {
 	GestureResponderHandlers,
 	PanResponder,
@@ -66,7 +68,8 @@ const BACKDROP: Style = {
 };
 
 class DrawerMotion {
-	progress: AnimatedValue;
+	progress: Accessor<float64>;
+	animated: AnimatedValue;
 	shown: Accessor<boolean>;
 	writeShown: Setter<boolean>;
 	open: Accessor<boolean>;
@@ -83,7 +86,9 @@ class DrawerMotion {
 		swipe: Accessor<boolean>,
 	) {
 		const start = untrack((): boolean => open());
-		this.progress = new AnimatedValue(start ? 1 : 0);
+		const [progress, animated] = createAnimatedValue(start ? 1 : 0);
+		this.progress = progress;
+		this.animated = animated;
 		const [shown, writeShown] = createSignal<boolean>(start);
 		this.shown = shown;
 		this.writeShown = writeShown;
@@ -96,24 +101,26 @@ class DrawerMotion {
 
 	run(toOpen: boolean): void {
 		this.writeShown(true);
-		Animated.timing(this.progress, {
-			toValue: toOpen ? 1 : 0,
-			duration: DRAWER_DURATION,
-			easing: Easing.out(Easing.cubic),
-		}).start((result: EndResult): void => {
-			if (result.finished && !toOpen) { this.writeShown(false); }
-		});
+		this.animated.animate(
+			timing(toOpen ? 1 : 0, {
+				duration: DRAWER_DURATION,
+				easing: Easing.out(Easing.cubic),
+			}),
+			(finished: boolean): void => {
+				if (finished && !toOpen) { this.writeShown(false); }
+			},
+		);
 	}
 
 	contentTransform(): string {
-		const p = this.progress.get();
+		const p = this.progress();
 		if (p <= 0) { return "none"; }
 		const offset = p * this.width();
 		return "translateX(" + (this.right() ? -offset : offset).toString() + "px)";
 	}
 
 	panelTransform(): string {
-		const p = this.progress.get();
+		const p = this.progress();
 		if (p >= 1) { return "none"; }
 		const offset = (1 - p) * this.width();
 		return "translateX(" + (this.right() ? offset : -offset).toString() + "px)";
@@ -130,17 +137,17 @@ class DrawerMotion {
 				return inward > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
 			},
 			onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
-				this.progress.stopAnimation();
+				this.animated.cancel();
 				this.writeShown(true);
 			},
 			onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
 				const inward = this.right() ? -g.dx : g.dx;
 				const width = this.width();
-				this.progress.setValue(width > 0 ? Math.max(0, Math.min(1, inward / width)) : 0);
+				this.animated.set(width > 0 ? Math.max(0, Math.min(1, inward / width)) : 0);
 			},
 			onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
 				const speed = this.right() ? -g.vx : g.vx;
-				if (this.progress.get() > 0.5 || speed > 0.5) {
+				if (this.animated.get() > 0.5 || speed > 0.5) {
 					this.setOpen(true);
 				} else {
 					this.run(false);
@@ -448,8 +455,8 @@ export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 			});
 			const backdrop = accessor((): Style => {
 				const color = focusedOptions().overlayColor;
-				if (color === null) { return { ...BACKDROP, opacity: 0.4 * motion.progress.get() }; }
-				return { ...BACKDROP, backgroundColor: color as string, opacity: motion.progress.get() };
+				if (color === null) { return { ...BACKDROP, opacity: 0.4 * motion.progress() }; }
+				return { ...BACKDROP, backgroundColor: color as string, opacity: motion.progress() };
 			});
 			const edgeWidth = accessor((): number => {
 				const own = focusedOptions().swipeEdgeWidth;

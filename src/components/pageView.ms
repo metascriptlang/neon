@@ -12,7 +12,10 @@ import { NeonEvent } from "../render/event";
 import { Style, mergeStyle } from "../render/style";
 import { View, Pressable } from "./primitives";
 import { PanResponder, PanResponderGestureState } from "./panResponder";
-import { Animated, AnimatedValue, CompositeAnimation, Easing, EndResult, ValueState } from "../animation/index";
+import { Easing } from "pulse/src/easing";
+import { springByStiffness } from "pulse/src/spring";
+import { AnimatedValue, spring, timing } from "pulse/src/value";
+import { createAnimatedValue } from "../motion/neonValues";
 
 export type PageOrientation = "horizontal" | "vertical";
 export type PageScrollState = "idle" | "dragging" | "settling";
@@ -65,26 +68,27 @@ export function pageDelta(index: number, position: number, count: int32, loop: b
 	return wrapped;
 }
 
-// Flutter PageController with react-native-pager-view's imperative names beside it. The
-// position is in pages and drives every page's placement; read it with `position.get()`.
 export class PageController {
 	position: AnimatedValue;
+	tracked: Accessor<float64>;
 	initialPage: number;
 	mover: ((page: number, animated: boolean) => void) | null = null;
 	reader: (() => number) | null = null;
 
 	constructor(initialPage: number = 0) {
 		this.initialPage = initialPage;
-		this.position = new AnimatedValue(initialPage);
+		const [tracked, position] = createAnimatedValue(initialPage);
+		this.tracked = tracked;
+		this.position = position;
 	}
 
-	page(): number { return this.position.get(); }
+	page(): number { return this.tracked(); }
 
-	peek(): number { return this.position.peek(); }
+	peek(): number { return this.position.get(); }
 
 	selectedPage(): number {
 		const read = this.reader;
-		return read === null ? Math.round(this.position.get()) : read();
+		return read === null ? Math.round(this.tracked()) : read();
 	}
 
 	animateToPage(index: number): void { this.move(index, true); }
@@ -130,7 +134,7 @@ export function PageView<T>(props: {
 	const initial = initialProp === null ? (given === null ? 0 : (given as PageController).initialPage) : initialProp();
 	const controller = given === null ? new PageController(initial) : given as PageController;
 	const position = controller.position;
-	if (given === null || initialProp !== null) { position.setValue(initial); }
+	if (given === null || initialProp !== null) { position.set(initial); }
 
 	const vertical = (): boolean => orientationProp !== null && orientationProp() === "vertical";
 	const enabled = (): boolean => enabledProp === null || enabledProp();
@@ -148,7 +152,6 @@ export function PageView<T>(props: {
 	controller.reader = (): number => selected();
 	let pending: int32 | null = null;
 	let state: PageScrollState = "idle";
-	let motion: CompositeAnimation | null = null;
 	let dragStart = 0.0;
 
 	const setState = (next: PageScrollState): void => {
@@ -165,30 +168,25 @@ export function PageView<T>(props: {
 
 	// page_view.dart onPageChanged: the page under the centre, reported as it changes; a
 	// programmatic move reports its target at once and nothing on the way (pager-view).
-	const listener = position.addListener((s: ValueState): void => {
+	const unsubscribe = position.subscribe((value: float64): void => {
 		const n = count();
 		const loop = untrack<boolean>(loops);
-		const at = pageIndex(s.value, n, loop);
+		const at = pageIndex(value, n, loop);
 		if (pending !== null) {
 			if (at === pending) { pending = null; }
 		} else {
 			select(at);
 		}
 		if (onPageScroll !== null) {
-			const base = Math.floor(s.value);
+			const base = Math.floor(value);
 			const page = pageIndex(base, n, loop);
-			onPageScroll(page as number, s.value - base);
+			onPageScroll(page as number, value - base);
 		}
 	});
-	const stopMotion = (): void => {
-		if (motion !== null) {
-			(motion as CompositeAnimation).stop();
-			motion = null;
-		}
-	};
+	const stopMotion = (): void => { position.cancel(); };
 	onCleanup((): void => {
 		stopMotion();
-		position.removeListener(listener);
+		unsubscribe();
 		controller.mover = null;
 		controller.reader = null;
 	});
@@ -200,25 +198,23 @@ export function PageView<T>(props: {
 	const settle = (target: number, velocityPages: number): void => {
 		stopMotion();
 		setState("settling");
-		const run = Animated.spring(position, {
-			toValue: target, velocity: velocityPages,
-			mass: SPRING_MASS, stiffness: SPRING_STIFFNESS, damping: SPRING_DAMPING,
-		});
-		motion = run;
-		run.start((result: EndResult): void => {
-			if (motion === run) { motion = null; }
-			if (result.finished) {
-				position.setValue(target);
-				setState("idle");
-			}
-		});
+		position.animate(
+			spring(
+				target,
+				springByStiffness(SPRING_STIFFNESS, SPRING_DAMPING, SPRING_MASS),
+				velocityPages,
+			),
+			(finished: boolean): void => {
+				if (finished) { setState("idle"); }
+			},
+		);
 	};
 
 	controller.mover = (index: number, animated: boolean): void => {
 		const n = count();
 		if (n <= 0) { return; }
 		const loop = untrack<boolean>(loops);
-		const from = position.peek();
+		const from = position.get();
 		let target = Math.round(index);
 		if (loop) {
 			target = from + pageDelta(pageIndex(index, n, true) as number, from, n, true);
@@ -232,20 +228,20 @@ export function PageView<T>(props: {
 		select(page);
 		if (!animated) {
 			pending = null;
-			position.setValue(target);
+			position.set(target);
 			setState("idle");
 			return;
 		}
 		setState("settling");
-		const run = Animated.timing(position, { toValue: target, duration: PAGE_ANIMATION_MS, easing: Easing.ease });
-		motion = run;
-		run.start((result: EndResult): void => {
-			if (motion === run) { motion = null; }
-			if (result.finished) {
-				pending = null;
-				setState("idle");
-			}
-		});
+		position.animate(
+			timing(target, { duration: PAGE_ANIMATION_MS, easing: Easing.ease }),
+			(finished: boolean): void => {
+				if (finished) {
+					pending = null;
+					setState("idle");
+				}
+			},
+		);
 	};
 	const userRef = props.ref;
 	if (userRef !== null) { userRef(controller); }
@@ -271,25 +267,25 @@ export function PageView<T>(props: {
 		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
 			stopMotion();
 			pending = null;
-			dragStart = position.peek();
+			dragStart = position.get();
 			setState("dragging");
 		},
 		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const length = untrack<number>(extent);
 			if (length <= 0) { return; }
 			const main = untrack<boolean>(vertical) ? g.dy : g.dx;
-			position.setValue(resisted(dragStart - main / length));
+			position.set(resisted(dragStart - main / length));
 		},
 		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const length = untrack<number>(extent);
 			const rested = e.timeStamp - g.accountsForMovesUpTo > POINTER_STOPPED_MS;
 			const velocity = rested ? 0 : -(untrack<boolean>(vertical) ? g.vy : g.vx) * 1000;
-			const at = position.peek();
+			const at = position.get();
 			const target = clampTarget(pageTarget(at, velocity));
 			settle(target, length > 0 ? velocity / length : 0);
 		},
 		onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => {
-			settle(clampTarget(Math.round(position.peek())), 0);
+			settle(clampTarget(Math.round(position.get())), 0);
 		},
 	});
 
@@ -298,7 +294,7 @@ export function PageView<T>(props: {
 		const length = extent();
 		const isVertical = vertical();
 		const n = data().length as int32;
-		const delta = pageDelta(index(), position.get(), n, loops());
+		const delta = pageDelta(index(), controller.page(), n, loops());
 		const shown = size > 0 && Math.abs(delta) * length < (size + length) / 2;
 		const inset = (size - length) / 2;
 		const offset = inset + delta * length;

@@ -1,4 +1,5 @@
-import { LayoutAnimationPlan, LayoutPhase } from "../../animation/layoutAnimation";
+import { LayoutAnimationPlan, LayoutPhase } from "../../motion/layoutAnimation";
+import { cssLinear, sampleEasing } from "pulse/src/progress";
 import { HTMLElement } from "../../render/htmlElements";
 
 extern class document {
@@ -14,6 +15,10 @@ interface Measured {
 }
 
 let reflowSink = 0.0;
+
+function cssCurve(phase: LayoutPhase): string {
+	return cssLinear(sampleEasing(phase.curve, phase.duration));
+}
 
 function elements(): HTMLElement[] {
 	const list = document.body.querySelectorAll("*");
@@ -42,7 +47,7 @@ function resize(el: HTMLElement, before: Measured, phase: LayoutPhase): void {
 	style.height = `${before.height}px`;
 	style.overflow = "hidden";
 	reflowSink += el.offsetHeight;
-	const timing = `${phase.duration}ms ${phase.cssCurve} ${phase.delay}ms`;
+	const timing = `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
 	style.transition = `width ${timing}, height ${timing}`;
 	style.width = `${width}px`;
 	style.height = `${height}px`;
@@ -61,7 +66,7 @@ function fadeIn(el: HTMLElement, phase: LayoutPhase): void {
 	style.transition = "none";
 	style.opacity = "0";
 	reflowSink += el.offsetHeight;
-	style.transition = `opacity ${phase.duration}ms ${phase.cssCurve} ${phase.delay}ms`;
+	style.transition = `opacity ${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
 	style.opacity = keepOpacity === "" ? "1" : keepOpacity;
 	setTimeout((): void => {
 		style.transition = keepTransition;

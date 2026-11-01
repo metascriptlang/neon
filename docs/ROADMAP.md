@@ -352,6 +352,11 @@ workflows, not a separate checklist to finish before writing an app.
 
 ### Bundle 5 — animation (state 2026-10-07, `wt/rn-animated`, msc `0d83c4867`)
 
+Superseded 2026-11-01 (`wt/animation-one`): `Animated` and `src/animation/` except `frame.ms` are
+gone; every consumer, `Presence` and `LayoutAnimation` run on Pulse (`~/metascript/pulse`,
+`docs/ANIMATION.md` milestone I) through `src/motion/`. The paragraphs below are the record of
+the RN port.
+
 RN's `Animated` / `Easing` / `LayoutAnimation` surface runs on Neon signals: an `AnimatedValue`
 is a signal, a style that reads `value.get()` follows it per property, and every running
 animation shares one frame loop (`src/animation/`; import from `src/animation/index`). Covered:

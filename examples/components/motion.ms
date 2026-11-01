@@ -4,9 +4,15 @@ import { For } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable, ScrollView } from "../../src/components/primitives";
-import {
-	Animated, AnimatedValue, AnimatedNode, Easing, EndResult, LayoutAnimation, Presence, CompositeAnimation,
-} from "../../src/animation/index";
+import { LayoutAnimation } from "../../src/motion/layoutAnimation";
+import { Presence } from "../../src/motion/presence";
+import { CompositeAnimation, animation, loop } from "pulse/src/composite";
+import { Extrapolate } from "pulse/src/derived";
+import { Easing } from "pulse/src/easing";
+import { springByStiffness } from "pulse/src/spring";
+import { spring, timing } from "pulse/src/value";
+import { useAnimatedValue } from "../../src/motion/neon";
+import { animatedEvent, useValueSignal } from "../../src/motion/neonValues";
 
 const styles = createStyles({
 	screen: { flex: 1, flexDirection: "column", backgroundColor: "#1e1e2e" },
@@ -35,45 +41,50 @@ function rows(): number[] {
 }
 
 export function Motion(): NeonNode {
-	const fade = new AnimatedValue(1);
+	const [opacity, fade] = useAnimatedValue(1);
 	const [fadeState, setFadeState] = createSignal("fade 1");
-	const slide = new AnimatedValue(0);
+	const [offset, slide] = useAnimatedValue(0);
 	const [springState, setSpringState] = createSignal("spring 0");
-	const spin = new AnimatedValue(0);
-	const scrollY = new AnimatedValue(0);
+	const spin = useAnimatedValue(0)[1];
+	const scrollY = useAnimatedValue(0)[1];
 	const [scrolled, setScrolled] = createSignal<number>(0);
 	const [expanded, setExpanded] = createSignal(false);
 	const [toast, setToast] = createSignal(false);
 
-	const rotation: AnimatedNode = spin.interpolate({ inputRange: [0, 1], outputRange: [0, 360] });
-	const headerHeight: AnimatedNode = scrollY.interpolate({ inputRange: [0, 120], outputRange: [110, 56], extrapolate: "clamp" });
-	const titleOpacity: AnimatedNode = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 0.4], extrapolate: "clamp" });
+	const rotation = useValueSignal(spin.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }).source());
+	const headerHeight = useValueSignal(scrollY.interpolate({
+		inputRange: [0, 120], outputRange: [110, 56], extrapolate: Extrapolate.Clamp,
+	}).source());
+	const titleOpacity = useValueSignal(scrollY.interpolate({
+		inputRange: [0, 120], outputRange: [1, 0.4], extrapolate: Extrapolate.Clamp,
+	}).source());
 
 	const [spinning, setSpinning] = createSignal(false);
-	const spinLoop: CompositeAnimation = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1200, easing: Easing.linear }));
+	const spinLoop: CompositeAnimation = loop(animation(spin, timing(1, { duration: 1200, easing: Easing.linear })));
 	const toggleSpin = (e: NeonEvent): void => {
 		if (spinning()) {
 			spinLoop.stop();
 			spinLoop.reset();
 		} else {
 			spinLoop.reset();
-			spinLoop.start();
+			spinLoop.start(null);
 		}
 		setSpinning(!spinning());
 	};
 
 	const toggleFade = (e: NeonEvent): void => {
-		const target = fade.peek() > 0.5 ? 0 : 1;
+		const target = fade.get() > 0.5 ? 0 : 1;
 		setFadeState("fade moving");
-		Animated.timing(fade, { toValue: target, duration: 800, easing: Easing.inOut(Easing.quad) }).start((r: EndResult): void => {
-			if (r.finished) { setFadeState("fade " + target.toString()); }
+		fade.animate(timing(target, { duration: 800, easing: Easing.inOut(Easing.quad) }), (finished: boolean): void => {
+			if (finished) { setFadeState("fade " + target.toString()); }
 		});
 	};
+	const tensionFortyFrictionFour = springByStiffness(230.2, 13, 1);
 	const pushCard = (e: NeonEvent): void => {
-		const target = slide.peek() > 50 ? 0 : 160;
+		const target = slide.get() > 50 ? 0 : 160;
 		setSpringState("spring moving");
-		Animated.spring(slide, { toValue: target, friction: 4, tension: 40 }).start((r: EndResult): void => {
-			if (r.finished) { setSpringState("spring " + target.toString()); }
+		slide.animate(spring(target, tensionFortyFrictionFour), (finished: boolean): void => {
+			if (finished) { setSpringState("spring " + target.toString()); }
 		});
 	};
 	const togglePanel = (e: NeonEvent): void => {
@@ -82,11 +93,11 @@ export function Motion(): NeonNode {
 	};
 
 	return <View style={styles.screen}>
-		<Animated.View style={[styles.header, { height: headerHeight.get() }]}>
-			<Animated.Text style={[styles.title, { opacity: titleOpacity.get() }]}>Neon motion</Animated.Text>
-		</Animated.View>
+		<View style={[styles.header, { height: headerHeight() }]}>
+			<Text style={[styles.title, { opacity: titleOpacity() }]}>Neon motion</Text>
+		</View>
 		<ScrollView style={styles.scroll} scrollEventThrottle={16}
-			onScroll={Animated.event({ y: scrollY }, { listener: (e: NeonEvent): void => { setScrolled(Math.round(e.y)); } })}>
+			onScroll={animatedEvent({ y: scrollY }, (e: NeonEvent): void => { setScrolled(Math.round(e.y)); })}>
 			<View style={styles.content}>
 				<Text style={styles.status}>{fadeState() + " · " + springState() + " · scroll " + scrolled().toString() + " · spin " + (spinning() ? "on" : "off")}</Text>
 				<View style={styles.controls}>
@@ -97,11 +108,11 @@ export function Motion(): NeonNode {
 					<Pressable style={styles.button} onPress={toggleSpin}>{spinning() ? "stop spin" : "start spin"}</Pressable>
 				</View>
 				<View style={styles.stage}>
-					<Animated.View style={[styles.box, { opacity: fade.get() }]}><Text style={styles.label}>fade box</Text></Animated.View>
-					<Animated.View style={[styles.spinner, { transform: `rotate(${rotation.get()}deg)` }]}><Text style={styles.label}>spin</Text></Animated.View>
+					<View style={[styles.box, { opacity: opacity() }]}><Text style={styles.label}>fade box</Text></View>
+					<View style={[styles.spinner, { transform: `rotate(${rotation()}deg)` }]}><Text style={styles.label}>spin</Text></View>
 				</View>
 				<View style={styles.stage}>
-					<Animated.View style={[styles.card, { transform: `translateX(${slide.get()}px)` }]}><Text style={styles.label}>spring card</Text></Animated.View>
+					<View style={[styles.card, { transform: `translateX(${offset()}px)` }]}><Text style={styles.label}>spring card</Text></View>
 				</View>
 				<View style={[styles.panel, { height: expanded() ? 160 : 0 }]}>
 					<Text style={styles.panelText}>panel body</Text>

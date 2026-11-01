@@ -1,4 +1,4 @@
-import { Presence } from "../../src/animation/presence";
+import { Presence } from "../../src/motion/presence";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";

@@ -224,7 +224,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   yes.
 
 - **OPEN 2026-10-21 — the gate's Chrome lane: 10 cases red on main, cause not pinned.**
-  `tests/browser/run.sh` fails animated (Animated.View across frames, LayoutAnimation.configureNext),
+  `tests/browser/run.sh` fails animated (Animated.View across frames, LayoutAnimation.configureNext;
+  both green in Chrome on `wt/animation-one` after the Pulse rebuild, 2026-11-01),
   booking (1), dom (the three onLayout cases), pageScroll (offset/range, range after a resize) and
   scrollView (onScroll payload, paging); scrollView minIndexForVisible and sectionList (1) are red in some runs
   (minIndexForVisible: 2 of 3 runs of `wt/inbox-unpark` `824c5273`, msc `6ddf45298`, 2026-10-21). Measured red on an export of main `b84bc3d5` and in the gate of
