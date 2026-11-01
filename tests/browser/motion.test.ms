@@ -16,7 +16,10 @@ import {
 	MotionOptions,
 	motionOptions,
 } from "pulse/src/player";
-import { BrowserMotionPlayer, frameClock } from "../../src/motion/waapi";
+import { BrowserMotionPlayer, elementValue, frameClock } from "../../src/motion/waapi";
+import { MotionPolicy } from "pulse/src/policy";
+import { decay, spring } from "pulse/src/value";
+import { decayConfig } from "pulse/src/decay";
 
 extern class Animation {}
 
@@ -36,6 +39,16 @@ extern function computed(
 	el: HTMLElement,
 	property: string,
 ): string from "getComputedStyle(#)[#]";
+
+class StyleWrites {
+	count: int32 = 0;
+}
+
+extern function watchStyle(el: HTMLElement, writes: StyleWrites): () => void from
+	"((el, w) => { const o = new MutationObserver((list) => { w.count += list.length; }); o.observe(el, { attributes: true, attributeFilter: ['style'] }); return () => { w.count += o.takeRecords().length; o.disconnect(); }; })(#, #)";
+
+extern function firstEasing(el: HTMLElement): string from
+	"(el => { const a = el.getAnimations(); return a.length === 0 ? '' : a[0].effect.getKeyframes()[0].easing; })(#)";
 
 function ramp(slot: string, property: string, to: float64): MotionTrack {
 	return {
@@ -470,4 +483,94 @@ test "a staggered placement runs on WAAPI with its start as the delay" {
 	player.dispose();
 	first.remove();
 	second.remove();
+}
+
+function translateX(el: HTMLElement): float64 {
+	const text = computed(el, "translate");
+	return text === "none" ? 0 : parseFloat(text);
+}
+
+test "an element-bound spring runs as one WAAPI linear() animation with no style write from JS in flight" {
+	const node = mount();
+	const el = dom(node);
+	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	let ended = "";
+	value.animate(spring(100), (finished: boolean): void => {
+		ended = finished ? "finished" : "interrupted";
+	});
+	assert el.getAnimations().length === 1 && value.handedOver, "handed to WAAPI";
+	assert firstEasing(el).startsWith("linear("), firstEasing(el);
+	const writes = new StyleWrites();
+	const stop = watchStyle(el, writes);
+	await sleepAsync(200);
+	stop();
+	assert writes.count === 0, "style writes in flight: " + writes.count.toString();
+	assert translateX(el) > 5 && translateX(el) < 100, computed(el, "translate");
+	assert near(value.get(), translateX(el), 0.5), "the closed form tracks the browser: " +
+		value.get().toString() + " vs " + computed(el, "translate");
+	await sleepAsync(3000);
+	assert ended === "finished", ended;
+	assert el.getAnimations().length === 0, "the finished animation is gone";
+	assert el.style.translate === "100px", "the end value is inline: " + el.style.translate;
+	value.dispose();
+	el.remove();
+}
+
+test "a retarget samples position and velocity, cancels and starts a new sampled spring" {
+	const node = mount();
+	const el = dom(node);
+	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	value.animate(spring(100));
+	await sleepAsync(120);
+	const before = translateX(el);
+	const moving = value.velocity();
+	value.animate(spring(200));
+	const after = translateX(el);
+	assert near(before, after, 0.5), "no jump: " + before.toString() + " -> " + after.toString();
+	assert moving > 0 && near(value.velocity(), moving, 1e-6),
+		"the spring keeps its velocity: " + moving.toString() + " -> " + value.velocity().toString();
+	assert el.getAnimations().length === 1 && value.handedOver, "one new animation";
+	await sleepAsync(60);
+	assert translateX(el) > after && near(value.get(), translateX(el), 0.5),
+		"the new spring runs on: " + computed(el, "translate");
+	value.dispose();
+	assert el.getAnimations().length === 0;
+	el.remove();
+}
+
+test "a spring that starts on its target, reduced motion and decay hand nothing to WAAPI" {
+	const node = mount();
+	const el = dom(node);
+	const value = elementValue(0, new MotionPolicy(), node, "translateX");
+	let ended = false;
+	value.animate(spring(0), (finished: boolean): void => { ended = finished; });
+	assert ended && !value.handedOver && el.getAnimations().length === 0, "no motion";
+	const reduced = elementValue(0, new MotionPolicy(true), node, "opacity");
+	reduced.animate(spring(0.5));
+	assert !reduced.handedOver && el.style.opacity === "0.5", el.style.opacity;
+	value.animate(decay(decayConfig(), 400));
+	assert !value.handedOver && el.getAnimations().length === 0, "decay stays on the evaluator";
+	await sleepAsync(100);
+	assert translateX(el) > 0 && el.style.translate !== "", "the evaluator writes inline: " +
+		el.style.translate;
+	value.dispose();
+	reduced.dispose();
+	el.remove();
+}
+
+test "a player claiming an element-bound spring's property replaces its browser animation" {
+	const node = mount();
+	const el = dom(node);
+	const value = elementValue(0, new MotionPolicy(), node, "opacity");
+	value.animate(spring(1));
+	await sleepAsync(80);
+	assert value.handedOver && el.getAnimations().length === 1;
+	const player = fadeTo(node, 0.2);
+	player.seek(500);
+	assert !value.handedOver && !value.isAnimating(), "the value lost its target";
+	assert el.getAnimations().length === 1 && near(opacity(el), 0.1, 1e-3),
+		computed(el, "opacity");
+	player.dispose();
+	value.dispose();
+	el.remove();
 }

@@ -586,10 +586,15 @@ export struct MotionElement {
 when (js) {
 	import { numberValue } from "pulse/src/document";
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
+	import { MotionPolicy } from "pulse/src/policy";
+	import { cssLinear, sampleSpring } from "pulse/src/progress";
+	import { SpringSimulation, createSpring } from "pulse/src/spring";
 	import { Composition, MotionTarget } from "pulse/src/target";
+	import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
 
 	extern class Animation {
 		currentTime: number | null;
+		startTime: number | null;
 		playbackRate: number;
 		extern play(): void;
 		extern pause(): void;
@@ -617,6 +622,11 @@ when (js) {
 		property: string,
 	): void from
 		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { throw new Error(`motion: the browser refused to commit ${p} on a connected element: ${e.message}`); } })(#, #, #)";
+	extern function timelineNow(): float64 from
+		"(document.timeline.currentTime ?? performance.now())";
+	extern function startTimer(callback: () => void, ms: float64): float64 from
+		"setTimeout(#, #)";
+	extern function stopTimer(id: float64): void from "clearTimeout(#)";
 	extern function readStyle(element: HTMLElement, property: string): string from
 		"((el, p) => el.style[p])(#, #)";
 	extern function writeStyle(element: HTMLElement, property: string, value: string): void from
@@ -681,6 +691,7 @@ when (js) {
 		property: string;
 		target: MotionTarget = new MotionTarget();
 		run: StyleRun | null = null;
+		holder: ElementValue | null = null;
 		users: int32 = 0;
 
 		constructor(element: HTMLElement, property: string) {
@@ -689,8 +700,256 @@ when (js) {
 			this.target.onClaim = (): void => {
 				const run = this.run;
 				if (run !== null) { run.evict(); }
+				const holder = this.holder;
+				if (holder !== null) { holder.settle(true); }
 			};
 		}
+	}
+
+	class WakeClock {
+		clock: Clock;
+		wake: (() => float64 | null) | null = null;
+		private callback: ((time: float64) => void) | null = null;
+		private ticket: int32 = 0;
+		private frame: int32 = 0;
+		private timer: float64 = -1;
+		private deferredUntil: float64 = -1;
+
+		constructor() {
+			this.clock = {
+				now: (): float64 => timelineNow(),
+				request: (callback: (time: float64) => void): int32 => this.request(callback),
+				cancel: (id: int32): void => { if (id === this.ticket) { this.drop(); } },
+			};
+		}
+
+		flush(): void {
+			if (this.callback !== null) { this.fire(); }
+		}
+
+		defer(ms: float64): void {
+			this.deferredUntil = timelineNow() + ms;
+			this.reschedule();
+		}
+
+		undefer(): void {
+			this.deferredUntil = -1;
+		}
+
+		reschedule(): void {
+			if (this.callback === null) { return; }
+			this.unschedule();
+			this.schedule();
+		}
+
+		private request(callback: (time: float64) => void): int32 {
+			this.drop();
+			this.callback = callback;
+			this.ticket += 1;
+			this.schedule();
+			return this.ticket;
+		}
+
+		private waitMs(): float64 | null {
+			const wake = this.wake;
+			if (wake !== null) { return wake(); }
+			if (this.deferredUntil < 0) { return null; }
+			const left = this.deferredUntil - timelineNow();
+			if (left <= 0) {
+				this.deferredUntil = -1;
+				return null;
+			}
+			return left + 1;
+		}
+
+		private schedule(): void {
+			const wait = this.waitMs();
+			if (wait === null) {
+				this.frame = requestFrame((time: float64): void => {
+					this.frame = 0;
+					this.fire();
+				});
+				return;
+			}
+			this.timer = startTimer((): void => {
+				this.timer = -1;
+				this.fire();
+			}, wait);
+		}
+
+		private unschedule(): void {
+			if (this.frame !== 0) {
+				cancelFrame(this.frame);
+				this.frame = 0;
+			}
+			if (this.timer >= 0) {
+				stopTimer(this.timer);
+				this.timer = -1;
+			}
+		}
+
+		private drop(): void {
+			this.unschedule();
+			this.callback = null;
+		}
+
+		private fire(): void {
+			const callback = this.callback;
+			this.drop();
+			if (callback !== null) { callback(timelineNow()); }
+		}
+	}
+
+	export class ElementValue {
+		readonly value: AnimatedValue;
+		private element: HTMLElement;
+		private style: StyleProperty;
+		private owner: ElementTarget;
+		private wake: WakeClock = new WakeClock();
+		private animation: Animation | null = null;
+
+		constructor(
+			initial: float64,
+			policy: MotionPolicy,
+			element: HTMLElement,
+			style: StyleProperty,
+		) {
+			this.element = element;
+			this.style = style;
+			this.owner = elementTarget(element, style.name);
+			this.value = new AnimatedValue(
+				initial,
+				this.wake.clock,
+				policy,
+				this.owner.target,
+			);
+			this.value.subscribe((next: float64): void => {
+				writeStyle(element, style.css, styleValue(style, numberValue(next)));
+			});
+		}
+
+		get disposed(): boolean {
+			return this.value.disposed;
+		}
+
+		get handedOver(): boolean {
+			return this.animation !== null;
+		}
+
+		get(): float64 {
+			this.wake.flush();
+			return this.value.get();
+		}
+
+		velocity(): float64 {
+			this.wake.flush();
+			return this.value.velocity();
+		}
+
+		isAnimating(): boolean {
+			this.wake.flush();
+			return this.value.isAnimating();
+		}
+
+		subscribe(callback: (value: float64) => void): () => void {
+			return this.value.subscribe(callback);
+		}
+
+		animate(
+			spec: AnimationSpec,
+			onEnd: ((finished: boolean) => void) | null = null,
+		): void {
+			this.wake.flush();
+			const from = this.value.get();
+			const carried = this.value.velocity();
+			this.settle(false);
+			this.value.animate(spec, (finished: boolean): void => {
+				this.settle(false);
+				if (onEnd !== null) { onEnd(finished); }
+			});
+			if (spec.kind === AnimationKind.Spring && this.value.isAnimating()) {
+				this.handOver(
+					createSpring(
+						spec.spring,
+						from,
+						spec.to,
+						carried + spec.velocityPerSecond,
+					),
+				);
+			}
+		}
+
+		set(next: float64): void {
+			this.settle(false);
+			this.value.set(next);
+		}
+
+		cancel(): void {
+			this.wake.flush();
+			this.settle(false);
+			this.value.cancel();
+		}
+
+		dispose(): void {
+			this.wake.flush();
+			this.settle(false);
+			this.value.dispose();
+			this.owner.users -= 1;
+		}
+
+		settle(commit: boolean): void {
+			const animation = this.animation;
+			if (animation === null) { return; }
+			this.animation = null;
+			this.wake.undefer();
+			if (this.owner.holder === this) { this.owner.holder = null; }
+			animation.pause();
+			try {
+				if (commit) { commitStyles(animation, this.element, this.style.css); }
+			} finally {
+				animation.cancel();
+			}
+		}
+
+		private handOver(spring: SpringSimulation): void {
+			const curve = sampleSpring(spring);
+			this.animation = animateStyle(
+				this.element,
+				this.style.css,
+				[0, 1],
+				[
+					styleValue(this.style, numberValue(spring.from)),
+					styleValue(this.style, numberValue(spring.to)),
+				],
+				[cssLinear(curve), "linear"],
+				curve.durationMs,
+				0,
+				1,
+				"normal",
+				"both",
+			);
+			this.animation.startTime = timelineNow();
+			this.owner.holder = this;
+			this.wake.defer(curve.durationMs);
+		}
+	}
+
+	export function elementValue(
+		initial: float64,
+		policy: MotionPolicy,
+		node: HostNode,
+		property: string,
+	): ElementValue {
+		const style = styleProperty(property);
+		if (style === null || style.kind !== ValueKind.Number) {
+			fail("an animated value has no numeric CSS property " + property);
+		}
+		return new ElementValue(
+			initial,
+			policy,
+			node as unknown as HTMLElement,
+			style,
+		);
 	}
 
 	let elementTargets: ElementTarget[] = [];
