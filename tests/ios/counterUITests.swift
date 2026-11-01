@@ -1053,17 +1053,11 @@ final class GalleryUITests: XCTestCase {
         open.tap()
         status("parity screen")
 
-        XCTAssertEqual(number(after: "insets "), 0, "the root sits inside the safe area: \(label(startingWith: "insets "))")
-        app.buttons["Edge to edge"].tap()
-        status("edge to edge")
-        waitFor("a translucent StatusBar publishes the real top inset: \(label(startingWith: "insets "))") { self.number(after: "insets ") > 20 }
+        waitFor("the root fills the window, so the real top inset is published: \(label(startingWith: "insets "))") { self.number(after: "insets ") > 20 }
         let top = number(after: "insets ")
         let header = app.staticTexts["Neon gallery"]
         XCTAssertGreaterThanOrEqual(header.frame.minY, CGFloat(top) - 1, "SafeAreaView pads the header below the status bar: \(header.frame) top \(top)")
         report("parity-edge")
-        app.buttons["Inside safe area"].tap()
-        status("inside safe area")
-        waitFor("back inside the safe area: \(label(startingWith: "insets "))") { self.number(after: "insets ") == 0 }
 
         let centred = app.staticTexts["centred"]
         XCTAssertGreaterThan(centred.frame.width, 200, "a centred Text spans its parent: \(centred.frame)")

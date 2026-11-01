@@ -1038,21 +1038,14 @@ static UIStatusBarStyle g_statusBarStyle = UIStatusBarStyleDefault;
 static BOOL g_statusBarHidden = NO;
 
 // RN StatusBar on iOS: bar style and visibility through the view controller;
-// iOS has no status bar background, so that prop does nothing here.
-static BOOL g_edgeToEdge = NO;
-
-// The container fills the safe area; a translucent StatusBar takes it to the window's edges,
-// where RN iOS always draws, and SafeAreaView pads by what niSafeAreaInset reports.
+// iOS has no status bar background and RN's translucent is Android-only, so both do nothing here.
+// The container fills the window, as RN's iOS root does; SafeAreaView pads by niSafeAreaInset.
 static CGRect containerFrame(UIView *root) {
-	return g_edgeToEdge ? root.bounds : root.safeAreaLayoutGuide.layoutFrame;
+	return root.bounds;
 }
 
 static void setStatusBar(const char *name, const char *value) {
-	if (strcmp(name, "statusBarTranslucent") == 0) {
-		g_edgeToEdge = strcmp(value, "true") == 0;
-		if (g_vc && g_container) g_container.frame = containerFrame(g_vc.view);
-		return;
-	}
+	if (strcmp(name, "statusBarTranslucent") == 0) return;
 	if (strcmp(name, "statusBarStyle") == 0) {
 		g_statusBarStyle = strcmp(value, "light-content") == 0 ? UIStatusBarStyleLightContent :
 			strcmp(value, "dark-content") == 0 ? UIStatusBarStyleDarkContent : UIStatusBarStyleDefault;
