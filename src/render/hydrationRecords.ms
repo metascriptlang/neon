@@ -7,13 +7,13 @@ const modules = new Map<string, string>();
 when (js) {
 	extern function jsHas(table: cstring, id: cstring): boolean from
 		"((t, i) => { const h = globalThis._$HY; return h !== undefined && h[t] !== undefined && Object.hasOwn(h[t], i); })(#, #)";
-	extern function jsRead(table: cstring, id: cstring): cstring from
+	extern function jsRead(table: cstring, id: cstring): string from
 		"(globalThis._$$HY[#][#])";
 	extern function jsWrite(table: cstring, id: cstring, value: cstring): void from
 		"((t, i, v) => { const h = (globalThis._$HY ??= { r: {}, e: {} }); h[t] ??= {}; h[t][i] = v; })(#, #, #)";
 	extern function jsDrop(table: cstring, id: cstring): void from
 		"((t, i) => { const h = globalThis._$HY; if (h !== undefined && h[t] !== undefined) delete h[t][i]; })(#, #)";
-	extern function jsModules(): cstring from
+	extern function jsModules(): string from
 		"(Object.values((globalThis._$$HY ?? {}).m ?? {}).join(\"\\n\"))";
 	extern function jsClear(): void from "(delete globalThis._$$HY)";
 }
