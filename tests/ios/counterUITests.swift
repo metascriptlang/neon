@@ -2276,3 +2276,27 @@ final class InputAccessoryUITests: XCTestCase {
         app.terminate()
     }
 }
+
+// S1 of the native-threads arc (bench/stream): fling the 2000-card list while 20 cards change every
+// 200 ms. UIKit's scroll signposts give hitch time and hitch count per drag and per deceleration.
+@MainActor
+final class StreamBenchUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonStream")
+
+    func testScrollWhileStreaming() {
+        app.launch()
+        let ticks = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'ticks '")).firstMatch
+        XCTAssertTrue(ticks.waitForExistence(timeout: 30), "the stream shows its tick count")
+        let deadline = Date().addingTimeInterval(30)
+        while (Int(ticks.label.dropFirst(6)) ?? 0) < 5 && Date() < deadline { usleep(200_000) }
+        XCTAssertGreaterThanOrEqual(Int(ticks.label.dropFirst(6)) ?? 0, 5, "the stream is ticking: \(ticks.label)")
+        let options = XCTMeasureOptions()
+        options.iterationCount = 5
+        measure(metrics: [XCTOSSignpostMetric.scrollDraggingMetric, XCTOSSignpostMetric.scrollDecelerationMetric], options: options) {
+            app.swipeUp(velocity: .fast)
+            app.swipeUp(velocity: .fast)
+            app.swipeDown(velocity: .fast)
+        }
+        app.terminate()
+    }
+}
