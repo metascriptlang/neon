@@ -4,10 +4,10 @@ import { listen } from "../../../../ion/src/ipc";
 
 let initialUrl = "";
 
-export function linkingServicesOver(open: (url: string) => void): LinkingServices {
+export function linkingServicesOver(open: (url: string) => boolean): LinkingServices {
 	return {
 		openURL: async (url: string): Promise<boolean> => {
-			open(url);
+			if (!open(url)) { throw new Error(`Unable to open URL: ${url}`); }
 			return true;
 		},
 		canOpenURL: async (url: string): Promise<boolean> => { return true; },

@@ -41,9 +41,12 @@ test "a service Ion does not back is refused with the name the author called" {
 
 test "Linking on an Ion host opens through Ion, answers canOpenURL true as RN macOS does, and has no initial URL before a deeplink" {
 	const opened: string[] = [];
-	installLinkingServices(linkingServicesOver((url: string): void => { opened.push(url); }));
+	installLinkingServices(linkingServicesOver((url: string): boolean => { opened.push(url); return url !== "nohandler://x"; }));
 	await Linking.openURL("https://example.com");
 	assert opened.length === 1 && opened[0] === "https://example.com", "openExternal receives the url";
+	let refused = "";
+	try { await Linking.openURL("nohandler://x"); } catch (e) { refused = e.message; }
+	assert refused === "Unable to open URL: nohandler://x", "a URL the system does not take rejects: " + refused;
 	assert await Linking.canOpenURL("anything://x"), "canOpenURL";
 	assert (await Linking.getInitialURL()) === null, "no deeplink yet";
 	installLinkingServices(ionLinkingServices);
