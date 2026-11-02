@@ -379,6 +379,13 @@ function elementTarget(node: HostNode, name: string): MotionTarget {
 	return entry.target;
 }
 
+function sameNode(a: HostNode | null, b: HostNode | null): boolean {
+	if (a === null || b === null) {
+		return a === null && b === null;
+	}
+	return (a as HostNode) === (b as HostNode);
+}
+
 function resolvedNode(elements: MotionElements, slot: string): HostNode | null {
 	const node = elements.node(slot);
 	return node !== null && nativeOwns(node as HostNode) ? node : null;
@@ -478,10 +485,31 @@ class NativeRun {
 	}
 
 	resolve(): boolean {
-		if (this.node === null) {
-			this.node = resolvedNode(this.elements, this.plan.slot);
+		const node = resolvedNode(this.elements, this.plan.slot);
+		if (!sameNode(node, this.node)) {
+			this.release();
+			this.last = [];
+			this.node = node;
 		}
-		return this.node !== null;
+		return node !== null;
+	}
+
+	unmounted(): boolean {
+		return this.elements.declared.includes(this.plan.slot) &&
+			this.elements.node(this.plan.slot) === null;
+	}
+
+	release(): void {
+		if (!this.live) {
+			return;
+		}
+		this.live = false;
+		vacate(this.hold);
+		for (const entry of this.entries) {
+			if (entry.holder === this.hold) {
+				entry.holder = null;
+			}
+		}
 	}
 
 	modelNow(): float64[] {
@@ -609,13 +637,7 @@ class NativeRun {
 		if (!this.live) {
 			return;
 		}
-		this.live = false;
-		vacate(this.hold);
-		for (const entry of this.entries) {
-			if (entry.holder === this.hold) {
-				entry.holder = null;
-			}
-		}
+		this.release();
 		this.engine.remove(this.layerNode, this.plan.property);
 	}
 
@@ -627,7 +649,7 @@ class NativeRun {
 
 	yieldLayer(): void {
 		this.evicted = true;
-		if (this.live) {
+		if (this.resolve() && this.live) {
 			this.halt(this.presented());
 		}
 	}
@@ -733,12 +755,12 @@ class NativeRuns {
 				run.evicted = false;
 				const handed =
 					run.plan.route === LayerRoute.Compositor &&
-					run.last.length > 0 &&
-					run.resolve();
+					run.resolve() &&
+					run.last.length > 0;
 				if (handed) {
 					this.handOver(run);
 				}
-			} else if (run.live) {
+			} else if (run.resolve() && run.live) {
 				run.halt(run.last);
 			}
 		}
@@ -746,7 +768,7 @@ class NativeRuns {
 
 	holdPresented(): void {
 		for (const run of this.runs) {
-			if (run.live) {
+			if (run.resolve() && run.live) {
 				run.halt(run.presented());
 			}
 		}
@@ -769,6 +791,9 @@ class NativeRuns {
 		}
 		if (!run.resolve()) {
 			const fallback = run.fallbacks[index];
+			if (fallback === null && run.unmounted()) {
+				return;
+			}
 			if (fallback === null) {
 				fail("no element for slot " + run.plan.slot);
 			}
@@ -955,7 +980,7 @@ export class NativeElementValue extends AnimatedValue {
 		const target = parts.target;
 		this.entry = target === null ? null : entryOf(target as MotionTarget);
 		this.subscribe((next: float64): void => {
-			if (!this.handed && this.element() !== null) {
+			if (this.element() !== null && !this.handed) {
 				this.paint(next);
 			}
 		});
@@ -1034,32 +1059,42 @@ export class NativeElementValue extends AnimatedValue {
 	}
 
 	private settle(commit: boolean): void {
+		this.element();
 		if (!this.handed) {
 			return;
 		}
 		const shown = this.presented();
+		this.dropHandover();
+		const engine = layerEngine() as LayerEngine;
+		engine.remove(this.parts.node as HostNode, this.parts.channel.property);
+		this.paint(commit ? shown : super.get());
+	}
+
+	private dropHandover(): void {
 		this.handed = false;
 		vacate(this.hold);
 		const entry = this.entry;
 		if (entry !== null && entry.holder === this.hold) {
 			entry.holder = null;
 		}
-		const engine = layerEngine() as LayerEngine;
-		engine.remove(this.parts.node as HostNode, this.parts.channel.property);
-		this.paint(commit ? shown : super.get());
 	}
 
 	private element(): HostNode | null {
 		const parts = this.parts;
-		if (parts.node !== null || this.disposed) {
+		if (this.disposed) {
 			return parts.node;
 		}
 		const node = resolvedNode(parts.elements, parts.slot);
-		if (node === null) {
-			return null;
+		if (sameNode(node, parts.node)) {
+			return node;
+		}
+		if (this.handed) {
+			this.dropHandover();
 		}
 		parts.node = node;
-		this.paint(super.get());
+		if (node !== null) {
+			this.paint(super.get());
+		}
 		return node;
 	}
 

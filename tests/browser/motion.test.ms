@@ -7,7 +7,9 @@ import {
 	viewSource,
 } from "pulse/src/scroll";
 import { createRoot } from "../../src/core/owner";
-import { useAnimatedValue } from "../../src/motion/neon";
+import { MotionSignals, useAnimatedValue } from "../../src/motion/neon";
+import { createSignal } from "../../src/core/signal";
+import { Show } from "../../src/macros/ui/flow";
 import { AnimatedValue } from "pulse/src/value";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
@@ -852,6 +854,45 @@ test "a spring that starts on its target, reduced motion and decay hand nothing 
 	value.dispose();
 	reduced.dispose();
 	el.remove();
+}
+
+test "an element-bound value on a slot inside a Show animates the remounted element and leaves the removed one" {
+	const signals = new MotionSignals();
+	signals.number("box", "translateX", 0);
+	const [present, setPresent] = createSignal(true);
+	const outer: HostNode[] = [];
+	const made: AnimatedValue[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		made.push(useAnimatedValue(0, new MotionPolicy(), signals.target("box", "translateX"))[1]);
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<Show when={present()}>
+				<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+			</Show>
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	const value = made[0];
+	const first = dom(signals.elements.node("box") as HostNode);
+	value.animate(timing(100, { duration: 600, easing: Easing.linear }));
+	assert first.getAnimations().length === 1, "handed to WAAPI on the first element";
+	await sleepAsync(150);
+	setPresent(false);
+	await renderedFrames();
+	assert signals.elements.node("box") === null, "the slot names no element while unmounted";
+	const left = first.style.translate;
+	await sleepAsync(100);
+	setPresent(true);
+	await renderedFrames();
+	const second = dom(signals.elements.node("box") as HostNode);
+	const mid = translateX(second);
+	assert mid > 30 && mid < 100, "the remounted element shows the running value: " + computed(second, "translate");
+	await sleepAsync(700);
+	assert translateX(second) === 100, "the remounted element ends on the target: " + computed(second, "translate");
+	assert first.getAnimations().length === 0 && first.style.translate === left,
+		"the removed element keeps no animation and no later write: " + first.style.translate;
+	dispose();
+	dom(outer[0]).remove();
 }
 
 test "a player claiming an element-bound spring's property replaces its browser animation" {

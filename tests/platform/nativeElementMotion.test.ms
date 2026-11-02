@@ -1,5 +1,5 @@
 import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
-import { Pressable } from "../../src/components/primitives";
+import { Pressable, View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { HostNode } from "../../src/render/hostTypes";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
@@ -11,7 +11,9 @@ import {
 	LayerEngine,
 } from "../../src/platform/native/layerEngine";
 import { setFrameDriver, useManualFrames } from "../../src/animation/frame";
-import { Accessor } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
+import { Show } from "../../src/macros/ui/flow";
+import { Easing } from "pulse/src/easing";
 import {
 	MotionDocument,
 	MotionTrack,
@@ -35,6 +37,8 @@ import {
 	nmLayerKeyCount,
 	nmLayerValue,
 	nmLayerTiming,
+	nmLayerRemoves,
+	nmLoop,
 } from "./nativeBridgeMock.h";
 
 const OPACITY: int32 = 0;
@@ -226,5 +230,94 @@ test "a node no native host made keeps its track on signals while a layer engine
 	assert nmLayerAnimates() === before, "nothing handed to a layer";
 	assert Math.abs(written - 0.5) < 1e-9, "the binding carries the track: " + written.toString();
 	frames.runAll();
+	close();
+}
+
+class Toggled {
+	signals: MotionSignals = new MotionSignals();
+	present: Accessor<boolean>;
+	setPresent: (present: boolean) => void;
+	value: AnimatedValue | null = null;
+
+	constructor(player: boolean) {
+		const [present, setPresent] = createSignal(true);
+		this.present = present;
+		this.setPresent = (next: boolean): void => { setPresent(next); };
+		this.signals.number("box", "opacity", 0);
+		this.signals.number("box", "translateX", 0);
+		this.signals.number("box", "scale", 1);
+		this.signals.color("box", "backgroundColor", colorValue(0, 0, 0, 1));
+		runApp((): NeonNode => {
+			const ref = this.signals.ref("box");
+			if (player) {
+				useMotion(entrance(), this.signals.bindings);
+			} else {
+				this.value = useAnimatedValue(1, new MotionPolicy(), this.signals.target("box", "scale"))[1];
+			}
+			return <View style={{ width: 200, height: 200 }}>
+				<Show when={this.present()}>
+					<Pressable onPress={() => {}} ref={ref}
+						style={[{ width: 40, height: 40 }, this.signals.style("box")]} />
+				</Show>
+			</View>;
+		});
+	}
+
+	toggle(present: boolean): void {
+		this.setPresent(present);
+		nmLoop();
+	}
+
+	scale(): float64 {
+		const node = this.signals.elements.node("box") as HostNode;
+		return (layerEngine() as LayerEngine).read(node, LayerComponent.ScaleX);
+	}
+}
+
+test "an animated value on a slot inside a Show drives the remounted view and leaves the removed one alone" {
+	const frames = useManualFrames();
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	const app = new Toggled(false);
+	const first = nmLastPressableTag();
+	const value = app.value as AnimatedValue;
+	value.animate(timing(2, { duration: 1000, easing: Easing.linear }));
+	assert nmLayerLive(first, TRANSFORM) === 1, "handed to the first view";
+	frames.step(10);
+	app.toggle(false);
+	assert app.signals.elements.node("box") === null, "the slot names no view while unmounted";
+	const removes = nmLayerRemoves();
+	frames.step(10);
+	app.toggle(true);
+	const second = nmLastPressableTag();
+	assert second !== first, "a new view mounted";
+	frames.step(1);
+	const mid = app.scale();
+	assert mid > 1.2 && mid < 2, "the remounted view shows the running value: " + mid.toString();
+	frames.runAll();
+	assert app.scale() === 2, "the remounted view ends on the target: " + app.scale().toString();
+	assert nmLayerRemoves() === removes, "the removed view gets no layer call: " +
+		(nmLayerRemoves() - removes).toString();
+	close();
+}
+
+test "a player on a slot inside a Show hands its remaining tracks to the remounted view" {
+	const frames = useManualFrames();
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	const app = new Toggled(true);
+	const first = nmLastPressableTag();
+	frames.step(1);
+	assert nmLayerLive(first, OPACITY) === 1, "handed to the first view";
+	frames.step(10);
+	app.toggle(false);
+	frames.step(5);
+	app.toggle(true);
+	const second = nmLastPressableTag();
+	assert second !== first, "a new view mounted";
+	frames.step(1);
+	assert nmLayerLive(second, OPACITY) === 1 && nmLayerLive(second, TRANSFORM) === 1,
+		"the remounted view carries the tracks";
+	frames.runAll();
+	assert nmLayerLive(second, OPACITY) === 0 && nmOpacity(second) === 1,
+		"the end leaves the remounted view on the last frame: " + nmOpacity(second).toString();
 	close();
 }

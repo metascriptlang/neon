@@ -362,6 +362,7 @@ export class MotionSignals {
 			owned.own(owns);
 			owned.place(node);
 			onCleanup((): void => {
+				this.elements.clear(slot, node);
 				if (owned.current !== node) { return; }
 				owned.node = null;
 				owned.own(owned.ahead);

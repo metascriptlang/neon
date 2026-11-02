@@ -600,6 +600,12 @@ export class MotionElements {
 		this.entries.push({ slot, node });
 	}
 
+	clear(slot: string, node: HostNode): void {
+		this.entries = this.entries.filter(
+			(entry: MotionElement): boolean => entry.slot !== slot || entry.node !== node,
+		);
+	}
+
 	node(slot: string): HostNode | null {
 		for (const entry of this.entries) {
 			if (entry.slot === slot) { return entry.node; }
@@ -1684,13 +1690,10 @@ when (js) {
 		}
 
 		settle(commit: boolean): void {
+			this.element();
 			const animation = this.animation;
 			if (animation === null) { return; }
-			this.animation = null;
-			this.handedTiming = null;
-			this.parts.wake.undefer();
-			const entry = this.entry;
-			if (entry !== null && entry.holder === this) { entry.holder = null; }
+			this.dropHandover();
 			animation.pause();
 			try {
 				if (commit) {
@@ -1706,14 +1709,27 @@ when (js) {
 			if (!commit) { this.paint(this.parts.element as HTMLElement, super.get()); }
 		}
 
+		private dropHandover(): Animation | null {
+			const animation = this.animation;
+			if (animation === null) { return null; }
+			this.animation = null;
+			this.handedTiming = null;
+			this.parts.wake.undefer();
+			const entry = this.entry;
+			if (entry !== null && entry.holder === this) { entry.holder = null; }
+			return animation;
+		}
+
 		private element(): HTMLElement | null {
 			const parts = this.parts;
-			if (parts.element !== null || this.disposed) { return parts.element; }
+			if (this.disposed) { return parts.element; }
 			const node = parts.elements.node(parts.slot);
-			if (node === null || !isDomNode(node)) { return null; }
-			const element = node as unknown as HTMLElement;
+			const element = node !== null && isDomNode(node) ? node as unknown as HTMLElement : null;
+			if (element === parts.element) { return element; }
+			const left = this.dropHandover();
+			if (left !== null) { left.cancel(); }
 			parts.element = element;
-			this.paint(element, super.get());
+			if (element !== null) { this.paint(element, super.get()); }
 			return element;
 		}
 
