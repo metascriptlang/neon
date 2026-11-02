@@ -11,13 +11,13 @@ import { I18nManager } from "../../api/i18nManager";
 import { FlexStyle, YGNode, Direction, freeLayoutTreeAt, layoutPassAt } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
-import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
+import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
-import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../motion/layoutAnimation";
+import { LayoutAnimationPlan, LayoutPhase, armedLayoutAnimation, takeLayoutAnimation, runLayoutTween } from "../../motion/layoutAnimation";
 import "../android/library";
 when (hcr) {
 	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
@@ -326,13 +326,12 @@ function ownOpacity(n: NativeNode): number {
 	return style !== null && (style as Style).opacity !== null ? ((style as Style).opacity as number) : 1.0;
 }
 
-function showAppearance(view: Ptr<void>, n: NativeNode, phase: LayoutPhase, shown: number): void {
+function showAppearance(view: Ptr<void>, opacity: number, own: NativeTransform, phase: LayoutPhase, shown: number): void {
 	const property = phase.property;
 	if (property === "opacity") {
-		niSetOpacity(view, (ownOpacity(n) * shown) as float32);
+		niSetOpacity(view, (opacity * shown) as float32);
 		return;
 	}
-	const own = nativeTransform(n.transformCss);
 	const fromX = property === "scaleY" ? 1.0 : 0.0;
 	const fromY = property === "scaleX" ? 1.0 : 0.0;
 	niSetTransform(
@@ -347,8 +346,19 @@ function showAppearance(view: Ptr<void>, n: NativeNode, phase: LayoutPhase, show
 function animateIn(n: NativeNode, phase: LayoutPhase): void {
 	if (n.view === null) { return; }
 	runLayoutTween(phase, (t: number): void => {
-		if (n.view !== null) { showAppearance(n.view as Ptr<void>, n, phase, t); }
+		if (n.view !== null) { showAppearance(n.view as Ptr<void>, ownOpacity(n), nativeTransform(n.transformCss), phase, t); }
 	}, (): void => {});
+}
+
+function animateOut(view: Ptr<void>, opacity: number, own: NativeTransform, phase: LayoutPhase, kept: Ptr<void>[]): void {
+	runLayoutTween(phase, (t: number): void => {
+		showAppearance(view, opacity, own, phase, 1 - t);
+	}, (): void => {
+		for (const each of kept) {
+			niRemoveFromParent(each);
+			niViewRelease(each);
+		}
+	});
 }
 
 export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
@@ -756,8 +766,8 @@ function blurInputs(n: NativeNode): void {
 	for (const child of tree.childrenOf(n)) { blurInputs(child); }
 }
 
-function releaseNativeTree(r: NativeRoot, n: NativeNode): void {
-	for (const child of tree.childrenOf(n)) { releaseNativeTree(r, child); }
+function releaseNativeTree(r: NativeRoot, n: NativeNode, kept: Ptr<void>[] | null = null): void {
+	for (const child of tree.childrenOf(n)) { releaseNativeTree(r, child, kept); }
 	if (n.eventTag !== 0) {
 		retirePressTag(n.eventTag);
 		eventRegistry.remove(n.eventTag);
@@ -779,8 +789,12 @@ function releaseNativeTree(r: NativeRoot, n: NativeNode): void {
 		if (at >= 0) { r.inputNodes.splice(at, 1); }
 	}
 	if (n.view !== null) {
-		niRemoveFromParent(n.view);
-		niViewRelease(n.view);
+		if (kept !== null) {
+			kept.push(n.view as Ptr<void>);
+		} else {
+			niRemoveFromParent(n.view);
+			niViewRelease(n.view);
+		}
 		n.view = null;
 	}
 	tree.drop(n);
@@ -1442,12 +1456,22 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 			const n = node as unknown as NativeNode;
 			const idx = childIndex(p, n);
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
+			const plan = armedLayoutAnimation();
+			const leaving = plan !== null && (plan as LayoutAnimationPlan).delete !== null && isMounted(p) &&
+				n.view !== null && !n.isString && n.framed;
+			const view = n.view;
+			const opacity = ownOpacity(n);
+			const own = nativeTransform(n.transformCss);
 			tree.detach(n);
 			if (n.zIndex !== 0) { p.zChildren -= 1; }
 			removePaintChild(p, n);
 			if (isMounted(p)) { requestLayout(r); }
 			freeLayoutTreeAt(n);
-			releaseNativeTree(r, n);
+			const kept: Ptr<void>[] | null = leaving ? [] : null;
+			releaseNativeTree(r, n, kept);
+			if (kept !== null) {
+				animateOut(view as Ptr<void>, opacity, own, (plan as LayoutAnimationPlan).delete as LayoutPhase, kept as Ptr<void>[]);
+			}
 		},
 		parentOf: (node: HostNode): HostNode | null => {
 			const p = tree.parentOf(node as unknown as NativeNode);

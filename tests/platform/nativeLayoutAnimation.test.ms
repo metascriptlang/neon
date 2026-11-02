@@ -6,7 +6,7 @@ import { createSignal } from "../../src/core/signal";
 import { LayoutAnimation, LayoutAnimationPresets } from "../../src/motion/layoutAnimation";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Show } from "../../src/macros/ui/flow";
-import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutWidth, nmLayoutY, nmOpacity, nmTap, nmVisualX, nmVisualY } from "./nativeBridgeMock.h";
+import { nmReleaseCalls, nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutWidth, nmLayoutY, nmOpacity, nmTap, nmVisualX, nmVisualY } from "./nativeBridgeMock.h";
 
 function shownWidth(tag: int32): number {
 	return (nmVisualX(tag, nmLayoutWidth(tag)) - nmVisualX(tag, 0)) as number;
@@ -127,6 +127,64 @@ test "a scaleY create grows only the height" {
 		"only the height grows " + shownWidth(created).toString() + "x" + shownHeight(created).toString();
 	clock.runAll();
 	assert shownHeight(created) === 50;
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "a removed view fades out under the delete phase and is released when it ends" {
+	const clock = useManualFrames();
+	const [shown, setShown] = createSignal(true);
+	const app = (): NeonNode => <View>
+		<Show when={shown()}><View style={{ height: 50, opacity: 0.8 }}><Pressable onPress={() => {}} style={{ height: 50 }} /></View></Show>
+		<Pressable onPress={() => {}} style={{ height: 30 }} />
+	</View>;
+	runApp(app);
+	const below = nmLastPressableTag();
+	assert nmLayoutY(below) === 50;
+	const released = nmReleaseCalls();
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "opacity"));
+	setShown(false);
+	flush();
+	assert nmReleaseCalls() === released, "the removed views are kept while they fade";
+	clock.step(5);
+	assert nmLayoutY(below) > 0 && nmLayoutY(below) < 50, "the sibling below slides up " + nmLayoutY(below).toString();
+	clock.runAll();
+	assert nmReleaseCalls() === released + 2, "the faded root and its child are released " + (nmReleaseCalls() - released).toString();
+	assert nmLayoutY(below) === 0;
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "a removed view shrinks under a scaleXY delete" {
+	const clock = useManualFrames();
+	const [shown, setShown] = createSignal(true);
+	const app = (): NeonNode => <View>
+		<Show when={shown()}><View style={{ width: 100, height: 50 }}><Pressable onPress={() => {}} style={{ width: 100, height: 50 }} /></View></Show>
+	</View>;
+	runApp(app);
+	const leaving = nmLastPressableTag();
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "scaleXY"));
+	setShown(false);
+	flush();
+	clock.step(5);
+	assert Math.abs(shownWidth(leaving) - 50) < 1 && Math.abs(shownHeight(leaving) - 25) < 1,
+		"half shrunk " + shownWidth(leaving).toString() + "x" + shownHeight(leaving).toString();
+	clock.runAll();
+	nmTeardown();
+	setFrameDriver(null);
+}
+
+test "a view removed without configureNext is released at once" {
+	useManualFrames();
+	const [shown, setShown] = createSignal(true);
+	const app = (): NeonNode => <View>
+		<Show when={shown()}><View style={{ height: 50 }}><Pressable onPress={() => {}} style={{ height: 50 }} /></View></Show>
+	</View>;
+	runApp(app);
+	const released = nmReleaseCalls();
+	setShown(false);
+	flush();
+	assert nmReleaseCalls() === released + 2, "released at once " + (nmReleaseCalls() - released).toString();
 	nmTeardown();
 	setFrameDriver(null);
 }

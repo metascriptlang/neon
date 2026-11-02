@@ -38,6 +38,7 @@ export interface LayoutPhase {
 export interface LayoutAnimationPlan {
 	update: LayoutPhase | null;
 	create: LayoutPhase | null;
+	delete: LayoutPhase | null;
 }
 
 let pending: LayoutAnimationConfig | null = null;
@@ -87,7 +88,16 @@ function unparsed(config: LayoutAnimationConfig): boolean {
 }
 
 export function layoutPlan(config: LayoutAnimationConfig): LayoutAnimationPlan {
-	return { update: phase(config.update, config.duration), create: phase(config.create, config.duration) };
+	return {
+		update: phase(config.update, config.duration),
+		create: phase(config.create, config.duration),
+		delete: phase(config.delete, config.duration),
+	};
+}
+
+export function armedLayoutAnimation(): LayoutAnimationPlan | null {
+	const config = pending;
+	return config === null ? null : layoutPlan(config as LayoutAnimationConfig);
 }
 
 export function takeLayoutAnimation(): LayoutAnimationPlan | null {
