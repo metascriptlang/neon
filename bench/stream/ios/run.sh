@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # S1 on iOS: build bench/stream Release, install, fling it under XCTest scroll signpost metrics, print them.
 # Usage: bench/stream/ios/run.sh <device-udid | sim> <label>   (from the Neon checkout; ION defaults to ../ion)
 set -eu
@@ -19,18 +19,17 @@ if [ "$target" = sim ]; then
 		ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SYMROOT="$r/products" OBJROOT="$r/objects" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 	step boot xcrun simctl bootstatus "$device" -b
 	step install xcrun simctl install "$device" "$r/products/Release-iphonesimulator/NeonStream.app"
-	sign=""
+	sign=()
 else
 	device=$target
-	sign="CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=${DEVELOPMENT_TEAM:-4R7EAZY462} CODE_SIGN_IDENTITY=Apple Development"
+	sign=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic "DEVELOPMENT_TEAM=${DEVELOPMENT_TEAM:-4R7EAZY462}" "CODE_SIGN_IDENTITY=Apple Development")
 	step build xcodebuild -project "$r/xcode/NeonStream.xcodeproj" -target NeonStream -configuration Release -sdk iphoneos -jobs 4 \
-		ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SYMROOT="$r/products" OBJROOT="$r/objects" -allowProvisioningUpdates $sign build
+		ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SYMROOT="$r/products" OBJROOT="$r/objects" -allowProvisioningUpdates ${sign[@]+"${sign[@]}"} build
 	xcrun devicectl device uninstall app --device "$device" dev.neon.NeonStream > "$r/uninstall.log" 2>&1 || true
 	step install xcrun devicectl device install app --device "$device" "$r/products/Release-iphoneos/NeonStream.app"
 fi
-# shellcheck disable=SC2086
 step test xcodebuild test -project tests/ios/counter.xcodeproj -scheme CounterUITests -only-testing:CounterUITests/StreamBenchUITests \
-	-destination "id=$device" -derivedDataPath "$r/derived" -resultBundlePath "$r/result.xcresult" $sign
+	-destination "id=$device" -derivedDataPath "$r/derived" -resultBundlePath "$r/result.xcresult" ${sign[@]+"${sign[@]}"}
 xcrun xcresulttool get test-results metrics --path "$r/result.xcresult" > "$r/metrics.json" 2>"$r/metrics.err" || true
 python3 - "$r/metrics.json" "$label" <<'PY'
 import json, sys, statistics
