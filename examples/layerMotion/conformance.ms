@@ -83,15 +83,15 @@ class Stage {
 			now: (): number => views.time,
 			schedule: (fire: () => void): void => { this.fire = fire; },
 		});
-		for (let i: int32 = 0; i < properties.length; i += 1) {
-			const name = properties[i].name;
-			this.names.push(name);
-			this.signals.number(name, CHANNEL, properties[i].initial);
-			views.reset(views.pool[i]);
-			this.signals.ref(name)(views.pool[i]);
-		}
 		this.owner = createRoot((dispose: () => void): Computation | null => {
 			this.disposeOwner = dispose;
+			for (let i: int32 = 0; i < properties.length; i += 1) {
+				const name = properties[i].name;
+				this.names.push(name);
+				this.signals.number(name, CHANNEL, properties[i].initial);
+				views.reset(views.pool[i]);
+				this.signals.ref(name)(views.pool[i]);
+			}
 			return getOwner();
 		});
 	}
