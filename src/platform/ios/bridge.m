@@ -59,11 +59,30 @@ static void loopPump(CFRunLoopTimerRef timer, void *info) {
 	loopArm(niLoopNext());
 }
 
+// The dispatcher's kqueue turns readable when a worker's completion, an I/O event or a
+// cross-thread post is pending, so a finished spawn wakes the loop without a touch or timer.
+static void selectorReady(CFFileDescriptorRef selector, CFOptionFlags flags, void *info) {
+	(void)flags;
+	(void)info;
+	loopPump(NULL, NULL);
+	CFFileDescriptorEnableCallBacks(selector, kCFFileDescriptorReadCallBack);
+}
+
 static void loopStart(void) {
 	(void)msGetDispatcher();
 	CFTimeInterval never = [[NSDate distantFuture] timeIntervalSinceReferenceDate];
 	g_loopTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, never, never, 0, 0, loopPump, NULL);
 	CFRunLoopAddTimer(CFRunLoopGetMain(), g_loopTimer, kCFRunLoopCommonModes);
+	int fd = msGetDispatcherSelectorFd();
+	if (fd < 0) {
+		fprintf(stderr, "neon ios bridge: the dispatcher has no selector fd to wake the loop on\n");
+		abort();
+	}
+	CFFileDescriptorRef selector = CFFileDescriptorCreate(kCFAllocatorDefault, fd, false, selectorReady, NULL);
+	CFFileDescriptorEnableCallBacks(selector, kCFFileDescriptorReadCallBack);
+	CFRunLoopSourceRef source = CFFileDescriptorCreateRunLoopSource(kCFAllocatorDefault, selector, 0);
+	CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+	CFRelease(source);
 }
 
 static void call0(msClosure c) {
