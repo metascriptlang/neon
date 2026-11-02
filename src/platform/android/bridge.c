@@ -104,10 +104,28 @@ static int loopPump(int fd, int events, void *data) {
 	return 1;
 }
 
+// The dispatcher's epoll turns readable when a worker's completion, an I/O event or a
+// cross-thread post is pending, so a finished spawn wakes the loop without a touch or timer.
+static int selectorReady(int fd, int events, void *data) {
+	(void)fd;
+	(void)events;
+	(void)data;
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
+	loopArm(niLoopNext());
+	return 1;
+}
+
 static void loopStart(void) {
 	(void)msGetDispatcher();
 	g_loopFd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 	ALooper_addFd(ALooper_forThread(), g_loopFd, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, loopPump, NULL);
+	int selector = msGetDispatcherSelectorFd();
+	if (selector < 0) {
+		__android_log_print(ANDROID_LOG_FATAL, "Neon", "the dispatcher has no selector fd to wake the loop on");
+		abort();
+	}
+	ALooper_addFd(ALooper_forThread(), selector, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, selectorReady, NULL);
 }
 
 static void call0(msClosure c) {
