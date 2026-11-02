@@ -587,6 +587,18 @@ export struct MotionElement {
 export class MotionElements {
 	declared: string[] = [];
 	private entries: MotionElement[] = [];
+	private watchers: (() => void)[] = [];
+
+	watch(placed: () => void): () => void {
+		this.watchers.push(placed);
+		return (): void => {
+			this.watchers = this.watchers.filter((watcher: () => void): boolean => watcher !== placed);
+		};
+	}
+
+	private placed(): void {
+		for (const watcher of this.watchers.slice(0)) { watcher(); }
+	}
 
 	declare(slot: string): void {
 		if (!this.declared.includes(slot)) { this.declared.push(slot); }
@@ -598,12 +610,15 @@ export class MotionElements {
 			(entry: MotionElement): boolean => entry.slot !== slot,
 		);
 		this.entries.push({ slot, node });
+		this.placed();
 	}
 
 	clear(slot: string, node: HostNode): void {
+		const before = this.entries.length;
 		this.entries = this.entries.filter(
 			(entry: MotionElement): boolean => entry.slot !== slot || entry.node !== node,
 		);
+		if (this.entries.length !== before) { this.placed(); }
 	}
 
 	node(slot: string): HostNode | null {
@@ -905,6 +920,7 @@ when (js) {
 		Unresolved,
 		Dom,
 		Fallback,
+		Unmounted,
 	}
 
 	class StyleRun {
@@ -1103,6 +1119,7 @@ when (js) {
 		player: BrowserMotionPlayer | null = null;
 		reverting: boolean = false;
 		private elements: MotionElements;
+		private unwatch: () => void = (): void => {};
 		private timing: WaapiTiming | null;
 		private evaluated: boolean;
 		private source: TimeSource;
@@ -1161,6 +1178,7 @@ when (js) {
 				}
 			}
 			this.wake.wake = (): float64 | null => this.nextWake();
+			this.unwatch = elements.watch((): void => { this.wake.reschedule(); });
 			this.options = {
 				...options,
 				clock: this.timeline !== null ? this.holdingClock() : this.wake.clock,
@@ -1185,16 +1203,23 @@ when (js) {
 
 		private holdWhileInactive(): void {
 			if (sourceProgress(this.source) !== null) { return; }
+			this.resolveAll();
 			for (const run of this.runs) {
 				if (run.animation !== null) { writeStyle(run.dom, run.plan.css, run.cssText()); }
 			}
 		}
 
 		alignAll(): void {
+			this.resolveAll();
 			for (const run of this.runs) { this.align(run); }
 		}
 
+		dispose(): void {
+			this.unwatch();
+		}
+
 		halt(commit: boolean): void {
+			this.resolveAll();
 			let refused = "";
 			for (const run of this.runs) {
 				run.evicted = false;
@@ -1232,18 +1257,49 @@ when (js) {
 			return node as unknown as HTMLElement;
 		}
 
+		private placed(run: StyleRun): HTMLElement | null {
+			const node = this.elements.node(run.plan.slot);
+			return node !== null && isDomNode(node) ? node as unknown as HTMLElement : null;
+		}
+
+		private moved(run: StyleRun): boolean {
+			if (run.mode !== RunMode.Dom && run.mode !== RunMode.Unmounted) { return false; }
+			return this.placed(run) !== run.element;
+		}
+
 		private resolveAll(): void {
 			for (const run of this.runs) {
-				if (run.mode !== RunMode.Unresolved) { continue; }
-				const node = this.elements.node(run.plan.slot);
-				if (node !== null && isDomNode(node)) {
-					run.element = node as unknown as HTMLElement;
-					run.mode = RunMode.Dom;
-					this.adopt(run);
-				} else {
-					run.mode = RunMode.Fallback;
+				if (run.mode === RunMode.Unresolved) {
+					const element = this.placed(run);
+					if (element !== null) {
+						run.element = element;
+						run.mode = RunMode.Dom;
+						this.adopt(run);
+					} else {
+						run.mode = RunMode.Fallback;
+					}
+				} else if (this.moved(run)) {
+					this.replace(run, this.placed(run));
 				}
 			}
+		}
+
+		private replace(run: StyleRun, element: HTMLElement | null): void {
+			const animation = run.animation;
+			if (animation !== null) {
+				run.animation = null;
+				run.release();
+				animation.cancel();
+			}
+			run.ended = false;
+			run.evicted = false;
+			run.element = element;
+			if (element === null) {
+				run.mode = RunMode.Unmounted;
+				return;
+			}
+			run.mode = RunMode.Dom;
+			this.adopt(run);
 		}
 
 		private adopt(run: StyleRun): void {
@@ -1283,6 +1339,11 @@ when (js) {
 			this.resolveAll();
 			if (run.mode === RunMode.Fallback) {
 				(run.fallbacks[index] as MotionBinding).write(value);
+				return;
+			}
+			if (run.mode === RunMode.Unmounted) {
+				const fallback = run.fallbacks[index];
+				if (fallback !== null) { fallback.write(value); }
 				return;
 			}
 			if (this.reverting) {
@@ -1356,10 +1417,14 @@ when (js) {
 			if (player === null || this.evaluated || this.scrolled() || player.onUpdate !== null) {
 				return null;
 			}
+			for (const run of this.runs) {
+				if (this.moved(run)) { return 1; }
+			}
 			const at = player.rawTime;
 			const forward = player.timeScale > 0;
 			const marks: float64[] = [0, player.totalDuration];
 			for (const run of this.runs) {
+				if (run.mode === RunMode.Unmounted) { continue; }
 				if (run.mode !== RunMode.Dom || run.plan.route !== TrackRoute.Waapi) {
 					return null;
 				}
@@ -1503,6 +1568,7 @@ when (js) {
 		}
 
 		dispose(): void {
+			this.setup.dispose();
 			this.setup.halt(true);
 			super.dispose();
 		}

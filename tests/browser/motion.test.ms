@@ -7,7 +7,7 @@ import {
 	viewSource,
 } from "pulse/src/scroll";
 import { createRoot } from "../../src/core/owner";
-import { MotionSignals, useAnimatedValue } from "../../src/motion/neon";
+import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
 import { createSignal } from "../../src/core/signal";
 import { Show } from "../../src/macros/ui/flow";
 import { AnimatedValue } from "pulse/src/value";
@@ -891,6 +891,41 @@ test "an element-bound value on a slot inside a Show animates the remounted elem
 	assert translateX(second) === 100, "the remounted element ends on the target: " + computed(second, "translate");
 	assert first.getAnimations().length === 0 && first.style.translate === left,
 		"the removed element keeps no animation and no later write: " + first.style.translate;
+	dispose();
+	dom(outer[0]).remove();
+}
+
+test "a document player bound through signals.ref inside a Show hands the rest of its clip to the remounted element" {
+	const signals = new MotionSignals();
+	signals.number("box", "translateX", 0);
+	const [present, setPresent] = createSignal(true);
+	const outer: HostNode[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		useMotion(documentOf([ramp("box", "translateX", 100)]), signals.bindings);
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<Show when={present()}>
+				<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+			</Show>
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	const first = dom(signals.elements.node("box") as HostNode);
+	await renderedFrames();
+	assert first.getAnimations().length === 1, "handed to WAAPI on the first element";
+	await sleepAsync(250);
+	setPresent(false);
+	await renderedFrames();
+	await sleepAsync(150);
+	setPresent(true);
+	await renderedFrames();
+	const second = dom(signals.elements.node("box") as HostNode);
+	assert second.getAnimations().length === 1, "the remounted element carries the rest of the clip";
+	const mid = translateX(second);
+	assert mid > 35 && mid < 95, "the clip resumes at the player's time: " + computed(second, "translate");
+	assert first.getAnimations().length === 0, "the removed element keeps no animation";
+	await sleepAsync(800);
+	assert translateX(second) === 100, "the remounted element ends on the last frame: " + computed(second, "translate");
 	dispose();
 	dom(outer[0]).remove();
 }
