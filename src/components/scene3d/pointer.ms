@@ -280,17 +280,15 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		if (captured === null) { return drag !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
+		if (e.button !== pressButton) { return true; }
 		const path = heldPath();
-		const ends = e.button === pressButton;
 		const presser = pressEntry;
-		if (ends) {
-			captured = null;
-			pressEntry = null;
-			pressTracks = false;
-		}
+		captured = null;
+		pressEntry = null;
+		pressTracks = false;
 		along(path, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.events.onPointerUp,
 			pointerEventOf("pointerup", e, ray, aimed));
-		if (ends && presser !== null && scene.isLive((presser as PointerEntry).node) && under((presser as PointerEntry).node)) {
+		if (presser !== null && scene.isLive((presser as PointerEntry).node) && under((presser as PointerEntry).node)) {
 			deliver((presser as PointerEntry).events.onPress, pointerEventOf("press", e, ray, aimed));
 		}
 		return true;

@@ -386,3 +386,48 @@ test "a mesh on a layer the camera does not draw is not picked" {
 	tap(layer, CENTER, CENTER);
 	assert log.join("|") === "seen", "the press goes to what the camera shows: " + log.join("|");
 }
+
+function buttons(layer: AreaLayer, steps: string): void {
+	for (const step of steps.split(" ")) {
+		const pressed = step.charAt(0) === "d";
+		const button = step.charAt(1) === "1" ? 1 : 2;
+		const e = pointer(pressed ? "pointerdown" : "pointerup", pressed, CENTER, CENTER);
+		e.button = button;
+		hits(layer, CENTER, CENTER, AreaPointerKind.Button, e);
+	}
+}
+
+test "with two buttons down, the second button's release does not press" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Mesh mesh={mesh} onPressIn={note(log, "in")} onPress={note(log, "press")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOf(root);
+	buttons(layer, "d1 d2 u2");
+	assert log.join("|") === "in", "the second release presses nothing: " + log.join("|");
+	buttons(layer, "u1");
+	flush();
+	assert log.join("|") === "in|press", "the first button's release presses: " + log.join("|");
+}
+
+test "with two buttons down on a plain press mesh, only the first button's release presses" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Mesh mesh={mesh} onPress={note(log, "press")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOf(root);
+	buttons(layer, "d1 d2 u2");
+	assert log.length === 0, "the second release presses nothing: " + log.join("|");
+	buttons(layer, "u1");
+	assert log.join("|") === "press", "the first release presses: " + log.join("|");
+}
