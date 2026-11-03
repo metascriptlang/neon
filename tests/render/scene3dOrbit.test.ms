@@ -6,7 +6,7 @@ import { AreaLayer, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Camera3D, Group, Mesh, OrbitControls, Pointer3DEvent } from "../../src/components/scene3d";
 import { NodeId3D, cameraViewOf } from "../../../void/src/void3d/scene";
-import { Camera3D as VoidCamera3D } from "../../../void/src/void3d/camera";
+import { Camera3D as VoidCamera3D, ProjectionKind } from "../../../void/src/void3d/camera";
 import { MeshId, NO_MESH } from "../../../void/src/void3d/draw";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
@@ -158,6 +158,30 @@ function aimedAtOrigin(r: Rig): boolean {
 	return Math.abs(ndc.x) < 0.01 && Math.abs(ndc.y) < 0.01;
 }
 
+function worldPerTexelOf(r: Rig): float32 {
+	const projection = worldCamera(r).projection;
+	match (projection.kind) {
+		ProjectionKind.Orthographic => { return projection.worldPerTexel; },
+		ProjectionKind.Perspective => { throw new Error("the camera is not orthographic"); },
+	}
+}
+
+function orthoRig(): Rig {
+	const refs: Scene3DHandle[] = [];
+	const cameras: NodeId3D[] = [];
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)}
+				projection={{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.05, snap: false }}
+				ref={(value: NodeId3D): void => { cameras.push(value); }} />
+			<OrbitControls />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	flush();
+	return { handle: refs[0], camera: cameras[0], layer: layerOf(root), log: [] };
+}
+
 function offsetRig(withTarget: boolean): Rig {
 	const refs: Scene3DHandle[] = [];
 	const cameras: NodeId3D[] = [];
@@ -186,6 +210,25 @@ function nestedRig(): Rig {
 	</Void>), mockHost(), root as unknown as HostNode);
 	flush();
 	return { handle: refs[0], camera: cameras[0], layer: layerOf(root), log: [] };
+}
+
+test "an orthographic camera zooms by its scale, not its distance" {
+	const r = orthoRig();
+	assert wheel(r.layer, 1.0), "the controls take the wheel";
+	assert near(worldPerTexelOf(r) * 100.0, 4.75), "one step in shrinks the view by 0.95: " + worldPerTexelOf(r).toString();
+	assert near(positionOf(r).length(), 5.0), "the camera does not move: " + positionOf(r).length().toString();
+	wheel(r.layer, -1.0);
+	assert near(worldPerTexelOf(r) * 100.0, 5.0), "one step out undoes it";
+}
+
+test "an orthographic pan moves the target by the visible extent over the view size" {
+	const r = orthoRig();
+	dragBy(r.layer, 2, 100.0, 100.0, 120.0, 120.0);
+	const p = positionOf(r);
+	assert near(p.x, -1.0) && near(p.y, 1.0) && near(p.z, 5.0), "20 px at 0.05 world per pixel is 1 unit: " + p.x.toString() + "," + p.y.toString() + "," + p.z.toString();
+	wheel(r.layer, 1.0);
+	dragBy(r.layer, 2, 100.0, 100.0, 120.0, 100.0);
+	assert near(positionOf(r).x, -1.0 - 0.95), "a zoomed view pans by the zoomed extent: " + positionOf(r).x.toString();
 }
 
 test "the camera aims at the target on mount" {

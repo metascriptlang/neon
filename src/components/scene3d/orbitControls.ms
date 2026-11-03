@@ -7,12 +7,12 @@ import { NeonEvent } from "../../render/event";
 import { VoidAreaHandle } from "../../render/voidAreaHandle";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { Vec3, Mat4, Quat, vec3, eulerQuat, quatOfRotation } from "../../../../void/src/math/math3d";
-import { ProjectionKind } from "../../../../void/src/void3d/camera";
-import { NodeId3D, NO_NODE_3D, Transform3D, setLocal, syncWorld, cameraViewOf } from "../../../../void/src/void3d/scene";
-import { mountOwned, requireScene, valueOr } from "./core";
+import { ProjectionKind, CameraProjection } from "../../../../void/src/void3d/camera";
+import { NodeId3D, NO_NODE_3D, Transform3D, setLocal, setCameraOf, syncWorld, cameraViewOf } from "../../../../void/src/void3d/scene";
+import { mountOwned, requireScene, selectCamera, valueOr } from "./core";
 import { Pointer3D, PointerDrag, pointerScope } from "./pointer";
 
-// drei <OrbitControls> over three's OrbitControls: left drag orbits the target, right drag pans it, the wheel dollies.
+// drei <OrbitControls> over three's OrbitControls: left drag orbits the target, right drag pans it, the wheel dollies a perspective camera and scales an orthographic one.
 export interface OrbitControlsProps {
 	target?: Accessor<Vec3> | null;
 	enableRotate?: Accessor<boolean> | null;
@@ -132,13 +132,13 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				const at = spherical(id);
 				const view = cameraViewOf(scene, id);
 				if (!view.ok) { throw new Error("OrbitControls: the active camera has no world pose: " + view.error.toString()); }
-				let halfFov: float32 = 0.5;
+				let span: float32 = 0.0;
 				const projection = view.value.projection;
 				match (projection.kind) {
-					ProjectionKind.Perspective => { halfFov = projection.fovY / 2.0; },
-					ProjectionKind.Orthographic => {},
+					ProjectionKind.Perspective => { span = 2.0 * at.x * (Math.tan(projection.fovY / 2.0) as float32) / viewHeight(); },
+					ProjectionKind.Orthographic => { span = projection.worldPerTexel * area.scale(); },
 				}
-				const span = 2.0 * at.x * (Math.tan(halfFov) as float32) * valueOr<float32>(props.panSpeed, 1.0) / viewHeight();
+				span = span * valueOr<float32>(props.panSpeed, 1.0);
 				const yaw = at.y;
 				const pitch = PI / 2.0 - at.z;
 				const right = vec3(Math.cos(yaw) as float32, 0.0, -(Math.sin(yaw) as float32));
@@ -149,6 +149,24 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				);
 				target = target - right.scaled(dx * span) + up.scaled(dy * span);
 				pose(id, at.x, at.y, at.z, true);
+			};
+
+			// three scales an orthographic view by `zoom`; Void's equivalent is the world size of a texel.
+			const zoomOrthographic = (id: NodeId3D, worldPerTexel: float32): void => {
+				for (const entry of state.cameras) {
+					if (entry.node != id) { continue; }
+					const projection = entry.camera.projection;
+					if (projection.kind !== ProjectionKind.Orthographic) { throw new Error("OrbitControls: the active camera is not orthographic"); }
+					const next: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel, snap: projection.snap };
+					entry.camera = { ...entry.camera, projection: next };
+					setCameraOf(scene, id, entry.camera);
+					selectCamera(state);
+					state.invalidate();
+					const changed = props.onChange;
+					if (changed !== null) { (changed as () => void)(); }
+					return;
+				}
+				throw new Error("OrbitControls: the active camera is not a Camera3D of this Scene3D");
 			};
 
 			const aim = (notify: boolean): void => {
@@ -184,9 +202,18 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				wheel: (x: float32, y: float32, e: NeonEvent): boolean => {
 					if (!valueOr<boolean>(props.enableZoom, true) || e.deltaY === 0) { return false; }
 					const id = camera();
-					const at = spherical(id);
 					const step = Math.pow(0.95, valueOr<float32>(props.zoomSpeed, 1.0)) as float32;
-					pose(id, e.deltaY > 0 ? at.x * step : at.x / step, at.y, at.z, true);
+					const factor = e.deltaY > 0 ? step : 1.0 / step;
+					const view = cameraViewOf(scene, id);
+					if (!view.ok) { throw new Error("OrbitControls: the active camera has no world pose: " + view.error.toString()); }
+					const projection = view.value.projection;
+					match (projection.kind) {
+						ProjectionKind.Perspective => {
+							const at = spherical(id);
+							pose(id, at.x * factor, at.y, at.z, true);
+						},
+						ProjectionKind.Orthographic => { zoomOrthographic(id, projection.worldPerTexel * factor); },
+					}
 					return true;
 				},
 			};
