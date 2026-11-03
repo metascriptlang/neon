@@ -24,6 +24,7 @@ export function onCssChange(f: (() => void) | null): void {
 export function registerCss(id: string, css: string): void {
 	for (let i = 0; i < ids.length; i += 1) {
 		if (ids[i] === id) {
+			if (rules[i] === css) { return; }
 			rules[i] = css;
 			if (changed !== null) { (changed as () => void)(); }
 			return;

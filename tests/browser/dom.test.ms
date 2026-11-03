@@ -133,6 +133,29 @@ test "setStyleClass adds the class — the channel mockHost cannot see" {
 	probe(el).remove();
 }
 
+extern function sheetWrites(): int32 from "(() => { const s = [...document.querySelectorAll('style')].find((e) => e.textContent.includes('neon-flush-cls')); if (!s) return -1; if (!s.neonWrites) { s.neonWrites = { n: 0 }; const d = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent'); Object.defineProperty(s, 'textContent', { get() { return d.get.call(this); }, set(v) { this.neonWrites.n += 1; d.set.call(this, v); } }); } return s.neonWrites.n; })()";
+
+test "nodes mounting a class the sheet already holds leave the style element alone" {
+	const h = domHost();
+	const put = h.setStyleClass;
+	assert put !== null, "the browser host advertises a stylesheet";
+	const els: HostNode[] = [];
+	if (put !== null) {
+		const first = mount("view");
+		put(first, "neon-flush-cls", ".neon-flush-cls{color:rgb(1,2,3)}");
+		els.push(first);
+		assert sheetWrites() === 0, "the spy starts after the first registration";
+		for (let i = 0; i < 200; i += 1) {
+			const el = mount("view");
+			put(el, "neon-flush-cls", ".neon-flush-cls{color:rgb(1,2,3)}");
+			els.push(el);
+		}
+	}
+	const writes = sheetWrites();
+	assert writes === 0, `200 more nodes with the same class rewrote the sheet ${writes} times`;
+	for (const el of els) { probe(el).remove(); }
+}
+
 test "addEvent: a click reaches the handler as a neon press event" {
 	const h = domHost();
 	const el = mount("pressable");
