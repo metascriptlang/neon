@@ -41,9 +41,11 @@ export function Wake(): NeonNode {
 			setStatus("wake " + (i + 1).toString() + "/" + JOBS.toString());
 		}
 		const sorted = lags.slice().sort((a: number, b: number): number => a - b);
-		setStatus("wake done p50 " + Math.round(percentile(sorted, 0.5)).toString() + " p90 " +
+		const report = "wake done p50 " + Math.round(percentile(sorted, 0.5)).toString() + " p90 " +
 			Math.round(percentile(sorted, 0.9)).toString() + " max " + Math.round(sorted[sorted.length - 1]).toString() +
-			" ms | " + lags.map((v: number): string => Math.round(v).toString()).join(","));
+			" ms | " + lags.map((v: number): string => Math.round(v).toString()).join(",");
+		console.log(report);
+		setStatus(report);
 	};
 	run();
 	return <View style={{ flex: 1, backgroundColor: "#1e1e2e", justifyContent: "center", padding: 24 }}>
