@@ -7,7 +7,7 @@ import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Camera3D } from "../../src/components/scene3d";
 import { getVoidScopeContext, VoidSpace } from "../../src/render/voidScope";
 import { cameraOf, nodeCount } from "../../../void/src/void3d/scene";
-import { Camera3D as VoidCamera3D, basisOf } from "../../../void/src/void3d/camera";
+import { Camera3D as VoidCamera3D, ProjectionKind, basisOf } from "../../../void/src/void3d/camera";
 import { vec3, eulerQuat } from "../../../void/src/math/math3d";
 
 const Scope = getVoidScopeContext();
@@ -137,5 +137,26 @@ test "Camera3D active false opts out of the implicit default" {
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Camera3D active={false} /></Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
 	assert refs.length === 1 && refs[0].camera === null;
+	dispose();
+}
+
+test "Camera3D selection leaves Void untouched unless the active camera or its value changed" {
+	const refs: Scene3DHandle[] = [];
+	const [other, setOther] = createSignal<float32>(1.0);
+	const [fov, setFov] = createSignal<float32>(1.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			<Camera3D active={true} projection={{ kind: ProjectionKind.Perspective, fovY: fov() }} />
+			<Camera3D active={false} position={vec3(other(), 0.0, 0.0)} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+	handle.scene.structureChanged = false;
+	setOther(2.0); flush();
+	assert !handle.scene.structureChanged, "an unrelated camera re-running its effect rewrites no active camera";
+	setFov(0.5); flush();
+	assert handle.scene.structureChanged, "a changed projection on the active camera is written";
 	dispose();
 }

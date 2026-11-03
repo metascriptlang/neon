@@ -212,26 +212,32 @@ export function connected(scene: VoidScene3D, id: NodeId3D): boolean {
 	return scene.isLive(id) && holds(scene, id.index, scene.root);
 }
 
+function applyCamera(state: SceneState, entry: CameraEntry | null): void {
+	const scene = state.handle.scene;
+	const applied = state.handle.camera;
+	const active = scene.activeCamera;
+	if (entry === null) {
+		if (active === null && applied === null) { return; }
+		setActiveCamera(scene, null);
+		state.handle.camera = null;
+		return;
+	}
+	if (active !== null && applied !== null && active === entry.node && applied === entry.camera) { return; }
+	setActiveCamera(scene, entry.node);
+	state.handle.camera = entry.camera;
+}
+
 export function selectCamera(state: SceneState): void {
 	const scene = state.handle.scene;
 	if (scene.closed) { state.handle.camera = null; return; }
 	for (let i = state.cameras.length - 1; i >= 0; i--) {
 		const entry = state.cameras[i];
-		if (entry.active === true && connected(scene, entry.node)) {
-			setActiveCamera(scene, entry.node);
-			state.handle.camera = entry.camera;
-			return;
-		}
+		if (entry.active === true && connected(scene, entry.node)) { applyCamera(state, entry); return; }
 	}
 	for (const entry of state.cameras) {
-		if (entry.active === null && connected(scene, entry.node)) {
-			setActiveCamera(scene, entry.node);
-			state.handle.camera = entry.camera;
-			return;
-		}
+		if (entry.active === null && connected(scene, entry.node)) { applyCamera(state, entry); return; }
 	}
-	setActiveCamera(scene, null);
-	state.handle.camera = null;
+	applyCamera(state, null);
 }
 
 function placeInVoid(scene: VoidScene3D, p: SceneNode3D, n: SceneNode3D, at: int32): void {
