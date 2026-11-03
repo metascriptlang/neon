@@ -323,3 +323,26 @@ test "a wheel handler that stops propagation keeps the wheel from the orbit cont
 	wheel(layer, OFF, OFF, 1.0);
 	assert near(cameraPosition(handle, cameras[0]).length(), 4.75), "a wheel off the mesh still dollies: " + cameraPosition(handle, cameras[0]).length().toString();
 }
+
+test "moves follow the pressed mesh after the pointer leaves it, and stop at the release" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Mesh mesh={mesh} onPress={note(log, "press")} onPointerMove={note(log, "move")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOf(root);
+	hover(layer, OFF, OFF);
+	assert log.length === 0, "an unpressed move off the mesh is not delivered: " + log.join("|");
+	down(layer, CENTER, CENTER);
+	assert hover(layer, OFF, OFF), "the layer keeps the captured move";
+	hover(layer, OFF + 5.0, OFF);
+	assert log.join("|") === "move|move", "the pressed mesh hears moves off itself: " + log.join("|");
+	up(layer, OFF, OFF);
+	log.length = 0;
+	hover(layer, OFF, OFF);
+	assert log.length === 0, "after the release moves are picked again: " + log.join("|");
+}

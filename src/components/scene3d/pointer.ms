@@ -300,7 +300,7 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		if (hovers === 0 && moves === 0 && !pressTracks) { return captured !== null || dragging !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
-		along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onMove,
+		along(heldPath(), (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onMove,
 			pointerEventOf("pointermove", e, ray, aimed));
 		return hovered.length > 0 || captured !== null || dragging !== null;
 	};
