@@ -129,7 +129,7 @@ export function Light(props: LightProps): NeonNode {
 				shadows: kind !== LightKind.Directional && valueOr<boolean>(props.castShadow, false),
 				cookie: cookie,
 			};
-			const node = addLightNode(scene, scope.parent, local, light);
+			const node = addLightNode(scene, null, local, light);
 			ownNode(state, node);
 			bindNode(state, node, props, local);
 			createRenderEffect<LightKind>(

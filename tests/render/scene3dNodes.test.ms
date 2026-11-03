@@ -168,7 +168,7 @@ test "Group and Mesh are created detached and attached once, before the sibling 
 }
 
 
-test "Camera3D Center Detailed and Gltf are created detached and attached once by placement" {
+test "Camera3D Center Detailed Gltf and Light are created detached and attached once by placement" {
 	const refs: Scene3DHandle[] = [];
 	const seen: int32[] = [];
 	const [shown, setShown] = createSignal(false);
@@ -189,17 +189,18 @@ test "Camera3D Center Detailed and Gltf are created detached and attached once b
 				<Center name={seam("center")} />
 				<Detailed radius={1.0} thresholds={[0.5]} name={seam("detailed")} />
 				<Gltf data={model} setup={setup} name={seam("gltf")} />
+				<Light kind={accessor(() => LightKind.Point)} name={seam("light")} />
 			</>) })}
 			<Group />
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
 	setShown(true);
 	flush();
-	assert seen.length === 4;
+	assert seen.length === 5;
 	for (const count of seen) { assert count === 1, "a component exists detached until placement attaches it"; }
 	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
-	assert handle.scene.nodes[handle.scene.root].children.length === 5;
+	assert handle.scene.nodes[handle.scene.root].children.length === 6;
 	dispose();
 	flush();
 	assert handle.scene.closed;
