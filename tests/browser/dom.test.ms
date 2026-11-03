@@ -141,12 +141,14 @@ test "nodes mounting a class the sheet already holds leave the style element alo
 	assert put !== null, "the browser host advertises a stylesheet";
 	const els: HostNode[] = [];
 	if (put !== null) {
-		const first = mount("view");
+		const first = h.createElement("view");
+		h.insertBefore(documentBody(), first, null);
 		put(first, "neon-flush-cls", ".neon-flush-cls{color:rgb(1,2,3)}");
 		els.push(first);
 		assert sheetWrites() === 0, "the spy starts after the first registration";
 		for (let i = 0; i < 200; i += 1) {
-			const el = mount("view");
+			const el = h.createElement("view");
+			h.insertBefore(documentBody(), el, null);
 			put(el, "neon-flush-cls", ".neon-flush-cls{color:rgb(1,2,3)}");
 			els.push(el);
 		}
