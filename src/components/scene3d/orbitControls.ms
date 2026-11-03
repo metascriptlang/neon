@@ -66,7 +66,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 			};
 
 			// three Spherical with y up: theta around y from +z, phi down from +y.
-			const pose = (id: NodeId3D, radius: float32, theta: float32, phi: float32): void => {
+			const pose = (id: NodeId3D, radius: float32, theta: float32, phi: float32, notify: boolean): void => {
 				const lowPole = Math.max(valueOr<float32>(props.minPolarAngle, 0.0), POLE_EPS) as float32;
 				const highPole = Math.min(valueOr<float32>(props.maxPolarAngle, PI), PI - POLE_EPS) as float32;
 				const polar = Math.min(Math.max(phi, lowPole), highPole) as float32;
@@ -86,7 +86,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				setLocal(scene, id, local);
 				state.invalidate();
 				const changed = props.onChange;
-				if (changed !== null) { (changed as () => void)(); }
+				if (notify && changed !== null) { (changed as () => void)(); }
 			};
 
 			const spherical = (id: NodeId3D): Vec3 => {
@@ -101,7 +101,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				const id = camera();
 				const at = spherical(id);
 				const turn = 2.0 * PI * valueOr<float32>(props.rotateSpeed, 1.0) / viewHeight();
-				pose(id, at.x, at.y - dx * turn, at.z - dy * turn);
+				pose(id, at.x, at.y - dx * turn, at.z - dy * turn, true);
 			};
 
 			const pan = (dx: float32, dy: float32): void => {
@@ -125,7 +125,14 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 					-(Math.cos(yaw) as float32) * (Math.sin(pitch) as float32),
 				);
 				target = target - right.scaled(dx * span) + up.scaled(dy * span);
-				pose(id, at.x, at.y, at.z);
+				pose(id, at.x, at.y, at.z, true);
+			};
+
+			const aim = (notify: boolean): void => {
+				const active = scene.activeCamera;
+				if (active === null || !scene.isLive(active as NodeId3D)) { return; }
+				const at = spherical(active as NodeId3D);
+				pose(active as NodeId3D, at.x, at.y, at.z, notify);
 			};
 
 			const drag: PointerDrag = {
@@ -156,7 +163,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 					const id = camera();
 					const at = spherical(id);
 					const step = Math.pow(0.95, valueOr<float32>(props.zoomSpeed, 1.0)) as float32;
-					pose(id, e.deltaY > 0 ? at.x * step : at.x / step, at.y, at.z);
+					pose(id, e.deltaY > 0 ? at.x * step : at.x / step, at.y, at.z, true);
 					return true;
 				},
 			};
@@ -166,14 +173,12 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 					(prev: Vec3 | null): Vec3 => (props.target as () => Vec3)(),
 					(value: Vec3, prev: Vec3 | null): Cleanup | null => {
 						target = value;
-						const active = scene.activeCamera;
-						if (active !== null && scene.isLive(active as NodeId3D)) {
-							const at = spherical(active as NodeId3D);
-							pose(active as NodeId3D, at.x, at.y, at.z);
-						}
+						aim(true);
 						return null;
 					},
 				);
+			} else {
+				aim(false);
 			}
 		});
 	};

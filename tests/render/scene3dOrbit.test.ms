@@ -5,7 +5,8 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { AreaLayer, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Camera3D, Mesh, OrbitControls, Pointer3DEvent } from "../../src/components/scene3d";
-import { NodeId3D } from "../../../void/src/void3d/scene";
+import { NodeId3D, cameraViewOf } from "../../../void/src/void3d/scene";
+import { Camera3D as VoidCamera3D } from "../../../void/src/void3d/camera";
 import { MeshId, NO_MESH } from "../../../void/src/void3d/draw";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
@@ -143,3 +144,36 @@ test "a click on empty space beside the controls is still a missed press" {
 	assert r.log.join("|") === "missed", "the click misses: " + r.log.join("|");
 	assert positionOf(r) == before, "a click does not move the camera";
 }
+
+function worldCamera(r: Rig): VoidCamera3D {
+	const view = cameraViewOf(r.handle.scene, r.camera);
+	if (!view.ok) { throw new Error("the camera has no world pose: " + view.error.toString()); }
+	return view.value;
+}
+
+function aimedAtOrigin(r: Rig): boolean {
+	const resolved = worldCamera(r).resolve(200, 200);
+	if (!resolved.ok) { throw new Error("the camera does not resolve: " + resolved.error.toString()); }
+	const ndc = vec3(0.0, 0.0, 0.0).project(resolved.value.viewProj);
+	return Math.abs(ndc.x) < 0.01 && Math.abs(ndc.y) < 0.01;
+}
+
+function offsetRig(withTarget: boolean): Rig {
+	const refs: Scene3DHandle[] = [];
+	const cameras: NodeId3D[] = [];
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			<Camera3D active={true} position={vec3(5.0, 0.0, 5.0)} ref={(value: NodeId3D): void => { cameras.push(value); }} />
+			{withTarget ? <OrbitControls target={vec3(0.0, 0.0, 0.0)} /> : <OrbitControls />}
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	flush();
+	return { handle: refs[0], camera: cameras[0], layer: layerOf(root), log: [] };
+}
+
+test "the camera aims at the target on mount" {
+	assert aimedAtOrigin(offsetRig(false)), "the default target is aimed at";
+	assert aimedAtOrigin(offsetRig(true)), "an authored target is aimed at";
+}
+
