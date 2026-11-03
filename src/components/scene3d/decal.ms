@@ -15,7 +15,7 @@ import {
 } from "../../../../void/src/void3d/draw";
 import { NodeId3D, addMeshNode, setMaterialOf } from "../../../../void/src/void3d/scene";
 import {
-	NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, valueOr, addUniformMaterial,
+	NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, valueOr, addUniformMaterial,
 } from "./core";
 
 export struct DecalNormalFade {
@@ -117,6 +117,30 @@ function unitBox(): MeshData {
 	return data;
 }
 
+function acquireBox(state: SceneState): SharedGeometry {
+	const context = state.handle.context;
+	const box = unitBox();
+	for (const entry of state.geometries) {
+		if (context.meshData[entry.mesh.index] == box) {
+			entry.users += 1;
+			return entry;
+		}
+	}
+	const uploaded = addMeshData(context, box);
+	if (!uploaded.ok) { throw refuse("addMeshData failed: " + uploaded.error.toString()); }
+	const entry: SharedGeometry = { mesh: uploaded.value, users: 1 };
+	state.geometries.push(entry);
+	return entry;
+}
+
+function releaseBox(state: SceneState, entry: SharedGeometry): void {
+	entry.users -= 1;
+	if (entry.users > 0) { return; }
+	state.geometries.splice(state.geometries.indexOf(entry), 1);
+	const released = releaseMesh(state.handle.context, entry.mesh);
+	if (!released.ok) { throw refuse("releaseMesh failed: " + released.error.toString()); }
+}
+
 export function Decal(props: DecalProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		refuseUnmapped(props);
@@ -142,12 +166,10 @@ export function Decal(props: DecalProps): NeonNode {
 				return id;
 			});
 			let shown = material();
-			const box = addMeshData(context, unitBox());
-			if (!box.ok) { throw refuse("addMeshData failed: " + box.error.toString()); }
-			const placed = addMeshNode(scene, scope.parent, local, box.value, shown);
-			const released = releaseMesh(context, box.value);
+			const box = acquireBox(state);
+			onCleanup((): void => { releaseBox(state, box); });
+			const placed = addMeshNode(scene, scope.parent, local, box.mesh, shown);
 			if (!placed.ok) { throw refuse("addMeshNode failed: " + placed.error.toString()); }
-			if (!released.ok) { throw refuse("releaseMesh failed: " + released.error.toString()); }
 			const node = placed.value;
 			ownNode(state, node);
 			createRenderEffect<[MaterialId, Vec<float32>]>(

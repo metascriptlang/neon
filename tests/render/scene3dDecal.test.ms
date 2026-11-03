@@ -1,7 +1,7 @@
-import { Accessor, accessor } from "../../src/core/signal";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { contextGeneration } from "../../../void/src/gpu/door";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -98,4 +98,29 @@ test "Decal refuses outside a Scene3D, an untextured map, and what Void cannot h
 		map: fixed(context, 70), emissive: accessor((): float32 => Number.NaN as float32),
 	}));
 	assert nan.includes("Decal: emissive must be finite"), nan;
+}
+
+test "Decals in one scene share one unit box and the last one out releases it" {
+	const refs: Scene3DHandle[] = [];
+	const [first, setFirst] = createSignal(true);
+	const [second, setSecond] = createSignal(true);
+	let baseline: int32 = -1;
+	let projected: TextureId = NO_TEXTURE;
+	const dispose = render(element(<Void>
+		<Scene3D ref={(handle: Scene3DHandle): void => {
+			refs.push(handle);
+			baseline = handle.context.liveMeshes();
+			projected = texture(handle.context, 70);
+		}}>
+			{Show({ when: accessor(() => first()), children: element(<Decal map={accessor((): TextureId => projected)} />) })}
+			{Show({ when: accessor(() => second()), children: element(<Decal map={accessor((): TextureId => projected)} />) })}
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	const context = refs[0].context;
+	assert context.liveMeshes() - baseline == 1, "two decals hold " + (context.liveMeshes() - baseline).toString() + " box meshes";
+	setFirst(false); flush();
+	assert context.liveMeshes() - baseline == 1, "one decal left holds " + (context.liveMeshes() - baseline).toString() + " box meshes";
+	setSecond(false); flush();
+	assert context.liveMeshes() - baseline == 0, "no decal left holds " + (context.liveMeshes() - baseline).toString() + " box meshes";
+	dispose(); resetErrorHalt();
 }
