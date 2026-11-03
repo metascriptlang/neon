@@ -122,7 +122,7 @@ export function Line(props: LineProps): NeonNode {
 				return uploaded.value;
 			};
 			const first = upload(graphics);
-			const placed = addMeshNode(scene, scope.parent, local, first, material);
+			const placed = addMeshNode(scene, null, local, first, material);
 			const firstReleased = releaseMesh(context, first);
 			if (!placed.ok) { throw refuse("addMeshNode failed: " + placed.error.toString()); }
 			if (!firstReleased.ok) { throw refuse("releaseMesh failed: " + firstReleased.error.toString()); }

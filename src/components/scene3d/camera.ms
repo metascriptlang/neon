@@ -52,7 +52,7 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 			const scene = state.handle.scene;
 			const initial = untrack(() => cameraOf(props));
 			let local = cameraLocal(initial);
-			const node = addCameraNode(scene, scope.parent, local, initial);
+			const node = addCameraNode(scene, null, local, initial);
 			ownNode(scope.state, node);
 			if (props.layers !== null) {
 				const layers = props.layers as () => uint32;

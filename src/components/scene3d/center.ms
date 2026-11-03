@@ -63,7 +63,7 @@ export function Center(props: CenterProps): NeonNode {
 			const scene = state.handle.scene;
 			const context = state.handle.context;
 			const local = localOf(props);
-			const node = addGroup(scene, scope.parent, local);
+			const node = addGroup(scene, null, local);
 			ownNode(state, node);
 			bindNode(state, node, props, local);
 			let inner: NodeId3D = NO_NODE_ID;

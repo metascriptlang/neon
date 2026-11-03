@@ -145,7 +145,7 @@ export function Decal(props: DecalProps): NeonNode {
 			let shown = material();
 			const box = acquireGeometry(state, unitBox());
 			onCleanup((): void => { releaseGeometry(state, box); });
-			const placed = addMeshNode(scene, scope.parent, local, box.mesh, shown);
+			const placed = addMeshNode(scene, null, local, box.mesh, shown);
 			if (!placed.ok) { throw refuse("addMeshNode failed: " + placed.error.toString()); }
 			const node = placed.value;
 			ownNode(state, node);

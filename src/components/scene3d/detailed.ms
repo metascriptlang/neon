@@ -47,7 +47,7 @@ export function Detailed(props: DetailedProps): NeonNode {
 			const state = scope.state;
 			const scene = state.handle.scene;
 			const local = localOf(props);
-			const node = addGroup(scene, scope.parent, local);
+			const node = addGroup(scene, null, local);
 			ownNode(state, node);
 			bindNode(state, node, props, local);
 			let lod: MeshLod = configOf([], 0.0);

@@ -4,7 +4,12 @@ import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Group, Mesh, Light } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Group, Mesh, Light, Camera3D, Center, Detailed, Gltf } from "../../src/components/scene3d";
+import { whiteMaterialBlock } from "../../src/components/scene3d/core";
+import { GltfData } from "../../../void/src/void3d/gltf";
+import { GltfMaterialSetup } from "../../../void/src/void3d/gltfScene";
+import { RenderState } from "../../../void/src/gpu/state";
+import { Transform3D } from "../../../void/src/void3d/scene";
 import { NodeId3D, NodeFlag, LightKind, nodeCount, isLive } from "../../../void/src/void3d/scene";
 import { NO_MESH, releaseMesh } from "../../../void/src/void3d/draw";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
@@ -162,3 +167,40 @@ test "Group and Mesh are created detached and attached once, before the sibling 
 	assert handle.scene.closed;
 }
 
+
+test "Camera3D Center Detailed and Gltf are created detached and attached once by placement" {
+	const refs: Scene3DHandle[] = [];
+	const seen: int32[] = [];
+	const [shown, setShown] = createSignal(false);
+	const rootChildren = (): int32 => {
+		const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+		if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+		return handle.scene.nodes[handle.scene.root].children.length as int32;
+	};
+	const seam = (label: string): string => { seen.push(rootChildren()); return label; };
+	const model: GltfData = { meshes: [], meshMaterials: [], materials: [], textures: [],
+		nodes: [{ name: "n", mesh: -1, local: { position: vec3(0.0, 0.0, 0.0), rotation: Transform3D.identity().rotation, scale: vec3(1.0, 1.0, 1.0) }, children: [] }], sceneRoots: [0] };
+	const setup: GltfMaterialSetup = { pass: RenderState.defaults(), block: whiteMaterialBlock() };
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			{Show({ when: accessor(() => shown()), children: element(<>
+				<Camera3D name={seam("camera")} />
+				<Center name={seam("center")} />
+				<Detailed radius={1.0} thresholds={[0.5]} name={seam("detailed")} />
+				<Gltf data={model} setup={setup} name={seam("gltf")} />
+			</>) })}
+			<Group />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	setShown(true);
+	flush();
+	assert seen.length === 4;
+	for (const count of seen) { assert count === 1, "a component exists detached until placement attaches it"; }
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+	assert handle.scene.nodes[handle.scene.root].children.length === 5;
+	dispose();
+	flush();
+	assert handle.scene.closed;
+}

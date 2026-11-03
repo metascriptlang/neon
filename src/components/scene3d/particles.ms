@@ -91,7 +91,7 @@ export function Particles(props: ParticlesProps): NeonNode {
 			const readPaused = (): boolean => valueOr<boolean>(props.paused, false);
 			const readSpeed = (): float64 => valueOr<float64>(props.speed, 1.0);
 			let speed = checkedSpeed(untrack(readSpeed));
-			const group = addGroup(scene, scope.parent, local);
+			const group = addGroup(scene, null, local);
 			ownNode(state, group);
 			let effect = instanced(untrack(() => props.effect()), untrack(readSeed));
 			let material = untrack(() => props.material());

@@ -76,7 +76,7 @@ export function Label3D(props: Label3DProps): NeonNode {
 			const state = scope.state;
 			const scene = state.handle.scene;
 			const local = localOf(props);
-			const node = addGroup(scene, scope.parent, local);
+			const node = addGroup(scene, null, local);
 			ownNode(state, node);
 			let label: WorldLabel | null = null;
 			let billboard = props.billboard === null ? false : untrack(props.billboard as () => boolean);

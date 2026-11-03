@@ -90,7 +90,7 @@ export function Gltf(props: GltfProps): NeonNode {
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
-			const wrapper = addGroup(scene, scope.parent, local);
+			const wrapper = addGroup(scene, null, local);
 			ownNode(scope.state, wrapper);
 			bindNode(scope.state, wrapper, props, local);
 			bindPointer(scope.state, wrapper, props);
