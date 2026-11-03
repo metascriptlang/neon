@@ -242,15 +242,21 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		if (count === 0) { return unclaimed(x, y, e); }
 		aim(x, y);
 		hoverTo(scratch, e);
-		if (scratch.length === 0) { return unclaimed(x, y, e); }
+		let presses = false;
+		let tracks = false;
+		let presser: PointerEntry | null = null;
+		for (const entry of scratch) {
+			if (entry.events.onPointerDown !== null) { tracks = true; }
+			if (entry.events.onPress !== null) {
+				presses = true;
+				if (presser === null && primary(e.button)) { presser = entry; }
+			}
+		}
+		if (!presses && !tracks) { return unclaimed(x, y, e); }
 		captured = aimed.mesh;
 		pressButton = e.button;
-		pressEntry = null;
-		pressTracks = false;
-		for (const entry of scratch) {
-			if (entry.events.onPointerDown !== null) { pressTracks = true; }
-			if (pressEntry === null && entry.events.onPress !== null && primary(e.button)) { pressEntry = entry; }
-		}
+		pressEntry = presser;
+		pressTracks = tracks;
 		along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.events.onPointerDown,
 			pointerEventOf("pointerdown", e, ray, aimed));
 		return true;

@@ -7,7 +7,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../
 import { NeonEvent, neonEvent, stopPropagation } from "../../src/render/event";
 import { AreaLayer, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Group, Mesh, Node, Camera3D, Pointer3DEvent } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Group, Mesh, Node, Camera3D, OrbitControls, Pointer3DEvent } from "../../src/components/scene3d";
 import { NodeId3D, NodeFlag, Transform3D, addGroup, syncWorld, setLocal } from "../../../void/src/void3d/scene";
 import { MeshId, NO_MESH } from "../../../void/src/void3d/draw";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../../void/src/void3d/meshData";
@@ -274,4 +274,31 @@ test "a pick follows the camera and refuses a camera without a world pose by nam
 	let message = "";
 	try { hover(layer, CENTER, CENTER); } catch (error) { message = error.toString(); } finally { resetErrorHalt(); }
 	assert message.includes("Scene3D: the active camera has no world pose"), "names the failure: " + message;
+}
+
+function cameraPosition(handle: Scene3DHandle, camera: NodeId3D): Vec3 {
+	return handle.scene.nodes[camera.index].local.position;
+}
+
+test "a mesh with only hover handlers does not block an orbit drag that starts on it" {
+	const refs: Scene3DHandle[] = [];
+	const cameras: NodeId3D[] = [];
+	const log: string[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} ref={(value: NodeId3D): void => { cameras.push(value); }} />
+			<Mesh mesh={mesh} onHoverIn={note(log, "in")} onHoverOut={note(log, "out")} />
+			<OrbitControls />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	flush();
+	const layer = layerOf(root);
+	down(layer, CENTER, CENTER);
+	hover(layer, CENTER + 50.0, CENTER);
+	up(layer, CENTER + 50.0, CENTER);
+	const at = cameraPosition(handleOf(refs), cameras[0]);
+	assert at.x < -0.1, "the drag orbited the camera: " + at.x.toString();
+	assert log.join("|") === "in|out", "hover still reports: " + log.join("|");
 }
