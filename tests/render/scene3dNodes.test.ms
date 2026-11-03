@@ -118,3 +118,47 @@ test "Scene3D ambient follows its signal without changing sibling scenes or Void
 	assert first.context.closed && second.context.closed && defaults.context.closed;
 }
 
+test "Group and Mesh are created detached and attached once, before the sibling they were placed ahead of" {
+	const refs: Scene3DHandle[] = [];
+	const nodes: NodeId3D[] = [];
+	const seen: int32[] = [];
+	let mesh = NO_MESH;
+	const [shown, setShown] = createSignal(false);
+	const rootChildren = (): int32 => {
+		const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+		if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+		return handle.scene.nodes[handle.scene.root].children.length as int32;
+	};
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => {
+			refs.push(value); mesh = added(value.context, litShape());
+		}}>
+			{Show({ when: accessor(() => shown()), children: element(<>
+				<Group name={(() => { seen.push(rootChildren()); return "group"; })()}
+					ref={(value: NodeId3D): void => { nodes.push(value); }} />
+				<Mesh mesh={mesh} name={(() => { seen.push(rootChildren()); return "mesh"; })()}
+					ref={(value: NodeId3D): void => { nodes.push(value); }} />
+			</>) })}
+			<Group ref={(value: NodeId3D): void => { nodes.push(value); }} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+	assert nodes.length === 1;
+	setShown(true);
+	flush();
+	assert nodes.length === 3;
+	assert seen.length === 2;
+	assert seen[0] === 1, "a Group exists detached until placement attaches it";
+	assert seen[1] === 1, "a Mesh exists detached until placement attaches it";
+	const children = handle.scene.nodes[handle.scene.root].children;
+	assert children.length === 3;
+	assert children[0] === nodes[1].index && children[1] === nodes[2].index && children[2] === nodes[0].index;
+	const released = releaseMesh(handle.context, mesh);
+	assert released.ok;
+	dispose();
+	flush();
+	assert handle.scene.closed;
+}
+

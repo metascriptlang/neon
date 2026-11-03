@@ -9,7 +9,7 @@ export function Group(props: PointerProps): NeonNode {
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
-			const node = addGroup(scene, scope.parent, local);
+			const node = addGroup(scene, null, local);
 			ownNode(scope.state, node);
 			bindNode(scope.state, node, props, local);
 			bindPointer(scope.state, node, props);

@@ -91,7 +91,7 @@ export function Mesh(props: MeshProps): NeonNode {
 				const mounted = node;
 				if (mounted === null) {
 					const selected = snapshotMaterial === null ? defaultMaterialOf(scope.state) : snapshotMaterial;
-					const added = addMeshNode(scene, scope.parent, local, mesh, selected);
+					const added = addMeshNode(scene, null, local, mesh, selected);
 					if (!added.ok) { throw new Error("Mesh: addMeshNode failed: " + added.error.toString()); }
 					node = added.value;
 					material = selected;
