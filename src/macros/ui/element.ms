@@ -379,7 +379,7 @@ export macro element(node: Node): Node {
 		}
 		const first = n.jsxTag.charAt(0);
 		const attrs = expandAttrs(n.jsxAttrs);
-		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: first >= "a" && first <= "z" ? checkHtmlElement(n, attrs) : attrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, typeExpr: n.typeExpr, jsxAttrs: first >= "a" && first <= "z" ? checkHtmlElement(n, attrs) : attrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
 	}
 	function isAccessorTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
@@ -424,6 +424,8 @@ export macro element(node: Node): Node {
 		return null;
 	}
 	function tagType(c: Node): Node | null {
+		const tag = c.typeExpr;
+		if (tag !== null && tag.resolvedSym !== null) { return getType(tag); }
 		const parts: string[] = c.jsxTag.split(".");
 		const sym = bindSym(parts[0]);
 		if (sym === null) {
@@ -1014,7 +1016,7 @@ export macro element(node: Node): Node {
 		if (elNode.kind === NodeKind.JSXFragment) {
 			return { kind: NodeKind.JSXFragment, line: elNode.line, column: elNode.column, jsxFragChildren: kids };
 		}
-		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
+		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, typeExpr: elNode.typeExpr, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
 	}
 	node = flattenFragments(lowerFlowTree(node));
 
@@ -1185,7 +1187,8 @@ export macro element(node: Node): Node {
 	}
 	function componentFn(c: Node): Node | null {
 		if (c.jsxTag.indexOf(".") >= 0) { return null; }
-		const sym = bindSym(c.jsxTag);
+		const tag = c.typeExpr;
+		const sym = tag !== null && tag.resolvedSym !== null ? tag : bindSym(c.jsxTag);
 		if (sym === null) { return null; }
 		const impl = getImpl(sym);
 		if (impl === null) { return null; }
