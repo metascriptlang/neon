@@ -125,8 +125,8 @@ export function requireScene(tag: string): NodeScope {
 	return scope;
 }
 
-export function localOf(props: TransformProps): Transform3D {
-	let local = valueOr<Transform3D>(props.transform, Transform3D.identity());
+export function localOf(props: TransformProps, base: Transform3D = Transform3D.identity()): Transform3D {
+	let local = valueOr<Transform3D>(props.transform, base);
 	if (props.position !== null) { local.position = (props.position as () => Vec3)(); }
 	if (props.rotation !== null) { local.rotation = (props.rotation as () => Quat)(); }
 	if (props.scale !== null) { local.scale = (props.scale as () => Vec3)(); }
@@ -137,7 +137,7 @@ export function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformPr
 	if (props.transform === null && props.position === null && props.rotation === null && props.scale === null) { return; }
 	let local = initial;
 	createRenderEffect<Transform3D>(
-		(prev: Transform3D | null): Transform3D => localOf(props),
+		(prev: Transform3D | null): Transform3D => localOf(props, initial),
 		(next: Transform3D, prev: Transform3D | null): Cleanup | null => {
 			if (next !== local && scene.isLive(node)) {
 				setLocal(scene, node, next);

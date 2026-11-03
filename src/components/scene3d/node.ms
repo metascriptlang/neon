@@ -4,7 +4,7 @@ import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import {
-	Scene3D as VoidScene3D, NodeId3D, Transform3D, NO_NODE_3D, addGroup, attach, insertBefore, setVisible,
+	Scene3D as VoidScene3D, NodeId3D, Transform3D, NO_NODE_3D, addGroup, attach, insertBefore, setVisible, setLocal,
 } from "../../../../void/src/void3d/scene";
 import { PointerProps, bindPointer } from "./pointer";
 import { SceneState, SceneNode3D, mountOwned, requireScene, bindNode, placeNodeChildren, freeChildren } from "./core";
@@ -52,12 +52,15 @@ export function Node(props: NodeElementProps): NeonNode {
 			const up = scene.nodes[node.index].parent;
 			const origin: NodeId3D | null = up == NO_NODE_3D ? null : scene.nodeIdAt(up);
 			const after: NodeId3D | null = up == NO_NODE_3D ? null : nextSiblingOf(scene, node.index, up);
+			const initial = scene.nodes[node.index].local;
+			const writesLocal = props.transform !== null || props.position !== null || props.rotation !== null || props.scale !== null;
 			const wrapper = new SceneNode3D(node);
 			const giveBack = (): void => {
 				if (wrapper.returned) { return; }
 				freeChildren(scene, wrapper);
 				wrapper.returned = true;
 				if (!scene.isLive(node)) { return; }
+				if (writesLocal) { setLocal(scene, node, initial); }
 				const home = origin;
 				if (home !== null && scene.isLive(home) && !heldUnder(scene, home.index, node.index)) {
 					const next = after;
@@ -80,7 +83,7 @@ export function Node(props: NodeElementProps): NeonNode {
 					return null;
 				},
 			);
-			bindNode(state, node, props, scene.nodes[node.index].local);
+			bindNode(state, node, props, initial);
 			bindPointer(state, node, props);
 			placeNodeChildren(scope, wrapper, props, host, parent, before);
 		});
