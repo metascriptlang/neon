@@ -431,3 +431,21 @@ test "with two buttons down on a plain press mesh, only the first button's relea
 	buttons(layer, "u1");
 	assert log.join("|") === "press", "the first release presses: " + log.join("|");
 }
+
+test "a mesh with only onPressOut or only onLongPress claims the press and hears its end" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Mesh mesh={mesh} onPressOut={note(log, "out")} />
+			<Mesh mesh={mesh} position={vec3(5.0, 0.0, 0.0)} onLongPress={note(log, "long")} />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const layer = layerOf(root);
+	assert down(layer, CENTER, CENTER), "the gesture mesh claims the press";
+	up(layer, CENTER, CENTER);
+	await sleepAsync(250);
+	assert log.join("|") === "out", "pressOut arrives after the minimum hold: " + log.join("|");
+}
