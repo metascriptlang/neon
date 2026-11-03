@@ -33,7 +33,7 @@ function shadowMaterialOf(state: SceneState, cast: boolean, receive: boolean): M
 	return made;
 }
 
-function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
+export function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
 	const context = state.handle.context;
 	for (const entry of state.geometries) {
 		const at = entry.mesh.index;
@@ -50,7 +50,7 @@ function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
 	return entry;
 }
 
-function releaseGeometry(state: SceneState, entry: SharedGeometry): void {
+export function releaseGeometry(state: SceneState, entry: SharedGeometry): void {
 	entry.users -= 1;
 	if (entry.users > 0) { return; }
 	const last = state.geometries.length - 1;
