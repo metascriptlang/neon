@@ -467,6 +467,23 @@ function within(tree: VoidTree, node: VoidNode, top: VoidNode): boolean {
 	return false;
 }
 
+function paintsAfterSlot(tree: VoidTree, node: VoidNode, slot: VoidNode): boolean {
+	const upper: VoidNode[] = [];
+	const lower: VoidNode[] = [];
+	for (let cur: VoidNode | null = node; cur !== null; cur = tree.parentOf(cur as VoidNode)) { upper.push(cur as VoidNode); }
+	for (let cur: VoidNode | null = slot; cur !== null; cur = tree.parentOf(cur as VoidNode)) { lower.push(cur as VoidNode); }
+	let i = upper.length - 1;
+	let j = lower.length - 1;
+	if (upper[i] !== lower[j]) { return false; }
+	while (i > 0 && j > 0 && upper[i - 1] === lower[j - 1]) {
+		i -= 1;
+		j -= 1;
+	}
+	if (i === 0 || j === 0) { return false; }
+	const kids = tree.childrenOf(upper[i]);
+	return kids.indexOf(upper[i - 1]) > kids.indexOf(lower[j - 1]);
+}
+
 // RN's pointerEvents: "none" hides the node and its subtree, "box-none" only the node, "box-only" only its children.
 function pointerMode(n: VoidNode): string {
 	if (n.style === null) { return "auto"; }
@@ -1454,10 +1471,21 @@ export function createVoidHostWith(
 		return null;
 	};
 
-	const topLayerTaking = (x: float32, y: float32, kind: AreaPointerKind, ev: NeonEvent): AreaLayer | null => {
+	const slotNode = (layer: AreaLayer): VoidNode | null => {
+		if (!layer.anchor.inText) { return layer.anchor.node instanceof VoidNode ? layer.anchor.node as VoidNode : null; }
+		return spanText(layer.anchor.node) as VoidNode | null;
+	};
+
+	const covered = (layer: AreaLayer, under: VoidNode | null): boolean => {
+		const slot = slotNode(layer);
+		return under !== null && slot !== null && paintsAfterSlot(tree, under as VoidNode, slot as VoidNode);
+	};
+
+	const topLayerTaking = (x: float32, y: float32, kind: AreaPointerKind, ev: NeonEvent, under: VoidNode | null): AreaLayer | null => {
 		if (layerOrder === null) { return null; }
 		const order = (layerOrder as () => AreaLayer[])();
 		for (let i = order.length - 1; i >= 0; i -= 1) {
+			if (covered(order[i], under)) { continue; }
 			const hit = order[i].hit;
 			if (hit !== null && (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev)) {
 				return order[i];
@@ -1536,7 +1564,7 @@ export function createVoidHostWith(
 		const takes = captured !== null || focusTarget !== null || spanPress || handles(under, PRESS_HANDLERS);
 		hoverTo(under, x, y);
 		if (!takes) {
-			const layer = topLayerTaking(x, y, AreaPointerKind.Button, ev);
+			const layer = topLayerTaking(x, y, AreaPointerKind.Button, ev, under);
 			if (layer !== null) {
 				focus(null);
 				capturedLayer = layer;
@@ -1574,7 +1602,7 @@ export function createVoidHostWith(
 		const takes = captured !== null || handles(under, HOVER_HANDLERS);
 		if (takes) { leaveLayer(x, y); }
 		else {
-			const over = topLayerTaking(x, y, AreaPointerKind.Motion, ev);
+			const over = topLayerTaking(x, y, AreaPointerKind.Motion, ev, under);
 			if (over !== hoverLayer) {
 				leaveLayer(x, y);
 				hoverLayer = over;
@@ -1658,7 +1686,7 @@ export function createVoidHostWith(
 			return true;
 		}
 		const under = deepestAt(tree, root, x, y, null);
-		if (!handles(under, WHEEL_HANDLERS) && topLayerTaking(x, y, AreaPointerKind.Wheel, ev) !== null) { return true; }
+		if (!handles(under, WHEEL_HANDLERS) && topLayerTaking(x, y, AreaPointerKind.Wheel, ev, under) !== null) { return true; }
 		pointerAt("onWheel", under, x, y, ev);
 		return handles(under, WHEEL_HANDLERS);
 	};
