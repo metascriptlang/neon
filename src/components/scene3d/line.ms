@@ -60,6 +60,13 @@ function tintOf(color: Color): Rgba {
 	return { red: color.r, green: color.g, blue: color.b, alpha: color.a };
 }
 
+function sameFloats(a: Vec<float32>, b: Vec<float32>): boolean {
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) { return false; }
+	}
+	return true;
+}
+
 function drawn(result: Result<void, GraphicsError>, what: string): void {
 	if (!result.ok) { throw refuse(what + " refused: " + result.error.toString()); }
 }
@@ -100,6 +107,7 @@ export function Line(props: LineProps): NeonNode {
 			let color = untrack(readColor);
 			let graphics = graphicsOf(untrack(props.points), untrack(readSegments), width);
 			let values: Vec<float32> = new Array(LINE_UNIFORM_LENGTH);
+			let written: Vec<float32> = new Array(LINE_UNIFORM_LENGTH);
 			const material: MaterialId = addUniformMaterial(context, "Line", values, (block: UniformBlock): Material => ({
 				...Material.ofKind(Program.Line, MaterialKind.Opaque), uniforms: block,
 			}));
@@ -150,8 +158,10 @@ export function Line(props: LineProps): NeonNode {
 				const world = viewCamera(state.handle);
 				if (!world.ok) { throw refuse("the active camera has no world pose: " + world.error.toString()); }
 				writeLineBlock(graphics, world.value, view, color, values);
-				const written = writeUniforms(context, context.materials[material.index].uniforms, values);
-				if (!written.ok) { throw refuse("writeUniforms failed: " + written.error.toString()); }
+				if (sameFloats(values, written)) { return; }
+				const result = writeUniforms(context, context.materials[material.index].uniforms, values);
+				if (!result.ok) { throw refuse("writeUniforms failed: " + result.error.toString()); }
+				for (let i = 0; i < values.length; i++) { written[i] = values[i]; }
 			});
 			bindNode(state, node, props, local);
 			mountNodeChildren(scope, node, props, host, parent, before);

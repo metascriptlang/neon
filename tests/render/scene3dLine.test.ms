@@ -1,15 +1,16 @@
-import { Accessor, accessor } from "../../src/core/signal";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { NeonNode } from "../../src/render/hostTypes";
 import { Void } from "../../src/components/primitives";
-import { Scene3DHandle, SceneState, sceneScope } from "../../src/components/scene3d/core";
+import { Scene3DHandle, SceneState, sceneScope, runBeforeRefresh } from "../../src/components/scene3d/core";
 import { Scene3D } from "../../src/components/scene3d/scene";
 import { Line, LineProps } from "../../src/components/scene3d/line";
 import { useContext } from "../../src/render/context";
 import { NodeId3D } from "../../../void/src/void3d/scene";
+import { uniformWrites } from "../../../void/src/void3d/uniformPool";
 import { Color, rgba } from "../../../void/src/void2d/types";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
@@ -82,4 +83,25 @@ test "Line refuses outside a Scene3D, bad points, bad width, and what Void canno
 	assert vertex.includes("Line: vertexColors has no counterpart"), vertex;
 	const dashed = refusalWith({ points: accessor((): Vec3[] => ahead(2)), dashed: accessor((): boolean => true) });
 	assert dashed.includes("Line: dashed has no counterpart"), dashed;
+}
+
+test "Line writes its uniform block only when a frame changes the floats" {
+	const [tick, setTick] = createSignal<int32>(0);
+	const [width, setWidth] = createSignal<float32>(2.0);
+	const [handle, state, nodes, dispose] = mountedWith({
+		points: accessor((): Vec3[] => ahead(3)),
+		color: accessor((): Color => { tick(); return rgba(1.0, 0.5, 0.25, 1.0); }),
+		lineWidth: width,
+	});
+	runBeforeRefresh(state, 320, 240);
+	const settled = uniformWrites();
+	runBeforeRefresh(state, 320, 240);
+	assert uniformWrites() == settled, "an unchanged frame wrote: " + (uniformWrites() - settled).toString();
+	setTick(1); flush();
+	runBeforeRefresh(state, 320, 240);
+	assert uniformWrites() == settled, "a colour that re-ran to the same value wrote: " + (uniformWrites() - settled).toString();
+	setWidth(3.0); flush();
+	runBeforeRefresh(state, 320, 240);
+	assert uniformWrites() == settled + 1, "a changed width wrote " + (uniformWrites() - settled).toString();
+	dispose();
 }
