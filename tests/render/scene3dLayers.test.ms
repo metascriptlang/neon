@@ -52,8 +52,8 @@ test "active camera layers filter both meshes and lights and restore defaults wh
 	const dispose = render(element(<Void><Scene3D ref={(handle: Scene3DHandle): void => { refs.push(handle); meshes.push(added(handle.context, litShape())); }}>
 		<Mesh mesh={meshes[0]} renderOrder={1} />
 		<Mesh mesh={meshes[0]} layers={layerBit(1)} renderOrder={2} />
-		<Light kind={LightKind.Directional} power={0.25} />
-		<Light kind={LightKind.Directional} layers={layerBit(1)} power={0.75} />
+		<Light kind={LightKind.Directional} intensity={0.25} />
+		<Light kind={LightKind.Directional} layers={layerBit(1)} intensity={0.75} />
 		<Show when={shown()}><Camera3D active={active()} layers={mask()} /></Show>
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	assert releaseMesh(refs[0].context, meshes[0]).ok;

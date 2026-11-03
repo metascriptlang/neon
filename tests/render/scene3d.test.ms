@@ -165,7 +165,7 @@ test "rotation and scale carry nested offsets and individual props override tran
 	dispose();
 }
 
-test "Light power and local pose react under a moving group" {
+test "Light intensity and local pose react under a moving group" {
 	const refs: Scene3DHandle[] = [];
 	let light = NO_NODE_ID;
 	const [power, setPower] = createSignal<float32>(1.5);
@@ -173,7 +173,7 @@ test "Light power and local pose react under a moving group" {
 	const [offset, setOffset] = createSignal<float32>(4.0);
 	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Group position={vec3(offset(), 0.0, 0.0)}>
-			<Light kind={LightKind.Point} color={vec3(0.8, 0.4, 0.2)} radius={8.0} power={power()} position={vec3(0.0, height(), 0.0)} ref={(value: NodeId3D): void => { light = value; }} />
+			<Light kind={LightKind.Point} color={vec3(0.8, 0.4, 0.2)} radius={8.0} intensity={power()} position={vec3(0.0, height(), 0.0)} ref={(value: NodeId3D): void => { light = value; }} />
 		</Group>
 	</Scene3D></Void>));
 	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];

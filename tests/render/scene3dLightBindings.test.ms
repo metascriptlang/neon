@@ -24,7 +24,7 @@ function frameRequests(outer: MockNode): int32 {
 	return count;
 }
 
-test "Light color radius power and pose update retained nodes and collected slots" {
+test "Light color radius intensity and pose update retained nodes and collected slots" {
 	const refs: Scene3DHandle[] = [];
 	const nodes: NodeId3D[] = [];
 	const [value, setValue] = createSignal<float32>(1.0);
@@ -32,10 +32,10 @@ test "Light color radius power and pose update retained nodes and collected slot
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
 		<Light kind={LightKind.Point} color={vec3(value(), 0.2, 0.3)} radius={value() + 2.0}
-			power={value() * 2.0} position={vec3(value(), 0.0, 0.0)}
+			intensity={value() * 2.0} position={vec3(value(), 0.0, 0.0)}
 			ref={(node: NodeId3D): void => { nodes.push(node); }} />
 		<Light kind={LightKind.Point} color={vec3(0.4, 0.5, 0.6)} radius={8.0}
-			power={4.0} position={vec3(20.0, 0.0, 0.0)}
+			intensity={4.0} position={vec3(20.0, 0.0, 0.0)}
 			ref={(node: NodeId3D): void => { nodes.push(node); }} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	const outer = root.children[0];
@@ -102,13 +102,13 @@ test "Light parameter binders each invalidate only their own area" {
 	} finally { dispose(); resetErrorHalt(); }
 }
 
-test "Directional Light color updates without changing fixed kind or power" {
+test "Directional Light color updates without changing fixed kind or intensity" {
 	const refs: Scene3DHandle[] = [];
 	const [value, setValue] = createSignal<float32>(0.2);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
-		<Light kind={LightKind.Directional} color={vec3(value(), 0.3, 0.4)} power={0.5} />
+		<Light kind={LightKind.Directional} color={vec3(value(), 0.3, 0.4)} intensity={0.5} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		setValue(0.8); flush();
@@ -157,8 +157,8 @@ test "DirectionalLight and PointLight mount the Light of their kind with reactiv
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D
 		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
-		<DirectionalLight color={vec3(value(), 0.3, 0.4)} power={0.5} castShadow={true} shadowOpacity={0.5} />
-		<PointLight color={vec3(0.4, 0.5, 0.6)} radius={value() + 2.0} power={3.0} position={vec3(4.0, 0.0, 0.0)} />
+		<DirectionalLight color={vec3(value(), 0.3, 0.4)} intensity={0.5} castShadow={true} shadowOpacity={0.5} />
+		<PointLight color={vec3(0.4, 0.5, 0.6)} radius={value() + 2.0} intensity={3.0} position={vec3(4.0, 0.0, 0.0)} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		const scene = refs[0].scene;
@@ -199,7 +199,7 @@ test "each Light prop has its own binder: one prop changing re-reads none of the
 	const [power, setPower] = createSignal<float32>(1.0);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D>
-		<Light kind={LightKind.Point} color={colorOf(tick())} radius={radiusOf(radius())} power={powerOf(power())} />
+		<Light kind={LightKind.Point} color={colorOf(tick())} radius={radiusOf(radius())} intensity={powerOf(power())} />
 	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		reads[0] = 0; reads[1] = 0; reads[2] = 0;

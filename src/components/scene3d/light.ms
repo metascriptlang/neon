@@ -21,7 +21,7 @@ export interface LightProps extends NodeProps {
 	kind: Accessor<LightKind>;
 	color?: Accessor<Vec3> | null;
 	radius?: Accessor<float32> | null;
-	power?: Accessor<float32> | null;
+	intensity?: Accessor<float32> | null;
 	shape?: Accessor<LightShape> | null;
 	cookie?: Accessor<TextureId> | null;
 	castShadow?: Accessor<boolean> | null;
@@ -124,7 +124,7 @@ export function Light(props: LightProps): NeonNode {
 				kind: kind,
 				color: valueOr<Vec3>(props.color, vec3(1.0, 1.0, 1.0)),
 				radius: radius,
-				power: valueOr<float32>(props.power, 1.0),
+				power: valueOr<float32>(props.intensity, 1.0),
 				shape: shape,
 				shadows: kind !== LightKind.Directional && valueOr<boolean>(props.castShadow, false),
 				cookie: cookie,
@@ -154,8 +154,8 @@ export function Light(props: LightProps): NeonNode {
 			if (props.radius !== null) {
 				bindLight<float32>(state, props.radius as () => float32, light.radius, (value: float32): void => { setLightRadius(scene, node, value); });
 			}
-			if (props.power !== null) {
-				bindLight<float32>(state, props.power as () => float32, light.power, (value: float32): void => { setLightPower(scene, node, value); });
+			if (props.intensity !== null) {
+				bindLight<float32>(state, props.intensity as () => float32, light.power, (value: float32): void => { setLightPower(scene, node, value); });
 			}
 			if (props.cookie !== null) {
 				bindLight<TextureId>(state, props.cookie as () => TextureId, cookie, (value: TextureId): void => {
@@ -190,7 +190,7 @@ export function Light(props: LightProps): NeonNode {
 
 export interface DirectionalLightProps extends NodeProps {
 	color?: Accessor<Vec3> | null;
-	power?: Accessor<float32> | null;
+	intensity?: Accessor<float32> | null;
 	castShadow?: Accessor<boolean> | null;
 	shadowMapSize?: Accessor<int32> | null;
 	shadowBias?: Accessor<float32> | null;
@@ -202,7 +202,7 @@ export interface DirectionalLightProps extends NodeProps {
 export interface PointLightProps extends NodeProps {
 	color?: Accessor<Vec3> | null;
 	radius?: Accessor<float32> | null;
-	power?: Accessor<float32> | null;
+	intensity?: Accessor<float32> | null;
 	castShadow?: Accessor<boolean> | null;
 	shadowMapSize?: Accessor<int32> | null;
 	shadowBias?: Accessor<float32> | null;
@@ -216,7 +216,7 @@ export interface SpotLightProps extends NodeProps {
 	penumbra: Accessor<float32>;
 	distance: Accessor<float32>;
 	color?: Accessor<Vec3> | null;
-	power?: Accessor<float32> | null;
+	intensity?: Accessor<float32> | null;
 	map?: Accessor<TextureId> | null;
 	castShadow?: Accessor<boolean> | null;
 	shadowMapSize?: Accessor<int32> | null;
@@ -228,7 +228,7 @@ export interface SpotLightProps extends NodeProps {
 
 export function DirectionalLight(props: DirectionalLightProps): NeonNode {
 	return Light({
-		kind: accessor((): LightKind => LightKind.Directional), color: props.color, radius: null, power: props.power,
+		kind: accessor((): LightKind => LightKind.Directional), color: props.color, radius: null, intensity: props.intensity,
 		shape: null, cookie: null,
 		castShadow: props.castShadow, shadowMapSize: props.shadowMapSize, shadowBias: props.shadowBias,
 		shadowNormalBias: props.shadowNormalBias, shadowRadius: props.shadowRadius, shadowOpacity: props.shadowOpacity,
@@ -240,7 +240,7 @@ export function DirectionalLight(props: DirectionalLightProps): NeonNode {
 
 export function PointLight(props: PointLightProps): NeonNode {
 	return Light({
-		kind: accessor((): LightKind => LightKind.Point), color: props.color, radius: props.radius, power: props.power,
+		kind: accessor((): LightKind => LightKind.Point), color: props.color, radius: props.radius, intensity: props.intensity,
 		shape: null, cookie: null,
 		castShadow: props.castShadow, shadowMapSize: props.shadowMapSize, shadowBias: props.shadowBias,
 		shadowNormalBias: props.shadowNormalBias, shadowRadius: props.shadowRadius, shadowOpacity: props.shadowOpacity,
@@ -252,7 +252,7 @@ export function PointLight(props: PointLightProps): NeonNode {
 
 export function SpotLight(props: SpotLightProps): NeonNode {
 	return Light({
-		kind: accessor((): LightKind => LightKind.Spot), color: props.color, radius: props.distance, power: props.power,
+		kind: accessor((): LightKind => LightKind.Spot), color: props.color, radius: props.distance, intensity: props.intensity,
 		shape: accessor((): LightShape => {
 			const half = props.angle();
 			return { ...NO_SHAPE, angle: half * 2.0, falloff: half * (1.0 - props.penumbra()) };
