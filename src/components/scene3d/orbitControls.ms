@@ -66,7 +66,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 			};
 
 			const worldPosition = (id: NodeId3D): Vec3 => {
-				const synced = syncWorld(scene);
+				syncWorld(scene);
 				return scene.nodes[id.index].world.position();
 			};
 
@@ -86,7 +86,7 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				const scale = vec3(1.0, 1.0, 1.0);
 				const parent = scene.nodes[id.index].parent;
 				if (parent === NO_NODE_3D) { return { position, rotation, scale }; }
-				const synced = syncWorld(scene);
+				syncWorld(scene);
 				const inverse = scene.nodes[parent].world.inverseAffine();
 				return { position: position * inverse, rotation: quatOfRotation(unscaled(rotation.toMatrix() * inverse)), scale };
 			};
