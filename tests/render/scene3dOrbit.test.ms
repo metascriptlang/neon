@@ -4,7 +4,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { AreaLayer, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Camera3D, Mesh, OrbitControls, Pointer3DEvent } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Camera3D, Group, Mesh, OrbitControls, Pointer3DEvent } from "../../src/components/scene3d";
 import { NodeId3D, cameraViewOf } from "../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D } from "../../../void/src/void3d/camera";
 import { MeshId, NO_MESH } from "../../../void/src/void3d/draw";
@@ -172,8 +172,36 @@ function offsetRig(withTarget: boolean): Rig {
 	return { handle: refs[0], camera: cameras[0], layer: layerOf(root), log: [] };
 }
 
+function nestedRig(): Rig {
+	const refs: Scene3DHandle[] = [];
+	const cameras: NodeId3D[] = [];
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			<Group position={vec3(10.0, 0.0, 0.0)}>
+				<Camera3D active={true} position={vec3(-10.0, 0.0, 5.0)} ref={(value: NodeId3D): void => { cameras.push(value); }} />
+			</Group>
+			<OrbitControls />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	flush();
+	return { handle: refs[0], camera: cameras[0], layer: layerOf(root), log: [] };
+}
+
 test "the camera aims at the target on mount" {
 	assert aimedAtOrigin(offsetRig(false)), "the default target is aimed at";
 	assert aimedAtOrigin(offsetRig(true)), "an authored target is aimed at";
 }
 
+test "a camera under a moved group orbits the target in world space" {
+	const r = nestedRig();
+	assert near(worldCamera(r).position.length(), 5.0), "the camera is 5 from the target in world space";
+	assert aimedAtOrigin(r), "the mount aims at the world target";
+	dragBy(r.layer, 1, 100.0, 100.0, 150.0, 100.0);
+	const p = worldCamera(r).position;
+	assert near(p.length(), 5.0), "the world distance holds: " + p.length().toString();
+	assert p.x < -0.1 && near(p.y, 0.0), "dragging right swings the camera left around the target: " + p.x.toString();
+	assert aimedAtOrigin(r), "the camera still faces the target";
+	wheel(r.layer, 1.0);
+	assert near(worldCamera(r).position.length(), 4.75), "a wheel step dollies the world distance";
+}

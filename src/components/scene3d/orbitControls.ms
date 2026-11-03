@@ -6,9 +6,9 @@ import { useContext } from "../../render/context";
 import { NeonEvent } from "../../render/event";
 import { VoidAreaHandle } from "../../render/voidAreaHandle";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
-import { Vec3, vec3, eulerQuat } from "../../../../void/src/math/math3d";
+import { Vec3, Mat4, Quat, vec3, eulerQuat, quatOfRotation } from "../../../../void/src/math/math3d";
 import { ProjectionKind } from "../../../../void/src/void3d/camera";
-import { NodeId3D, Transform3D, setLocal, cameraViewOf } from "../../../../void/src/void3d/scene";
+import { NodeId3D, NO_NODE_3D, Transform3D, setLocal, syncWorld, cameraViewOf } from "../../../../void/src/void3d/scene";
 import { mountOwned, requireScene, valueOr } from "./core";
 import { Pointer3D, PointerDrag, pointerScope } from "./pointer";
 
@@ -65,6 +65,32 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 				return height > 0.0 ? height : 1.0;
 			};
 
+			const worldPosition = (id: NodeId3D): Vec3 => {
+				const synced = syncWorld(scene);
+				return scene.nodes[id.index].world.position();
+			};
+
+			const unscaled = (m: Mat4): Mat4 => {
+				const x = Math.sqrt(m.m11 * m.m11 + m.m12 * m.m12 + m.m13 * m.m13) as float32;
+				const y = Math.sqrt(m.m21 * m.m21 + m.m22 * m.m22 + m.m23 * m.m23) as float32;
+				const z = Math.sqrt(m.m31 * m.m31 + m.m32 * m.m32 + m.m33 * m.m33) as float32;
+				return {
+					...m,
+					m11: m.m11 / x, m12: m.m12 / x, m13: m.m13 / x,
+					m21: m.m21 / y, m22: m.m22 / y, m23: m.m23 / y,
+					m31: m.m31 / z, m32: m.m32 / z, m33: m.m33 / z,
+				};
+			};
+
+			const localPose = (id: NodeId3D, position: Vec3, rotation: Quat): Transform3D => {
+				const scale = vec3(1.0, 1.0, 1.0);
+				const parent = scene.nodes[id.index].parent;
+				if (parent === NO_NODE_3D) { return { position, rotation, scale }; }
+				const synced = syncWorld(scene);
+				const inverse = scene.nodes[parent].world.inverseAffine();
+				return { position: position * inverse, rotation: quatOfRotation(unscaled(rotation.toMatrix() * inverse)), scale };
+			};
+
 			// three Spherical with y up: theta around y from +z, phi down from +y.
 			const pose = (id: NodeId3D, radius: float32, theta: float32, phi: float32, notify: boolean): void => {
 				const lowPole = Math.max(valueOr<float32>(props.minPolarAngle, 0.0), POLE_EPS) as float32;
@@ -80,17 +106,14 @@ export function OrbitControls(props: OrbitControlsProps): NeonNode {
 					distance * across * (Math.cos(theta) as float32),
 				);
 				const pitch = PI / 2.0 - polar;
-				const local: Transform3D = {
-					position: target + offset, rotation: eulerQuat(-pitch, theta, 0.0), scale: vec3(1.0, 1.0, 1.0),
-				};
-				setLocal(scene, id, local);
+				setLocal(scene, id, localPose(id, target + offset, eulerQuat(-pitch, theta, 0.0)));
 				state.invalidate();
 				const changed = props.onChange;
 				if (notify && changed !== null) { (changed as () => void)(); }
 			};
 
 			const spherical = (id: NodeId3D): Vec3 => {
-				const offset = scene.nodes[id.index].local.position - target;
+				const offset = worldPosition(id) - target;
 				const radius = offset.length();
 				if (radius <= 0.0) { return vec3(0.0, 0.0, PI / 2.0); }
 				const cosPolar = Math.min(Math.max(offset.y / radius, -1.0), 1.0);
