@@ -10,6 +10,9 @@
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/.."
+for d in tests/browser tests/edge; do
+	[ -d "$d/node_modules" ] || npm install --prefix "$d" || { echo "npm install --prefix $d failed; the lane in $d cannot run" >&2; exit 2; }
+done
 files=$(find tests neon-ui/tests -name "*.test.ms" -not -name "*Server.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
 tests/macros/run.sh || fail=1
