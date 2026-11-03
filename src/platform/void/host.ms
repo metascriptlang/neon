@@ -1472,7 +1472,10 @@ export function createVoidHostWith(
 	};
 
 	const slotNode = (layer: AreaLayer): VoidNode | null => {
-		if (!layer.anchor.inText) { return layer.anchor.node instanceof VoidNode ? layer.anchor.node as VoidNode : null; }
+		if (!layer.anchor.inText) {
+			if (!(layer.anchor.node instanceof VoidNode)) { throw new Error("void host: an area layer's anchor is not a node of this host"); }
+			return layer.anchor.node as VoidNode;
+		}
 		return spanText(layer.anchor.node) as VoidNode | null;
 	};
 

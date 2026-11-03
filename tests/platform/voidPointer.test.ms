@@ -167,9 +167,9 @@ test "a pressable hears hover in and out once per entry, one hovered target per 
 
 class Mark {}
 
-function fakeLayer(name: string, takes: (x: float32, y: float32) => boolean, log: string[]): AreaLayer {
+function fakeLayer(vh: VoidHost, name: string, takes: (x: float32, y: float32) => boolean, log: string[]): AreaLayer {
 	return {
-		anchor: { node: new Mark(), inText: false },
+		anchor: { node: vh.host.createText(""), inText: false },
 		layout: (pixelWidth: int32, pixelHeight: int32): void => {},
 		prepare: (pixelWidth: int32, pixelHeight: int32): void => {},
 		draw: (): void => {},
@@ -192,8 +192,8 @@ test "a layer hears what no 2D handler takes, top layer first, and keeps a press
 	vh.layout(300.0, 100.0);
 	const everywhere = (x: float32, y: float32): boolean => true;
 	const right = (x: float32, y: float32): boolean => x > 200.0;
-	const bottom = fakeLayer("bottom", everywhere, log);
-	const top = fakeLayer("top", right, log);
+	const bottom = fakeLayer(vh, "bottom", everywhere, log);
+	const top = fakeLayer(vh, "top", right, log);
 	vh.setLayers((): AreaLayer[] => [bottom, top]);
 	press(vh, 10.0, 10.0);
 	assert log.join("|") === "hud in|hud", "2D takes its own press: " + log.join("|");
@@ -212,4 +212,23 @@ test "a layer hears what no 2D handler takes, top layer first, and keeps a press
 	log.length = 0;
 	vh.wheel(100.0, 50.0, 0.0, 1.0, DOM_DELTA_LINE);
 	assert log.join("|") === "bottom Wheel wheel 100,50", "a wheel no 2D node takes: " + log.join("|");
+}
+
+test "a layer anchored on something that is not a node of the host is refused, not treated as uncovered" {
+	const vh = host();
+	render(element(<View style={{ width: 100, height: 100 }} />), vh.host, vh.root);
+	vh.layout(100.0, 100.0);
+	const stray: AreaLayer = {
+		anchor: { node: new Mark(), inText: false },
+		layout: (pixelWidth: int32, pixelHeight: int32): void => {},
+		prepare: (pixelWidth: int32, pixelHeight: int32): void => {},
+		draw: (): void => {},
+		hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => true,
+	};
+	vh.setLayers((): AreaLayer[] => [stray]);
+	let message = "";
+	try {
+		vh.pointerMove(10.0, 10.0, 0, false);
+	} catch (e) { message = e.message; }
+	assert message === "void host: an area layer's anchor is not a node of this host", "message: " + message;
 }
