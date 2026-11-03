@@ -302,3 +302,24 @@ test "a mesh with only hover handlers does not block an orbit drag that starts o
 	assert at.x < -0.1, "the drag orbited the camera: " + at.x.toString();
 	assert log.join("|") === "in|out", "hover still reports: " + log.join("|");
 }
+
+test "a wheel handler that stops propagation keeps the wheel from the orbit controls" {
+	const refs: Scene3DHandle[] = [];
+	const cameras: NodeId3D[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Camera3D active={true} position={vec3(0.0, 0.0, 5.0)} ref={(value: NodeId3D): void => { cameras.push(value); }} />
+			<Mesh mesh={mesh} onWheel={(e: Pointer3DEvent): void => { e.stopPropagation(); }} />
+			<OrbitControls />
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	flush();
+	const layer = layerOf(root);
+	const handle = handleOf(refs);
+	assert wheel(layer, CENTER, CENTER, 1.0), "the mesh takes the wheel";
+	assert near(cameraPosition(handle, cameras[0]).length(), 5.0), "the stopped wheel did not dolly: " + cameraPosition(handle, cameras[0]).length().toString();
+	wheel(layer, OFF, OFF, 1.0);
+	assert near(cameraPosition(handle, cameras[0]).length(), 4.75), "a wheel off the mesh still dollies: " + cameraPosition(handle, cameras[0]).length().toString();
+}

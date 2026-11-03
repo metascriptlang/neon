@@ -314,8 +314,9 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 			for (const entry of scratch) {
 				if (entry.onWheel !== null) { taken = true; }
 			}
-			along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onWheel,
-				pointerEventOf("wheel", e, ray, aimed));
+			const ev = pointerEventOf("wheel", e, ray, aimed);
+			along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.onWheel, ev);
+			if (ev.propagationStopped) { return true; }
 		}
 		for (let i = drags.length - 1; i >= 0; i -= 1) {
 			if (drags[i].wheel(x, y, e)) { return true; }
