@@ -32,6 +32,7 @@ export interface LayoutPhase {
 	duration: number;
 	delay: number;
 	curve: EasingFunction;
+	css: string | null;
 	property: LayoutAnimationProperty;
 }
 
@@ -48,16 +49,29 @@ function springCurve(duration: number, damping: number, velocity: number): Easin
 	return (t: number): number => t >= 1 ? 1 : simulation.position(t * duration);
 }
 
-function curveFor(anim: LayoutAnimationAnim, duration: number): EasingFunction {
-	const type = anim.type ?? "easeInEaseOut";
+function bezierPoints(type: LayoutAnimationType): number[] | null {
 	return match (type) {
-		"linear" => Easing.linear,
-		"easeIn" => bezier(0.42, 0, 1, 1),
-		"easeOut" => bezier(0, 0, 0.58, 1),
-		"keyboard" => bezier(0.17, 0.59, 0.4, 0.77),
-		"spring" => springCurve(duration, anim.springDamping ?? 0.5, anim.initialVelocity ?? 0),
-		_ => bezier(0.42, 0, 0.58, 1),
+		"linear" => [0, 0, 1, 1],
+		"easeIn" => [0.42, 0, 1, 1],
+		"easeOut" => [0, 0, 0.58, 1],
+		"keyboard" => [0.17, 0.59, 0.4, 0.77],
+		"spring" => null,
+		_ => [0.42, 0, 0.58, 1],
 	};
+}
+
+function curveFor(anim: LayoutAnimationAnim, duration: number): EasingFunction {
+	const type: LayoutAnimationType = anim.type ?? "easeInEaseOut";
+	if (type === "linear") { return Easing.linear; }
+	const points = bezierPoints(type);
+	if (points === null) { return springCurve(duration, anim.springDamping ?? 0.5, anim.initialVelocity ?? 0); }
+	const p = points as number[];
+	return bezier(p[0], p[1], p[2], p[3]);
+}
+
+function cssEasing(anim: LayoutAnimationAnim): string | null {
+	const points = bezierPoints(anim.type ?? "easeInEaseOut");
+	return points === null ? null : `cubic-bezier(${(points as number[]).join(", ")})`;
 }
 
 function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase | null {
@@ -68,6 +82,7 @@ function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase 
 		duration: length,
 		delay: a.delay ?? 0,
 		curve: curveFor(a, length),
+		css: cssEasing(a),
 		property: a.property ?? "opacity",
 	};
 }

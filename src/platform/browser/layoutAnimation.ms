@@ -1,4 +1,5 @@
 import { LayoutAnimationPlan, LayoutPhase } from "../../motion/layoutAnimation";
+import { supportsLinearEasing } from "../../motion/waapi";
 import { cssLinear, sampleEasing } from "pulse/src/progress";
 import { HTMLElement } from "../../render/htmlElements";
 
@@ -17,7 +18,8 @@ interface Measured {
 let reflowSink = 0.0;
 
 function cssCurve(phase: LayoutPhase): string {
-	return cssLinear(sampleEasing(phase.curve, phase.duration));
+	if (phase.css !== null) { return phase.css as string; }
+	return supportsLinearEasing() ? cssLinear(sampleEasing(phase.curve, phase.duration)) : "ease-out";
 }
 
 function elements(): HTMLElement[] {

@@ -1626,7 +1626,7 @@ when (js) {
 
 	let linearEasingSupport: boolean | null = null;
 
-	function supportsLinearEasing(): boolean {
+	export function supportsLinearEasing(): boolean {
 		if (linearEasingSupport === null) { linearEasingSupport = linearEasingProbe(); }
 		return linearEasingSupport as boolean;
 	}
