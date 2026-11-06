@@ -18,7 +18,9 @@ import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
 import { MotionPolicy } from "pulse/src/policy";
 import { AnimatedValue, spring, timing } from "pulse/src/value";
 import { MotionSignals, installElementMotion, neonClock, useAnimatedValue, useMotion } from "../../src/motion/neon";
-import { createSignal } from "../../src/core/signal";
+import { Accessor, createSignal, untrack } from "../../src/core/signal";
+import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { Show } from "../../src/macros/ui/flow";
 import { MotionValue, numberValue } from "pulse/src/document";
 
@@ -205,6 +207,32 @@ test "an AnimatedValue spring drives a View style through its accessor" {
 	assert css(root).includes("opacity:1;"), css(root);
 	dispose();
 	assert !framePending();
+	setFrameDriver(null);
+}
+
+test "an AnimatedValue's accessor first read after frames ran returns the latest value, and tracks from then on" {
+	const frames = useManualFrames();
+	let late: Accessor<float64> | null = null;
+	let held: AnimatedValue | null = null;
+	const [root, dispose] = mount((): NeonNode => {
+		const [read, value] = useAnimatedValue(0, new MotionPolicy());
+		late = read;
+		held = value;
+		return <View />;
+	});
+	const value = held as AnimatedValue;
+	value.animate(timing(1, { duration: 100 }));
+	frames.runAll();
+	const read = late as Accessor<float64>;
+	const first: float64 = untrack<float64>(read);
+	assert first === 1, "unread frames still land: " + first.toString();
+	let seen: float64 = -1;
+	createRoot((): void => { createRenderEffect<float64>((last: float64 | null): float64 => read(), (v: float64, before: float64 | null): Cleanup | null => { seen = v; return null; }); });
+	flush();
+	value.set(0.5);
+	flush();
+	assert seen === 0.5, "a read accessor tracks: " + seen.toString();
+	dispose();
 	setFrameDriver(null);
 }
 

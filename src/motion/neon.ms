@@ -1,7 +1,7 @@
 import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
 import { onCleanup } from "../core/cleanup";
 import { getOwner } from "../core/runtime";
-import { Accessor, createSignal, untrack } from "../core/signal";
+import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
 import { Clock } from "pulse/src/clock";
 import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "pulse/src/document";
 import { MotionBinding, MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
@@ -152,16 +152,41 @@ export function useAnimatedValue(
 	const value = driven
 		? motion.value(initial, policy, own.signals.elements, own.slot, own.property, own)
 		: new AnimatedValue(initial, neonClock(), policy, target, composition);
-	const [read, write] = createSignal<float64>(initial);
+	const reading = new LazySignal(initial);
+	const read = accessor((): float64 => reading.read());
 	const reach = target?.write ?? null;
 	const shown = driven ? null : own;
 	value.subscribe((next: float64): void => {
-		write(next);
+		reading.write(next);
 		if (reach !== null) { reach(numberValue(next)); }
 		if (shown !== null) { shown.signals.show(shown.slot, shown.property, numberValue(next)); }
 	});
 	onCleanup((): void => { if (!value.disposed) { value.dispose(); } });
 	return [read, value];
+}
+
+class LazySignal {
+	current: float64;
+	get: Accessor<float64> | null = null;
+	set: Setter<float64> | null = null;
+
+	constructor(initial: float64) {
+		this.current = initial;
+	}
+
+	read(): float64 {
+		if (this.get === null) {
+			const [get, set] = createSignal<float64>(this.current);
+			this.get = get;
+			this.set = set;
+		}
+		return (this.get as Accessor<float64>)();
+	}
+
+	write(next: float64): void {
+		this.current = next;
+		if (this.set !== null) { (this.set as Setter<float64>)(next); }
+	}
 }
 
 function bindSignalTarget(target: MotionTarget | null | undefined): SignalTarget | null {
