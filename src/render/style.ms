@@ -7,7 +7,7 @@
 // `null` means unset. Dimensions are `number | string`: a bare number is points,
 // a string is "50%" or "auto".
 
-import { styleInterfaceBody, setStyleFieldBody, mergeStyleBody } from "../macros/style/fields";
+import { styleInterfaceBody, setStyleFieldBody, mergeStyleBody, sameLayoutBody } from "../macros/style/fields";
 
 export type FlexDirection = "row" | "column" | "row-reverse" | "column-reverse";
 export type Justify = "flex-start" | "flex-end" | "center" | "space-between" | "space-around" | "space-evenly";
@@ -60,6 +60,8 @@ export function emptyStyle(): Style {
 // the wire union with a cast because the checker cannot see which names carry
 // which member.
 setStyleFieldBody(0);
+
+sameLayoutBody(0);
 
 // `style={[a, b, c]}` — later layers win at runtime when a layer is a sheet
 // reference; all-literal arrays merge at expansion instead (element macro, S3).

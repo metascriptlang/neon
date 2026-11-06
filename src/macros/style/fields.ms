@@ -394,6 +394,51 @@ export macro asFlexStyleBody(node: Node): Node {
 	};
 }
 
+export macro sameLayoutBody(node: Node): Node {
+	const table = styleTable();
+	const L = node.line;
+	const C = node.column;
+	const stmts: Node[] = [];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
+		const how = row[COL_VOID];
+		if (how === "paint" || how === "ignore") { continue; }
+		const fieldName = row[0];
+		stmts.push({
+			kind: NodeKind.IfStmt, line: L, column: C,
+			condition: {
+				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "!==",
+				left: { kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "a" }, property: fieldName, isOptional: false },
+				right: { kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "b" }, property: fieldName, isOptional: false },
+			},
+			consequent: {
+				kind: NodeKind.BlockStmt, line: L, column: C,
+				statements: [{ kind: NodeKind.ReturnStmt, line: L, column: C, argument: { kind: NodeKind.BooleanLiteral, line: L, column: C, boolValue: false } }],
+			},
+			alternate: { kind: NodeKind.BlockStmt, line: L, column: C, statements: [] },
+		});
+	}
+	stmts.push({
+		kind: NodeKind.ReturnStmt, line: L, column: C,
+		argument: { kind: NodeKind.BooleanLiteral, line: L, column: C, boolValue: true },
+	});
+	return {
+		kind: NodeKind.SpliceMany, line: L, column: C,
+		spliceNodes: [{
+			kind: NodeKind.ExportDecl, line: L, column: C,
+			exportedDecl: {
+				kind: NodeKind.FunctionDecl, line: L, column: C,
+				fnName: "sameLayout",
+				params: ["a", "b"],
+				fnParamTypes: ["Style", "Style"],
+				fnBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
+				fnFlags: "", fnReturnType: "boolean", fnDefaults: [], nativeName: "",
+				nameLocation: { line: L, column: C },
+			},
+		}],
+	};
+}
+
 export macro terminalStyleCoverage(node: Node): Node {
 	const table = styleTable();
 	for (let i = 0; i < table.length; i = i + 1) {
