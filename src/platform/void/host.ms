@@ -20,7 +20,7 @@ import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scen
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, LayoutMeasure, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
-import { Style, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { Style, sameLayout, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
@@ -1188,7 +1188,10 @@ export function createVoidHostWith(
 			const n = live(node, "setStyle");
 			const was = wasDirty();
 			const laidBefore = n.flex;
-			n.flex = asFlexStyle(style);
+			const prev = n.style;
+			const paintOnly = prev !== null && prev !== style && laidBefore !== null && !n.isText
+				&& fieldOf(n) === null && sameLayout(prev as Style, style);
+			if (!paintOnly) { n.flex = asFlexStyle(style); }
 			n.style = style;
 			applyPaint(n, style);
 			if (n.isText) { refreshParagraph(n); }
@@ -1199,7 +1202,7 @@ export function createVoidHostWith(
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
 			woke(was);
-			if ((laidBefore !== null || n.flex !== null) && attached(n)) { askLayout(); }
+			if (!paintOnly && (laidBefore !== null || n.flex !== null) && attached(n)) { askLayout(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,

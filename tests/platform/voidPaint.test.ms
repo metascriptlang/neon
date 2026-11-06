@@ -76,3 +76,19 @@ test "parseColor reads the eight-digit hex and rgb() forms" {
 	assert near(c.g, 1) && near(c.a, 1), "rgb()";
 	assert parseColor("tomato") === null, "a name stays unread";
 }
+
+test "a paint-only style write keeps the node's flex style, so yoga stays clean, and a layout write replaces it" {
+	const vh = createVoidHost();
+	const n = vh.host.createElement("div") as VoidNode;
+	vh.host.append(vh.root, n);
+	vh.host.setStyle(n, { width: 100, height: 40, opacity: 1, backgroundColor: "#ff0000" } as Style);
+	vh.layout(300.0, 100.0);
+	const laid = n.flex;
+	vh.host.setStyle(n, { width: 100, height: 40, opacity: 0.25, backgroundColor: "#00ff00" } as Style);
+	assert n.flex === laid, "paint fields keep the flex style";
+	assert near(n.ref.paint().color.g, 1), "the background repaints";
+	vh.host.setStyle(n, { width: 60, height: 40, opacity: 0.25, backgroundColor: "#00ff00" } as Style);
+	assert n.flex !== laid, "a layout field replaces the flex style";
+	vh.layout(300.0, 100.0);
+	assert n.ref.content().w === 60.0, "and lays out: " + n.ref.content().w.toString();
+}
