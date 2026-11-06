@@ -16,6 +16,15 @@ void wlcBuildUnsizedTransform(const double *keyTimes, int64_t keyCount, const do
 	double durationMs);
 double wlcShownScaleX(double seconds);
 double wlcShownRotationDegrees(double seconds);
+void wlvReset(float pixelWidth, float pixelHeight, float dpiScale);
+void wlvPlace(float pixelWidth, float pixelHeight, float dpiScale);
+void wlvSetOpacity(float opacity);
+void wlvSetTransform(float scaleX, float scaleY, float translateX, float translateY);
+void wlvWrite(int32_t property, const double *values, int64_t count);
+void wlvHand(int32_t property, const double *keyTimes, int64_t keyCount, const double *values, int64_t valueCount, double durationMs);
+void wlvRelease(int32_t property);
+double wlvShownOpacity(double seconds);
+double wlvShownMatrix(int32_t element, double seconds);
 
 #ifdef __cplusplus
 }

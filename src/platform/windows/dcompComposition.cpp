@@ -50,6 +50,8 @@ public:
 	void Opacity(float opacity) override;
 	void TransformMatrix(const float m[6]) override;
 	void AnimatedOpacity(const Curve &curve, double lagMs) override;
+	void FramedTransform(const float before[6], const float after[6]) override;
+	void MotionTransform(const float m[6]) override;
 	void AnimatedTransform(const Curve curves[6], double lagMs) override;
 	void Size(float width, float height) override;
 	void Offset(float x, float y) override;
@@ -61,12 +63,14 @@ public:
 
 private:
 	void markDirty();
+	void ensureFramed();
 	LARGE_INTEGER compositionStamp(double lagMs);
 	ComPtr<IDCompositionAnimation> animation(const Curve &curve, LARGE_INTEGER begin);
 
 	DCompContext *context;
 	ComPtr<IDCompositionVisual2> visual;
 	ComPtr<IDCompositionEffectGroup> effect;
+	ComPtr<IDCompositionMatrixTransform> before, motion, after;
 	ComPtr<IDCompositionRectangleClip> clip;
 	std::vector<DCompVisual *> children;
 	float width = 0, height = 0, radius = 0;
@@ -145,7 +149,37 @@ void DCompVisual::Opacity(float opacity) {
 
 void DCompVisual::TransformMatrix(const float m[6]) {
 	D2D1_MATRIX_3X2_F matrix = {m[0], m[1], m[2], m[3], m[4], m[5]};
+	before.Reset();
+	motion.Reset();
+	after.Reset();
 	must(visual->SetTransform(matrix), "SetTransform");
+}
+
+void DCompVisual::ensureFramed() {
+	if (motion) return;
+	ComPtr<IDCompositionMatrixTransform> parts[3];
+	for (auto &part : parts) must(context->device->CreateMatrixTransform(&part), "CreateMatrixTransform");
+	IDCompositionTransform *order[3] = {parts[0].Get(), parts[1].Get(), parts[2].Get()};
+	ComPtr<IDCompositionTransform> group;
+	must(context->device->CreateTransformGroup(order, 3, &group), "CreateTransformGroup");
+	must(visual->SetTransform(group.Get()), "SetTransform");
+	before = parts[0];
+	motion = parts[1];
+	after = parts[2];
+}
+
+void DCompVisual::FramedTransform(const float b[6], const float a[6]) {
+	ensureFramed();
+	D2D1_MATRIX_3X2_F first = {b[0], b[1], b[2], b[3], b[4], b[5]};
+	D2D1_MATRIX_3X2_F last = {a[0], a[1], a[2], a[3], a[4], a[5]};
+	must(before->SetMatrix(first), "SetMatrix");
+	must(after->SetMatrix(last), "SetMatrix");
+}
+
+void DCompVisual::MotionTransform(const float m[6]) {
+	ensureFramed();
+	D2D1_MATRIX_3X2_F matrix = {m[0], m[1], m[2], m[3], m[4], m[5]};
+	must(motion->SetMatrix(matrix), "SetMatrix");
 }
 
 LARGE_INTEGER DCompVisual::compositionStamp(double lagMs) {
@@ -181,13 +215,11 @@ void DCompVisual::AnimatedOpacity(const Curve &curve, double lagMs) {
 
 void DCompVisual::AnimatedTransform(const Curve curves[6], double lagMs) {
 	static const int rows[6] = {0, 0, 1, 1, 2, 2}, columns[6] = {0, 1, 0, 1, 0, 1};
-	ComPtr<IDCompositionMatrixTransform> transform;
-	must(context->device->CreateMatrixTransform(&transform), "CreateMatrixTransform");
+	ensureFramed();
 	LARGE_INTEGER begin = compositionStamp(lagMs);
 	for (int i = 0; i < 6; i++) {
-		must(transform->SetMatrixElement(rows[i], columns[i], animation(curves[i], begin).Get()), "SetMatrixElement");
+		must(motion->SetMatrixElement(rows[i], columns[i], animation(curves[i], begin).Get()), "SetMatrixElement");
 	}
-	must(visual->SetTransform(transform.Get()), "SetTransform");
 }
 
 void DCompVisual::Size(float w, float h) {

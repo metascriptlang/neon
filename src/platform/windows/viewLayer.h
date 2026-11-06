@@ -6,40 +6,56 @@
 #include "layerCurve.h"
 
 // A view's transform and opacity as the static writes set them, and the pixel frame its transform turns about.
+// While a property is handed to DirectComposition its track is shown and a static write only updates the model,
+// which releaseLayer shows, as Core Animation shows an animation over the layer's model value.
 struct ViewLayer {
 	float scaleX = 1, scaleY = 1, translateX = 0, translateY = 0, rotation = 0;
 	float opacity = 1;
 	bool transformed = false;
+	bool opacityHanded = false, transformHanded = false;
 	float pixelWidth = 0, pixelHeight = 0, dpiScale = 1;
 };
 
-inline void centredMatrix(const ViewLayer &layer, float scaleX, float scaleY, float translateX, float translateY, float degrees, float m[6]) {
+inline void motionMatrix(float scaleX, float scaleY, float translateX, float translateY, float degrees, float m[6]) {
 	float radians = degrees * 3.14159265358979f / 180.0f;
 	float c = cosf(radians), s = sinf(radians);
-	float m11 = scaleX * c, m12 = scaleX * s, m21 = -scaleY * s, m22 = scaleY * c;
-	float cx = layer.pixelWidth / 2, cy = layer.pixelHeight / 2;
-	m[0] = m11;
-	m[1] = m12;
-	m[2] = m21;
-	m[3] = m22;
-	m[4] = cx + translateX * layer.dpiScale - (cx * m11 + cy * m21);
-	m[5] = cy + translateY * layer.dpiScale - (cx * m12 + cy * m22);
+	m[0] = scaleX * c;
+	m[1] = scaleX * s;
+	m[2] = -scaleY * s;
+	m[3] = scaleY * c;
+	m[4] = translateX;
+	m[5] = translateY;
+}
+
+inline void showFrame(IVisual *visual, const ViewLayer &layer) {
+	float g = layer.dpiScale, cx = layer.pixelWidth / 2, cy = layer.pixelHeight / 2;
+	const float toCentredDips[6] = {1 / g, 0, 0, 1 / g, -cx / g, -cy / g};
+	const float toPixels[6] = {g, 0, 0, g, cx, cy};
+	visual->FramedTransform(toCentredDips, toPixels);
+}
+
+inline void frameOnce(IVisual *visual, ViewLayer &layer) {
+	if (layer.transformed) return;
+	layer.transformed = true;
+	showFrame(visual, layer);
 }
 
 inline void showTransform(IVisual *visual, ViewLayer &layer) {
+	if (layer.transformHanded) return;
 	bool identity = layer.scaleX == 1 && layer.scaleY == 1 && layer.translateX == 0 && layer.translateY == 0 && layer.rotation == 0;
 	if (identity && !layer.transformed) return;
-	layer.transformed = !identity;
+	frameOnce(visual, layer);
 	float m[6];
-	centredMatrix(layer, layer.scaleX, layer.scaleY, layer.translateX, layer.translateY, layer.rotation, m);
-	visual->TransformMatrix(m);
+	motionMatrix(layer.scaleX, layer.scaleY, layer.translateX, layer.translateY, layer.rotation, m);
+	visual->MotionTransform(m);
 }
 
 inline void placeLayer(IVisual *visual, ViewLayer &layer, float pixelWidth, float pixelHeight, float dpiScale) {
+	bool moved = pixelWidth != layer.pixelWidth || pixelHeight != layer.pixelHeight || dpiScale != layer.dpiScale;
 	layer.pixelWidth = pixelWidth;
 	layer.pixelHeight = pixelHeight;
 	layer.dpiScale = dpiScale;
-	showTransform(visual, layer);
+	if (moved && layer.transformed) showFrame(visual, layer);
 }
 
 inline void setLayerTransform(IVisual *visual, ViewLayer &layer, float scaleX, float scaleY, float translateX, float translateY) {
@@ -57,7 +73,7 @@ inline void setLayerRotation(IVisual *visual, ViewLayer &layer, float degrees) {
 
 inline void setLayerOpacity(IVisual *visual, ViewLayer &layer, float opacity) {
 	layer.opacity = opacity;
-	visual->Opacity(opacity);
+	if (!layer.opacityHanded) visual->Opacity(opacity);
 }
 
 // property 0 is opacity (one value), 1 the transform (scaleX, scaleY, translateX, translateY, rotation in degrees).
@@ -71,7 +87,6 @@ inline void writeLayer(IVisual *visual, ViewLayer &layer, int32_t property, cons
 	layer.translateX = (float)values[2];
 	layer.translateY = (float)values[3];
 	layer.rotation = (float)values[4];
-	layer.transformed = true;
 	showTransform(visual, layer);
 }
 
@@ -82,23 +97,24 @@ inline void handLayer(IVisual *visual, ViewLayer &layer, int32_t property, const
 		std::vector<double> column(values, values + keyCount);
 		visual->AnimatedOpacity(curveOf(periodOf(keyTimes, keyCount, column, durationMs, autoreverses),
 			repeatCount, startMs, offsetMs, speed), lagMs);
+		layer.opacityHanded = true;
 		return;
 	}
 	Curve curves[6];
 	transformCurves(keyTimes, keyCount, values, durationMs, repeatCount, autoreverses, startMs, offsetMs, speed,
-		[&layer](const double *at, float m[6]) {
-			centredMatrix(layer, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
-		},
+		[](const double *at, float m[6]) { motionMatrix((float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m); },
 		curves);
+	frameOnce(visual, layer);
 	visual->AnimatedTransform(curves, lagMs);
+	layer.transformHanded = true;
 }
 
 inline void releaseLayer(IVisual *visual, ViewLayer &layer, int32_t property) {
 	if (property == 0) {
+		layer.opacityHanded = false;
 		visual->Opacity(layer.opacity);
 		return;
 	}
-	float m[6];
-	centredMatrix(layer, layer.scaleX, layer.scaleY, layer.translateX, layer.translateY, layer.rotation, m);
-	visual->TransformMatrix(m);
+	layer.transformHanded = false;
+	showTransform(visual, layer);
 }

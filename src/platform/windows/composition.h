@@ -35,7 +35,11 @@ struct IVisual {
 	virtual void Opacity(float opacity) = 0;
 	virtual void TransformMatrix(const float m[6]) = 0;
 	virtual void AnimatedOpacity(const Curve &curve, double lagMs) = 0;
-	// m11, m12, m21, m22, dx, dy, as TransformMatrix takes them.
+	// In place of TransformMatrix: the visual shows before * motion * after, row vectors as TransformMatrix takes them
+	// (m11, m12, m21, m22, dx, dy). FramedTransform sets before and after, MotionTransform and AnimatedTransform the
+	// motion, so a write to one side leaves an animation on the other running.
+	virtual void FramedTransform(const float before[6], const float after[6]) = 0;
+	virtual void MotionTransform(const float m[6]) = 0;
 	virtual void AnimatedTransform(const Curve curves[6], double lagMs) = 0;
 	virtual void Size(float width, float height) = 0;
 	virtual void Offset(float x, float y) = 0;
