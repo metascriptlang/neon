@@ -10,7 +10,7 @@ import { extractResponderTerminal } from "../../render/responder";
 import { I18nManager } from "../../api/i18nManager";
 import { FlexStyle, LayoutMeasure, YGNode, Direction, freeLayoutTreeAt, layoutPassAt } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
-import { Style, mergeStyle, isBoldWeight } from "../../render/style";
+import { Style, StyleValue, mergeStyle, isBoldWeight, setStyleField, sameLayout } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
@@ -297,6 +297,8 @@ let layoutPlan: LayoutAnimationPlan | null = null;
 let nextTween: int32 = 1;
 let layoutPassId: int32 = 0;
 
+export function nativeLayoutPasses(): int32 { return layoutPassId; }
+
 function showFrame(n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.shownX = x; n.shownY = y; n.shownW = w; n.shownH = h;
 	if (n.view !== null) { niSetFrame(n.view, x, y, w, h); }
@@ -458,46 +460,75 @@ function writeTextInsets(n: NativeNode, s: Style): void {
 }
 
 // The paint half of the projection (docs/STYLE.md §5), onto the platform view.
-function applyPaint(n: NativeNode, s: Style): void {
-	if (s.transform !== n.transformCss) {
-		const transform = nativeTransform(s.transform);
-		if (n.view !== null) {
-			niSetTransform(n.view, transform.scaleX, transform.scaleY, transform.translateX, transform.translateY);
-			if (transform.rotate !== n.rotation) { niSetRotation(n.view, transform.rotate); }
-		}
-		n.rotation = transform.rotate;
-		n.transformCss = s.transform;
+function paintTransform(n: NativeNode, s: Style): void {
+	if (s.transform === n.transformCss) { return; }
+	const transform = nativeTransform(s.transform);
+	if (n.view !== null) {
+		niSetTransform(n.view, transform.scaleX, transform.scaleY, transform.translateX, transform.translateY);
+		if (transform.rotate !== n.rotation) { niSetRotation(n.view, transform.rotate); }
 	}
+	n.rotation = transform.rotate;
+	n.transformCss = s.transform;
+}
+
+function paintBackground(n: NativeNode, view: Ptr<void>, s: Style): void {
+	const bg = s.backgroundColor;
+	if (bg !== null) {
+		const c = parseHex(bg as string);
+		if (c !== null) {
+			niSetBackgroundColor(view, c.r, c.g, c.b, c.a);
+			n.painted = true;
+		} else if (bg === "transparent") {
+			niSetBackgroundColor(view, 0.0, 0.0, 0.0, 0.0);
+			n.painted = true;
+		}
+	} else if (n.painted) {
+		niSetBackgroundColor(view, 0.0, 0.0, 0.0, 0.0);
+		n.painted = false;
+	}
+}
+
+function paintRadius(n: NativeNode, view: Ptr<void>, s: Style): void {
+	if (s.borderRadius !== null) {
+		niSetCornerRadius(view, s.borderRadius as float32);
+		n.rounded = true;
+	} else if (n.rounded) {
+		niSetCornerRadius(view, 0.0);
+		n.rounded = false;
+	}
+}
+
+function paintOpacity(n: NativeNode, view: Ptr<void>, s: Style): void {
+	if (s.opacity !== null) {
+		niSetOpacity(view, s.opacity as float32);
+		n.faded = true;
+	} else if (n.faded) {
+		niSetOpacity(view, 1.0);
+		n.faded = false;
+	}
+}
+
+function paintOnly(n: NativeNode, name: string, s: Style): boolean {
+	if (name === "transform") {
+		paintTransform(n, s);
+		return true;
+	}
+	const view = n.view;
+	if (view === null || n.isText) { return false; }
+	if (name === "opacity") { paintOpacity(n, view, s); }
+	else if (name === "backgroundColor") { paintBackground(n, view, s); }
+	else if (name === "borderRadius") { paintRadius(n, view, s); }
+	else { return false; }
+	return true;
+}
+
+function applyPaint(n: NativeNode, s: Style): void {
+	paintTransform(n, s);
 	if (n.view === null || !n.isText) {
 		if (n.view !== null) {
-			const bg = s.backgroundColor;
-			if (bg !== null) {
-				const c = parseHex(bg as string);
-				if (c !== null) {
-					niSetBackgroundColor(n.view, c.r, c.g, c.b, c.a);
-					n.painted = true;
-				} else if (bg === "transparent") {
-					niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0);
-					n.painted = true;
-				}
-			} else if (n.painted) {
-				niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0);
-				n.painted = false;
-			}
-			if (s.borderRadius !== null) {
-				niSetCornerRadius(n.view, s.borderRadius as float32);
-				n.rounded = true;
-			} else if (n.rounded) {
-				niSetCornerRadius(n.view, 0.0);
-				n.rounded = false;
-			}
-			if (s.opacity !== null) {
-				niSetOpacity(n.view, s.opacity as float32);
-				n.faded = true;
-			} else if (n.faded) {
-				niSetOpacity(n.view, 1.0);
-				n.faded = false;
-			}
+			paintBackground(n, n.view, s);
+			paintRadius(n, n.view, s);
+			paintOpacity(n, n.view, s);
 			const clip = s.overflow === "hidden" || s.overflow === "clip" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;
@@ -1300,6 +1331,33 @@ export function createNativeHost(): NativeHost {
 	return nativeHostOf(mainRoot);
 }
 
+function writeStyle(r: NativeRoot, n: NativeNode, style: Style): void {
+	const zIndex = style.zIndex ?? 0;
+	if (zIndex !== n.zIndex) {
+		const p = tree.parentOf(n);
+		if (p !== null) {
+			if (n.zIndex !== 0) { p.zChildren -= 1; }
+			if (zIndex !== 0) { p.zChildren += 1; }
+		}
+		n.zIndex = zIndex;
+		if (p !== null) { restack(p); }
+	}
+	const prev = n.styleCache;
+	n.styleCache = style;
+	if (prev !== null && prev !== style && n.flex !== null && !n.isText && !n.isInput && !n.sizesItself
+		&& sameLayout(prev as Style, style)) {
+		applyPaint(n, style);
+		return;
+	}
+	writeTextInsets(n, style);
+	n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
+	n.minFromMeasure = false;
+	applyPaint(n, style);
+	if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
+	else if (n.isText) { remeasureText(n); }
+	if (isMounted(n)) { requestLayout(r); }
+}
+
 function nativeHostOf(r: NativeRoot): NativeHost {
 	const ownedNode = r.node;
 	const spansTo = (node: HostNode, spans: TextSpan[]): void => { deliverSpans(r, node, spans); };
@@ -1360,27 +1418,15 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 			writeProp(r, node as unknown as NativeNode, name, "");
 		},
 		setStyle: (node: HostNode, style: Style): void => {
-			const n = node as unknown as NativeNode;
-			const zIndex = style.zIndex ?? 0;
-			if (zIndex !== n.zIndex) {
-				const p = tree.parentOf(n);
-				if (p !== null) {
-					if (n.zIndex !== 0) { p.zChildren -= 1; }
-					if (zIndex !== 0) { p.zChildren += 1; }
-				}
-				n.zIndex = zIndex;
-				if (p !== null) { restack(p); }
-			}
-			n.styleCache = style;
-			writeTextInsets(n, style);
-			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
-			n.minFromMeasure = false;
-			applyPaint(n, style);
-			if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
-			else if (n.isText) { remeasureText(n); }
-			if (isMounted(n)) { requestLayout(r); }
+			writeStyle(r, node as unknown as NativeNode, style);
 		},
-		setStyleProp: null,
+		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
+			const n = node as unknown as NativeNode;
+			const style: Style = n.styleCache !== null ? n.styleCache as Style : {};
+			setStyleField(style, name, value);
+			n.styleCache = style;
+			if (!paintOnly(n, name, style)) { writeStyle(r, n, style); }
+		},
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const n = node as unknown as NativeNode;
