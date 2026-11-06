@@ -170,12 +170,41 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   | control | 694 ms | 698 ms | 698 ms |
   | fix | 0 ms | 2 ms | 2 ms |
 
+  Physical devices, Release, 5 rounds, n=100 each side (2026-11-07):
+
+  | | p50 | p90 | max |
+  |---|---|---|---|
+  | iPhone 13 Pro control | 686 ms | 694 ms | 696 ms |
+  | iPhone 13 Pro fix | 0 ms | 0 ms | 0 ms |
+  | iPad Pro 12.9 control | 687 ms | 689 ms | 795 ms |
+  | iPad Pro 12.9 fix | 0 ms | 0 ms | 0 ms |
+  | Seeker control | 689 ms | 691 ms | 695 ms |
+  | Seeker fix | 0 ms | 0 ms | 0 ms |
+
   The control is locked to the heartbeat phase (1000 − 300 − work). In a real app the wait
   ranges from 0 to the nearest timer period, and is unbounded without one.
 - **S1, scroll while streaming** (`bench/stream`, Release). Seeker, 5 rounds × 5 flings,
   `dumpsys gfxinfo`. Janky frames 13 vs 12; p50/p90/p99 8/11/18 ms on both sides; missed vsync
   12 on both. S1's 200 ms interval pumps the loop anyway, so the wake fix cannot show there.
-  This is the smoothness baseline for the frame-order work.
+  This is the smoothness baseline for the frame-order work. Repeated on the rebased branch
+  (2026-11-07, n=25 flings per side): janky frames 13 vs 13, p50/p90/p99 8/11/18 vs 8/12/18 ms,
+  missed vsync 12 vs 12.
+
+  iOS, XCTest scroll signposts, 5 rounds × 5 flings, n=25 per side (2026-11-07), hitch time
+  ratio in ms per s, median / mean:
+
+  | | dragging | deceleration | fps decel. |
+  |---|---|---|---|
+  | iPhone 13 Pro control | 0 / 15.0 | 0 / 5.6 | 81.8 |
+  | iPhone 13 Pro fix | 0 / 8.6 | 0 / 3.7 | 82.0 |
+  | iPad Pro 12.9 control | 0 / 5.0 | 3.5 / 5.0 | 105.6 |
+  | iPad Pro 12.9 fix | 0 / 0 | 0 / 2.4 | 105.9 |
+
+  Dragging means are a few single flings of 67-167 ms/s on both sides. The iPad's deceleration
+  gap holds with the order swapped (fix first in every pair, n=25): control 3.5 / 6.5, fix
+  0 / 2.2 ms/s; hitches per fling 1.04 vs 0.52. S1 has no `spawn` and no IO, only a 200 ms
+  `setInterval`, so why the selector source makes the iPad smoother is not traced yet. The
+  fix is the baseline Phase 0 is measured against.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
