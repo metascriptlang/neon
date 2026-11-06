@@ -38,7 +38,7 @@ import {
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmAccessibilityFocusCalls, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
 	nmBackgroundAlpha, nmLastViewTag, nmAnyProp, nmTagWithProp, nmHasLabel,
-	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity,
+	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity, nmOpacityWrites,
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
@@ -1362,5 +1362,22 @@ test "setStyleProp repaints a paint field without a layout pass and lays out a l
 	assert nmOpacity(tag) > 0.49 && nmOpacity(tag) < 0.51 && nmVisualX(tag, 0) === 15, "paint reaches the view";
 	setProp(v, "width", 60);
 	assert nativeLayoutPasses() > passes && nmLayoutWidth(tag) === 60 && nmLayoutHeight(tag) === 40, "a layout field lays out over the static fields";
+	nmTeardown();
+}
+
+test "a full style write leaves an unchanged paint field alone on the view, so a value animating it keeps running" {
+	const [bg, setBg] = createSignal<string>("#ff0000");
+	const [width, setWidth] = createSignal<number>(100);
+	const app = (): NeonNode => <Pressable style={{ height: 40, opacity: 0.5, backgroundColor: bg(), width: width() }} />;
+	runApp(app);
+	nmLoop();
+	const writes = nmOpacityWrites();
+	setBg("#00ff00");
+	flush();
+	nmLoop();
+	setWidth(60);
+	flush();
+	nmLoop();
+	assert nmOpacityWrites() === writes, "unchanged opacity is not rewritten: " + (nmOpacityWrites() - writes).toString();
 	nmTeardown();
 }

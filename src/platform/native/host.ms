@@ -522,13 +522,13 @@ function paintOnly(n: NativeNode, name: string, s: Style): boolean {
 	return true;
 }
 
-function applyPaint(n: NativeNode, s: Style): void {
+function applyPaint(n: NativeNode, s: Style, prev: Style | null = null): void {
 	paintTransform(n, s);
 	if (n.view === null || !n.isText) {
 		if (n.view !== null) {
-			paintBackground(n, n.view, s);
-			paintRadius(n, n.view, s);
-			paintOpacity(n, n.view, s);
+			if (prev === null || prev.backgroundColor !== s.backgroundColor) { paintBackground(n, n.view, s); }
+			if (prev === null || prev.borderRadius !== s.borderRadius) { paintRadius(n, n.view, s); }
+			if (prev === null || prev.opacity !== s.opacity) { paintOpacity(n, n.view, s); }
 			const clip = s.overflow === "hidden" || s.overflow === "clip" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;
@@ -1346,13 +1346,13 @@ function writeStyle(r: NativeRoot, n: NativeNode, style: Style): void {
 	n.styleCache = style;
 	if (prev !== null && prev !== style && n.flex !== null && !n.isText && !n.isInput && !n.sizesItself
 		&& sameLayout(prev as Style, style)) {
-		applyPaint(n, style);
+		applyPaint(n, style, prev);
 		return;
 	}
 	writeTextInsets(n, style);
 	n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
 	n.minFromMeasure = false;
-	applyPaint(n, style);
+	applyPaint(n, style, prev === style ? null : prev);
 	if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
 	else if (n.isText) { remeasureText(n); }
 	if (isMounted(n)) { requestLayout(r); }

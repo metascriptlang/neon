@@ -27,6 +27,7 @@ float nmVisualY(int32_t tag, float y);
 float nmLayoutWidth(int32_t tag);
 float nmRotation(int32_t tag);
 float nmOpacity(int32_t tag);
+int32_t nmOpacityWrites(void);
 float nmTranslateX(int32_t tag);
 float nmLayoutHeight(int32_t tag);
 void nmTapAt(float x, float y);

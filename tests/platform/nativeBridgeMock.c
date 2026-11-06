@@ -337,7 +337,9 @@ void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 }
 
 void niSetCornerRadius(void *view, float radius) { (void)radius; live(view, "niSetCornerRadius"); }
-void niSetOpacity(void *view, float opacity) { live(view, "niSetOpacity")->opacity = opacity; }
+static int32_t g_opacityWrites = 0;
+void niSetOpacity(void *view, float opacity) { live(view, "niSetOpacity")->opacity = opacity; g_opacityWrites += 1; }
+int32_t nmOpacityWrites(void) { return g_opacityWrites; }
 
 void niSetText(void *label, const char *s) {
 	MockView *v = live(label, "niSetText");
