@@ -7,7 +7,7 @@ import { MotionElement, motionElements } from "../../src/motion/waapi";
 import { nativeMotionPlayer } from "../../src/motion/native";
 import { bridgeLayerEngine, presentedComponent } from "../../src/platform/native/layerMotion";
 import { LayerComponent, installLayerEngine } from "../../src/platform/native/layerEngine";
-import { ManualClock } from "pulse/src/clock";
+import { Clock, ManualClock } from "pulse/src/clock";
 import { MotionDocument, MotionTrack, linearKeyframe } from "pulse/src/document";
 import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
 import {
@@ -258,4 +258,40 @@ test "a yoyo handed over mid-clip ends where its last leg ends" {
 	assert near(stage.shownOpacity(3200), 0.3), "on the way back " + stage.shownOpacity(3200).toString();
 	assert stage.shownOpacity(3700) === 0, "after the last leg the model shows, not " + stage.shownOpacity(3700).toString();
 	stage.close();
+}
+
+class LateClock {
+	manual: ManualClock = new ManualClock();
+	lag: float64 = 0;
+	clock: Clock;
+
+	constructor() {
+		this.clock = {
+			now: (): float64 => this.manual.time + this.lag,
+			request: (callback: (time: float64) => void): int32 => this.manual.request(callback),
+			cancel: (id: int32): void => this.manual.cancel(id),
+		};
+	}
+}
+
+function lateHandover(lag: float64): float64[] {
+	const stage = new Stage();
+	const late = new LateClock();
+	const player = stage.play([ramp("opacity", 0, 1)], motionOptions(late.clock));
+	late.lag = lag;
+	nmLayerSetNow(16 + lag);
+	late.manual.advance(16);
+	const shown = stage.shownOpacity(16 + lag);
+	player.cancel();
+	const mirrored = nmOpacity(stage.tag);
+	stage.close();
+	return [shown, mirrored];
+}
+
+test "the layer and its mirror start from the frame stamp, or from now when the record is over 40 ms late" {
+	for (const [lag, expected] of [[30, 0.046], [40, 0.056], [60, 0.016]] as [float64, float64][]) {
+		const [shown, mirrored] = lateHandover(lag);
+		assert near(shown, expected), "lag " + lag.toString() + " shows " + shown.toString();
+		assert near(mirrored, expected), "lag " + lag.toString() + " mirrors " + mirrored.toString();
+	}
 }

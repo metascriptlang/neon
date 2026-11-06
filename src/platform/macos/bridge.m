@@ -1875,7 +1875,7 @@ static NSArray *layerFrames(NeonView *v, int32_t property, NSData *tuples) {
 
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
 	const double *values, int64_t valueCount, double durationMs, double repeatCount,
-	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int32_t autoreverses, double startMs, double offsetMs, double speed, double lagMs) {
 	int64_t width = layerWidth(property);
 	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
 	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
@@ -1892,7 +1892,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	animation.repeatCount = (float)repeatCount;
 	animation.autoreverses = autoreverses != 0;
 	animation.speed = (float)speed;
-	animation.beginTime = niLayerBeginTime([layer convertTime:CACurrentMediaTime() fromLayer:nil], startMs, offsetMs, speed);
+	animation.beginTime = niLayerBeginTime([layer convertTime:CACurrentMediaTime() fromLayer:nil], startMs, offsetMs, speed, lagMs);
 	animation.fillMode = kCAFillModeBackwards;
 	animation.removedOnCompletion = YES;
 	[layer addAnimation:animation forKey:layerKey(property)];

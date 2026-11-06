@@ -28,6 +28,33 @@ import { Composition, MotionTarget } from "pulse/src/target";
 import { AnimatedValue, AnimationKind, AnimationSpec } from "pulse/src/value";
 
 const SAMPLE_STEP_MS: float64 = 10;
+const MAX_START_DELAY_MS: float64 = 40;
+
+function resolveStartTime(stamp: float64, now: float64): float64 {
+	return now - stamp > MAX_START_DELAY_MS ? now : stamp;
+}
+
+class FrameStamp {
+	at: float64 = 0;
+	source: Clock;
+	clock: Clock;
+
+	constructor(source: Clock) {
+		this.source = source;
+		this.clock = {
+			now: (): float64 => {
+				this.at = source.now();
+				return this.at;
+			},
+			request: (callback: (time: float64) => void): int32 =>
+				source.request((time: float64): void => {
+					this.at = time;
+					callback(time);
+				}),
+			cancel: (id: int32): void => source.cancel(id),
+		};
+	}
+}
 
 export struct LayerChannel {
 	name: string;
@@ -421,7 +448,7 @@ class NativeRun {
 	fallbacks: (MotionBinding | null)[];
 	entries: TargetEntry[] = [];
 	node: HostNode | null = null;
-	clock: Clock;
+	frames: FrameStamp;
 	times: float64[];
 	iterationMs: float64;
 	last: float64[] = [];
@@ -438,19 +465,20 @@ class NativeRun {
 		startMs: 0,
 		offsetMs: 0,
 		speed: 1,
+		lagMs: 0,
 	};
 
 	constructor(
 		plan: LayerRun,
 		elements: MotionElements,
 		fallbacks: (MotionBinding | null)[],
-		clock: Clock,
+		frames: FrameStamp,
 		iterationMs: float64,
 	) {
 		this.plan = plan;
 		this.elements = elements;
 		this.fallbacks = fallbacks;
-		this.clock = clock;
+		this.frames = frames;
 		this.iterationMs = iterationMs;
 		this.times =
 			plan.route === LayerRoute.Compositor
@@ -566,6 +594,8 @@ class NativeRun {
 		let keyTimes = this.times.map((time: float64): float64 => time / duration);
 		let ordered = tuples;
 		let end: float64[] = [];
+		const now = this.frames.source.now();
+		const begin = resolveStartTime(this.frames.at, now);
 		let timing: LayerTiming;
 		if (rate > 0) {
 			const evenYoyo =
@@ -578,6 +608,7 @@ class NativeRun {
 				startMs: playhead < 0 ? -playhead / rate : 0,
 				offsetMs: playhead < 0 ? 0 : playhead,
 				speed: rate,
+				lagMs: now - begin,
 			};
 		} else {
 			const period = yoyo ? duration * 2 : duration;
@@ -594,6 +625,7 @@ class NativeRun {
 				startMs: 0,
 				offsetMs: offset,
 				speed: -rate,
+				lagMs: now - begin,
 			};
 		}
 		const values: float64[] = [];
@@ -612,7 +644,7 @@ class NativeRun {
 			timing,
 		);
 		this.live = true;
-		this.begin = this.clock.now();
+		this.begin = begin;
 		this.keyTimes = keyTimes;
 		this.values = values;
 		this.model = end;
@@ -623,7 +655,7 @@ class NativeRun {
 		const timing = this.timing;
 		const duration = timing.durationMs;
 		const period = timing.autoreverses ? duration * 2 : duration;
-		const elapsed = this.clock.now() - this.begin - timing.startMs;
+		const elapsed = this.frames.source.now() - this.begin - timing.startMs;
 		const active = Math.max(0, elapsed * timing.speed + timing.offsetMs);
 		if (active >= timing.repeatCount * period) {
 			return this.model.slice(0);
@@ -674,6 +706,7 @@ class NativeRuns {
 	bindings: MotionBinding[] = [];
 	runs: NativeRun[] = [];
 	player: NativeMotionPlayer | null = null;
+	private frames: FrameStamp;
 	private iterations: float64;
 	private yoyo: boolean;
 
@@ -684,7 +717,8 @@ class NativeRuns {
 		options: MotionOptions,
 	) {
 		this.doc = doc;
-		this.options = options;
+		this.frames = new FrameStamp(options.clock);
+		this.options = { ...options, clock: this.frames.clock };
 		const owned: MotionBinding[] = [];
 		for (const binding of bindings) {
 			if (
@@ -722,7 +756,7 @@ class NativeRuns {
 				planned,
 				elements,
 				fallbacks,
-				options.clock,
+				this.frames,
 				plan.iterationMs,
 			);
 			this.runs.push(run);
@@ -1126,6 +1160,7 @@ export class NativeElementValue extends AnimatedValue {
 		}
 		occupy(node, property, this.hold);
 		const engine = layerEngine() as LayerEngine;
+		const begin = this.parts.clock.now();
 		engine.write(node, property, this.tuple(to));
 		engine.animate(node, property, keyTimes, values, {
 			durationMs: curve.durationMs,
@@ -1134,11 +1169,12 @@ export class NativeElementValue extends AnimatedValue {
 			startMs: 0,
 			offsetMs: 0,
 			speed: 1,
+			lagMs: this.parts.clock.now() - begin,
 		});
 		this.handed = true;
 		this.from = from;
 		this.to = to;
-		this.begin = this.parts.clock.now();
+		this.begin = begin;
 		this.curve = curve;
 		const entry = this.entry;
 		if (entry !== null) {

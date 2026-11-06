@@ -7,7 +7,7 @@ struct Color {
 };
 
 // One value over time, as DirectComposition plays it: each segment holds value + slope * (t - begin)
-// from its begin (seconds after the Animated call that hands it over) until the next one; then it either repeats
+// from its begin (seconds after a stamp lagMs before the Animated call that hands it over) until the next one; then it either repeats
 // from repeatBegin for repeatSeconds, or holds endValue from endSeconds.
 struct CurveSegment {
 	double begin;
@@ -34,9 +34,9 @@ struct IVisual {
 	virtual void Remove(IVisual *visual) = 0;
 	virtual void Opacity(float opacity) = 0;
 	virtual void TransformMatrix(const float m[6]) = 0;
-	virtual void AnimatedOpacity(const Curve &curve) = 0;
+	virtual void AnimatedOpacity(const Curve &curve, double lagMs) = 0;
 	// m11, m12, m21, m22, dx, dy, as TransformMatrix takes them.
-	virtual void AnimatedTransform(const Curve curves[6]) = 0;
+	virtual void AnimatedTransform(const Curve curves[6], double lagMs) = 0;
 	virtual void Size(float width, float height) = 0;
 	virtual void Offset(float x, float y) = 0;
 	virtual void CornerRadius(float radius) = 0;

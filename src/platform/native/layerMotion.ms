@@ -43,6 +43,7 @@ extern function niLayerAnimate(
 	startMs: float64,
 	offsetMs: float64,
 	speed: float64,
+	lagMs: float64,
 ): void;
 extern function niLayerRemove(view: Ptr<void>, property: int32): void;
 extern function niLayerPresented(view: Ptr<void>, component: int32): float64;
@@ -87,6 +88,7 @@ export function bridgeLayerEngine(
 				timing.startMs,
 				timing.offsetMs,
 				timing.speed,
+				timing.lagMs,
 			);
 		},
 		remove: (node: HostNode, property: LayerProperty): void => {

@@ -21,6 +21,7 @@ export struct LayerTiming {
 	startMs: float64;
 	offsetMs: float64;
 	speed: float64;
+	lagMs: float64;
 }
 
 export interface LayerEngine {

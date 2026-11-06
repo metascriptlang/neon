@@ -49,8 +49,8 @@ public:
 	void Remove(IVisual *visual) override;
 	void Opacity(float opacity) override;
 	void TransformMatrix(const float m[6]) override;
-	void AnimatedOpacity(const Curve &curve) override;
-	void AnimatedTransform(const Curve curves[6]) override;
+	void AnimatedOpacity(const Curve &curve, double lagMs) override;
+	void AnimatedTransform(const Curve curves[6], double lagMs) override;
 	void Size(float width, float height) override;
 	void Offset(float x, float y) override;
 	void CornerRadius(float radius) override;
@@ -61,7 +61,7 @@ public:
 
 private:
 	void markDirty();
-	LARGE_INTEGER compositionNow();
+	LARGE_INTEGER compositionStamp(double lagMs);
 	ComPtr<IDCompositionAnimation> animation(const Curve &curve, LARGE_INTEGER begin);
 
 	DCompContext *context;
@@ -148,10 +148,12 @@ void DCompVisual::TransformMatrix(const float m[6]) {
 	must(visual->SetTransform(matrix), "SetTransform");
 }
 
-LARGE_INTEGER DCompVisual::compositionNow() {
+LARGE_INTEGER DCompVisual::compositionStamp(double lagMs) {
 	DCOMPOSITION_FRAME_STATISTICS statistics = {};
 	must(context->device->GetFrameStatistics(&statistics), "GetFrameStatistics");
-	return statistics.currentTime;
+	LARGE_INTEGER stamp = statistics.currentTime;
+	stamp.QuadPart -= (LONGLONG)(lagMs * (double)statistics.timeFrequency.QuadPart / 1000.0);
+	return stamp;
 }
 
 ComPtr<IDCompositionAnimation> DCompVisual::animation(const Curve &curve, LARGE_INTEGER begin) {
@@ -169,19 +171,19 @@ ComPtr<IDCompositionAnimation> DCompVisual::animation(const Curve &curve, LARGE_
 	return out;
 }
 
-void DCompVisual::AnimatedOpacity(const Curve &curve) {
+void DCompVisual::AnimatedOpacity(const Curve &curve, double lagMs) {
 	if (!effect) {
 		must(context->device->CreateEffectGroup(&effect), "CreateEffectGroup");
 		must(visual->SetEffect(effect.Get()), "SetEffect");
 	}
-	must(effect->SetOpacity(animation(curve, compositionNow()).Get()), "SetOpacity");
+	must(effect->SetOpacity(animation(curve, compositionStamp(lagMs)).Get()), "SetOpacity");
 }
 
-void DCompVisual::AnimatedTransform(const Curve curves[6]) {
+void DCompVisual::AnimatedTransform(const Curve curves[6], double lagMs) {
 	static const int rows[6] = {0, 0, 1, 1, 2, 2}, columns[6] = {0, 1, 0, 1, 0, 1};
 	ComPtr<IDCompositionMatrixTransform> transform;
 	must(context->device->CreateMatrixTransform(&transform), "CreateMatrixTransform");
-	LARGE_INTEGER begin = compositionNow();
+	LARGE_INTEGER begin = compositionStamp(lagMs);
 	for (int i = 0; i < 6; i++) {
 		must(transform->SetMatrixElement(rows[i], columns[i], animation(curves[i], begin).Get()), "SetMatrixElement");
 	}

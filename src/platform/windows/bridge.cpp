@@ -1431,7 +1431,7 @@ double niLayerRead(void *view, int32_t component) {
 
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
 	const double *values, int64_t valueCount, double durationMs, double repeatCount,
-	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int32_t autoreverses, double startMs, double offsetMs, double speed, double lagMs) {
 	int64_t width = layerWidth(property);
 	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
 	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
@@ -1439,7 +1439,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	if (property == 0) {
 		std::vector<double> column(values, values + keyCount);
 		v->visual->AnimatedOpacity(curveOf(periodOf(keyTimes, keyCount, column, durationMs, autoreverses != 0),
-			repeatCount, startMs, offsetMs, speed));
+			repeatCount, startMs, offsetMs, speed), lagMs);
 	} else {
 		Curve curves[6];
 		transformCurves(keyTimes, keyCount, values, durationMs, repeatCount, autoreverses != 0, startMs, offsetMs, speed,
@@ -1447,7 +1447,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 				centredMatrix(v, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
 			},
 			curves);
-		v->visual->AnimatedTransform(curves);
+		v->visual->AnimatedTransform(curves, lagMs);
 	}
 	changed();
 }

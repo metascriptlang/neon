@@ -823,7 +823,7 @@ double niLayerRead(void *view, int32_t component) {
 
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,
 	const double *values, int64_t valueCount, double durationMs, double repeatCount,
-	int32_t autoreverses, double startMs, double offsetMs, double speed) {
+	int32_t autoreverses, double startMs, double offsetMs, double speed, double lagMs) {
 	MockView *v = live(view, "niLayerAnimate");
 	requireProperty(property, keyCount, valueCount, "niLayerAnimate");
 	if (keyCount < 2) {
@@ -841,7 +841,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	r->valueCount = valueCount;
 	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
 	memcpy(r->timing, timing, sizeof timing);
-	r->beginTime = niLayerBeginTime(g_layerNowMs / 1000.0, startMs, offsetMs, speed);
+	r->beginTime = niLayerBeginTime(g_layerNowMs / 1000.0, startMs, offsetMs, speed, lagMs);
 	r->live = 1;
 	g_layerAnimates++;
 }
