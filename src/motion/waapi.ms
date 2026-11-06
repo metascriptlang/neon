@@ -1228,6 +1228,11 @@ when (js) {
 				run.animation = null;
 				run.release();
 				animation.pause();
+				if (commit) {
+					for (let i: int32 = 0; i < run.styles.length; i += 1) {
+						this.mirror(run, i, run.values[i]);
+					}
+				}
 				try {
 					if (commit && this.timeline !== null) {
 						writeStyle(run.dom, run.plan.css, run.cssText());
@@ -1348,10 +1353,12 @@ when (js) {
 			}
 			if (this.reverting) {
 				writeStyle(run.dom, run.plan.css, run.baseline);
+				this.mirror(run, index, value);
 				return;
 			}
 			run.values[index] = value;
 			run.entries[index].run = run;
+			if (this.player === null || !this.running()) { this.mirror(run, index, value); }
 			if (run.plan.route === TrackRoute.Style) {
 				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
@@ -1365,6 +1372,11 @@ when (js) {
 			run.animation = this.start(run);
 			claimCss(run);
 			this.align(run);
+		}
+
+		private mirror(run: StyleRun, index: int32, value: MotionValue): void {
+			const fallback = run.fallbacks[index];
+			if (fallback !== null) { fallback.write(value); }
 		}
 
 		private start(run: StyleRun): Animation {

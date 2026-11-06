@@ -9,6 +9,7 @@ import {
 import { createRoot } from "../../src/core/owner";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { Show } from "../../src/macros/ui/flow";
 import { AnimatedValue } from "pulse/src/value";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
@@ -926,6 +927,61 @@ test "a document player bound through signals.ref inside a Show hands the rest o
 	assert first.getAnimations().length === 0, "the removed element keeps no animation";
 	await sleepAsync(800);
 	assert translateX(second) === 100, "the remounted element ends on the last frame: " + computed(second, "translate");
+	dispose();
+	dom(outer[0]).remove();
+}
+
+test "a document player's signal reads the end once its clip finishes, and a remount shows the end" {
+	const signals = new MotionSignals();
+	const shownX = signals.number("box", "translateX", 0);
+	const [present, setPresent] = createSignal(true);
+	const outer: HostNode[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		useMotion(documentOf([ramp("box", "translateX", 100)]), signals.bindings);
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<Show when={present()}>
+				<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+			</Show>
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	const first = dom(signals.elements.node("box") as HostNode);
+	await renderedFrames();
+	assert first.getAnimations().length === 1, "handed to WAAPI";
+	await sleepAsync(1200);
+	assert shownX() === 100, "the signal reads the end: " + shownX().toString();
+	setPresent(false);
+	await renderedFrames();
+	setPresent(true);
+	await renderedFrames();
+	const second = dom(signals.elements.node("box") as HostNode);
+	assert translateX(second) === 100, "the remount shows the end: " + computed(second, "translate");
+	dispose();
+	dom(outer[0]).remove();
+}
+
+test "a cancel mid-clip leaves a document player's signal at the value the element holds" {
+	const signals = new MotionSignals();
+	const shownX = signals.number("box", "translateX", 0);
+	const outer: HostNode[] = [];
+	const players: MotionPlayer[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		players.push(useMotion(documentOf([ramp("box", "translateX", 100)]), signals.bindings));
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	const el = dom(signals.elements.node("box") as HostNode);
+	await sleepAsync(400);
+	players[0].cancel();
+	const held = translateX(el);
+	assert held > 10 && held < 90, "mid-clip: " + computed(el, "translate");
+	flush();
+	assert near(shownX(), held, 1), "the signal reads the held value: " + shownX().toString() +
+		" against " + held.toString();
 	dispose();
 	dom(outer[0]).remove();
 }
