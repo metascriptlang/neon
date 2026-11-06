@@ -11,9 +11,14 @@ extern class document {
 extern function requestAnimationFrame(callback: (time: number) => void): number;
 
 interface Measured {
-	el: HTMLElement;
 	width: number;
 	height: number;
+}
+
+interface Resize {
+	el: HTMLElement;
+	from: Measured;
+	to: Measured;
 }
 
 let reflowSink = 0.0;
@@ -21,6 +26,10 @@ let reflowSink = 0.0;
 function cssCurve(phase: LayoutPhase): string {
 	if (phase.css !== null) { return phase.css as string; }
 	return supportsLinearEasing() ? cssLinear(sampleEasing(phase.curve, phase.duration)) : "ease-out";
+}
+
+function timing(phase: LayoutPhase): string {
+	return `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
 }
 
 function elements(): HTMLElement[] {
@@ -32,83 +41,132 @@ function elements(): HTMLElement[] {
 
 function snapshot(): Map<HTMLElement, Measured> {
 	const out = new Map<HTMLElement, Measured>();
-	for (const el of elements()) { out.set(el, { el, width: el.offsetWidth, height: el.offsetHeight }); }
+	for (const el of elements()) { out.set(el, { width: el.offsetWidth, height: el.offsetHeight }); }
 	return out;
 }
 
 class Written {
 	read: () => string;
 	write: (value: string) => void;
-	kept: string;
+	kept: string = "";
 	set: string = "";
+	held: boolean = false;
 
 	constructor(read: () => string, write: (value: string) => void) {
 		this.read = read;
 		this.write = write;
-		this.kept = read();
+	}
+
+	base(): string {
+		return this.held && this.read() === this.set ? this.kept : this.read();
 	}
 
 	put(value: string): void {
+		this.kept = this.base();
 		this.write(value);
 		this.set = this.read();
+		this.held = true;
 	}
 
 	restore(): void {
-		if (this.read() === this.set) { this.write(this.kept); }
+		if (this.held && this.read() === this.set) { this.write(this.kept); }
+		this.held = false;
 	}
 }
 
-function restoreLater(written: Written[], phase: LayoutPhase): void {
+class Animated {
+	el: HTMLElement;
+	transition: Written;
+	width: Written;
+	height: Written;
+	overflow: Written;
+	opacity: Written;
+	transform: Written;
+	runs: int32 = 0;
+
+	constructor(el: HTMLElement) {
+		this.el = el;
+		const style = el.style;
+		this.transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
+		this.width = new Written((): string => style.width, (v: string): void => { style.width = v; });
+		this.height = new Written((): string => style.height, (v: string): void => { style.height = v; });
+		this.overflow = new Written((): string => style.overflow, (v: string): void => { style.overflow = v; });
+		this.opacity = new Written((): string => style.opacity, (v: string): void => { style.opacity = v; });
+		this.transform = new Written((): string => style.transform, (v: string): void => { style.transform = v; });
+	}
+
+	restore(): void {
+		this.transition.restore();
+		this.width.restore();
+		this.height.restore();
+		this.overflow.restore();
+		this.opacity.restore();
+		this.transform.restore();
+	}
+}
+
+const animated = new Map<HTMLElement, Animated>();
+
+function animatedOf(el: HTMLElement): Animated {
+	if (!animated.has(el)) { animated.set(el, new Animated(el)); }
+	return animated.get(el) as Animated;
+}
+
+function restoreLater(record: Animated, phase: LayoutPhase): void {
+	record.runs += 1;
+	const run = record.runs;
 	setTimeout((): void => {
-		for (const entry of written) { entry.restore(); }
+		if (record.runs !== run) { return; }
+		record.restore();
+		animated.delete(record.el);
 	}, phase.duration + phase.delay + 34);
 }
 
-function resize(el: HTMLElement, before: Measured, phase: LayoutPhase): void {
-	const width = el.offsetWidth;
-	const height = el.offsetHeight;
-	if (width === before.width && height === before.height) { return; }
-	const style = el.style;
-	const transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
-	const w = new Written((): string => style.width, (v: string): void => { style.width = v; });
-	const h = new Written((): string => style.height, (v: string): void => { style.height = v; });
-	const overflow = new Written((): string => style.overflow, (v: string): void => { style.overflow = v; });
-	transition.put("none");
-	w.put(`${before.width}px`);
-	h.put(`${before.height}px`);
-	overflow.put("hidden");
-	reflowSink += el.offsetHeight;
-	const timing = `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
-	transition.put(`width ${timing}, height ${timing}`);
-	w.put(`${width}px`);
-	h.put(`${height}px`);
-	restoreLater([transition, w, h, overflow], phase);
+function resizing(el: HTMLElement): boolean {
+	return animated.has(el) && (animated.get(el) as Animated).height.held;
 }
 
-function appear(el: HTMLElement, phase: LayoutPhase): void {
-	const style = el.style;
-	const transition = new Written((): string => style.transition, (v: string): void => { style.transition = v; });
-	const timing = `${phase.duration}ms ${cssCurve(phase)} ${phase.delay}ms`;
+function startResize(change: Resize): void {
+	const record = animatedOf(change.el);
+	record.transition.put("none");
+	record.width.put(`${change.from.width}px`);
+	record.height.put(`${change.from.height}px`);
+	record.overflow.put("hidden");
+}
+
+function endResize(change: Resize, phase: LayoutPhase): void {
+	const record = animatedOf(change.el);
+	const t = timing(phase);
+	record.transition.put(`width ${t}, height ${t}`);
+	record.width.put(`${change.to.width}px`);
+	record.height.put(`${change.to.height}px`);
+	restoreLater(record, phase);
+}
+
+function startAppear(el: HTMLElement, phase: LayoutPhase): void {
+	const record = animatedOf(el);
+	record.transition.put("none");
 	if (phase.property === "opacity") {
-		const opacity = new Written((): string => style.opacity, (v: string): void => { style.opacity = v; });
-		transition.put("none");
-		opacity.put("0");
-		reflowSink += el.offsetHeight;
-		transition.put(`opacity ${timing}`);
-		opacity.put(opacity.kept === "" ? "1" : opacity.kept);
-		restoreLater([transition, opacity], phase);
+		record.opacity.put("0");
 		return;
 	}
-	const transform = new Written((): string => style.transform, (v: string): void => { style.transform = v; });
-	const own = transform.kept === "" || transform.kept === "none" ? "" : `${transform.kept} `;
+	const own = record.transform.base();
+	const prefix = own === "" || own === "none" ? "" : `${own} `;
 	const x = phase.property === "scaleY" ? 1 : 0;
 	const y = phase.property === "scaleX" ? 1 : 0;
-	transition.put("none");
-	transform.put(`${own}scale(${x}, ${y})`);
-	reflowSink += el.offsetHeight;
-	transition.put(`transform ${timing}`);
-	transform.put(transform.kept === "" ? "none" : transform.kept);
-	restoreLater([transition, transform], phase);
+	record.transform.put(`${prefix}scale(${x}, ${y})`);
+}
+
+function endAppear(el: HTMLElement, phase: LayoutPhase): void {
+	const record = animatedOf(el);
+	if (phase.property === "opacity") {
+		record.transition.put(`opacity ${timing(phase)}`);
+		record.opacity.put(record.opacity.kept === "" ? "1" : record.opacity.kept);
+	} else {
+		record.transition.put(`transform ${timing(phase)}`);
+		record.transform.put(record.transform.kept === "" ? "none" : record.transform.kept);
+	}
+	restoreLater(record, phase);
 }
 
 // RN-web leaves LayoutAnimation a no-op; this measures every element before
@@ -120,12 +178,24 @@ export function animateDomLayout(plan: LayoutAnimationPlan): void {
 		const created: HTMLElement[] = [];
 		for (const el of elements()) {
 			if (before.has(el)) {
-				if (plan.update !== null) { resize(el, before.get(el) as Measured, plan.update as LayoutPhase); }
+				if (plan.update === null || resizing(el)) { continue; }
+				const from = before.get(el) as Measured;
+				const to: Measured = { width: el.offsetWidth, height: el.offsetHeight };
+				if (to.width !== from.width || to.height !== from.height) {
+					const change: Resize = { el, from, to };
+					startResize(change);
+					reflowSink += el.offsetHeight;
+					endResize(change, plan.update as LayoutPhase);
+				}
 				continue;
 			}
 			const parent = el.parentElement;
 			if (plan.create !== null && parent !== null && before.has(parent as HTMLElement)) { created.push(el); }
 		}
-		for (const el of created) { appear(el, plan.create as LayoutPhase); }
+		for (const el of created) {
+			startAppear(el, plan.create as LayoutPhase);
+			reflowSink += el.offsetHeight;
+			endAppear(el, plan.create as LayoutPhase);
+		}
 	});
 }

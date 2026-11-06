@@ -6,9 +6,13 @@ import { View, ViewHandle } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { LayoutAnimation } from "../../src/motion/layoutAnimation";
+import { Show } from "../../src/macros/ui/flow";
 
 extern class CSSStyleDeclaration {
+	height: string;
+	opacity: string;
 	transition: string;
+	overflow: string;
 }
 
 extern class HTMLElement {
@@ -22,6 +26,52 @@ extern function preferReducedMotion(): () => void from
 
 function probe(n: HostNode): HTMLElement {
 	return n as unknown as HTMLElement;
+}
+
+test "a view that appears and then resizes under a second configureNext keeps no transition afterwards" {
+	const [shown, setShown] = createSignal(false);
+	const [height, setHeight] = createSignal(100);
+	const outer: HostNode[] = [];
+	const nodes: HostNode[] = [];
+	render(element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+		<Show when={shown()}>
+			<View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{ width: 100, height: height(), backgroundColor: "#a0a" }} />
+		</Show>
+	</View>), domHost(), documentBody());
+	LayoutAnimation.configureNext(LayoutAnimation.create(200, "linear", "opacity"));
+	setShown(true);
+	await sleepAsync(100);
+	LayoutAnimation.configureNext(LayoutAnimation.create(200, "linear", "opacity"));
+	setHeight(150);
+	await sleepAsync(120);
+	const el = probe(nodes[0]);
+	assert el.offsetHeight > 100 && el.offsetHeight < 150, "the second animation resizes: " + el.offsetHeight.toString();
+	await sleepAsync(400);
+	assert el.style.transition === "" && el.style.overflow === "" && el.style.opacity === "",
+		"the original inline style is back: " + el.style.transition + "|" + el.style.overflow + "|" + el.style.opacity;
+	assert el.offsetHeight === 150, "lands: " + el.offsetHeight.toString();
+	probe(outer[0]).remove();
+}
+
+test "a configureNext over a running resize ends at the content's size, not a height the first one fixed" {
+	const [inner, setInner] = createSignal(20);
+	const outer: HostNode[] = [];
+	render(element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+		<View style={{ width: 100, height: inner(), backgroundColor: "#0a0" }} />
+	</View>), domHost(), documentBody());
+	const el = probe(outer[0]);
+	LayoutAnimation.configureNext(LayoutAnimation.create(200, "linear", "opacity"));
+	setInner(100);
+	await sleepAsync(100);
+	LayoutAnimation.configureNext(LayoutAnimation.create(200, "linear", "opacity"));
+	setInner(160);
+	await sleepAsync(120);
+	assert el.offsetHeight > 20 && el.offsetHeight < 160, "the second animation runs: " + el.offsetHeight.toString();
+	await sleepAsync(400);
+	assert el.style.height === "" && el.style.transition === "" && el.style.overflow === "",
+		"the original inline style is back: " + el.style.height + "|" + el.style.transition + "|" + el.style.overflow;
+	assert el.offsetHeight === 160, "follows its content: " + el.offsetHeight.toString();
+	el.remove();
 }
 
 test "a browser user's reduced motion preference lands a LayoutAnimation at once" {
