@@ -842,6 +842,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
 	memcpy(r->timing, timing, sizeof timing);
 	r->beginTime = niLayerBeginTime(g_layerNowMs / 1000.0, startMs, offsetMs, speed, lagMs);
+	if (r->beginTime == 0) r->beginTime = g_layerNowMs / 1000.0;
 	r->live = 1;
 	g_layerAnimates++;
 }

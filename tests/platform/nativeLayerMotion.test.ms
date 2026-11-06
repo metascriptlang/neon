@@ -295,3 +295,13 @@ test "the layer and its mirror start from the frame stamp, or from now when the 
 		assert near(mirrored, expected), "lag " + lag.toString() + " mirrors " + mirrored.toString();
 	}
 }
+
+test "a handover whose begin lands on layer time zero keeps that begin" {
+	const stage = new Stage();
+	stage.play([ramp("opacity", 0, 1)], stage.options());
+	nmLayerSetNow(16);
+	stage.clock.advance(16);
+	assert nmLayerTiming(stage.tag, OPACITY, OFFSET) === 16;
+	assert near(stage.shownOpacity(516), 0.516), "shown " + stage.shownOpacity(516).toString();
+	stage.close();
+}

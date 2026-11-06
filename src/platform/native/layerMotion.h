@@ -26,7 +26,9 @@ double niLayerPresented(void *view, int32_t component);
 // so a timeOffset wraps local time instead of shortening the run (CAMediaTiming.h: t = (tp - begin) * speed +
 // offset): the playhead goes into beginTime and timeOffset stays 0.
 static inline double niLayerBeginTime(double layerNow, double startMs, double offsetMs, double speed, double lagMs) {
-	return layerNow + (startMs - lagMs - offsetMs / speed) / 1000.0;
+	const double beginZeroMeansCommitTime = 0, justBeforeZero = -1e-9;
+	double begin = layerNow + (startMs - lagMs - offsetMs / speed) / 1000.0;
+	return begin != beginZeroMeansCommitTime ? begin : justBeforeZero;
 }
 
 #endif
