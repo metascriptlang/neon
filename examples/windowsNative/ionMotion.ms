@@ -16,6 +16,11 @@ import { MotionPlayer } from "pulse/src/player";
 import { motionSampleScreenLater, motionSamplesReady, motionSampledBlue, motionSampledAtMs } from "./motionHarness.h";
 import { exit } from "std/process";
 
+when (windows) {
+	@compile("./motionHarness.cpp");
+	@passL("-lgdi32");
+}
+
 const TITLE = "Neon motion on DirectComposition";
 const DURATION_MS: float64 = 2000;
 const BLOCK_MS: float64 = 300;
