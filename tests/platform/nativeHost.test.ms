@@ -1,4 +1,4 @@
-import { runApp, createNativeHost } from "../../src/platform/native/host";
+import { runApp, createNativeHost, nativeLayoutPasses } from "../../src/platform/native/host";
 import "../../src/platform/native/switch";
 import "../../src/platform/native/activityIndicator";
 import "../../src/platform/native/modal";
@@ -24,7 +24,7 @@ import { Image } from "../../src/components/image";
 import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
-import { Style } from "../../src/render/style";
+import { Style, StyleValue } from "../../src/render/style";
 import { AccessibilityInfo } from "../../src/api/accessibilityInfo";
 import { Text } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
@@ -1310,4 +1310,57 @@ test "native long gesture phase two stays suppressed and teardown cancels pendin
 	nmTouch(tag, 2);
 	assert log() === "long;", "teardown removes routes and pending long timer: " + log();
 	assert nmReleaseCalls() === nmViewsCreated(), "views released";
+}
+
+test "a reactive paint field repaints without a layout pass, and a layout field still lays out" {
+	const [opacity, setOpacity] = createSignal<number>(1);
+	const [bg, setBg] = createSignal<string>("#ff0000");
+	const [radius, setRadius] = createSignal<number>(0);
+	const [transform, setTransform] = createSignal<string | null>(null);
+	const [width, setWidth] = createSignal<number>(100);
+	const app = (): NeonNode => <Pressable style={{
+		height: 40, opacity: opacity(), backgroundColor: bg(), borderRadius: radius(),
+		transform: transform(), width: width(),
+	}} />;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	nmLoop();
+	const passes = nativeLayoutPasses();
+	setOpacity(0.25);
+	setBg("rgba(0, 255, 0, 0.5)");
+	setRadius(8);
+	setTransform("translateX(15px)");
+	flush();
+	nmLoop();
+	assert nativeLayoutPasses() === passes, "paint fields schedule no layout";
+	assert nmOpacity(tag) > 0.24 && nmOpacity(tag) < 0.26, "opacity reaches the view";
+	assert nmBackgroundAlpha(tag) > 0.49 && nmBackgroundAlpha(tag) < 0.51, "background reaches the view";
+	assert nmVisualX(tag, 0) === 15, "transform reaches the view";
+	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40, "static and reactive layout fields survive paint writes";
+	setWidth(60);
+	flush();
+	nmLoop();
+	assert nativeLayoutPasses() > passes && nmLayoutWidth(tag) === 60, "a layout field lays out";
+	assert nmOpacity(tag) > 0.24 && nmOpacity(tag) < 0.26, "the full write keeps the painted opacity";
+	nmTeardown();
+}
+
+test "setStyleProp repaints a paint field without a layout pass and lays out a layout field" {
+	const native = createNativeHost();
+	const host = native.host;
+	const v = host.createElement("View");
+	host.setStyle(v, { width: 100, height: 40 });
+	host.addEvent(v, "onPress", (e: NeonEvent): void => {});
+	const tag = nmLastPressableTag();
+	host.append(native.rootNode, v);
+	const setProp = host.setStyleProp as (node: HostNode, name: string, value: StyleValue) => void;
+	const passes = nativeLayoutPasses();
+	setProp(v, "opacity", 0.5);
+	setProp(v, "backgroundColor", "rgba(0, 255, 0, 0.5)");
+	setProp(v, "transform", "translateX(15px)");
+	assert nativeLayoutPasses() === passes, "paint fields schedule no layout";
+	assert nmOpacity(tag) > 0.49 && nmOpacity(tag) < 0.51 && nmVisualX(tag, 0) === 15, "paint reaches the view";
+	setProp(v, "width", 60);
+	assert nativeLayoutPasses() > passes && nmLayoutWidth(tag) === 60 && nmLayoutHeight(tag) === 40, "a layout field lays out over the static fields";
+	nmTeardown();
 }
