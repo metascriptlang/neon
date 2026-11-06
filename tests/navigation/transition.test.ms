@@ -1,11 +1,12 @@
 import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { neonEvent } from "../../src/render/event";
-import { ManualFrames } from "../../src/animation/frame";
+import { ManualFrames, framePending } from "../../src/animation/frame";
 import { Style } from "../../src/render/style";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith, fireTouch } from "../../src/render/host";
 import { View, Text } from "../../src/components/primitives";
 import {
+	Navigation,
 	NavigationContainer,
 	NavigationContainerRef,
 	ScreenProps,
@@ -35,7 +36,10 @@ interface NavParams {
 
 const Stack = createStackNavigator<NavParams>();
 
+let shownLast: Navigation<NavParams> | null = null;
+
 function Named(props: ScreenProps<NavParams>): NeonNode {
+	shownLast = props.navigation;
 	return <View><Text>{"screen " + props.route.name}</Text></View>;
 }
 
@@ -124,6 +128,51 @@ test "a pop slides the screen out to the right and unmounts it when it is gone" 
 	settle();
 	list = frames(root);
 	assert list.length === 1 && shown(list[0]), "only Home is left";
+}
+
+test "a screen restored by key during its exit slides back in, and a later pop slides it out" {
+	const ref = createNavigationContainerRef();
+	const root = mount(ref);
+	ref.navigate("Detail");
+	flush();
+	settle();
+	const saved = ref.getRootState();
+	ref.goBack();
+	flush();
+	clock.step(steps(STACK_DURATION / 2));
+	ref.resetRoot(saved);
+	flush();
+	let list = frames(root);
+	assert list.length === 2, "one Detail, not the exiting one beside it: " +
+		list.length.toString();
+	clock.step(2);
+	const entering = translation(list[1]);
+	assert entering > 0 && entering < 400, "slides in " + entering.toString();
+	settle();
+	assert transformOf(list[1]) === "none", "settled: " + transformOf(list[1]);
+	ref.goBack();
+	flush();
+	list = frames(root);
+	assert list.length === 2, "the pop animates the restored screen out";
+	clock.step(steps(STACK_DURATION / 2));
+	const leaving = translation(list[1]);
+	assert leaving > 0 && leaving < 400, "slides out " + leaving.toString();
+	settle();
+	assert frames(root).length === 1, "only Home is left";
+}
+
+test "a screen replaced while it slides in stops its animation" {
+	const ref = createNavigationContainerRef();
+	const root = mount(ref);
+	settle();
+	ref.navigate("Detail");
+	flush();
+	clock.step(2);
+	assert framePending(), "Detail slides in";
+	(shownLast as Navigation<NavParams>).replace("Still");
+	flush();
+	assert frames(root).length === 2, "Home and Still";
+	assert !framePending(), "the replaced screen's motion no longer ticks";
 }
 
 let mounts = "";

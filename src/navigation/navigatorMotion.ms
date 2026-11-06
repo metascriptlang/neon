@@ -41,6 +41,13 @@ function contains<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	return false;
 }
 
+function holdsKey<P>(list: Navigation<P>[], key: string): boolean {
+	for (const item of list) {
+		if (item.route.key === key) { return true; }
+	}
+	return false;
+}
+
 export interface MotionPlan<P> {
 	list: Navigation<P>[];
 	rendered: Navigation<P>[];
@@ -107,6 +114,7 @@ export class NavigatorMotion<P> {
 
 	animateIn(entry: Navigation<P>): void {
 		const motion = this.of(entry);
+		if (motion.exited.peek()) { motion.exited.set(false); }
 		const kind = untrack((): StackAnimation => this.animationOf(entry));
 		if (kind === "none") {
 			motion.animated.set(1);
@@ -136,7 +144,7 @@ export class NavigatorMotion<P> {
 			timing(0, { duration, easing: Easing.in(Easing.cubic) }),
 			(finished: boolean): void => {
 				motion.moving.set(false);
-				motion.exited.set(true);
+				if (finished) { motion.exited.set(true); }
 			},
 		);
 	}
@@ -175,6 +183,7 @@ export class NavigatorMotion<P> {
 		}
 		const leaving: Navigation<P>[] = [];
 		for (const entry of candidates) {
+			if (holdsKey(list, entry.route.key)) { continue; }
 			if (!this.of(entry).exited.get()) { leaving.push(entry); }
 		}
 		let rendered = list;
@@ -187,6 +196,14 @@ export class NavigatorMotion<P> {
 		return { list, rendered, focused, leaving, entering, halted, epoch };
 	}
 
+	release(key: string): void {
+		const known = this.motions.get(key);
+		if (known === null) { return; }
+		this.motions.delete(key);
+		const screen = known as ScreenMotion;
+		if (!screen.animated.disposed) { screen.animated.dispose(); }
+	}
+
 	run(plan: MotionPlan<P>, prev: MotionPlan<P> | null): void {
 		for (const entry of plan.halted) { this.of(entry).animated.cancel(); }
 		const applied = prev === null ? [] as Navigation<P>[] : prev.leaving;
@@ -197,7 +214,7 @@ export class NavigatorMotion<P> {
 		if (entering !== null) { this.animateIn(entering as Navigation<P>); }
 		if (prev !== null) {
 			for (const entry of prev.rendered) {
-				if (!contains(plan.rendered, entry)) { this.motions.delete(entry.route.key); }
+				if (!holdsKey(plan.rendered, entry.route.key)) { this.release(entry.route.key); }
 			}
 		}
 	}
