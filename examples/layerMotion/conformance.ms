@@ -23,7 +23,7 @@ import {
 import { conformanceCases } from "pulse/src/conformanceCases";
 import { CONFORMANCE_GOLDEN } from "pulse/src/conformanceGolden";
 import { CONFORMANCE_FRAME_MS } from "pulse/src/headless";
-import { MotionDocument } from "pulse/src/document";
+import { MotionDocument, linearKeyframe } from "pulse/src/document";
 import { MotionBinding, MotionPlayer, motionOptions } from "pulse/src/player";
 import { MotionPolicy } from "pulse/src/policy";
 import { Composition } from "pulse/src/target";
@@ -206,10 +206,54 @@ class CoreAnimationConformance {
 	}
 }
 
+// A clip handed over at its half while the app thread stops ticking: the layer must hold the end once the
+// remaining half has played, where a timeOffset playhead would wrap back to the clip's start.
+function midClipHandover(): string[] {
+	const stage = new Stage([{ name: "box.x", initial: 0 }], new MotionPolicy());
+	const track = [linearKeyframe("a", 0, 0), linearKeyframe("b", 1000, 100)];
+	const document: MotionDocument = {
+		version: 1,
+		root: "main",
+		clips: [{
+			id: "main",
+			duration: 1000,
+			tracks: [{ slot: "box", property: "x", kind: track[0].value.kind, keyframes: track }],
+			placements: [],
+			labels: [],
+		}],
+	};
+	const player = stage.player(document, {
+		delay: 0,
+		repeat: 0,
+		repeatDelay: 0,
+		yoyo: false,
+		timeScale: 1,
+		paused: true,
+		composition: Composition.Replace,
+		timeline: null,
+	}, (event: string): void => {});
+	stage.advanceTo(16);
+	player.seek(500, true);
+	player.play();
+	const failures: string[] = [];
+	const samples: float64[][] = [[300, 80], [700, 100]];
+	let played: float64 = 0;
+	for (const sample of samples) {
+		views.step(sample[0] - played);
+		played = sample[0];
+		const shown = stage.read("box.x");
+		console.log(`mid-clip handover +${sample[0]} ms: presented ${shown.toFixed(3)}, want ${sample[1]}`);
+		if (Math.abs(shown - sample[1]) > 0.5) { failures.push(`mid-clip handover at +${sample[0]} ms shows ${shown}, want ${sample[1]}`); }
+	}
+	player.dispose();
+	stage.close();
+	return failures;
+}
+
 function run(): void {
 	views.step(0);
 	const results = runConformance(new CoreAnimationConformance().adapter, conformanceCases(), CONFORMANCE_GOLDEN);
-	const failures = conformanceReport("neon core animation", results);
+	const failures = conformanceReport("neon core animation", results).concat(midClipHandover());
 	for (const failure of failures) { console.log("FAIL " + failure); }
 	exit(failures.length as int32);
 }
