@@ -1,9 +1,8 @@
 import { requestFrame, frameNow } from "../animation/frame";
 import { Easing, EasingFunction, bezier } from "pulse/src/easing";
-import { MotionPolicy } from "pulse/src/policy";
 import { createSpring, position, springByDuration } from "pulse/src/spring";
 import { AnimatedValue, delay, timing } from "pulse/src/value";
-import { neonClock } from "./neon";
+import { hostMotionPolicy, neonClock } from "./neon";
 
 when (js && !server) {
 	import { animateDomLayout } from "../platform/browser/layoutAnimation";
@@ -203,7 +202,7 @@ export function runLayoutTween(
 	step: (progress: number) => void,
 	finished: () => void,
 ): void {
-	const progress = new AnimatedValue(0, neonClock(), new MotionPolicy());
+	const progress = new AnimatedValue(0, neonClock(), hostMotionPolicy());
 	progress.subscribe(step);
 	step(0);
 	const tween = timing(1, { duration: phaseOf.duration, easing: phaseOf.curve });

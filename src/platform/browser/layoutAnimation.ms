@@ -1,4 +1,5 @@
 import { LayoutAnimationPlan, LayoutPhase } from "../../motion/layoutAnimation";
+import { hostMotionPolicy } from "../../motion/neon";
 import { supportsLinearEasing } from "../../motion/waapi";
 import { cssLinear, sampleEasing } from "pulse/src/progress";
 import { HTMLElement } from "../../render/htmlElements";
@@ -113,6 +114,7 @@ function appear(el: HTMLElement, phase: LayoutPhase): void {
 // RN-web leaves LayoutAnimation a no-op; this measures every element before
 // and after the change and transitions the sizes that moved (WORKAROUND.md N7).
 export function animateDomLayout(plan: LayoutAnimationPlan): void {
+	if (hostMotionPolicy().reducedMotion) { return; }
 	const before = snapshot();
 	requestAnimationFrame((time: number): void => {
 		const created: HTMLElement[] = [];
