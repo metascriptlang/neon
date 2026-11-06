@@ -190,6 +190,7 @@ function sendKey(s: SokolInput, e: AppEvent, action: AreaKeyAction, text: string
 		consumedMods: consumed,
 		unshifted: unshiftedOf(e.keyCode),
 		text,
+		imeHandled: false,
 	};
 	deliverKey(s.area, key, name.code);
 }

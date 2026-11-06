@@ -208,6 +208,7 @@ function areaKey(e: KeyEvent): AreaKeyEvent {
 		consumedMods: (e.consumedMods as uint16) as BitSet<AreaKeyMod>,
 		unshifted: e.unshifted,
 		text: e.text,
+		imeHandled: e.imeHandled,
 	};
 }
 

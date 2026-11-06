@@ -28,6 +28,7 @@ export struct AreaKeyEvent {
 	consumedMods: BitSet<AreaKeyMod>;
 	unshifted: int32;
 	text: string;
+	imeHandled: boolean;
 }
 
 export enum AreaPointerKind {

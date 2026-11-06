@@ -247,6 +247,7 @@ export function areaKeyEvent(e: AreaKeyEvent, code: string, composing: boolean):
 	ev.consumedMods = (e.consumedMods as uint16) as number;
 	ev.unshifted = e.unshifted;
 	ev.text = e.text;
+	ev.imeHandled = e.imeHandled;
 	if (printable(e.text)) { ev.key = e.text; }
 	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32)) { ev.key = String.fromCharCode(e.unshifted); }
 	else { ev.key = code; }

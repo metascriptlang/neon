@@ -3,7 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Show } from "../../src/macros/ui/flow";
 import { render } from "../../src/render/host";
-import { NeonEvent, DOM_DELTA_PIXEL } from "../../src/render/event";
+import { NeonEvent, DOM_DELTA_PIXEL, neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import {
 	VoidAreaHandle,
@@ -205,18 +205,27 @@ test "a later pass that brings a View to the window is refused when the View rea
 }
 
 function key(action: AreaKeyAction, text: string, mods: BitSet<AreaKeyMod>): AreaKeyEvent {
-	return { action, key: 20, scancode: 30, mods, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
+	return { action, key: 20, scancode: 30, mods, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text, imeHandled: false };
 }
 
 test "a held modifier keeps key as the unshifted character for punctuation and digits, as the DOM does" {
 	const ctrl = (0 as BitSet<AreaKeyMod>).incl(AreaKeyMod.Ctrl);
 	const at = (code: string, unshifted: int32): string =>
-		areaKeyEvent({ action: AreaKeyAction.Press, key: 0, scancode: 0, mods: ctrl, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted, text: "" }, code, false).key;
+		areaKeyEvent({ action: AreaKeyAction.Press, key: 0, scancode: 0, mods: ctrl, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted, text: "", imeHandled: false }, code, false).key;
 	assert at("Slash", 47 as int32) === "/", "ctrl+/ gives /";
 	assert at("Period", 46 as int32) === ".", "ctrl+. gives .";
 	assert at("Digit1", 49 as int32) === "1", "ctrl+1 gives 1";
 	assert at("KeyC", 99 as int32) === "c", "ctrl+c still gives c";
 	assert at("ArrowLeft", 0 as int32) === "ArrowLeft", "a key with no character keeps its name";
+}
+
+test "a key the input method took says so on keydown and keyup, so a terminal does not encode it twice" {
+	const took = (action: AreaKeyAction, imeHandled: boolean): boolean =>
+		areaKeyEvent({ action, key: 20, scancode: 30, mods: 0 as BitSet<AreaKeyMod>, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text: "a", imeHandled }, "KeyA", false).imeHandled;
+	assert took(AreaKeyAction.Press, true), "keydown carries imeHandled";
+	assert took(AreaKeyAction.Release, true), "keyup carries imeHandled";
+	assert !took(AreaKeyAction.Press, false), "a key the input method left alone is not marked";
+	assert !neonEvent("keydown").imeHandled, "a host that does not report it leaves false";
 }
 
 test "window input reaches the handle's subscribers and the focused node alike" {

@@ -71,7 +71,7 @@ function mountDetail(areas: WindowArea[], ref: NavigationContainerRef): Dispose 
 const NO_MODS = 0 as BitSet<AreaKeyMod>;
 
 function press(area: WindowArea, code: string, mods: BitSet<AreaKeyMod>): void {
-	const e: AreaKeyEvent = { action: AreaKeyAction.Press, key: 0 as int32, scancode: 0 as int32, mods, consumedMods: NO_MODS, unshifted: 0 as int32, text: "" };
+	const e: AreaKeyEvent = { action: AreaKeyAction.Press, key: 0 as int32, scancode: 0 as int32, mods, consumedMods: NO_MODS, unshifted: 0 as int32, text: "", imeHandled: false };
 	deliverKey(area, e, code);
 	flush();
 }

@@ -54,7 +54,7 @@ test "context and signals cross into the area" {
 }
 
 function keyEvent(text: string): AreaKeyEvent {
-	return { action: AreaKeyAction.Press, key: 65, scancode: 30, mods: 0 as BitSet<AreaKeyMod>, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
+	return { action: AreaKeyAction.Press, key: 65, scancode: 30, mods: 0 as BitSet<AreaKeyMod>, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text, imeHandled: false };
 }
 
 test "the ref of a Void receives the area handle, not the outer node, after the children mount" {
