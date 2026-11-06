@@ -11,7 +11,7 @@
 #include "activityIndicator.h"
 #include "automation.h"
 #include "composition.h"
-#include "layerCurve.h"
+#include "viewLayer.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
 #include "image.h"
@@ -37,9 +37,7 @@ struct View {
 	View *parent = nullptr;
 	std::vector<View *> children;
 	float x = 0, y = 0, w = 0, h = 0;
-	float scaleX = 1, scaleY = 1, translateX = 0, translateY = 0, rotation = 0;
-	float opacity = 1;
-	bool transformed = false;
+	ViewLayer layer;
 	float radius = 0;
 	bool pressable = false;
 	std::map<std::string, std::string> accessibility;
@@ -329,21 +327,6 @@ void applyScroll(View *view) {
 	if (s->moved) changed();
 }
 
-void centredMatrix(View *view, float scaleX, float scaleY, float translateX, float translateY, float degrees, float m[6]) {
-	float width = roundf((view->x + view->w) * g_scale) - roundf(view->x * g_scale);
-	float height = roundf((view->y + view->h) * g_scale) - roundf(view->y * g_scale);
-	float radians = degrees * 3.14159265358979f / 180.0f;
-	float c = cosf(radians), s = sinf(radians);
-	float m11 = scaleX * c, m12 = scaleX * s, m21 = -scaleY * s, m22 = scaleY * c;
-	float cx = width / 2, cy = height / 2;
-	m[0] = m11;
-	m[1] = m12;
-	m[2] = m21;
-	m[3] = m22;
-	m[4] = cx + translateX * g_scale - (cx * m11 + cy * m21);
-	m[5] = cy + translateY * g_scale - (cx * m12 + cy * m22);
-}
-
 void applyGeometry(View *view) {
 	float left = roundf(view->x * g_scale);
 	float top = roundf(view->y * g_scale);
@@ -359,13 +342,7 @@ void applyGeometry(View *view) {
 	if (view->input) queueInput(view);
 	if (view->picture) queuePicture(view);
 	if (view->toggle) view->toggle->Layout(view->w, view->h, g_scale);
-
-	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
-	if (identity && !view->transformed) return;
-	view->transformed = !identity;
-	float m[6];
-	centredMatrix(view, view->scaleX, view->scaleY, view->translateX, view->translateY, view->rotation, m);
-	view->visual->TransformMatrix(m);
+	placeLayer(view->visual, view->layer, right - left, bottom - top, g_scale);
 }
 
 View *as(void *view) { return static_cast<View *>(view); }
@@ -399,25 +376,25 @@ void rescale(View *parent) {
 }
 
 bool toLocal(const View *view, float px, float py, float *lx, float *ly) {
-	float radians = view->rotation * 3.14159265358979f / 180.0f;
+	float radians = view->layer.rotation * 3.14159265358979f / 180.0f;
 	float c = cosf(radians), s = sinf(radians);
-	float m11 = view->scaleX * c, m12 = view->scaleX * s, m21 = -view->scaleY * s, m22 = view->scaleY * c;
+	float m11 = view->layer.scaleX * c, m12 = view->layer.scaleX * s, m21 = -view->layer.scaleY * s, m22 = view->layer.scaleY * c;
 	float det = m11 * m22 - m12 * m21;
 	if (det == 0) return false;
 	float cx = view->w / 2, cy = view->h / 2;
-	float dx = px - (view->x + cx + view->translateX), dy = py - (view->y + cy + view->translateY);
+	float dx = px - (view->x + cx + view->layer.translateX), dy = py - (view->y + cy + view->layer.translateY);
 	*lx = cx + (dx * m22 - dy * m21) / det;
 	*ly = cy + (dy * m11 - dx * m12) / det;
 	return true;
 }
 
 void toParent(const View *view, float lx, float ly, float *px, float *py) {
-	float radians = view->rotation * 3.14159265358979f / 180.0f;
+	float radians = view->layer.rotation * 3.14159265358979f / 180.0f;
 	float c = cosf(radians), s = sinf(radians);
-	float m11 = view->scaleX * c, m12 = view->scaleX * s, m21 = -view->scaleY * s, m22 = view->scaleY * c;
+	float m11 = view->layer.scaleX * c, m12 = view->layer.scaleX * s, m21 = -view->layer.scaleY * s, m22 = view->layer.scaleY * c;
 	float cx = view->w / 2, cy = view->h / 2;
-	*px = view->x + cx + view->translateX + (lx - cx) * m11 + (ly - cy) * m21;
-	*py = view->y + cy + view->translateY + (lx - cx) * m12 + (ly - cy) * m22;
+	*px = view->x + cx + view->layer.translateX + (lx - cx) * m11 + (ly - cy) * m21;
+	*py = view->y + cy + view->layer.translateY + (lx - cx) * m12 + (ly - cy) * m22;
 	if (view->parent && view->parent->scroller) {
 		*px -= view->parent->scroller->x;
 		*py -= view->parent->scroller->y;
@@ -1346,19 +1323,12 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 }
 
 void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
-	View *v = as(view);
-	v->scaleX = scaleX;
-	v->scaleY = scaleY;
-	v->translateX = translateX;
-	v->translateY = translateY;
-	applyGeometry(v);
+	setLayerTransform(as(view)->visual, as(view)->layer, scaleX, scaleY, translateX, translateY);
 	changed();
 }
 
 void niSetRotation(void *view, float degrees) {
-	View *v = as(view);
-	v->rotation = degrees;
-	applyGeometry(v);
+	setLayerRotation(as(view)->visual, as(view)->layer, degrees);
 	changed();
 }
 
@@ -1384,8 +1354,7 @@ void niSetCornerRadius(void *view, float radius) {
 }
 
 void niSetOpacity(void *view, float opacity) {
-	as(view)->opacity = opacity;
-	as(view)->visual->Opacity(opacity);
+	setLayerOpacity(as(view)->visual, as(view)->layer, opacity);
 	changed();
 }
 
@@ -1401,30 +1370,19 @@ static int64_t layerWidth(int32_t property) {
 
 void niLayerWrite(void *view, int32_t property, const double *values, int64_t count) {
 	if (count != layerWidth(property)) fail("niLayerWrite: the value count does not match the property");
-	View *v = as(view);
-	if (property == 0) {
-		niSetOpacity(view, (float)values[0]);
-		return;
-	}
-	v->scaleX = (float)values[0];
-	v->scaleY = (float)values[1];
-	v->translateX = (float)values[2];
-	v->translateY = (float)values[3];
-	v->rotation = (float)values[4];
-	v->transformed = true;
-	applyGeometry(v);
+	writeLayer(as(view)->visual, as(view)->layer, property, values);
 	changed();
 }
 
 double niLayerRead(void *view, int32_t component) {
-	View *v = as(view);
+	const ViewLayer &layer = as(view)->layer;
 	switch (component) {
-	case 0: return v->opacity;
-	case 1: return v->scaleX;
-	case 2: return v->scaleY;
-	case 3: return v->translateX;
-	case 4: return v->translateY;
-	case 5: return v->rotation;
+	case 0: return layer.opacity;
+	case 1: return layer.scaleX;
+	case 2: return layer.scaleY;
+	case 3: return layer.translateX;
+	case 4: return layer.translateY;
+	case 5: return layer.rotation;
 	}
 	fail("niLayerRead: layer component out of range");
 }
@@ -1436,31 +1394,14 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	if (keyCount < 2 || valueCount != keyCount * width) fail("niLayerAnimate: keys and values do not match");
 	if (!(durationMs > 0) || !(speed > 0)) fail("niLayerAnimate: duration and speed must be positive");
 	View *v = as(view);
-	if (property == 0) {
-		std::vector<double> column(values, values + keyCount);
-		v->visual->AnimatedOpacity(curveOf(periodOf(keyTimes, keyCount, column, durationMs, autoreverses != 0),
-			repeatCount, startMs, offsetMs, speed), lagMs);
-	} else {
-		Curve curves[6];
-		transformCurves(keyTimes, keyCount, values, durationMs, repeatCount, autoreverses != 0, startMs, offsetMs, speed,
-			[v](const double *at, float m[6]) {
-				centredMatrix(v, (float)at[0], (float)at[1], (float)at[2], (float)at[3], (float)at[4], m);
-			},
-			curves);
-		v->visual->AnimatedTransform(curves, lagMs);
-	}
+	handLayer(v->visual, v->layer, property, keyTimes, keyCount, values, durationMs, repeatCount, autoreverses != 0,
+		startMs, offsetMs, speed, lagMs);
 	changed();
 }
 
 void niLayerRemove(void *view, int32_t property) {
-	View *v = as(view);
-	if (property == 0) {
-		v->visual->Opacity(v->opacity);
-	} else {
-		float m[6];
-		centredMatrix(v, v->scaleX, v->scaleY, v->translateX, v->translateY, v->rotation, m);
-		v->visual->TransformMatrix(m);
-	}
+	(void)layerWidth(property);
+	releaseLayer(as(view)->visual, as(view)->layer, property);
 	changed();
 }
 
