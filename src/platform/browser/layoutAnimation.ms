@@ -175,27 +175,23 @@ export function animateDomLayout(plan: LayoutAnimationPlan): void {
 	if (hostMotionPolicy().reducedMotion) { return; }
 	const before = snapshot();
 	requestAnimationFrame((time: number): void => {
+		const resized: Resize[] = [];
 		const created: HTMLElement[] = [];
 		for (const el of elements()) {
 			if (before.has(el)) {
 				if (plan.update === null || resizing(el)) { continue; }
 				const from = before.get(el) as Measured;
 				const to: Measured = { width: el.offsetWidth, height: el.offsetHeight };
-				if (to.width !== from.width || to.height !== from.height) {
-					const change: Resize = { el, from, to };
-					startResize(change);
-					reflowSink += el.offsetHeight;
-					endResize(change, plan.update as LayoutPhase);
-				}
+				if (to.width !== from.width || to.height !== from.height) { resized.push({ el, from, to }); }
 				continue;
 			}
 			const parent = el.parentElement;
 			if (plan.create !== null && parent !== null && before.has(parent as HTMLElement)) { created.push(el); }
 		}
-		for (const el of created) {
-			startAppear(el, plan.create as LayoutPhase);
-			reflowSink += el.offsetHeight;
-			endAppear(el, plan.create as LayoutPhase);
-		}
+		for (const change of resized) { startResize(change); }
+		for (const el of created) { startAppear(el, plan.create as LayoutPhase); }
+		reflowSink += document.body.offsetHeight;
+		for (const change of resized) { endResize(change, plan.update as LayoutPhase); }
+		for (const el of created) { endAppear(el, plan.create as LayoutPhase); }
 	});
 }

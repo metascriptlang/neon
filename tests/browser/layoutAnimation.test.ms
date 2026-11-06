@@ -21,6 +21,10 @@ extern class HTMLElement {
 	extern remove(): void;
 }
 
+extern function countForcedLayouts(): void from
+	"(() => { let s = globalThis.__neonLayoutReads; if (!s) { s = { forced: 0, on: false, observer: new MutationObserver(() => {}) }; globalThis.__neonLayoutReads = s; s.observer.observe(document.body, { attributes: true, childList: true, subtree: true }); for (const name of ['offsetWidth', 'offsetHeight']) { const d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name); Object.defineProperty(HTMLElement.prototype, name, { ...d, get() { if (s.on && s.observer.takeRecords().length > 0) { s.forced += 1; } return d.get.call(this); } }); } } s.observer.takeRecords(); s.forced = 0; s.on = true; })()";
+extern function forcedLayouts(): number from
+	"(() => { const s = globalThis.__neonLayoutReads; s.on = false; return s.forced; })()";
 extern function preferReducedMotion(): () => void from
 	"(() => { const real = globalThis.matchMedia; globalThis.matchMedia = (q) => q === '(prefers-reduced-motion: reduce)' ? { matches: true, media: q } : real.call(globalThis, q); return () => { globalThis.matchMedia = real; }; })()";
 
@@ -71,6 +75,31 @@ test "a configureNext over a running resize ends at the content's size, not a he
 	assert el.style.height === "" && el.style.transition === "" && el.style.overflow === "",
 		"the original inline style is back: " + el.style.height + "|" + el.style.transition + "|" + el.style.overflow;
 	assert el.offsetHeight === 160, "follows its content: " + el.offsetHeight.toString();
+	el.remove();
+}
+
+test "the frame that starts a LayoutAnimation forces layout a fixed number of times, whatever the count of views" {
+	const [open, setOpen] = createSignal(false);
+	const outer: HostNode[] = [];
+	render(element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+		<View style={{ height: open() ? 30 : 10 }} />
+	</View>), domHost(), documentBody());
+	const el = probe(outer[0]);
+	countForcedLayouts();
+	LayoutAnimation.configureNext(LayoutAnimation.create(100, "linear", "opacity"));
+	setOpen(true);
+	await sleepAsync(50);
+	const forced = forcedLayouts();
+	assert forced <= 2, "forced layouts for nine resized views: " + forced.toString();
+	await sleepAsync(200);
+	assert el.offsetHeight === 240, "lands: " + el.offsetHeight.toString();
 	el.remove();
 }
 
