@@ -1892,8 +1892,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	animation.repeatCount = (float)repeatCount;
 	animation.autoreverses = autoreverses != 0;
 	animation.speed = (float)speed;
-	animation.timeOffset = offsetMs / 1000.0;
-	animation.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] + startMs / 1000.0;
+	animation.beginTime = niLayerBeginTime([layer convertTime:CACurrentMediaTime() fromLayer:nil], startMs, offsetMs, speed);
 	animation.fillMode = kCAFillModeBackwards;
 	animation.removedOnCompletion = YES;
 	[layer addAnimation:animation forKey:layerKey(property)];
@@ -1915,7 +1914,7 @@ void niLayerRemove(void *view, int32_t property) {
 static CFTimeInterval layerTrackEnd(CAKeyframeAnimation *animation) {
 	float repeats = animation.repeatCount > 0 ? animation.repeatCount : 1;
 	double active = animation.duration * repeats * (animation.autoreverses ? 2 : 1);
-	return animation.beginTime + (active - animation.timeOffset) / animation.speed;
+	return animation.beginTime + active / animation.speed;
 }
 
 // AppKit drops a layer's animations when its view leaves the window (macOS 26, 2026-11-01); re-add them on

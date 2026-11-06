@@ -765,7 +765,7 @@ typedef struct LayerRecord {
 	int64_t keyCount, valueCount;
 	double *keyTimes, *values;
 	double timing[6];
-	double beginMs;
+	double beginTime;
 } LayerRecord;
 
 static LayerRecord *g_layers;
@@ -841,7 +841,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	r->valueCount = valueCount;
 	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
 	memcpy(r->timing, timing, sizeof timing);
-	r->beginMs = g_layerNowMs;
+	r->beginTime = niLayerBeginTime(g_layerNowMs / 1000.0, startMs, offsetMs, speed);
 	r->live = 1;
 	g_layerAnimates++;
 }
@@ -852,19 +852,19 @@ void niLayerRemove(void *view, int32_t property) {
 	g_layerRemoves++;
 }
 
-// Core Animation's presentation of the bridge's CAKeyframeAnimation (macos/bridge.m niLayerAnimate):
-// linear keys, fillMode backwards, removedOnCompletion, at the clock nmLayerSetNow last set.
+// Core Animation's presentation of the CAKeyframeAnimation the bridges build (macos/bridge.m niLayerAnimate):
+// linear keys, fillMode backwards, removedOnCompletion, beginTime from niLayerBeginTime, at the layer time
+// nmLayerSetNow last set: active for duration * repeatCount after beginTime (twice that when it autoreverses).
 double niLayerPresented(void *view, int32_t component) {
 	int property = component == 0 ? 0 : 1;
 	LayerRecord *r = layerRecord(live(view, "niLayerPresented"), property, 0);
 	if (!r || !r->live) return niLayerRead(view, component);
-	double duration = r->timing[0], repeat = r->timing[1], startMs = r->timing[3];
-	double offset = r->timing[4], speed = r->timing[5];
+	double duration = r->timing[0] / 1000.0, repeat = r->timing[1] > 0 ? r->timing[1] : 1, speed = r->timing[5];
 	double period = r->timing[2] != 0 ? duration * 2 : duration;
-	double elapsed = g_layerNowMs - r->beginMs - startMs;
-	double active = elapsed < 0 ? offset : elapsed * speed + offset;
-	if (active >= repeat * period) return niLayerRead(view, component);
-	double within = active - period * (double)(int64_t)(active / period);
+	double elapsed = (g_layerNowMs / 1000.0 - r->beginTime) * speed;
+	if (elapsed >= repeat * period) return niLayerRead(view, component);
+	double local = elapsed < 0 ? 0 : elapsed;
+	double within = local - period * (double)(int64_t)(local / period);
 	double progress = (within > duration ? period - within : within) / duration;
 	int64_t right = 1;
 	while (right < r->keyCount - 1 && r->keyTimes[right] < progress) right++;

@@ -5,8 +5,8 @@ import { ElementHandle } from "../../src/render/measure";
 import { NeonNode } from "../../src/render/node";
 import { MotionElement, motionElements } from "../../src/motion/waapi";
 import { nativeMotionPlayer } from "../../src/motion/native";
-import { bridgeLayerEngine } from "../../src/platform/native/layerMotion";
-import { installLayerEngine } from "../../src/platform/native/layerEngine";
+import { bridgeLayerEngine, presentedComponent } from "../../src/platform/native/layerMotion";
+import { LayerComponent, installLayerEngine } from "../../src/platform/native/layerEngine";
 import { ManualClock } from "pulse/src/clock";
 import { MotionDocument, MotionTrack, linearKeyframe } from "pulse/src/document";
 import { MotionOptions, MotionPlayer, motionOptions } from "pulse/src/player";
@@ -24,6 +24,7 @@ import {
 	nmLayerKeyTime,
 	nmLayerValue,
 	nmLayerTiming,
+	nmLayerSetNow,
 } from "./nativeBridgeMock.h";
 
 const OPACITY: int32 = 0;
@@ -76,7 +77,13 @@ class Stage {
 		);
 	}
 
+	shownOpacity(atMs: float64): float64 {
+		nmLayerSetNow(atMs);
+		return presentedComponent(nativeViewOf(this.handles[0].node), LayerComponent.Opacity);
+	}
+
 	close(): void {
+		nmLayerSetNow(0);
 		installLayerEngine(null);
 		nmTeardown();
 	}
@@ -224,5 +231,31 @@ test "a player on a scroll source writes the layer model from the scroll offset 
 	stage.clock.advance(16);
 	assert near(nmOpacity(stage.tag), 0.8), "opacity " + nmOpacity(stage.tag).toString();
 	assert nmLayerAnimates() === before, "no layer animation";
+	stage.close();
+}
+
+function handedAtHalf(options: MotionOptions, stage: Stage): float64 {
+	const player = stage.play([ramp("opacity", 0, 1)], options);
+	player.pause();
+	player.seek(500);
+	stage.clock.time = 2000;
+	nmLayerSetNow(2000);
+	player.play();
+	return nmLayerTiming(stage.tag, OPACITY, OFFSET);
+}
+
+test "a handover mid-clip ends with the clip and never replays its start" {
+	const stage = new Stage();
+	assert handedAtHalf(stage.options(), stage) === 500, "handed at the half";
+	assert near(stage.shownOpacity(2300), 0.8), "shown " + stage.shownOpacity(2300).toString();
+	assert stage.shownOpacity(2700) === 1, "after the clip the model shows, not " + stage.shownOpacity(2700).toString();
+	stage.close();
+}
+
+test "a yoyo handed over mid-clip ends where its last leg ends" {
+	const stage = new Stage();
+	assert handedAtHalf({ ...stage.options(), repeat: 1, yoyo: true }, stage) === 500, "handed at the half";
+	assert near(stage.shownOpacity(3200), 0.3), "on the way back " + stage.shownOpacity(3200).toString();
+	assert stage.shownOpacity(3700) === 0, "after the last leg the model shows, not " + stage.shownOpacity(3700).toString();
 	stage.close();
 }

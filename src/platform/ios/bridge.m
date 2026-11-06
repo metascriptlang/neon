@@ -1593,8 +1593,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	animation.repeatCount = (float)repeatCount;
 	animation.autoreverses = autoreverses != 0;
 	animation.speed = (float)speed;
-	animation.timeOffset = offsetMs / 1000.0;
-	animation.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] + startMs / 1000.0;
+	animation.beginTime = niLayerBeginTime([layer convertTime:CACurrentMediaTime() fromLayer:nil], startMs, offsetMs, speed);
 	animation.fillMode = kCAFillModeBackwards;
 	animation.removedOnCompletion = YES;
 	[layer addAnimation:animation forKey:layerKey(property)];
