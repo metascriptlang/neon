@@ -156,6 +156,7 @@ class Stage {
 		player.onStart = (): void => { emit("start"); };
 		player.onRepeat = (): void => { emit("repeat"); };
 		player.onComplete = (): void => { emit("complete"); };
+		player.onInterrupt = (): void => { emit("interrupt"); };
 		player.onReverseComplete = (): void => { emit("reverseComplete"); };
 		return {
 			play: (): void => { player.play(); },
