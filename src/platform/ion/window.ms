@@ -1,5 +1,5 @@
 import {
-	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
+	createWindow, requestX11, windowContentXid, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, WindowOptions, keyName, setTitle,
@@ -64,6 +64,7 @@ const EXIT_NO_WINDOW: int32 = 1;
 const EXIT_FONT_FAILED: int32 = 3;
 const EXIT_VIEW_UNOWNED: int32 = 3;
 const EXIT_SWAPCHAIN_REFUSED: int32 = 4;
+const EXIT_NOT_X11: int32 = 5;
 
 export interface DesktopOptions {
 	title: string;
@@ -243,14 +244,23 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 }
 
 function attachView(owner: Area, width: int32, height: int32): void {
-	owner.view = viewCreate(0 as int64, width, height, owner.area.scale);
-	const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
-	if (visual === null) {
-		console.log(`neon: window ${owner.win.id} refused the swapchain of view ${owner.view}`);
-		exit(EXIT_SWAPCHAIN_REFUSED);
+	when (linux) {
+		const xid = windowContentXid(owner.win);
+		if (xid == (0 as int64)) {
+			console.log(`neon: window ${owner.win.id} has no X11 content window for its Void view`);
+			exit(EXIT_SWAPCHAIN_REFUSED);
+		}
+		owner.view = viewCreate(xid, width, height, owner.area.scale);
+	} else {
+		owner.view = viewCreate(0 as int64, width, height, owner.area.scale);
+		const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
+		if (visual === null) {
+			console.log(`neon: window ${owner.win.id} refused the swapchain of view ${owner.view}`);
+			exit(EXIT_SWAPCHAIN_REFUSED);
+		}
+		owner.visual = visual;
+		commit(owner.win);
 	}
-	owner.visual = visual;
-	commit(owner.win);
 }
 
 function showWithFirstFrame(win: Window): void {
@@ -350,16 +360,20 @@ function ionWindowHost(win: Window): Host {
 				const owner = areas[i];
 				if (owner.area !== area) { continue; }
 				areas.splice(i, 1);
-				if (owner.visual !== null) {
-					voidVisualDetach(windowRoot(win), owner.visual);
-					owner.visual = null;
-					commit(win);
-				}
-				if (owner.view === ViewInvalid) { return; }
-				if (currentView() === owner.view) {
-					retiredViews.push(owner.view);
+				when (linux) {
+					if (owner.view !== ViewInvalid) { viewDestroy(owner.view); }
 				} else {
-					viewDestroy(owner.view);
+					if (owner.visual !== null) {
+						voidVisualDetach(windowRoot(win), owner.visual);
+						owner.visual = null;
+						commit(win);
+					}
+					if (owner.view === ViewInvalid) { return; }
+					if (currentView() === owner.view) {
+						retiredViews.push(owner.view);
+					} else {
+						viewDestroy(owner.view);
+					}
 				}
 				return;
 			}
@@ -376,6 +390,12 @@ export function windowOptionsOf(opts: DesktopOptions): WindowOptions {
 }
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
+	when (linux) {
+		if (!requestX11()) {
+			console.log("neon: Void draws only on an X11 display (XWayland included); this display is not X11");
+			return EXIT_NOT_X11;
+		}
+	}
 	const win = createWindow("main", windowOptionsOf(opts));
 	if (win === null) { return EXIT_NO_WINDOW; }
 	const frameWin: Window = win;
