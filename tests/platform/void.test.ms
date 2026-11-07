@@ -493,3 +493,20 @@ test "a frame whose tree has no layout change since the last layout runs no layo
 	vh.layout(100.0, 101.0, 2.0);
 	assert b.ref.local().y === 30.0, `a removed attribute relays out: ${b.ref.local().y}`;
 }
+
+test "measuring a dirty tree relays it out at the scale it was last laid out at" {
+	const vh = createVoidHost();
+	render(element(
+		<View style={{ width: 100 }}>
+			<View style={{ height: 17.5 }} />
+			<View style={{ height: 17.5 }} />
+		</View>
+	), vh.host, vh.root);
+	const column = vh.tree.childrenOf(vh.root as VoidNode)[0];
+	const second = vh.tree.childrenOf(column)[1];
+	vh.layout(100.0, 100.0, 2.0);
+	vh.host.setStyle(column, { width: 90 });
+	const measure = vh.host.measureInWindow as (node: HostNode) => Result<MeasureRect, MeasureError>;
+	const got = measure(second);
+	assert got.ok && got.value.y === 17.5, `2x half point kept: ${got.ok ? got.value.y : -1}`;
+}

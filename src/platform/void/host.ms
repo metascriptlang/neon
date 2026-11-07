@@ -1839,7 +1839,7 @@ export function createVoidHostWith(
 	const settled = (node: HostNode): VoidNode | null => {
 		const n = node as VoidNode;
 		if (n.disposed || !attached(n)) { return null; }
-		if (!laying && laidWidth >= 0.0 && wasDirty()) { layout(laidWidth, laidHeight); }
+		if (!laying && laidWidth >= 0.0 && wasDirty()) { layout(laidWidth, laidHeight, laidScale); }
 		return n.disposed || !attached(n) ? null : n;
 	};
 
