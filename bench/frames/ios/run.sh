@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Frame delivery on iOS: build bench/frames Release, launch it with its console attached, print the line it logs
 # once the measured 5 s are over.
-# Usage: bench/frames/ios/run.sh <device-udid | sim> <label>   (from the Neon checkout; ION defaults to ../ion)
+# Usage: [FRAMES_PROJECT=loadedProject] bench/frames/ios/run.sh <device-udid | sim> <label>   (from the Neon checkout; ION defaults to ../ion)
 set -eu
 cd "$(dirname "$0")/../../.."
 target=$1
@@ -11,7 +11,7 @@ r=/private/tmp/neon-bench-frames/$label-$(date +%H%M%S)
 mkdir -p "$r/home"
 step() { n=$1; shift; if ! "$@" > "$r/$n.log" 2>&1; then echo "FAIL $n: $r/$n.log"; tail -15 "$r/$n.log"; exit 1; fi; }
 step install-ion env HOME="$r/home" msc install -g "@metascript/ion@file:$ION"
-step generate env HOME="$r/home" "$r/home/.metascript/bin/ion" generate bench/frames/ios/project.ms "$r/xcode"
+step generate env HOME="$r/home" "$r/home/.metascript/bin/ion" generate bench/frames/ios/${FRAMES_PROJECT:-project}.ms "$r/xcode"
 if [ "$target" = sim ]; then
 	runtime=$(xcrun simctl list runtimes available | sed -n 's/^iOS .* - \(com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]*\)$/\1/p' | tail -1)
 	device=$(xcrun simctl create "Neon frames bench" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro "$runtime")

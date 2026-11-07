@@ -1,6 +1,7 @@
 // Frame delivery: a box moves on a main-thread frame loop (what Android, Void and Pulse values run),
 // and the times the frame clock hands it are summarised. 1 s warm-up, then 5 s measured.
 // missed = vsyncs the loop skipped; jitter = how far a step strays from a whole number of periods.
+// FramesLoaded adds a 5 ms timer that keeps main busy 0-4 ms (seeded), as data arriving between frames does.
 import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { View, Text } from "../../src/components/primitives";
@@ -32,6 +33,24 @@ function summary(times: number[]): string {
 	return "frames done fps " + fixed(steps.length * 1000 / span) + " period " + fixed(period) +
 		" missed " + missed.toString() + " jitter p50 " + fixed(percentile(jitter, 0.5)) + " p90 " +
 		fixed(percentile(jitter, 0.9)) + " max " + fixed(jitter[jitter.length - 1]) + " ms";
+}
+
+const LOAD_PERIOD_MS = 5;
+const LOAD_MAX_MS = 4;
+let seed: int64 = 12345;
+function nextLoad(): number {
+	seed = (seed * 1103515245 + 12345) % 2147483648;
+	return ((seed % 1000) as number) * LOAD_MAX_MS / 1000;
+}
+
+function busy(ms: number): void {
+	const end = performance.now() + ms;
+	while (performance.now() < end) {}
+}
+
+export function FramesLoaded(): NeonNode {
+	setInterval((): void => { busy(nextLoad()); }, LOAD_PERIOD_MS);
+	return Frames();
 }
 
 export function Frames(): NeonNode {

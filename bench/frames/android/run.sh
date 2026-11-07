@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Frame delivery on Android: build bench/frames Release, install on $ANDROID_SERIAL (or the one device), launch it
 # without touching it, and read the summary it shows once the measured 5 s are over.
-# Usage: bench/frames/android/run.sh <label>   (from the Neon checkout; ION defaults to ../ion)
+# Usage: [FRAMES_PROJECT=loadedProject] bench/frames/android/run.sh <label>   (from the Neon checkout; ION defaults to ../ion)
 set -eu
 cd "$(dirname "$0")/../../.."
 label=$1
@@ -11,7 +11,7 @@ r=/private/tmp/neon-bench-frames/$label-$(date +%H%M%S)
 mkdir -p "$r/home"
 step() { n=$1; shift; if ! "$@" > "$r/$n.log" 2>&1; then echo "FAIL $n: $r/$n.log"; tail -15 "$r/$n.log"; exit 1; fi; }
 step install-ion env HOME="$r/home" msc install -g "@metascript/ion@file:$ION"
-step generate env HOME="$r/home" "$r/home/.metascript/bin/ion" generate bench/frames/android/project.ms "$r/gradle"
+step generate env HOME="$r/home" "$r/home/.metascript/bin/ion" generate bench/frames/android/${FRAMES_PROJECT:-project}.ms "$r/gradle"
 step keystore keytool -genkeypair -keystore "$r/bench.jks" -storepass neonbench -keypass neonbench \
 	-alias bench -keyalg RSA -keysize 2048 -validity 1 -dname CN=neon-bench
 export ION_ANDROID_STORE_FILE="$r/bench.jks" ION_ANDROID_STORE_PASSWORD=neonbench ION_ANDROID_KEY_ALIAS=bench ION_ANDROID_KEY_PASSWORD=neonbench
