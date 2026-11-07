@@ -234,6 +234,8 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
 
   | | fps | missed vsyncs | jitter p50 / p90 / max |
   |---|---|---|---|
+  | iPhone 13 Pro control | 60.0 | 0 | 0.19-0.47 / 2.06-2.44 / 3.48-3.91 ms |
+  | iPhone 13 Pro fix | 120.0 | 0 | 0 / 0 / 0.03 ms |
   | iPad Pro 12.9 control | 119.9 | 0-1 | 0.52-0.66 / 2.34-2.78 / 3.66-6.96 ms |
   | iPad Pro 12.9 fix | 119.9 | 0 | 0 / 0 / 0.01-0.03 ms |
   | Seeker control | 120.4 | 0 | 0.58-0.64 / 2.33-2.52 / 3.75-4.65 ms |
