@@ -4,7 +4,7 @@ when (js && !server) {
 	import "../platform/browser/haptics";
 } else when (ios || android) {
 	import "../platform/native/haptics";
-} else when (macos || windows || linux) {
+} else when (!js && (macos || windows || linux)) {
 	import "../platform/ion/haptics";
 }
 

@@ -2,7 +2,7 @@ import { Accessor, accessor, createSignal } from "../core/signal";
 import { flush } from "../core/runtime";
 import { EventSubscription, onChange, Listeners } from "./subscription";
 
-when (macos || windows || linux) {
+when (!js && (macos || windows || linux)) {
 	import "../platform/ion/appState";
 }
 

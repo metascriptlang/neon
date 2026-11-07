@@ -4,7 +4,7 @@ when (js && !server) {
 	import "../platform/browser/clipboard";
 } else when (ios || android) {
 	import "../platform/native/clipboard";
-} else when (macos || windows || linux) {
+} else when (!js && (macos || windows || linux)) {
 	import "../platform/ion/clipboard";
 }
 

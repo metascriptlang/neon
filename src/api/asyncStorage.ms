@@ -4,7 +4,7 @@ when (js && !server) {
 	import "../platform/browser/asyncStorage";
 } else when (ios || android) {
 	import "../platform/native/asyncStorage";
-} else when (macos || windows) {
+} else when (!js && (macos || windows)) {
 	import "../platform/ion/storage";
 }
 

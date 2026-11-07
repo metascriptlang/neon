@@ -5,7 +5,7 @@ when (js && !server) {
 	import "../platform/browser/linking";
 } else when (ios || android) {
 	import "../platform/native/linking";
-} else when (macos || windows || linux) {
+} else when (!js && (macos || windows || linux)) {
 	import "../platform/ion/linking";
 }
 
