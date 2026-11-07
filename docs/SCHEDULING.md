@@ -205,6 +205,24 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   0 / 2.2 ms/s; hitches per fling 1.04 vs 0.52. S1 has no `spawn` and no IO, only a 200 ms
   `setInterval`, so why the selector source makes the iPad smoother is not traced yet. The
   fix is the baseline Phase 0 is measured against.
+- **Frame delivery** (`bench/frames`, Release, a box moved on a main-thread `requestFrame`
+  loop, 1 s warm-up then 5 s; both sides with `CADisableMinimumFrameDurationOnPhone`). Control:
+  `CADisplayLink` with no rate range, paused after every frame, frames stamped with
+  `performance.now()` at the callback. Fix: rate range pinned to the screen's maximum, paused
+  after 4 idle ticks, frames stamped with `targetTimestamp`. 5 interleaved rounds (2026-11-08);
+  jitter is a step's distance from a whole number of periods:
+
+  | | fps | missed vsyncs | jitter p50 / p90 / max |
+  |---|---|---|---|
+  | iPhone 13 Pro control | 60.0 | 0 | 0.01 / 0.04-0.07 / 0.10-0.15 ms |
+  | iPhone 13 Pro fix | 120.0 | 0 | 0 / 0 / 0.03 ms |
+  | iPad Pro 12.9 control | 119.9 | 0 | 0.02-0.03 / 0.08-0.10 / 0.15-0.22 ms |
+  | iPad Pro 12.9 fix | 119.9 | 0 | 0 / 0 / 0.03 ms |
+
+  The iPhone runs main-thread animation at 60 Hz until the link names a rate; the iPad already
+  ran at 120. On an idle main thread the callback is late by a fraction of a millisecond, so the
+  target timestamp barely changes the steps; a loaded main thread is not measured yet. Per-frame
+  pausing lost no frames here (makepad's loss was not reproduced). Seeker not measured yet.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
