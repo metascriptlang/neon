@@ -228,6 +228,20 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   pausing lost no frames here (makepad's loss was not reproduced). The Seeker's callback runs
   later after vsync than iOS's, so its control steps stray more (up to 0.9 ms), still under a
   ninth of a period.
+
+  Loaded main (`FRAMES_PROJECT=loadedProject`: a 5 ms timer busies main 0-4 ms, seeded, as data
+  arriving between frames does), 5 interleaved rounds (2026-11-08):
+
+  | | fps | missed vsyncs | jitter p50 / p90 / max |
+  |---|---|---|---|
+  | iPad Pro 12.9 control | 119.9 | 0-1 | 0.52-0.66 / 2.34-2.78 / 3.66-6.96 ms |
+  | iPad Pro 12.9 fix | 119.9 | 0 | 0 / 0 / 0.01-0.03 ms |
+  | Seeker control | 120.4 | 0 | 0.58-0.64 / 2.33-2.52 / 3.75-4.65 ms |
+  | Seeker fix | 120.4 | 0 | 0 / 0.01 / 0.05-0.12 ms |
+
+  Both sides deliver every frame; what differs is the time the animation samples at. Stamped at
+  the callback, a step strays by up to half a period whenever the timer held main at vsync, so
+  the box moves in uneven steps; stamped with the display's timestamp, every step is one period.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
