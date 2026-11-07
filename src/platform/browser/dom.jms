@@ -4,7 +4,7 @@
 import { Host, HostNode, TextMeasure } from "../../render/host";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { Style, StyleValue } from "../../render/style";
-import { registerCss, collectCss, onCssChange } from "../../render/sheet";
+import { registerCss, cssAt, cssRuleCount, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { getOwner } from "../../core/runtime";
@@ -51,6 +51,14 @@ import { CanvasRenderingContext2D, HTMLCanvasElement } from "../../render/htmlEl
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
+
+extern class CssRuleList { length: number; }
+
+extern class CssSheet {
+	cssRules: CssRuleList;
+	extern insertRule(rule: string, index: number): number;
+	extern deleteRule(index: number): void;
+}
 
 extern class ClassList {
 	extern add(name: string): void;
@@ -113,6 +121,7 @@ extern class Node {
 	extern getBoundingClientRect(): DomRect;
 	extern getClientRects(): DomRectList;
 	style: CssStyle;
+	sheet: CssSheet;
 	classList: ClassList;
 	nextSibling: Node;
 	firstChild: Node;
@@ -784,10 +793,14 @@ extern class document {
 	static extern createElementNS(ns: string, tag: string): Node;
 }
 
-// One <style> element owns every rule the program registered. Rewriting its
-// whole text on each new rule is fine because registration happens as sheets
-// are first mounted, not per element, and the browser reparses one small block.
+// One <style> element owns every rule the program registered, one top-level
+// `@media all{…}` group per registry slot, so slot i is cssRules[i] and the
+// cascade keeps registration order. A new slot is one insertRule and a changed
+// one replaces its own group, where rewriting the text reparsed every rule on
+// each registration (Unistyles web/css/sheet.ts keeps its base group the same way).
+const SHEET_ATTR = "data-neon-sheet";
 let sheetNode: Node | null = null;
+let mountedCss: string[] = [];
 
 function baseClassOf(el: Node): string {
 	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
@@ -795,13 +808,30 @@ function baseClassOf(el: Node): string {
 	return "";
 }
 
-function flushSheet(): void {
+function flushSheet(slot: number): void {
 	if (sheetNode === null) {
 		const n = document.createElement("style");
+		n.setAttribute(SHEET_ATTR, "");
 		document.head.appendChild(n);
 		sheetNode = n;
 	}
-	(sheetNode as Node).textContent = collectCss();
+	const sheet = (sheetNode as Node).sheet;
+	const count = cssRuleCount();
+	while (mountedCss.length > count) {
+		sheet.deleteRule(mountedCss.length - 1);
+		mountedCss.pop();
+	}
+	if (slot >= 0 && slot < mountedCss.length && mountedCss[slot] !== cssAt(slot)) {
+		const css = cssAt(slot);
+		sheet.insertRule("@media all{" + css + "}", slot);
+		sheet.deleteRule(slot + 1);
+		mountedCss[slot] = css;
+	}
+	while (mountedCss.length < count) {
+		const css = cssAt(mountedCss.length);
+		sheet.insertRule("@media all{" + css + "}", mountedCss.length);
+		mountedCss.push(css);
+	}
 }
 
 export function documentBody(): HostNode {
@@ -898,7 +928,7 @@ export function domHost(): Host {
 	// among them — and from here on every change mounts itself, including a
 	// swap that touches no node.
 	onCssChange(flushSheet);
-	flushSheet();
+	flushSheet(-1);
 	watchEnvironment();
 	installBrowserAppServices();
 	watchSafeArea();

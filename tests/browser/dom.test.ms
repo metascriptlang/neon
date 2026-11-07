@@ -43,6 +43,7 @@ extern class ProbeStyle {
 
 extern class ProbeClassList {
 	extern contains(name: cstring): boolean;
+	extern add(name: cstring): void;
 }
 
 extern class ProbeAttr {
@@ -133,7 +134,11 @@ test "setStyleClass adds the class — the channel mockHost cannot see" {
 	probe(el).remove();
 }
 
-extern function sheetWrites(): int32 from "(() => { const s = [...document.querySelectorAll('style')].find((e) => e.textContent.includes('neon-flush-cls')); if (!s) return -1; if (!s.neonWrites) { s.neonWrites = { n: 0 }; const d = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent'); Object.defineProperty(s, 'textContent', { get() { return d.get.call(this); }, set(v) { this.neonWrites.n += 1; d.set.call(this, v); } }); } return s.neonWrites.n; })()";
+extern function sheetWrites(): int32 from "(() => { const s = document.querySelector('style[data-neon-sheet]'); if (!s) return -1; if (!s.neonWrites) { const n = { n: 0 }; s.neonWrites = n; const d = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent'); Object.defineProperty(s, 'textContent', { get() { return d.get.call(this); }, set(v) { n.n += 1; d.set.call(this, v); } }); const sh = s.sheet; for (const k of ['insertRule', 'deleteRule']) { const f = sh[k]; sh[k] = function (...a) { n.n += 1; return f.apply(this, a); }; } } return s.neonWrites.n; })()";
+extern class SheetGroup {}
+extern function sheetGroup(cls: cstring): SheetGroup | null from "(c => [...document.querySelector('style[data-neon-sheet]').sheet.cssRules].find(r => r.cssText.includes('.' + c + ' ')) ?? null)(#)";
+extern function sameRule(a: SheetGroup | null, b: SheetGroup | null): boolean from "((a, b) => a !== null && a === b)(#, #)";
+extern function colorOf(el: Node): string from "(e => getComputedStyle(e).color)(#)";
 
 test "nodes mounting a class the sheet already holds leave the style element alone" {
 	const h = domHost();
@@ -156,6 +161,45 @@ test "nodes mounting a class the sheet already holds leave the style element alo
 	const writes = sheetWrites();
 	assert writes === 0, `200 more nodes with the same class rewrote the sheet ${writes} times`;
 	for (const el of els) { probe(el).remove(); }
+}
+
+test "a new rule joins the sheet without reparsing the rules already in it" {
+	const h = domHost();
+	const put = h.setStyleClass;
+	assert put !== null, "the browser host advertises a stylesheet";
+	if (put !== null) {
+		const a = mount("view");
+		put(a, "neon-keep-a", ".neon-keep-a{color:rgb(1,1,1)}");
+		const before = sheetGroup("neon-keep-a");
+		const b = mount("view");
+		put(b, "neon-keep-b", ".neon-keep-b{color:rgb(2,2,2)}");
+		assert sameRule(before, sheetGroup("neon-keep-a")), "registering another rule replaced the rule objects already parsed";
+		assert colorOf(probe(b)) === "rgb(2, 2, 2)", "the new rule applies";
+		probe(a).remove();
+		probe(b).remove();
+	}
+}
+
+test "a changed rule keeps its place in the cascade" {
+	const h = domHost();
+	const put = h.setStyleClass;
+	assert put !== null, "the browser host advertises a stylesheet";
+	if (put !== null) {
+		const both = mount("view");
+		put(both, "neon-ord-a", ".neon-ord-a{color:rgb(1,1,1)}");
+		const only = mount("view");
+		put(only, "neon-ord-a", ".neon-ord-a{color:rgb(1,1,1)}");
+		probe(both).classList.add("neon-ord-b");
+		const later = mount("view");
+		put(later, "neon-ord-b", ".neon-ord-b{color:rgb(2,2,2)}");
+		assert colorOf(probe(both)) === "rgb(2, 2, 2)", "the later rule wins";
+		put(only, "neon-ord-a", ".neon-ord-a{color:rgb(3,3,3)}");
+		assert colorOf(probe(only)) === "rgb(3, 3, 3)", "the changed rule applies";
+		assert colorOf(probe(both)) === "rgb(2, 2, 2)", `the changed rule moved after the later one: ${colorOf(probe(both))}`;
+		probe(both).remove();
+		probe(only).remove();
+		probe(later).remove();
+	}
 }
 
 test "addEvent: a click reaches the handler as a neon press event" {

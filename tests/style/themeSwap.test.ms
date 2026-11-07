@@ -43,13 +43,16 @@ test "a swap rewrites the root rule and nothing else" {
 test "re-registering a rule the sheet already holds does not make the host flush" {
 	when (js) {
 		let fired = 0;
-		onCssChange(() => { fired += 1; });
+		let at: number = -1;
+		onCssChange((slot: number): void => { fired += 1; at = slot; });
 		registerCss("n_again", ".n_again{color:red;}");
+		const slot = at;
 		registerCss("n_again", ".n_again{color:red;}");
 		registerCss("n_again", ".n_again{color:red;}");
 		assert fired === 1, `every node mounting the same class flushed the sheet again: ${fired}`;
 		registerCss("n_again", ".n_again{color:blue;}");
 		assert fired === 2, "a changed rule under the same id still flushes";
+		assert at === slot, `the change names the rule's own slot ${slot}, got ${at}`;
 		onCssChange(null);
 	}
 }
@@ -57,7 +60,7 @@ test "re-registering a rule the sheet already holds does not make the host flush
 test "the sheet tells the host when it changed" {
 	when (js) {
 		let fired = 0;
-		onCssChange(() => { fired += 1; });
+		onCssChange((slot: number): void => { fired += 1; });
 		registerCss("n_probe", ".n_probe{color:red;}");
 		assert fired === 1, "a new rule notifies the host so it can flush";
 		setTheme({ sp2: 4, brand: "#334" });

@@ -14,10 +14,11 @@ let rules: string[] = [];
 
 // A theme swap replaces the `:root` rule with no node involved, so nothing on
 // the render path would tell a host to re-mount the sheet. The host leaves its
-// flush here and the registry calls it on every change.
-let changed: (() => void) | null = null;
+// flush here and the registry calls it with the slot that changed; slots only
+// append, so a host can keep one rule per slot in registration order.
+let changed: ((slot: number) => void) | null = null;
 
-export function onCssChange(f: (() => void) | null): void {
+export function onCssChange(f: ((slot: number) => void) | null): void {
 	changed = f;
 }
 
@@ -26,13 +27,13 @@ export function registerCss(id: string, css: string): void {
 		if (ids[i] === id) {
 			if (rules[i] === css) { return; }
 			rules[i] = css;
-			if (changed !== null) { (changed as () => void)(); }
+			if (changed !== null) { (changed as (slot: number) => void)(i); }
 			return;
 		}
 	}
 	ids.push(id);
 	rules.push(css);
-	if (changed !== null) { (changed as () => void)(); }
+	if (changed !== null) { (changed as (slot: number) => void)(rules.length - 1); }
 }
 
 export function cssIds(): string[] {
@@ -50,6 +51,10 @@ export function collectCss(): string {
 export function mountSheet(): string {
 	const css = collectCss();
 	return css === "" ? "" : "<style>" + css + "</style>";
+}
+
+export function cssAt(slot: number): string {
+	return rules[slot];
 }
 
 export function cssRuleCount(): number {
