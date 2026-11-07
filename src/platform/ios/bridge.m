@@ -1720,9 +1720,25 @@ static msClosure s_frame;
 @interface NeonFrameTarget : NSObject
 @end
 
+extern double msTimeMonotonic(void);
+
+static BOOL g_frameWanted = NO;
+static int g_frameIdleTicks = 0;
+static double g_frameTime = 0;
+
+// Pausing the link after every frame loses frames (makepad's LINK_IDLE), so it runs a few idle ticks first.
+enum { FRAME_IDLE_TICKS_BEFORE_PAUSE = 4 };
+
 @implementation NeonFrameTarget
 - (void)tick:(CADisplayLink *)link {
-	link.paused = YES;
+	if (!g_frameWanted) {
+		g_frameIdleTicks += 1;
+		if (g_frameIdleTicks >= FRAME_IDLE_TICKS_BEFORE_PAUSE) link.paused = YES;
+		return;
+	}
+	g_frameWanted = NO;
+	g_frameIdleTicks = 0;
+	g_frameTime = msTimeMonotonic() + (link.targetTimestamp - CACurrentMediaTime()) * 1000.0;
 	call0(s_frame);
 }
 @end
@@ -1732,13 +1748,19 @@ static NeonFrameTarget *g_frameTarget;
 
 void niSetFrameHandler(msClosure handler) { s_frame = handler; }
 
+double niFrameTime(void) { return g_frameTime; }
+
 int niRequestFrame(void) {
 	if (!g_frameLink) {
 		g_frameTarget = [NeonFrameTarget new];
 		g_frameLink = [CADisplayLink displayLinkWithTarget:g_frameTarget selector:@selector(tick:)];
-		g_frameLink.paused = YES;
+		UIScreen *screen = g_container.window.screen ?: UIScreen.mainScreen;
+		float fastest = (float)screen.maximumFramesPerSecond;
+		g_frameLink.preferredFrameRateRange = CAFrameRateRangeMake(fastest, fastest, fastest);
 		[g_frameLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 	}
+	g_frameWanted = YES;
+	g_frameIdleTicks = 0;
 	g_frameLink.paused = NO;
 	return 1;
 }

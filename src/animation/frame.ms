@@ -2,7 +2,7 @@ import { flush } from "../core/runtime";
 
 export interface FrameDriver {
 	now: () => number;
-	schedule: (fire: () => void) => void;
+	schedule: (fire: (target: number) => void) => void;
 }
 
 interface FrameRequest {
@@ -20,7 +20,7 @@ when (js) {
 		return {
 			now: (): number => performance.now(),
 			schedule: (fire: () => void): void => {
-				requestAnimationFrame((time: number): void => { fire(); });
+				requestAnimationFrame((time: number): void => { fire(time); });
 			},
 		};
 	}
@@ -29,8 +29,8 @@ when (js) {
 	function platformDriver(): FrameDriver {
 		return {
 			now: (): number => performance.now(),
-			schedule: (fire: () => void): void => {
-				setTimeout(fire, NATIVE_FRAME_MS);
+			schedule: (fire: (target: number) => void): void => {
+				setTimeout((): void => { fire(performance.now()); }, NATIVE_FRAME_MS);
 			},
 		};
 	}
@@ -41,6 +41,7 @@ let pending: FrameRequest[] = [];
 let scheduled = false;
 let nextId: int32 = 1;
 let generation: int32 = 0;
+let lastFrameTime = -Infinity;
 
 function currentDriver(): FrameDriver {
 	if (driver === null) { driver = platformDriver(); }
@@ -52,6 +53,7 @@ export function setFrameDriver(next: FrameDriver | null): void {
 	pending = [];
 	scheduled = false;
 	generation += 1;
+	lastFrameTime = -Infinity;
 }
 
 export function installFrameDriver(next: FrameDriver): void {
@@ -62,9 +64,10 @@ export function frameNow(): number {
 	return currentDriver().now();
 }
 
-function runFrame(): void {
+function runFrame(target: number): void {
 	scheduled = false;
-	const time = currentDriver().now();
+	const time = Math.max(target, lastFrameTime);
+	lastFrameTime = time;
 	const due = pending;
 	pending = [];
 	flush((): void => {
@@ -81,8 +84,8 @@ export function requestFrame(callback: (time: number) => void): int32 {
 	if (!scheduled) {
 		scheduled = true;
 		const owner = generation;
-		currentDriver().schedule((): void => {
-			if (owner === generation) { runFrame(); }
+		currentDriver().schedule((target: number): void => {
+			if (owner === generation) { runFrame(target); }
 		});
 	}
 	return id;
@@ -110,7 +113,7 @@ export function framePending(): boolean {
 
 export class ManualFrames {
 	time: number = 0;
-	fire: (() => void) | null = null;
+	fire: ((target: number) => void) | null = null;
 	frames: int32 = 0;
 
 	constructor() {}
@@ -121,7 +124,7 @@ export class ManualFrames {
 		if (f === null) { return; }
 		this.fire = null;
 		this.frames += 1;
-		(f as () => void)();
+		(f as (target: number) => void)(this.time);
 	}
 
 	step(count: int32): void {
@@ -142,7 +145,7 @@ export function useManualFrames(): ManualFrames {
 	const clock = new ManualFrames();
 	setFrameDriver({
 		now: (): number => clock.time,
-		schedule: (fire: () => void): void => { clock.fire = fire; },
+		schedule: (fire: (target: number) => void): void => { clock.fire = fire; },
 	});
 	return clock;
 }

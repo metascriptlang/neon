@@ -568,14 +568,20 @@ void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 static msClosure s_frame;
 static int g_framePending = 0;
 
+static double g_frameTime = 0;
+extern double msTimeMonotonic(void);
+
+// frameTimeNanos is CLOCK_MONOTONIC, performance.now()'s clock; a 32-bit long wraps every 2 s, so read the clock there.
 static void frameTick(long frameTimeNanos, void *data) {
-	(void)frameTimeNanos;
 	(void)data;
 	g_framePending = 0;
+	g_frameTime = sizeof(long) >= 8 ? (double)frameTimeNanos / 1e6 : msTimeMonotonic();
 	call0(s_frame);
 }
 
 void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+
+double niFrameTime(void) { return g_frameTime; }
 
 int niRequestFrame(void) {
 	if (g_framePending) return 1;

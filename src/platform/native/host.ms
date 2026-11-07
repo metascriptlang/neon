@@ -60,7 +60,7 @@ import {
 	niLastScrollContentWidth, niLastScrollContentHeight,
 	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niAccessibilityFocus, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
-	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
+	niKeyboardHeight, niColorScheme, niRequestFrame, niFrameTime, niSafeAreaInset,
 } from "./bridge.h";
 import { flush, getOwner } from "../../core/runtime";
 import { niLoopRun } from "./loop.h";
@@ -1099,19 +1099,20 @@ function growInput(n: NativeNode): boolean {
 	return n.flex === null || (n.flex as FlexStyle).height !== before;
 }
 
-let frameFire: (() => void) | null = null;
+let frameFire: ((target: number) => void) | null = null;
 
 function onFrame(): void {
 	const fire = frameFire;
 	frameFire = null;
-	if (fire !== null) { batched(fire as () => void); }
+	const target = niFrameTime();
+	if (fire !== null) { batched((): void => { (fire as (target: number) => void)(target); }); }
 }
 
-function scheduleFrame(fire: () => void): void {
+function scheduleFrame(fire: (target: number) => void): void {
 	frameFire = fire;
 	if (niRequestFrame() === 0) {
 		frameFire = null;
-		setTimeout(fire, 16);
+		setTimeout((): void => { fire(performance.now()); }, 16);
 	}
 }
 

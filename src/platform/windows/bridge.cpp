@@ -1402,6 +1402,8 @@ void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+extern "C" double msTimeMonotonic(void);
+double niFrameTime(void) { return msTimeMonotonic(); }
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 void niSetControlHandler(msClosure handler) { s_control = handler; }

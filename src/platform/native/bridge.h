@@ -101,6 +101,7 @@ void  niSetTeardownHandler(msClosure handler);
 void  niSetLoopHandler(msClosure handler);
 void  niSetFrameHandler(msClosure handler);
 int   niRequestFrame(void); // 1 when a display-synchronised frame is scheduled, 0 when unsupported
+double niFrameTime(void);  // the running frame's display timestamp on performance.now()'s clock (iOS target presentation, Android vsync)
 int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);

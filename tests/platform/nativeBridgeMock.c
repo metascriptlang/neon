@@ -414,6 +414,7 @@ void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 void niSetFrameHandler(msClosure handler) { (void)handler; }
 int niRequestFrame(void) { return 0; }
+double niFrameTime(void) { return 0; }
 
 int niRunApp(void) {
 	call0(s_mount);

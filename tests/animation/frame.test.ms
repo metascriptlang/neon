@@ -8,7 +8,7 @@ import { Errored, Show } from "../../src/macros/ui/flow";
 import { MockNode, HostNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, NeonNode } from "../../src/render/hostTypes";
 import { View, Text } from "../../src/components/primitives";
-import { useManualFrames, framePending, setFrameDriver } from "../../src/animation/frame";
+import { useManualFrames, framePending, setFrameDriver, requestFrame } from "../../src/animation/frame";
 import { useFrame } from "../../src/render/voidClock";
 
 function framed(fn: (dt: number, time: number) => void): NeonNode {
@@ -176,5 +176,23 @@ test "useFrame callbacks run in priority order, whatever order they mounted in" 
 	clock.advance(16);
 	assert log.join(",") === "early,mid-a,mid-b,late", "lowest first, mount order among equals: " + log.join(",");
 	dispose();
+	setFrameDriver(null);
+}
+
+test "a frame callback reads the driver's target time, never earlier than the last frame's" {
+	let fire: ((target: number) => void) | null = null;
+	setFrameDriver({
+		now: (): number => 1000,
+		schedule: (next: (target: number) => void): void => { fire = next; },
+	});
+	const seen: number[] = [];
+	const frame = (target: number): void => {
+		requestFrame((time: number): void => { seen.push(time); });
+		(fire as (target: number) => void)(target);
+	};
+	frame(1016.6);
+	frame(1033.3);
+	frame(1020);
+	assert seen.join(",") === "1016.6,1033.3,1033.3", "target time, clamped monotonic: " + seen.join(",");
 	setFrameDriver(null);
 }

@@ -94,7 +94,7 @@ class Stage {
 	clock: VirtualClock;
 	origin: float64;
 	time: float64 = 0;
-	fire: (() => void) | null = null;
+	fire: ((target: number) => void) | null = null;
 	policy: MotionPolicy;
 	signals: MotionSignals = new MotionSignals();
 	names: string[] = [];
@@ -109,7 +109,7 @@ class Stage {
 		this.policy = policy;
 		setFrameDriver({
 			now: (): number => this.clock.t,
-			schedule: (fire: () => void): void => { this.fire = fire; },
+			schedule: (fire: (target: number) => void): void => { this.fire = fire; },
 		});
 		for (const property of properties) {
 			this.names.push(property.name);
@@ -224,7 +224,7 @@ class Stage {
 			stepVirtualClock(this.clock, this.origin + this.time);
 			const fire = this.fire;
 			this.fire = null;
-			if (fire !== null) { fire(); }
+			if (fire !== null) { fire(this.clock.t); }
 		}
 	}
 

@@ -35,7 +35,7 @@ import { layerSupport } from "./layerSupport";
 // values reach the bridge's layer engine; reads go through niLayerPresented at the frame clock.
 class Stage {
 	time: float64 = 0;
-	fire: (() => void) | null = null;
+	fire: ((target: number) => void) | null = null;
 	policy: MotionPolicy;
 	signals: MotionSignals = new MotionSignals();
 	names: string[] = [];
@@ -48,7 +48,7 @@ class Stage {
 		nmLayerSetNow(0);
 		setFrameDriver({
 			now: (): number => this.time,
-			schedule: (fire: () => void): void => { this.fire = fire; },
+			schedule: (fire: (target: number) => void): void => { this.fire = fire; },
 		});
 		installLayerEngine(nativeLayerEngine());
 		for (const property of properties) {
@@ -133,7 +133,7 @@ class Stage {
 			nmLayerSetNow(this.time);
 			const fire = this.fire;
 			this.fire = null;
-			if (fire !== null) { fire(); }
+			if (fire !== null) { fire(this.time); }
 		}
 	}
 

@@ -66,7 +66,7 @@ const views = new Views();
 // The pool views sit under one container whose layer clock is stopped and stepped, so real Core
 // Animation evaluates each presentation layer at the conformance time.
 class Stage {
-	fire: (() => void) | null = null;
+	fire: ((target: number) => void) | null = null;
 	origin: float64;
 	at: float64 = 0;
 	policy: MotionPolicy;
@@ -81,7 +81,7 @@ class Stage {
 		this.origin = views.time;
 		setFrameDriver({
 			now: (): number => views.time,
-			schedule: (fire: () => void): void => { this.fire = fire; },
+			schedule: (fire: (target: number) => void): void => { this.fire = fire; },
 		});
 		this.owner = createRoot((dispose: () => void): Computation | null => {
 			this.disposeOwner = dispose;
@@ -157,7 +157,7 @@ class Stage {
 			views.step(ms);
 			const fire = this.fire;
 			this.fire = null;
-			if (fire !== null) { fire(); }
+			if (fire !== null) { fire(views.time); }
 		}
 	}
 

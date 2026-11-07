@@ -125,7 +125,7 @@ let retiredViews: ViewId[] = [];
 let hostFont: FontId = DEFAULT_FONT;
 let hostFamily: string | null = null;
 let wired = false;
-let frameFires: (() => void)[] = [];
+let frameFires: ((target: number) => void)[] = [];
 let firing = false;
 
 function runFrameFires(): void {
@@ -133,7 +133,8 @@ function runFrameFires(): void {
 	const due = frameFires;
 	frameFires = [];
 	firing = true;
-	for (const fire of due) { fire(); }
+	const target = performance.now();
+	for (const fire of due) { fire(target); }
 	firing = false;
 }
 
@@ -417,7 +418,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	installAppServices(ionAppServices);
 	installFrameDriver({
 		now: (): number => performance.now(),
-		schedule: (fire: () => void): void => {
+		schedule: (fire: (target: number) => void): void => {
 			frameFires.push(fire);
 			requestFrame(frameWin);
 		},
