@@ -39,6 +39,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   (msc `02029f04dc4`), on `main` `fd3f0e7d` as on wt/live-update:
   `run-remote.sh --mac --host m1m -- bash tests/browser/run.sh tests/browser/capture.test.ms`. Not traced.
 
+- **OPEN 2026-11-08 — `style={c ? [a, b] : [d, e]}` on an RN component does not type-check.**
+  `msc check` reports `Type '… | …[]' is not assignable to type 'Style'`: the element macro wraps
+  `layerStyles` only around an array literal written directly as the prop
+  (`src/macros/ui/element.ms:1313`), not around arrays inside a conditional. RN accepts any style
+  prop expression. Met in `tests/platform/nativeElementMotion.test.ms` (class `Contested`), written as
+  two returns instead. The fix is in `element.ms`, which needs the person's yes.
 - **OPEN 2026-10-29 — the Void host ignores a View's `transform` style.** `applyPaint` in
   `src/platform/void/host.ms` reads opacity, zIndex, background and box style, and nothing reads
   `Style.transform`, so `transform: "translateX(40px)"` leaves the scene node's `local().x` at its
