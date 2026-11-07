@@ -14,7 +14,7 @@ import { MeasureRect, MeasureError } from "../../src/render/hostTypes";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 import { FlexStyle } from "../../../yoga/src/index";
 import {
-	DrawKind, NodeRef, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt, parent, setScale,
+	DrawKind, NodeRef, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt, parent, setScale, setPosition,
 } from "../../../void/src/void2d/node";
 
 function flexOf(n: VoidNode): FlexStyle { return n.flex as FlexStyle; }
@@ -458,4 +458,38 @@ test "the Void host lays out on the pixel grid of the scale it is given and foll
 	assert tops() === "0,18,35,53", "no scale is whole points: " + tops();
 	vh.layout(100.0, 100.0, 2.0);
 	assert tops() === "0,17.5,35,52.5", "back at 2x: " + tops();
+}
+
+test "a frame whose tree has no layout change since the last layout runs no layout pass" {
+	const vh = createVoidHost();
+	const h = vh.host;
+	const column = h.createElement("view");
+	h.setStyle(column, { flexDirection: "column", width: 100 });
+	const a = h.createElement("view") as VoidNode;
+	h.setStyle(a, { height: 10 });
+	const b = h.createElement("view") as VoidNode;
+	h.setStyle(b, { height: 10 });
+	h.append(column, a);
+	h.append(column, b);
+	h.append(vh.root, column);
+	vh.layout(100.0, 100.0);
+	assert b.ref.local().y === 10.0, `laid out: ${b.ref.local().y}`;
+	a.flex = { height: 40 };
+	vh.layout(100.0, 100.0);
+	assert b.ref.local().y === 10.0, `a clean frame runs no pass: ${b.ref.local().y}`;
+	h.setStyle(b, { height: 10, backgroundColor: "#ff0000" });
+	vh.layout(100.0, 100.0);
+	assert b.ref.local().y === 10.0, `a paint-only write runs no pass: ${b.ref.local().y}`;
+	vh.layout(100.0, 101.0);
+	assert b.ref.local().y === 40.0, `a new size relays out: ${b.ref.local().y}`;
+	a.flex = { height: 5 };
+	vh.layout(100.0, 101.0, 2.0);
+	assert b.ref.local().y === 5.0, `a new scale relays out: ${b.ref.local().y}`;
+	h.setStyle(a, { height: 20 });
+	vh.layout(100.0, 101.0, 2.0);
+	assert b.ref.local().y === 20.0, `a flex write relays out: ${b.ref.local().y}`;
+	a.flex = { height: 30 };
+	h.removeAttr(a, "focusable");
+	vh.layout(100.0, 101.0, 2.0);
+	assert b.ref.local().y === 30.0, `a removed attribute relays out: ${b.ref.local().y}`;
 }

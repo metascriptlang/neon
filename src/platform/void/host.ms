@@ -81,6 +81,8 @@ export class VoidNode {
 
 const NO_CHILDREN: VoidNode[] = [];
 
+interface IslandBox { raw: VoidNode; w: float32; h: float32; }
+
 // The host's node tree. A node holds no reference to another node or to a closure, so VoidNode stays out of the
 // cycle collector: its parent, its children and a Text's spans (whose handlers are closures) live here, in the row
 // the node enters on its first append, insert or spans. A node that never entered has no parent, no children and no
@@ -748,12 +750,19 @@ export function createVoidHostWith(
 		return dirty;
 	};
 
-	const woke = (was: boolean): void => {
+	let layoutStale = true;
+
+	const wokePaint = (was: boolean): void => {
 		if (was || signaled || dirtyListener === null) { return; }
 		if (sceneChangePending || scene.isDirty()) {
 			signaled = true;
 			(dirtyListener as () => void)();
 		}
+	};
+
+	const woke = (was: boolean): void => {
+		layoutStale = true;
+		wokePaint(was);
 	};
 
 	const attached = (n: VoidNode): boolean => within(tree, n, root);
@@ -1172,6 +1181,7 @@ export function createVoidHostWith(
 		},
 		removeAttr: (node: HostNode, name: string): void => {
 			const n = live(node, "removeAttr");
+			const was = wasDirty();
 			if (name === "style") { n.flex = parseFlexStyle(""); }
 			else if (name === "focusable") { n.focusAttr = false; }
 			else if (name === "imeRect") { n.imeBox = null; }
@@ -1183,6 +1193,7 @@ export function createVoidHostWith(
 				n.cellWidths = [];
 				if (n.para !== null) { (n.para as NodeRef).setCellWidths(n.cellWidths); }
 			}
+			woke(was);
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
@@ -1201,7 +1212,7 @@ export function createVoidHostWith(
 				applyTextPaint((f as Field).label, style);
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
-			woke(was);
+			if (paintOnly) { wokePaint(was); } else { woke(was); }
 			if (!paintOnly && (laidBefore !== null || n.flex !== null) && attached(n)) { askLayout(); }
 		},
 		setStyleProp: null,
@@ -1749,14 +1760,25 @@ export function createVoidHostWith(
 	};
 
 	let laidScale: float32 = 1.0;
+	let islands: IslandBox[] = [];
 	const layoutIslands = (n: VoidNode): void => {
 		for (const c of tree.childrenOf(n)) {
 			if (n.raw && !c.raw && c.flex !== null) {
 				const box = n.ref.content();
+				islands.push({ raw: n, w: box.w, h: box.h });
 				layoutPassAt(layoutOf(tree, c), box.w, box.h, rootDirection, laidScale);
 			}
 			layoutIslands(c);
 		}
+	};
+
+	const islandResized = (): boolean => {
+		for (const i of islands) {
+			if (i.raw.disposed) { return true; }
+			const box = i.raw.ref.content();
+			if (box.w !== i.w || box.h !== i.h) { return true; }
+		}
+		return false;
 	};
 
 	const fireLayoutsFiredAny = (): boolean => {
@@ -1784,6 +1806,8 @@ export function createVoidHostWith(
 		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			if (scene.isClosed()) { return; }
+			layoutStale = false;
+			islands = [];
 			layoutPassAt(layoutOf(tree, root), w, h, rootDirection, laidScale);
 			layoutIslands(root);
 			flowText(root);
@@ -1799,9 +1823,15 @@ export function createVoidHostWith(
 	let laidHeight: float32 = -1.0;
 	let laying = false;
 	const layout = (w: float32, h: float32, pointScale?: float32): void => {
+		const scale = pointScale ?? 1.0;
+		flush();
+		if (!layoutStale && w === laidWidth && h === laidHeight && scale === laidScale && !islandResized()) {
+			fitScrollers();
+			return;
+		}
 		laidWidth = w;
 		laidHeight = h;
-		laidScale = pointScale ?? 1.0;
+		laidScale = scale;
 		laying = true;
 		try { layoutPasses(w, h); } finally { laying = false; }
 	};
