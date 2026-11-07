@@ -26,6 +26,12 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-11-08 — Chrome: a camera pick after a canceled library pick never opens its file
+  input.** `tests/browser/capture.test.ms` "a canceled file input answers canceled, and a camera pick
+  asks the input to capture" fails with `timed out waiting for the camera input` in every run on m1m (6 of 6)
+  (msc `02029f04dc4`), on `main` `fd3f0e7d` as on wt/live-update:
+  `run-remote.sh --mac --host m1m -- bash tests/browser/run.sh tests/browser/capture.test.ms`. Not traced.
+
 - **OPEN 2026-10-29 — the Void host ignores a View's `transform` style.** `applyPaint` in
   `src/platform/void/host.ms` reads opacity, zIndex, background and box style, and nothing reads
   `Style.transform`, so `transform: "translateX(40px)"` leaves the scene node's `local().x` at its
