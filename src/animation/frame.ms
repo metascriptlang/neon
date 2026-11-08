@@ -38,6 +38,7 @@ when (js) {
 
 let driver: FrameDriver | null = null;
 let pending: FrameRequest[] = [];
+let pendingInput: FrameRequest[] = [];
 let scheduled = false;
 let nextId: int32 = 1;
 let generation: int32 = 0;
@@ -51,6 +52,7 @@ function currentDriver(): FrameDriver {
 export function setFrameDriver(next: FrameDriver | null): void {
 	driver = next;
 	pending = [];
+	pendingInput = [];
 	scheduled = false;
 	generation += 1;
 	lastFrameTime = -Infinity;
@@ -65,9 +67,19 @@ export function frameNow(): number {
 }
 
 function runFrame(target: number): void {
-	scheduled = false;
 	const time = Math.max(target, lastFrameTime);
 	lastFrameTime = time;
+	const input = pendingInput;
+	pendingInput = [];
+	try {
+		flush((): void => {
+			for (const request of input) {
+				if (request.live) { request.callback(time); }
+			}
+		});
+	} finally {
+		scheduled = false;
+	}
 	const due = pending;
 	pending = [];
 	flush((): void => {
@@ -77,10 +89,10 @@ function runFrame(target: number): void {
 	});
 }
 
-export function requestFrame(callback: (time: number) => void): int32 {
+function enqueue(into: FrameRequest[], callback: (time: number) => void): int32 {
 	const id = nextId;
 	nextId += 1;
-	pending.push({ id, callback, live: true });
+	into.push({ id, callback, live: true });
 	if (!scheduled) {
 		scheduled = true;
 		const owner = generation;
@@ -91,13 +103,27 @@ export function requestFrame(callback: (time: number) => void): int32 {
 	return id;
 }
 
+export function requestFrame(callback: (time: number) => void): int32 {
+	return enqueue(pending, callback);
+}
+
+export function requestInputFrame(callback: (time: number) => void): int32 {
+	return enqueue(pendingInput, callback);
+}
+
 export function cancelFrame(id: int32): void {
+	for (const request of pendingInput) {
+		if (request.id === id) { request.live = false; }
+	}
 	for (const request of pending) {
 		if (request.id === id) { request.live = false; }
 	}
 }
 
 export function frameRequested(id: int32): boolean {
+	for (const request of pendingInput) {
+		if (request.id === id) { return request.live; }
+	}
 	for (const request of pending) {
 		if (request.id === id) { return request.live; }
 	}
@@ -105,6 +131,9 @@ export function frameRequested(id: int32): boolean {
 }
 
 export function framePending(): boolean {
+	for (const request of pendingInput) {
+		if (request.live) { return true; }
+	}
 	for (const request of pending) {
 		if (request.live) { return true; }
 	}
