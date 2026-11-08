@@ -6,6 +6,6 @@
 # npm keeps a copied plugin whose version did not change, so the copy is removed first.
 set -e
 here="$(cd "$(dirname "$0")" && pwd)"
-rm -rf "$here/node_modules/vite-plugin-metascript"
+rm -rf "$here/node_modules/metascript-bundler-plugin"
 npm install --prefix "$here" --install-links --no-package-lock --no-audit --no-fund --loglevel=error
 node "$here/drive.mjs"

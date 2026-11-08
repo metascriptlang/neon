@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import metascript from "vite-plugin-metascript";
+import metascript from "metascript-bundler-plugin/vite";
 
 const here = import.meta.dirname;
 const root = resolve(process.env.REFRESH_ROOT ?? here);

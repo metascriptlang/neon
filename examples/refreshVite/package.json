@@ -4,6 +4,6 @@
 	"type": "module",
 	"devDependencies": {
 		"vite": "5.4.21",
-		"vite-plugin-metascript": "file:../../../recompiler/tools/vite-plugin"
+		"metascript-bundler-plugin": "file:../../../recompiler/tools/bundler-plugin"
 	}
 }
