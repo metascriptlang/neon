@@ -53,6 +53,10 @@ export function mountSheet(): string {
 	return css === "" ? "" : "<style>" + css + "</style>";
 }
 
+export function cssIdAt(slot: number): string {
+	return ids[slot];
+}
+
 export function cssAt(slot: number): string {
 	return rules[slot];
 }

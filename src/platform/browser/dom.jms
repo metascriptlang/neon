@@ -4,7 +4,7 @@
 import { Host, HostNode, TextMeasure } from "../../render/host";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { Style, StyleValue } from "../../render/style";
-import { registerCss, cssAt, cssRuleCount, onCssChange } from "../../render/sheet";
+import { registerCss, cssAt, cssIdAt, cssRuleCount, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { getOwner } from "../../core/runtime";
@@ -24,6 +24,7 @@ import {
 	linesClass,
 	linesRule,
 	SERVED_HEAD,
+	SHEET_ATTR,
 	scrollLook,
 	webBaseClass,
 	webControlClass,
@@ -52,13 +53,22 @@ import { VisibleContentPosition, parseVisibleContent } from "../../render/visibl
 import { installBrowserAppServices } from "./appServices";
 import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
-extern class CssRuleList { length: number; }
+extern class CssRule { cssText: string; }
+
+extern class CssRuleList {
+	length: number;
+	extern item(index: number): CssRule;
+}
 
 extern class CssSheet {
 	cssRules: CssRuleList;
 	extern insertRule(rule: string, index: number): number;
 	extern deleteRule(index: number): void;
+	extern replaceSync(text: string): void;
 }
+
+extern function newSheet(): CssSheet from "(() => new CSSStyleSheet())()";
+extern function servedSheet(at: number): Node | null from "(document.querySelectorAll('style[data-neon-sheet]')[#] ?? null)";
 
 extern class ClassList {
 	extern add(name: string): void;
@@ -794,13 +804,19 @@ extern class document {
 }
 
 // One <style> element owns every rule the program registered, one top-level
-// `@media all{…}` group per registry slot, so slot i is cssRules[i] and the
-// cascade keeps registration order. A new slot is one insertRule and a changed
-// one replaces its own group, where rewriting the text reparsed every rule on
-// each registration (Unistyles web/css/sheet.ts keeps its base group the same way).
-const SHEET_ATTR = "data-neon-sheet";
+// `@media all{…}` group per rule id, in the order the ids first arrived. A new id is
+// one insertRule and a changed one replaces its own group, where rewriting the text
+// reparsed every rule on each registration (Unistyles web/css/sheet.ts keeps its
+// base group the same way). A served page's sheet (SHEET_ATTR) is taken over, its
+// streamed chunks' groups moved into it, so no rule applies twice.
 let sheetNode: Node | null = null;
-let mountedCss: string[] = [];
+let sheetIds: string[] = [];
+// The text a group was written from; null for a served group the client has not
+// registered yet, whose text only the browser's parse holds.
+let sheetCss: (string | null)[] = [];
+let sheetAt: Map<string, number> = new Map<string, number>();
+let slotAt: number[] = [];
+let scratch: CssSheet | null = null;
 
 function baseClassOf(el: Node): string {
 	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
@@ -808,29 +824,89 @@ function baseClassOf(el: Node): string {
 	return "";
 }
 
-function flushSheet(slot: number): void {
-	if (sheetNode === null) {
+function servedIds(tag: Node): string[] {
+	const listed = tag.getAttribute(SHEET_ATTR) ?? "";
+	const ids = listed === "" ? [] : listed.split(" ");
+	const held = tag.sheet.cssRules.length;
+	if (held !== ids.length) { throw new Error(`the served sheet lists ${ids.length} rule ids but holds ${held} rules`); }
+	return ids;
+}
+
+function openSheet(): CssSheet {
+	const served = servedSheet(0);
+	if (served === null) {
 		const n = document.createElement("style");
 		n.setAttribute(SHEET_ATTR, "");
 		document.head.appendChild(n);
 		sheetNode = n;
+		return n.sheet;
 	}
-	const sheet = (sheetNode as Node).sheet;
+	sheetNode = served;
+	const sheet = served.sheet;
+	for (const id of servedIds(served)) { sheetAt.set(id, sheetIds.length); sheetIds.push(id); sheetCss.push(null); }
+	let chunk = servedSheet(1);
+	while (chunk !== null) {
+		const tag = chunk as Node;
+		const ids = servedIds(tag);
+		for (let i = 0; i < ids.length; i += 1) {
+			if (sheetAt.has(ids[i])) { continue; }
+			sheet.insertRule(tag.sheet.cssRules.item(i).cssText, sheetIds.length);
+			sheetAt.set(ids[i], sheetIds.length);
+			sheetIds.push(ids[i]);
+			sheetCss.push(null);
+		}
+		(tag.parentNode as Node).removeChild(tag);
+		chunk = servedSheet(1);
+	}
+	return sheet;
+}
+
+function sameAsServed(sheet: CssSheet, at: number, group: string): boolean {
+	if (scratch === null) { scratch = newSheet(); }
+	const parsed = scratch as CssSheet;
+	parsed.replaceSync(group);
+	return parsed.cssRules.length === 1 && parsed.cssRules.item(0).cssText === sheet.cssRules.item(at).cssText;
+}
+
+function writeGroup(sheet: CssSheet, at: number, css: string): void {
+	const was = sheetCss[at];
+	if (was === css) { return; }
+	const group = "@media all{" + css + "}";
+	if (was === null && sameAsServed(sheet, at, group)) {
+		sheetCss[at] = css;
+		return;
+	}
+	sheet.insertRule(group, at);
+	sheet.deleteRule(at + 1);
+	sheetCss[at] = css;
+}
+
+function flushSheet(slot: number): void {
+	const sheet = sheetNode === null ? openSheet() : (sheetNode as Node).sheet;
 	const count = cssRuleCount();
-	while (mountedCss.length > count) {
-		sheet.deleteRule(mountedCss.length - 1);
-		mountedCss.pop();
+	if (count < slotAt.length) {
+		while (sheet.cssRules.length > 0) { sheet.deleteRule(sheet.cssRules.length - 1); }
+		sheetIds = [];
+		sheetCss = [];
+		sheetAt = new Map<string, number>();
+		slotAt = [];
 	}
-	if (slot >= 0 && slot < mountedCss.length && mountedCss[slot] !== cssAt(slot)) {
-		const css = cssAt(slot);
-		sheet.insertRule("@media all{" + css + "}", slot);
-		sheet.deleteRule(slot + 1);
-		mountedCss[slot] = css;
-	}
-	while (mountedCss.length < count) {
-		const css = cssAt(mountedCss.length);
-		sheet.insertRule("@media all{" + css + "}", mountedCss.length);
-		mountedCss.push(css);
+	if (slot >= 0 && slot < slotAt.length) { writeGroup(sheet, slotAt[slot], cssAt(slot)); }
+	while (slotAt.length < count) {
+		const s = slotAt.length;
+		const id = cssIdAt(s);
+		const at = sheetAt.get(id);
+		if (at !== null) {
+			slotAt.push(at as number);
+			writeGroup(sheet, at as number, cssAt(s));
+		} else {
+			const css = cssAt(s);
+			sheet.insertRule("@media all{" + css + "}", sheetIds.length);
+			sheetAt.set(id, sheetIds.length);
+			slotAt.push(sheetIds.length);
+			sheetIds.push(id);
+			sheetCss.push(css);
+		}
 	}
 }
 
