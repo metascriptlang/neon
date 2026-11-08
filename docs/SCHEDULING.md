@@ -36,9 +36,17 @@ Windows `WM_GETOBJECT` and IME, macOS TextKit measurement inside yoga.
 Order, from Flutter's `SchedulerBinding` and Android's Choreographer
 (INPUT → ANIMATION → INSETS → TRAVERSAL → COMMIT, `Choreographer.java:1097-1106`):
 
-0. **Input.** Discrete input (tap, key) runs flush → layout → sink as one unit, at once.
-   Continuous input (move, scroll) is coalesced into the next frame, ahead of step 1. Never
-   flush effects now and leave layout and sink for later: that tears.
+0. **Input.** Continuous input (pointer move, wheel) is coalesced into the next frame and runs
+   ahead of step 1 (`requestInputFrame` in `src/animation/frame.ms`): a move keeps the latest
+   position, wheel deltas of one mode and modifier set sum, and a different kind in between keeps
+   the order, as the browser aligns pointermove and wheel to rAF (from memory of Chromium, not read). Discrete
+   input (press, release, leave, key, text, preedit, focus, resize) first delivers whatever
+   continuous input is queued, then runs its handlers and flushes at once. Layout and sink follow
+   on the frame that paints it, so no frame shows effects without their layout. The raw stream
+   still reaches area subscribers per OS event (`VoidAreaHandle.onPointer`), as
+   `getCoalescedEvents` keeps it in the browser. Desktop hosts: `src/platform/void/windowHost.ms`
+   (Ion window, sokol) and `src/platform/windows/ion.ms`; iOS and Android hand touches over once
+   per frame already.
 1. **Animation** ticks at the frame's *target presentation time*, clamped monotonic (Flutter
    `animator.cc:135` `GetVsyncTargetTime`). An animation started in a handler reads elapsed 0
    on its first frame (Flutter `ticker.dart:205`).
@@ -244,6 +252,20 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   Both sides deliver every frame; what differs is the time the animation samples at. Stamped at
   the callback, a step strays by up to half a period whenever the timer held main at vsync, so
   the box moves in uneven steps; stamped with the display's timestamp, every step is one period.
+- **Pointer input per frame** (`bench/input.ms`, window host, no GPU: k moves between two
+  frames, a move handler writes a signal 200 texts read, then layout). m1m, 3 interleaved
+  rounds, control = the branch before step 2 (2026-11-08):
+
+  | k | handler runs / frame control → step 2 | ms / frame p50 control → step 2 |
+  |---|---|---|
+  | 1 | 1 → 1 | 3.24 → 3.22-3.24 |
+  | 2 | 2 → 1 | 3.88-3.92 → 3.22-3.26 |
+  | 4 | 4 → 1 | 5.16-5.23 → 3.22-3.25 |
+  | 8 | 8 → 1 | 7.73-7.83 → 3.23-3.30 |
+
+  One move per frame costs the same; every extra move the OS delivers before the frame cost
+  ~0.65 ms here and now costs nothing. How many moves a real desktop delivers per frame (mouse
+  rate, OS coalescing) is not measured yet.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
