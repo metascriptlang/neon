@@ -91,7 +91,7 @@ when (server) {
 			setContext<RequestEvent | null>(requestEvents, event);
 			document(props)(host, parent, before);
 		});
-		return "<!doctype html>" + injectAssets(markup.head + "<style>" + markup.css + "</style>", html);
+		return "<!doctype html>" + injectAssets(markup.head + markup.sheet, html);
 	}
 
 	async function rendered(app: App, event: RequestEvent, router: Router, retry: boolean): Promise<Served> {

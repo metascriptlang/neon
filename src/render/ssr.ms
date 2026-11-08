@@ -12,6 +12,7 @@ export function serverCaught(error: Error): Accessor<Error> {
 export struct SsrMarkup {
 	html: string;
 	css: string;
+	sheet: string;
 	head: string;
 	records: string;
 }
@@ -25,7 +26,7 @@ when (server) {
 	import { Host, HostNode, NeonNode } from "./hostTypes";
 	import { render } from "./host";
 	import { NeonEvent } from "./event";
-	import { collectCss, cssIds, registerCss } from "./sheet";
+	import { cssAt, cssIds, registerCss } from "./sheet";
 	import { styleToCss } from "./css";
 	import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 	import {
@@ -34,6 +35,7 @@ when (server) {
 		ControlAttr,
 		LINES_CLASS,
 		SERVED_HEAD,
+		SHEET_ATTR,
 		controlAttr,
 		webFixedAttrs,
 		ScrollLook,
@@ -764,7 +766,7 @@ when (server) {
 		const root = new SsrNode("ssr-root", PLAIN);
 		const dispose = asServer((): Dispose => render(n, writerHost(w), root as unknown as HostNode, ""));
 		try {
-			return { html: root.body, css: "", head: writtenHead(w.headKids) };
+			return { html: root.body, css: "", sheet: "", head: writtenHead(w.headKids), records: "" };
 		}
 		finally {
 			w.done = true;
@@ -776,22 +778,10 @@ when (server) {
 		return writeRender(n, new SsrWrite(registerCss)).html;
 	}
 
-	function registered(): Map<string, boolean> {
-		const seen = new Map<string, boolean>();
-		for (const id of cssIds()) { seen.set(id, true); }
-		return seen;
-	}
-
 	function markupOf(n: NeonNode): SsrMarkup {
-		const seen = registered();
-		let css = collectCss();
-		const w = new SsrWrite((id: string, rule: string): void => {
-			if (seen.has(id)) { return; }
-			seen.set(id, true);
-			css = css + rule;
-		});
-		const markup = writeRender(n, w);
-		return { html: markup.html, css: css, head: markup.head, records: "" };
+		const book = new CssBook();
+		const markup = writeRender(n, new SsrWrite((id: string, rule: string): void => { book.add(id, rule); }));
+		return { html: markup.html, css: book.css, sheet: book.sheet(0), head: markup.head, records: "" };
 	}
 
 	export function renderToMarkup(n: NeonNode): SsrMarkup {
@@ -937,14 +927,32 @@ when (server) {
 		return out + html.slice(at);
 	}
 
+	// The rules a page uses: the process-wide registry first, then each rule its render met, once per id.
 	class CssBook {
-		seen: Map<string, boolean> = registered();
-		css: string = collectCss();
+		seen: Map<string, boolean> = new Map<string, boolean>();
+		ids: string[] = [];
+		rules: string[] = [];
+		css: string = "";
+
+		constructor() {
+			const known = cssIds();
+			for (let i = 0; i < known.length; i += 1) { this.add(known[i], cssAt(i)); }
+		}
 
 		add(id: string, rule: string): void {
 			if (this.seen.has(id)) { return; }
+			if (id.indexOf(" ") >= 0) { throw new Error(`a CSS rule id holds a space, so the served sheet cannot list it: "${id}"`); }
 			this.seen.set(id, true);
+			this.ids.push(id);
+			this.rules.push(rule);
 			this.css = this.css + rule;
+		}
+
+		sheet(from: int32): string {
+			if (from >= this.ids.length) { return ""; }
+			let groups = "";
+			for (let i = from; i < this.rules.length; i += 1) { groups = groups + "@media all{" + this.rules[i] + "}"; }
+			return "<style " + SHEET_ATTR + "=\"" + escapeAttribute(this.ids.slice(from).join(" ")) + "\">" + rawText("style", groups) + "</style>";
 		}
 	}
 
@@ -1019,13 +1027,13 @@ when (server) {
 	class Piece {
 		id: string;
 		html: string;
-		css: string;
+		sheet: string;
 		records: string;
 
-		constructor(id: string, html: string, css: string, records: string) {
+		constructor(id: string, html: string, sheet: string, records: string) {
 			this.id = id;
 			this.html = html;
-			this.css = css;
+			this.sheet = sheet;
 			this.records = records;
 		}
 	}
@@ -1048,7 +1056,7 @@ when (server) {
 		over: boolean = false;
 		ended: boolean = false;
 		failure: Error | null = null;
-		result: SsrMarkup = { html: "", css: "", head: "", records: "" };
+		result: SsrMarkup = { html: "", css: "", sheet: "", head: "", records: "" };
 
 		constructor(n: NeonNode) {
 			this.finished = drive(this, n);
@@ -1067,9 +1075,9 @@ when (server) {
 				this.waitingHtml.push(html);
 				return;
 			}
-			const css = this.pass.book.css;
-			const fresh = css.slice(this.cssSent, css.length);
-			this.cssSent = css.length;
+			const book = this.pass.book;
+			const fresh = book.sheet(this.cssSent);
+			this.cssSent = book.ids.length;
 			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded, this.listed)));
 			this.flush();
 			for (let i = 0; i < this.waitingIds.length; i += 1) {
@@ -1084,7 +1092,7 @@ when (server) {
 		}
 
 		chunkOf(piece: Piece): string {
-			const style = piece.css === "" ? "" : "<style>" + piece.css + "</style>";
+			const style = piece.sheet;
 			if (piece.id === "") { return style + piece.html + piece.records; }
 			const call = "$df(\"" + scriptLiteral(piece.id) + "\")";
 			const script = this.scripted ? call : REPLACE_SCRIPT + ";" + call;
@@ -1209,7 +1217,7 @@ when (server) {
 				pass.dispose();
 			}
 			if (ctx.failure !== null) { throw ctx.failure; }
-			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null, null) };
+			r.result = { html: html, css: pass.book.css, sheet: pass.book.sheet(0), head: head, records: recordScripts(ctx, null, null) };
 		} catch (e) {
 			r.failure = e;
 		}

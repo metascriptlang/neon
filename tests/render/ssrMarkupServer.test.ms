@@ -5,6 +5,7 @@ import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { el, attr, text, dynText } from "../../src/render/node";
 import { renderToString, renderToMarkup } from "../../src/render/ssr";
+import { registerCss, resetCss } from "../../src/render/sheet";
 
 test "SSR emits HTML void elements without end tags" {
 	const tags = ["area", "base", "br", "col", "embed", "hr", "img", "input",
@@ -229,4 +230,16 @@ test "SSR writes CameraView as the video the DOM host creates, mirrored when it 
 	assert back === "<video playsinline=\"\" muted=\"\" autoplay=\"\" class=\"neon-camera\"></video>", back;
 	const mirrored = renderToString(el("camera", [attr("facing", "back"), attr("mirror", "true")], [], null));
 	assert mirrored.indexOf("neon-camera-mirror") > 0, mirrored;
+}
+
+test "the served sheet lists each rule id once, holds one group per id, and cannot be closed by a rule" {
+	resetCss();
+	registerCss(":root", ":root{--gap:4px;}");
+	registerCss("n_close", ".n_close{content:\"</style><script>\"}");
+	const page = renderToMarkup(el("view", [], [], null));
+	const open = "<style data-neon-sheet=\":root n_close";
+	assert page.sheet.startsWith(open), page.sheet;
+	assert page.sheet.indexOf("\">@media all{:root{--gap:4px;}}@media all{.n_close{") > 0, page.sheet;
+	assert page.sheet.indexOf("</style>") === page.sheet.length - "</style>".length, "a rule closed the served sheet early: " + page.sheet;
+	resetCss();
 }

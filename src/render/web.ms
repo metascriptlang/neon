@@ -15,6 +15,11 @@ export const RN_WEB_BASE_CSS =
 
 export const SERVED_HEAD = "data-neon-head";
 
+// The one <style> that holds every rule: its value lists the ids in rule order,
+// and each id is one top-level `@media all{…}` group, so a client can take the
+// server's sheet over by slot instead of mounting a second one.
+export const SHEET_ATTR = "data-neon-sheet";
+
 export const SCROLL_CLASS = "neon-scrollview";
 export const ACTIVITY_CLASS = "neon-activity";
 export const TEXTAREA_CLASS = "neon-textarea";

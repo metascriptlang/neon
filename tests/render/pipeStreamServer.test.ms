@@ -87,7 +87,7 @@ function placeholders(shell: string): string[] {
 }
 
 function withoutStyle(chunk: string): string {
-	return chunk.startsWith("<style>") ? chunk.slice(chunk.indexOf("</style>") + "</style>".length) : chunk;
+	return chunk.startsWith("<style data-neon-sheet=") ? chunk.slice(chunk.indexOf("</style>") + "</style>".length) : chunk;
 }
 
 function withoutRecords(chunk: string): string {
@@ -296,9 +296,13 @@ test "a rule only a fragment needs travels in front of that fragment, once, and 
 	const c = new Collected();
 	const out = await streamed(styledPage(), c);
 	assert c.chunks.length === 2, c.chunks.length.toString();
-	assert c.chunks[0].startsWith("<style>") && c.chunks[0].includes("padding:3px") && !c.chunks[0].includes("padding:9px"), "the shell holds its own rule: " + c.chunks[0];
-	assert c.chunks[1].startsWith("<style>") && c.chunks[1].includes("padding:9px") && !c.chunks[1].includes("padding:3px"), "the fragment brings the rule only it uses: " + c.chunks[1];
+	assert c.chunks[0].startsWith("<style data-neon-sheet=") && c.chunks[0].includes("padding:3px") && !c.chunks[0].includes("padding:9px"), "the shell holds its own rule: " + c.chunks[0];
+	assert c.chunks[1].startsWith("<style data-neon-sheet=") && c.chunks[1].includes("padding:9px") && !c.chunks[1].includes("padding:3px"), "the fragment brings the rule only it uses: " + c.chunks[1];
 	assert out.css.includes("padding:3px") && out.css.includes("padding:9px"), out.css;
+	const shellIds = c.chunks[0].slice("<style data-neon-sheet=\"".length, c.chunks[0].indexOf("\">")).split(" ");
+	const fragmentIds = c.chunks[1].slice("<style data-neon-sheet=\"".length, c.chunks[1].indexOf("\">")).split(" ");
+	assert fragmentIds.length === 1 && shellIds.indexOf(fragmentIds[0]) < 0, "the fragment's sheet lists only its own id: " + c.chunks[1];
+	assert c.chunks[1].indexOf("\">@media all{") > 0, "each id is one group: " + c.chunks[1];
 }
 
 function sharedRulePage(): NeonNode {

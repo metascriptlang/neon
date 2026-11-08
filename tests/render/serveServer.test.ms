@@ -96,7 +96,7 @@ test "a matched route is a 200 document with head, css, body and client script p
 	const served = await serve(app, "/");
 	assert served.status === 200 && served.location === null, served.status.toString();
 	const body = served.body;
-	assert body.startsWith("<!doctype html><html><head><meta charset=\"utf-8\"><title data-neon-head=\"\">Served home</title><style>"), body;
+	assert body.startsWith("<!doctype html><html><head><meta charset=\"utf-8\"><title data-neon-head=\"\">Served home</title><style data-neon-sheet=\""), body;
 	const root = body.indexOf("</style></head><body><div id=\"app\">");
 	assert root > 0 && body.indexOf("home body") > root, body;
 	assert body.indexOf("</div>", root) > body.indexOf("home body"), body;
@@ -113,7 +113,7 @@ function SiteDocument(props: DocumentProps): NeonNode {
 test "a document component places the page, and the head content lands before its </head>" {
 	const served = await serve({ routes: routes, notFound: <Text>app not found</Text>, client: "/site.js", document: SiteDocument }, "/");
 	const body = served.body;
-	assert body.startsWith("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><link rel=\"icon\" href=\"/favicon.ico\"><title data-neon-head=\"\">Served home</title><style>"), body;
+	assert body.startsWith("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><link rel=\"icon\" href=\"/favicon.ico\"><title data-neon-head=\"\">Served home</title><style data-neon-sheet=\""), body;
 	const root = body.indexOf("</style></head><body><main id=\"site\">");
 	assert root > 0 && body.indexOf("home body") > root, body;
 	assert body.endsWith("</main><script type=\"module\" src=\"/site.js\"></script></body></html>"), body;
