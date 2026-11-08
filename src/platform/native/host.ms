@@ -1677,7 +1677,22 @@ function relayoutDirty(): void {
 	}
 }
 
+const LAYOUT_PASSES: int32 = 8;
+let layoutPassDepth: int32 = 0;
+
 function relayout(r: NativeRoot): void {
+	if (layoutPassDepth === LAYOUT_PASSES) {
+		throw new Error(`native host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
+	}
+	layoutPassDepth += 1;
+	try {
+		layoutOnce(r);
+	} finally {
+		layoutPassDepth -= 1;
+	}
+}
+
+function layoutOnce(r: NativeRoot): void {
 	r.layoutDirty = false;
 	const plan = takeLayoutAnimation();
 	if (plan !== null) { layoutPlan = plan; }

@@ -175,6 +175,32 @@ test "onLayout reports a native view's frame after mount and again when a rotati
 	nmTeardown();
 }
 
+test "a native onLayout handler's write is laid out before the frame it measured ends" {
+	const [w, setW] = createSignal<number>(10);
+	let seen = "";
+	const app = (): NeonNode => <View style={{ width: 400 }}>
+		<View style={{ height: 20 }} onLayout={(e: NeonEvent): void => { setW(e.height * 10); }} />
+		<View style={{ width: w(), height: 10 }} onLayout={(e: NeonEvent): void => { seen += `${e.width};`; }} />
+	</View>;
+	runApp(app);
+	assert seen.endsWith("200;"), "the sibling is laid out at the handler's width before runApp returns: " + seen;
+	nmTeardown();
+}
+
+test "a native onLayout handler that never settles is refused by name" {
+	const [w, setW] = createSignal<number>(100);
+	const app = (): NeonNode => <View style={{ width: w(), height: 10 }}
+		onLayout={(e: NeonEvent): void => { setW(e.width === 100 ? 200 : 100); }} />;
+	let refused = "";
+	try {
+		runApp(app);
+	} catch (e) {
+		refused = e.message;
+	}
+	nmTeardown();
+	assert refused.indexOf("still change the layout after 8 passes") >= 0, "refused: " + refused;
+}
+
 interface Entry {
 	id: string;
 	n: number;
