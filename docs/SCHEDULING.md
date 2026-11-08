@@ -51,10 +51,16 @@ Order, from Flutter's `SchedulerBinding` and Android's Choreographer
    `animator.cc:135` `GetVsyncTargetTime`). An animation started in a handler reads elapsed 0
    on its first frame (Flutter `ticker.dart:205`).
 2. **Reactive flush**, with microtasks drained (Flutter midFrameMicrotasks).
-3. **Layout**, only if dirty.
+3. **Layout**, only if dirty, then **onLayout** for each node whose frame changed. The handlers'
+   writes flush and layout runs again in the same frame, so no frame shows a layout its handlers
+   have not seen; a host refuses by name after 8 passes. This is the browser's place for
+   ResizeObserver (HTML "update the rendering": layout and resize observations loop before
+   paint), not Flutter's post-frame or React Native's asynchronous event (`docs/REFERENCE.md`
+   SF-8).
 4. **Sink.**
-5. **Post-frame** callbacks (onLayout, measured refs). Their writes are the only ones that
-   request another frame. Writes during 1–4 never do (`binding.dart:909-921`).
+5. **Post-frame** callbacks, for work that needs the painted frame; nothing uses this step yet.
+   Their writes are the only ones that request another frame. Writes during 1–4 never do
+   (`binding.dart:909-921`).
 6. **Idle.** No active animation and no request flag means no further frame. A request is
    one-shot and idempotent.
 
@@ -266,6 +272,12 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   One move per frame costs the same; every extra move the OS delivers before the frame cost
   ~0.65 ms here and now costs nothing. How many moves a real desktop delivers per frame (mouse
   rate, OS coalescing) is not measured yet.
+  Mobile hands touches over once per frame already; the step only adds an empty input phase
+  there. `bench/frames` with a busy main, control vs step 2 (2026-11-08/09): iPhone 13 Pro 3
+  rounds and Seeker 3 rounds identical on both sides (120 fps, 0 missed, jitter max ≤0.11 ms);
+  iPad Pro 12.9 5 rounds, 4 identical, and the branch's first round right after the iPad was
+  unlocked missed 2 vsyncs (max 0.92 ms). Rounds 4-5 on the iPad also carried the uncommitted
+  native onLayout bound.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
