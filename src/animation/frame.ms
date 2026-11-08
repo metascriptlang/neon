@@ -19,7 +19,7 @@ when (js) {
 	function platformDriver(): FrameDriver {
 		return {
 			now: (): number => performance.now(),
-			schedule: (fire: () => void): void => {
+			schedule: (fire: (target: number) => void): void => {
 				requestAnimationFrame((time: number): void => { fire(time); });
 			},
 		};
