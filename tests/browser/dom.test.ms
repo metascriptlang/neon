@@ -1,3 +1,4 @@
+import { requestFrame } from "../../src/animation/frame";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { Style, emptyStyle, setStyleField } from "../../src/render/style";
@@ -538,6 +539,26 @@ test "onLayout reports the frame relative to the parent, and again when it chang
 	h.setStyle(el, styleWith("height", 60));
 	await sleepAsync(100);
 	assert got === "layout 10 40;layout 10 60;", "after a resize: " + got;
+	probe(outer).remove();
+}
+
+test "onLayout after a resize the host did not make runs in the frame that laid it out, before the next animation frame" {
+	const h = domHost();
+	const outer = mount("view");
+	const el = h.createElement("view");
+	h.setAttr(el, "id", "neon-layout-probe");
+	h.setStyle(el, styleWith("height", 40));
+	h.insertBefore(outer, el, null);
+	const log: string[] = [];
+	h.addEvent(el, "onLayout", (e: NeonEvent): void => { log.push(`layout ${e.height}`); });
+	await sleepAsync(100);
+	assert log.join("|") === "layout 40", "after mount: " + log.join("|");
+	requestFrame((time: number): void => {
+		window.eval("document.getElementById('neon-layout-probe').style.height = '60px'");
+		requestFrame((next: number): void => { log.push("next frame"); });
+	});
+	await sleepAsync(100);
+	assert log.join("|") === "layout 40|layout 60|next frame", "order: " + log.join("|");
 	probe(outer).remove();
 }
 

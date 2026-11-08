@@ -92,6 +92,7 @@ extern class Reflect {
 
 extern class ResizeObserver {
 	extern observe(target: Node): void;
+	extern unobserve(target: Node): void;
 	extern disconnect(): void;
 }
 
@@ -1038,6 +1039,7 @@ export function domHost(): Host {
 	const presses = new Map<Node, boolean>();
 	const layouts: DomLayoutState[] = [];
 	let layoutFrame: number = -1;
+	let layoutObserver: ResizeObserver | null = null;
 	const keepers: DomScrollState[] = [];
 	let adjustQueued = false;
 	function adjustVisibleContent(): void {
@@ -1405,10 +1407,11 @@ export function domHost(): Host {
 			if (type === "layout") {
 				const state = new DomLayoutState(el, handler);
 				layouts.push(state);
-				const observer = new ResizeObserver((): void => { if (state.active) { scheduleLayouts(); } });
+				if (layoutObserver === null) { layoutObserver = new ResizeObserver((): void => { flushLayouts(); }); }
+				const observer = layoutObserver as ResizeObserver;
 				observer.observe(el);
 				scheduleLayouts();
-				keep(el, (): void => { state.active = false; observer.disconnect(); scheduleLayouts(); });
+				keep(el, (): void => { state.active = false; observer.unobserve(el); scheduleLayouts(); });
 				return;
 			}
 			listen(el, domType, (de: DomEvent): void => {
