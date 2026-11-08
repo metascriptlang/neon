@@ -27,6 +27,8 @@ when (hcr || testBuild) {
 	import { DevNode, setDevDriver } from "../../devtools/driver";
 }
 import { accessor } from "../../core/signal";
+import { flush } from "../../core/runtime";
+import { requestInputFrame, cancelFrame } from "../../animation/frame";
 import { AreaFace, getAreaFaceContext } from "./areaScope";
 
 export interface WindowArea {
@@ -39,6 +41,8 @@ export interface WindowArea {
 	composing: boolean;
 	textInput: boolean;
 	painted: NodeRef[];
+	queued: AreaPointerEvent[];
+	inputFrame: int32;
 }
 
 export interface AreaWindow {
@@ -138,6 +142,8 @@ export function windowHost(w: AreaWindow): Host {
 			composing: false,
 			textInput: false,
 			painted: [],
+			queued: [],
+			inputFrame: 0 as int32,
 		};
 		current = area;
 		w.opened(area);
@@ -174,6 +180,7 @@ export function windowHost(w: AreaWindow): Host {
 			hub,
 			release: (): void => {
 				current = null;
+				dropQueuedInput(area);
 				when (hcr || testBuild) {
 					setDevDriver(null);
 				}
@@ -275,6 +282,11 @@ function chordBack(e: AreaKeyEvent, code: string): boolean {
 
 export function deliverKey(a: WindowArea, e: AreaKeyEvent, code: string): void {
 	a.hub.key(e);
+	drainInput(a);
+	flush((): void => { dispatchKey(a, e, code); });
+}
+
+function dispatchKey(a: WindowArea, e: AreaKeyEvent, code: string): void {
 	const ev = areaKeyEvent(e, code, a.composing);
 	if (e.action === AreaKeyAction.Release) {
 		a.vh.keyUp(ev);
@@ -289,7 +301,56 @@ export function deliverKey(a: WindowArea, e: AreaKeyEvent, code: string): void {
 }
 
 export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
+	if (e.kind === AreaPointerKind.Motion || e.kind === AreaPointerKind.Wheel) {
+		a.hub.pointer(e);
+		queueContinuous(a, e);
+		return;
+	}
+	deliverFramePointer(a, e);
+}
+
+export function deliverFramePointer(a: WindowArea, e: AreaPointerEvent): void {
 	a.hub.pointer(e);
+	drainInput(a);
+	flush((): void => { dispatchPointer(a, e); });
+}
+
+function sameMods(x: AreaPointerEvent, y: AreaPointerEvent): boolean {
+	return (x.mods as uint16) === (y.mods as uint16);
+}
+
+function queueContinuous(a: WindowArea, e: AreaPointerEvent): void {
+	const n = a.queued.length;
+	if (n > 0) {
+		const last = a.queued[n - 1];
+		if (e.kind === AreaPointerKind.Motion && last.kind === AreaPointerKind.Motion && sameMods(last, e)) {
+			a.queued[n - 1] = e;
+			return;
+		}
+		if (e.kind === AreaPointerKind.Wheel && last.kind === AreaPointerKind.Wheel && last.deltaMode === e.deltaMode && sameMods(last, e)) {
+			a.queued[n - 1] = { ...e, dx: last.dx + e.dx, dy: last.dy + e.dy };
+			return;
+		}
+	}
+	a.queued.push(e);
+	if (n === 0) { a.inputFrame = requestInputFrame((time: number): void => { drainInput(a); }); }
+}
+
+export function drainInput(a: WindowArea): void {
+	if (a.queued.length === 0) { return; }
+	const due = a.queued;
+	dropQueuedInput(a);
+	flush((): void => {
+		for (const e of due) { dispatchPointer(a, e); }
+	});
+}
+
+function dropQueuedInput(a: WindowArea): void {
+	a.queued = [];
+	cancelFrame(a.inputFrame);
+}
+
+function dispatchPointer(a: WindowArea, e: AreaPointerEvent): void {
 	if (e.kind === AreaPointerKind.Button && e.button === DESKTOP_BACK_BUTTON) {
 		if (!e.pressed) { dispatchHardwareBackPress(); }
 		return;
@@ -320,16 +381,19 @@ export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 
 export function deliverText(a: WindowArea, text: string): void {
 	a.hub.text(text);
-	a.vh.textInput(text);
+	drainInput(a);
+	flush((): void => { a.vh.textInput(text); });
 }
 
 export function deliverPreedit(a: WindowArea, text: string, cursor: int32): void {
 	a.hub.preedit({ text, cursor });
+	drainInput(a);
 	a.composing = text.length > 0;
-	a.vh.composeText(text, cursor);
+	flush((): void => { a.vh.composeText(text, cursor); });
 }
 
 export function deliverResize(a: WindowArea, width: int32, height: int32, scale: float64): void {
+	drainInput(a);
 	a.width = width;
 	a.height = height;
 	a.scale = scale as float32;
@@ -350,7 +414,8 @@ export function syncTextInput(a: WindowArea, set: (on: boolean) => void): void {
 
 export function deliverFocus(a: WindowArea, focused: boolean): void {
 	a.hub.focus(focused);
-	a.vh.setWindowFocus(focused);
+	drainInput(a);
+	flush((): void => { a.vh.setWindowFocus(focused); });
 }
 
 export struct DueLayer {

@@ -1,6 +1,6 @@
 import { AreaKeyMod, AreaPointerKind } from "../../render/voidAreaHandle";
 import { DOM_DELTA_PIXEL } from "../../render/event";
-import { WindowArea, deliverPointer } from "../void/windowHost";
+import { WindowArea, deliverFramePointer } from "../void/windowHost";
 import { AppEventType, AppTouch } from "../../../../void/src/host/window";
 import { requestFrame, cancelFrame, frameNow } from "../../animation/frame";
 
@@ -339,7 +339,7 @@ export class TouchGesture {
 	}
 
 	pointer(kind: AreaPointerKind, pixelX: float64, pixelY: float64, pressed: boolean, dx: float64, dy: float64): void {
-		deliverPointer(this.area, {
+		deliverFramePointer(this.area, {
 			kind,
 			pixelX,
 			pixelY,
@@ -353,7 +353,7 @@ export class TouchGesture {
 
 	wheel(x: float64, y: float64): void {
 		const scale = this.area.scale as float64;
-		deliverPointer(this.area, {
+		deliverFramePointer(this.area, {
 			kind: AreaPointerKind.Wheel,
 			pixelX: this.originX,
 			pixelY: this.originY,

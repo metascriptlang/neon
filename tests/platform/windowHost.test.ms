@@ -10,6 +10,7 @@ import {
 	AreaKeyAction,
 	AreaKeyEvent,
 	AreaKeyMod,
+	AreaPointerEvent,
 	AreaPointerKind,
 	AreaResize,
 } from "../../src/render/voidAreaHandle";
@@ -47,6 +48,7 @@ import { Color } from "../../../void/src/void2d/types";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { devDriver } from "../../src/devtools/driver";
 import { ControlSession, handleRequest } from "../../src/devtools/control";
+import { requestFrame, setFrameDriver, useManualFrames } from "../../src/animation/frame";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -382,9 +384,78 @@ test "an Ion trackpad wheel reaches onWheel in layout points and a notch as one 
 	const area = p.areas[0];
 	deliverResize(area, 800 as int32, 400 as int32, 2.0);
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
+	const frames = useManualFrames();
 	deliverPointer(area, areaPointer(wheel(DeltaMode.Pixel, -40.0)));
 	deliverPointer(area, areaPointer(wheel(DeltaMode.Line, 1.0)));
+	frames.step(1 as int32);
+	setFrameDriver(null);
 	assert log.join("|") === "pixel -20|line 1", log.join("|");
+}
+
+function motion(x: float64, y: float64): AreaPointerEvent {
+	return { kind: AreaPointerKind.Motion, pixelX: x, pixelY: y, button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 };
+}
+
+function pixelWheel(dy: float64): AreaPointerEvent {
+	return { kind: AreaPointerKind.Wheel, pixelX: 20.0, pixelY: 40.0, button: 0 as int32, pressed: false, dx: 0.0, dy, deltaMode: DOM_DELTA_PIXEL };
+}
+
+function inputProbe(log: string[]): WindowArea {
+	const p = probe();
+	render(element(
+		<Void>
+			<View style={{ width: 200, height: 100 }}
+				onPointerMove={(e: NeonEvent): void => { log.push(`move ${e.x},${e.y}`); }}
+				onPointerDown={(e: NeonEvent): void => { log.push(`down ${e.x},${e.y}`); }}
+				onWheel={(e: NeonEvent): void => { log.push(`wheel ${e.deltaY}`); }} />
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	const area = p.areas[0];
+	deliverResize(area, 400 as int32, 200 as int32, 1.0);
+	area.vh.layout(area.logicalWidth(), area.logicalHeight());
+	return area;
+}
+
+test "moves between frames reach onPointerMove once, at the latest position, before the frame's animation" {
+	const log: string[] = [];
+	const area = inputProbe(log);
+	const frames = useManualFrames();
+	requestFrame((time: number): void => { log.push("animation"); });
+	deliverPointer(area, motion(10.0, 10.0));
+	deliverPointer(area, motion(20.0, 10.0));
+	deliverPointer(area, motion(30.0, 12.0));
+	assert log.length === 0, log.join("|");
+	frames.step(1 as int32);
+	assert log.join("|") === "move 30,12|animation", log.join("|");
+	frames.step(1 as int32);
+	setFrameDriver(null);
+	assert log.join("|") === "move 30,12|animation", "an empty queue runs nothing on the next frame";
+}
+
+test "a press delivers the queued move first, then itself, at once" {
+	const log: string[] = [];
+	const area = inputProbe(log);
+	const frames = useManualFrames();
+	deliverPointer(area, motion(10.0, 10.0));
+	deliverPointer(area, motion(30.0, 12.0));
+	deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: 30.0, pixelY: 12.0, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
+	assert log.join("|") === "move 30,12|down 30,12", log.join("|");
+	frames.step(1 as int32);
+	setFrameDriver(null);
+	assert log.join("|") === "move 30,12|down 30,12", "the drained move does not run again on the frame";
+}
+
+test "wheel deltas of one mode sum into one onWheel per frame, a move between keeps them apart" {
+	const log: string[] = [];
+	const area = inputProbe(log);
+	const frames = useManualFrames();
+	deliverPointer(area, pixelWheel(-3.0));
+	deliverPointer(area, pixelWheel(-4.0));
+	deliverPointer(area, motion(30.0, 12.0));
+	deliverPointer(area, pixelWheel(5.0));
+	frames.step(1 as int32);
+	setFrameDriver(null);
+	assert log.join("|") === "wheel -7|move 30,12|wheel 5", log.join("|");
 }
 
 test "setWindowTitle before runWindow opened its window names the call" {
