@@ -399,6 +399,18 @@ test "the Void host measures a node in the window, laying out a changed tree fir
 	assert rectOf(measure(inner)) === "15,-20,50,400", "the scroll offset moves the content: " + rectOf(measure(inner));
 }
 
+test "a measure before the Void host's first layout is refused as not laid out, as on the native host" {
+	const vh = createVoidHost();
+	render(element(<View style={{ width: 200, height: 100 }} />), vh.host, vh.root);
+	const node = vh.host.firstChild(vh.root) as HostNode;
+	const measureIn = vh.host.measureInWindow as (node: HostNode) => Result<MeasureRect, MeasureError>;
+	const measureAt = vh.host.measureLayout as (node: HostNode, ancestor: HostNode) => Result<MeasureRect, MeasureError>;
+	assert rectOf(measureIn(node)) === MeasureError.NotLaidOut.toString(), "before the first layout: " + rectOf(measureIn(node));
+	assert rectOf(measureAt(node, vh.root)) === MeasureError.NotLaidOut.toString(), "measureLayout too: " + rectOf(measureAt(node, vh.root));
+	vh.layout(400.0, 300.0);
+	assert rectOf(measureIn(node)) === "0,0,200,100", "after it: " + rectOf(measureIn(node));
+}
+
 test "a View's handle measures its laid-out frame on the Void host" {
 	const vh = createVoidHost();
 	const handles: ViewHandle[] = [];

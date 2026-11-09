@@ -1906,6 +1906,7 @@ export function createVoidHostWith(
 	};
 
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => {
+		if (laidWidth < 0.0) { return Result.err(MeasureError.NotLaidOut); }
 		const at = settled(node);
 		if (at === null) { return Result.err(MeasureError.NotMounted); }
 		const n = at as VoidNode;
@@ -1922,6 +1923,7 @@ export function createVoidHostWith(
 	};
 
 	host.measureLayout = (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => {
+		if (laidWidth < 0.0) { return Result.err(MeasureError.NotLaidOut); }
 		const at = settled(node);
 		if (at === null || settled(ancestor) === null) { return Result.err(MeasureError.NotMounted); }
 		const n = at as VoidNode;
