@@ -56,7 +56,9 @@ Order, from Flutter's `SchedulerBinding` and Android's Choreographer
    have not seen; a host refuses by name after 8 passes. This is the browser's place for
    ResizeObserver (HTML "update the rendering": layout and resize observations loop before
    paint), not Flutter's post-frame or React Native's asynchronous event (`docs/REFERENCE.md`
-   SF-8).
+   SF-8). A measure (`measureInWindow`, `measureLayout`) lays a dirty tree out first, as
+   `offsetWidth` does in the browser, so an `onSettled` that measures (Solid's idiom) reads the
+   frame being built; before a host's first layout it is refused `NotLaidOut`.
 4. **Sink.**
 5. **Post-frame** callbacks, for work that needs the painted frame; nothing uses this step yet.
    Their writes are the only ones that request another frame. Writes during 1–4 never do
