@@ -46,9 +46,6 @@ struct Frame {
 	h: float32;
 }
 
-// No path leads from a VoidNode back to one (the tree is in VoidTree); the compiler finds a possible cycle only
-// through NodeRef's scene, whose textures hold a realloc closure that Neon never sets.
-@acyclic
 export class VoidNode {
 	ref: NodeRef;
 	raw: boolean;
