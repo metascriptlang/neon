@@ -27,6 +27,7 @@ export class TerminalNode {
 	attrs: Map<string, string>;
 	events: TerminalEvent[] = [];
 	parent: TerminalNode | null = null;
+	freed: boolean = false;
 	style: TerminalStyle;
 	dirty: boolean = true;
 

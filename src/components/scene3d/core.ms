@@ -362,7 +362,7 @@ export function sceneHost(state: SceneState): Host {
 		},
 		release: (node: HostNode): void => {
 			const n = hostNode(node, "release");
-			if (n.parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			if (n.parent !== null) { throw new Error("release: the node still has a parent, and removeChild frees an attached node"); }
 			freeTree(scene, n);
 			moved();
 		},

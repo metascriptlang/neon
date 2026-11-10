@@ -405,6 +405,7 @@ when (server) {
 		hole: Hole | null = null;
 		held: Hole | null = null;
 		parent: SsrNode | null = null;
+		freed: boolean = false;
 		prev: SsrNode | null = null;
 		next: SsrNode | null = null;
 		last: SsrNode | null = null;
@@ -697,6 +698,7 @@ when (server) {
 			removeChild: (parent: HostNode, node: HostNode): void => {
 				const p = parent as unknown as SsrNode;
 				const n = node as unknown as SsrNode;
+				n.freed = true;
 				if (p.drops) { return; }
 				if (p.collects) {
 					const at = w.headKids.indexOf(n);
@@ -713,7 +715,10 @@ when (server) {
 				return p as unknown as HostNode;
 			},
 			release: (node: HostNode): void => {
-				if ((node as unknown as SsrNode).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+				const n = node as unknown as SsrNode;
+				if (n.freed) { throw "release: the node was removed, and removeChild already freed it"; }
+				if (n.parent !== null) { throw "release: the node still has a parent, and removeChild frees an attached node"; }
+				n.freed = true;
 			},
 			nextSibling: (node: HostNode): HostNode | null => {
 				const n = node as unknown as SsrNode;

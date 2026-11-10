@@ -177,6 +177,7 @@ export function terminalHost(): Host {
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.children.splice(idx, 1);
 			n.parent = null;
+			n.freed = true;
 		},
 		parentOf: (node: HostNode): HostNode | null => {
 			const p = (node as unknown as TerminalNode).parent;
@@ -184,7 +185,10 @@ export function terminalHost(): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if ((node as unknown as TerminalNode).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+			const n = node as unknown as TerminalNode;
+			if (n.freed) { throw "release: the node was removed, and removeChild already freed it"; }
+			if (n.parent !== null) { throw "release: the node still has a parent, and removeChild frees an attached node"; }
+			n.freed = true;
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as TerminalNode;

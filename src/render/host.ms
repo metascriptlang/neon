@@ -46,6 +46,7 @@ export class MockNode {
 	style: Style | null = null;
 	className: string = "";
 	parent: MockNode | null = null;
+	freed: boolean = false;
 	scrollX: number = 0;
 	scrollY: number = 0;
 	scrollAnimated: boolean = false;
@@ -192,6 +193,7 @@ export function mockHost(): Host {
 			if (idx < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
 			p.children.splice(idx, 1);
 			n.parent = null;
+			n.freed = true;
 		},
 		parentOf: (node: HostNode): HostNode | null => {
 			const p = (node as unknown as MockNode).parent;
@@ -199,7 +201,10 @@ export function mockHost(): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if ((node as unknown as MockNode).parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			const n = node as unknown as MockNode;
+			if (n.freed) { throw new Error("release: the node was removed, and removeChild already freed it"); }
+			if (n.parent !== null) { throw new Error("release: the node still has a parent, and removeChild frees an attached node"); }
+			n.freed = true;
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as MockNode;

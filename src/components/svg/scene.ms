@@ -30,6 +30,7 @@ export class SvgNode {
 	attrs: Map<string, string> = new Map<string, string>();
 	children: SvgNode[] = [];
 	parent: SvgNode | null = null;
+	freed: boolean = false;
 	geometry: Geometry | null = null;
 
 	constructor(tag: string) {
@@ -147,6 +148,7 @@ export function sceneHost(scene: SvgScene): Host {
 			if (at < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
 			p.children.splice(at, 1);
 			asNode(node).parent = null;
+			asNode(node).freed = true;
 			sceneChanged(scene);
 		},
 		parentOf: (node: HostNode): HostNode | null => {
@@ -155,7 +157,10 @@ export function sceneHost(scene: SvgScene): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if (asNode(node).parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			const n = asNode(node);
+			if (n.freed) { throw new Error("release: the node was removed, and removeChild already freed it"); }
+			if (n.parent !== null) { throw new Error("release: the node still has a parent, and removeChild frees an attached node"); }
+			n.freed = true;
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = asNode(node);

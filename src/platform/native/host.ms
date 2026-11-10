@@ -77,6 +77,7 @@ extern function niSetEnvironmentHandler(handler: () => void): void;
 
 
 class NativeNode {
+	freed: boolean = false;
 	view: Ptr<void> | null = null;
 	tag: string = "";
 	isText: boolean = false;
@@ -1516,6 +1517,7 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 			freeLayoutTreeAt(n);
 			const kept: Ptr<void>[] | null = leaving ? [] : null;
 			releaseNativeTree(r, n, kept);
+			n.freed = true;
 			if (kept !== null) {
 				animateOut(view as Ptr<void>, opacity, own, (plan as LayoutAnimationPlan).delete as LayoutPhase, kept as Ptr<void>[]);
 			}
@@ -1527,9 +1529,11 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 		},
 		release: (node: HostNode): void => {
 			const n = node as unknown as NativeNode;
-			if (tree.parentOf(n) !== null) { throw "release: the node still has a parent; remove it first"; }
+			if (n.freed) { throw "release: the node was removed, and removeChild already freed it"; }
+			if (tree.parentOf(n) !== null) { throw "release: the node still has a parent, and removeChild frees an attached node"; }
 			freeLayoutTreeAt(n);
 			releaseNativeTree(r, n);
+			n.freed = true;
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as NativeNode;

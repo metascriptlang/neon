@@ -58,6 +58,7 @@ class WindowNode {
 	tag: string;
 	parent: WindowNode | null = null;
 	children: WindowNode[] = [];
+	freed: boolean = false;
 
 	constructor(tag: string) {
 		this.tag = tag;
@@ -207,12 +208,21 @@ export function windowHost(w: AreaWindow): Host {
 		},
 		append: (parent: HostNode, child: HostNode): void => { placeChild(parent, child, null); },
 		insertBefore: placeChild,
-		removeChild: (parent: HostNode, node: HostNode): void => { detach(asWindowNode(node)); },
+		removeChild: (parent: HostNode, node: HostNode): void => {
+			const n = asWindowNode(node);
+			detach(n);
+			n.freed = true;
+		},
 		parentOf: (node: HostNode): HostNode | null => {
 			const p = asWindowNode(node).parent;
 			return p === null ? null : p as unknown as HostNode;
 		},
-		release: (node: HostNode): void => {},
+		release: (node: HostNode): void => {
+			const n = asWindowNode(node);
+			if (n.freed) { throw new Error("release: the node was removed, and removeChild already freed it"); }
+			if (n.parent !== null) { throw new Error("release: the node still has a parent, and removeChild frees an attached node"); }
+			n.freed = true;
+		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = asWindowNode(node);
 			if (n.parent === null) { return null; }

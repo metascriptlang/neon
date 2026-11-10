@@ -1313,7 +1313,7 @@ export function createVoidHostWith(
 		},
 		release: (node: HostNode): void => {
 			const n = live(node, "release");
-			if (tree.parentOf(n) !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			if (tree.parentOf(n) !== null) { throw new Error("release: the node still has a parent, and removeChild frees an attached node"); }
 			const was = wasDirty();
 			free(n);
 			woke(was);

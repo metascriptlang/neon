@@ -605,6 +605,8 @@ class DomScrollState {
 	}
 }
 
+extern function markFreed(node: Node): void from "((n) => { n.__neonFreed = true; })(#)";
+extern function wasFreed(node: Node): boolean from "(#.__neonFreed === true)";
 const controlKinds = new Map<Node, string>();
 const switchValues = new Map<Node, boolean>();
 
@@ -1462,6 +1464,7 @@ export function domHost(): Host {
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			prepareVisibleContent();
 			release(node as unknown as Node);
+			markFreed(node as unknown as Node);
 			const el = parent as unknown as Node;
 			el.removeChild(el === (document.head as unknown as Node) ? leaveHead(node as unknown as Node) : node as unknown as Node);
 			scheduleLayouts();
@@ -1472,8 +1475,10 @@ export function domHost(): Host {
 			return p as unknown as HostNode;
 		},
 		release: (node: HostNode): void => {
-			if ((shownInHead(node as unknown as Node) as Node).parentNode !== null) { throw "release: the node still has a parent; remove it first"; }
+			if (wasFreed(node as unknown as Node)) { throw "release: the node was removed, and removeChild already freed it"; }
+			if ((shownInHead(node as unknown as Node) as Node).parentNode !== null) { throw "release: the node still has a parent, and removeChild frees an attached node"; }
 			release(node as unknown as Node);
+			markFreed(node as unknown as Node);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return heldByHead((shownInHead(node as unknown as Node) as Node).nextSibling as Node | null) as unknown as HostNode;

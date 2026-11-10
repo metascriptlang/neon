@@ -33,6 +33,7 @@ class SpanNode {
 	style: Style | null = null;
 	children: SpanNode[] = [];
 	parent: SpanNode | null = null;
+	freed: boolean = false;
 	paragraph: Paragraph | null = null;
 	press: ((e: NeonEvent) => void) | null = null;
 	touches: VEvent[] = [];
@@ -176,10 +177,14 @@ export const SPAN_HOST: Host = {
 		const n = spanOf(node);
 		if (n.parent !== spanOf(parent)) { throw new Error("removeChild: the span is not a child of the parent"); }
 		detach(n);
+		n.freed = true;
 	},
 	parentOf: (node: HostNode): HostNode | null => spanOf(node).parent,
 	release: (node: HostNode): void => {
-		if (spanOf(node).parent !== null) { throw new Error("release: the span still has a parent; remove it first"); }
+		const n = spanOf(node);
+		if (n.freed) { throw new Error("release: the span was removed, and removeChild already freed it"); }
+		if (n.parent !== null) { throw new Error("release: the span still has a parent, and removeChild frees an attached span"); }
+		n.freed = true;
 	},
 	nextSibling: (node: HostNode): HostNode | null => {
 		const n = spanOf(node);

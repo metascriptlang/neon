@@ -4,7 +4,7 @@ import { Style } from "../../src/render/style";
 
 export const HOST_MOVE_CONTRACT = "abc abc cab abc bac insert-throws remove-throws bac";
 export const RECONCILE_CONTRACT = "abc_ cba_ acd_ deac_ b_ _";
-export const HOST_PARK_CONTRACT = "z|at holder-owns text-set atz| orphan released-empty released-parked release-held-throws atz released-root";
+export const HOST_PARK_CONTRACT = "z|at holder-owns text-set atz| orphan released-empty released-parked release-held-throws atz removed-release-throws tz released-root";
 export const HOST_ATTR_CONTRACT = "_ title=a,id=x id=x id=x,title=b id=x,title=b";
 
 function nameOf(nodes: HostNode[], names: string[], n: HostNode): string {
@@ -153,6 +153,15 @@ export function hostParkContract(h: Host): string {
 		heldThrew = true;
 	}
 	log = log + (heldThrew ? " release-held-throws" : " release-held-silent");
+	log = log + " " + childOrder(h, root, nodes, names);
+	h.removeChild(root, a);
+	let removedThrew = false;
+	try {
+		h.release(a);
+	} catch (e) {
+		removedThrew = true;
+	}
+	log = log + (removedThrew ? " removed-release-throws" : " removed-release-frees-again");
 	log = log + " " + childOrder(h, root, nodes, names);
 	h.release(root);
 	return log + " released-root";
