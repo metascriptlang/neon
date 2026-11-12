@@ -1,11 +1,11 @@
 import { ScrollAxis, ScrollSource, scrollSource } from "pulse/src/scroll";
-import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
+import { nativeLayerEngine, nativeViewOf, runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { ElementHandle } from "../../src/render/measure";
 import { NeonNode } from "../../src/render/node";
 import { MotionElement, motionElements } from "../../src/motion/waapi";
 import { nativeMotionPlayer } from "../../src/motion/native";
-import { bridgeLayerEngine, presentedComponent } from "../../src/platform/native/layerMotion";
+import { presentedComponent } from "../../src/platform/native/layerMotion";
 import { LayerComponent, installLayerEngine } from "../../src/platform/native/layerEngine";
 import { Clock, ManualClock } from "pulse/src/clock";
 import { MotionDocument, MotionTrack, linearKeyframe } from "pulse/src/document";
@@ -62,7 +62,7 @@ class Stage {
 			style={{ width: 100, height: 40 }} />);
 		if (this.handles.length !== 1) { throw new Error("no ref"); }
 		this.tag = nmLastPressableTag();
-		installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+		installLayerEngine(nativeLayerEngine());
 	}
 
 	options(): MotionOptions { return motionOptions(this.clock.clock); }

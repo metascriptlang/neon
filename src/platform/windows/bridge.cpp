@@ -669,7 +669,6 @@ void endTouch() {
 	for (View *view : chain) release(view);
 }
 
-
 int g_appEvent = 0;
 std::string g_appValue;
 std::map<uint32_t, std::string> g_sizeFetches;
@@ -1372,19 +1371,6 @@ void niLayerWrite(void *view, int32_t property, const double *values, int64_t co
 	if (count != layerWidth(property)) fail("niLayerWrite: the value count does not match the property");
 	writeLayer(as(view)->visual, as(view)->layer, property, values);
 	changed();
-}
-
-double niLayerRead(void *view, int32_t component) {
-	const ViewLayer &layer = as(view)->layer;
-	switch (component) {
-	case 0: return layer.opacity;
-	case 1: return layer.scaleX;
-	case 2: return layer.scaleY;
-	case 3: return layer.translateX;
-	case 4: return layer.translateY;
-	case 5: return layer.rotation;
-	}
-	fail("niLayerRead: layer component out of range");
 }
 
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,

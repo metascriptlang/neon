@@ -3,12 +3,11 @@ import {
 	onResize, onFrame, onPointer, onWindowEvent, PointerEvent, PointerKind, Window, WindowEventDestroyed,
 } from "../../../../ion/src/index";
 import "./library";
-import { runApp, mountNativeRoot, NativeRootHandle, nativeViewOf, ownsNativeView } from "../native/host";
+import { runApp, mountNativeRoot, NativeRootHandle, nativeLayerEngine } from "../native/host";
 import { useAppServices, useCaptureServices, imageSize } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { useIonStorage } from "../ion/storage";
-import { bridgeLayerEngine } from "../native/layerMotion";
 import { installLayerEngine } from "../native/layerEngine";
 import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { NeonNode } from "../../render/node";
@@ -52,7 +51,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
 	useAppServices({ ...ionAppServices, imageSize });
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	frameWindows.push(win);
 	nimSetFrameRequester((): void => { requestFrames(); });
 	let mainRoot: Ptr<void> | null = null;

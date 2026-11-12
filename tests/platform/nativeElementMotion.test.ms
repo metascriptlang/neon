@@ -1,9 +1,8 @@
-import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
+import { nativeLayerEngine, runApp } from "../../src/platform/native/host";
 import { Pressable, View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { HostNode } from "../../src/render/hostTypes";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
-import { bridgeLayerEngine } from "../../src/platform/native/layerMotion";
 import {
 	LayerComponent,
 	installLayerEngine,
@@ -13,6 +12,7 @@ import {
 import { setFrameDriver, useManualFrames } from "../../src/animation/frame";
 import { Accessor, createSignal } from "../../src/core/signal";
 import { Show } from "../../src/macros/ui/flow";
+import { LayoutAnimation } from "../../src/motion/layoutAnimation";
 import { Easing } from "pulse/src/easing";
 import {
 	MotionDocument,
@@ -108,7 +108,7 @@ function close(): void {
 
 test "useMotion on a slot named by signals.ref hands opacity and transform to the layer, keeping the rest on signals" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const before = nmLayerAnimates();
 	const app = new Showcase();
 	frames.step(1);
@@ -172,7 +172,7 @@ class Like {
 
 test "useAnimatedValue on a named slot hands a spring and a timing to the layer and keeps decay on the evaluator" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const like = new Like();
 	const before = nmLayerAnimates();
 	like.animated.animate(spring(1.5));
@@ -205,7 +205,7 @@ class ForeignNode {
 
 test "a node no native host made keeps its track on signals while a layer engine is installed" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const app = new Showcase();
 	const foreign: HostNode = new ForeignNode();
 	assert nativeOwns(app.signals.elements.node("box") as HostNode), "a native view is owned";
@@ -276,7 +276,7 @@ class Toggled {
 
 test "an animated value on a slot inside a Show drives the remounted view and leaves the removed one alone" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const app = new Toggled(false);
 	const first = nmLastPressableTag();
 	const value = app.value as AnimatedValue;
@@ -302,7 +302,7 @@ test "an animated value on a slot inside a Show drives the remounted view and le
 
 test "a player on a slot inside a Show hands its remaining tracks to the remounted view" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const app = new Toggled(true);
 	const first = nmLastPressableTag();
 	frames.step(1);
@@ -351,7 +351,7 @@ class Contested {
 
 test "an animated opacity after a style entry that sets opacity wins over that entry, as RN's flattened style" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const app = new Contested(true);
 	frames.step(1);
 	assert nmLayerLive(app.tag, OPACITY) === 1, "handed to the layer";
@@ -366,7 +366,7 @@ test "an animated opacity after a style entry that sets opacity wins over that e
 
 test "a style entry after an animated opacity wins over the animation, as RN's flattened style" {
 	const frames = useManualFrames();
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	const app = new Contested(false);
 	frames.step(1);
 	frames.step(20);
@@ -375,5 +375,76 @@ test "a style entry after an animated opacity wins over the animation, as RN's f
 	nmLoop();
 	frames.runAll();
 	assert Math.abs(nmOpacity(app.tag) - 0.4) < 1e-6, "ends on the later entry: " + nmOpacity(app.tag).toString();
+	close();
+}
+
+class Grown {
+	signals: MotionSignals = new MotionSignals();
+	value: AnimatedValue | null = null;
+	setShown: (shown: boolean) => void;
+
+	constructor(fadeTo: float64) {
+		const [shown, setShown] = createSignal(false);
+		this.setShown = (next: boolean): void => { setShown(next); };
+		this.signals.number("box", "translateX", 0);
+		this.signals.number("box", "opacity", 0);
+		runApp((): NeonNode => {
+			const ref = this.signals.ref("box");
+			this.value = useAnimatedValue(0, new MotionPolicy(), this.signals.target("box", "translateX"))[1];
+			if (fadeTo > 0) {
+				useMotion({
+					version: 1,
+					root: "main",
+					clips: [{ id: "main", duration: 1000, tracks: [ramp("opacity", fadeTo)], placements: [], labels: [] }],
+				}, this.signals.bindings);
+			}
+			return <View style={{ width: 200, height: 200 }}>
+				<Show when={shown()}>
+					<Pressable onPress={() => {}} ref={ref}
+						style={[{ width: 40, height: 40 }, this.signals.style("box")]} />
+				</Show>
+			</View>;
+		});
+	}
+
+	get node(): HostNode { return this.signals.elements.node("box") as HostNode; }
+
+	model(component: LayerComponent): float64 {
+		return (layerEngine() as LayerEngine).read(this.node, component);
+	}
+}
+
+test "a handover during a create tween takes the view's own scale as its base, not the tween's" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const app = new Grown(0);
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "scaleXY"));
+	app.setShown(true);
+	nmLoop();
+	frames.step(5);
+	const tag = nmLastPressableTag();
+	(app.value as AnimatedValue).animate(timing(100, { duration: 200, easing: Easing.linear }));
+	assert nmLayerLive(tag, TRANSFORM) === 1, "handed to the layer";
+	assert nmLayerValue(tag, TRANSFORM, 0) === 1, "the first key keeps scale 1: " + nmLayerValue(tag, TRANSFORM, 0).toString();
+	frames.runAll();
+	assert app.model(LayerComponent.ScaleX) === 1 && app.model(LayerComponent.TranslateX) === 100,
+		"ends at scale 1, x 100: " + app.model(LayerComponent.ScaleX).toString();
+	close();
+}
+
+test "a create tween leaves a property the layer animates alone" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const app = new Grown(0.4);
+	LayoutAnimation.configureNext(LayoutAnimation.create(160, "linear", "opacity"));
+	app.setShown(true);
+	nmLoop();
+	frames.step(1);
+	const tag = nmLastPressableTag();
+	assert nmLayerLive(tag, OPACITY) === 1, "opacity handed to the layer";
+	frames.step(20);
+	assert Math.abs(nmOpacity(tag) - 0.4) < 1e-6, "the view model holds the animation's end: " + nmOpacity(tag).toString();
+	frames.runAll();
+	assert Math.abs(nmOpacity(tag) - 0.4) < 1e-6, "ends on the animation: " + nmOpacity(tag).toString();
 	close();
 }

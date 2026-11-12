@@ -4,8 +4,7 @@ import {
 	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window, keyName,
 } from "../../../../ion/src/index";
 import "./library";
-import { nativeViewOf, ownsNativeView, runApp } from "../native/host";
-import { bridgeLayerEngine } from "../native/layerMotion";
+import { nativeLayerEngine, runApp } from "../native/host";
 import { installLayerEngine } from "../native/layerEngine";
 import { useAppServices, useCaptureServices, imageSize } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
@@ -70,7 +69,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
 	useAppServices({ ...ionAppServices, imageSize });
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 	niwSetFrameRequester((): void => { requestFrame(win); });
 	onWake((): void => { niwDrainImages(); });
 

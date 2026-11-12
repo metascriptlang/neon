@@ -1843,20 +1843,6 @@ static double transformComponent(NeonView *v, CATransform3D t, int32_t component
 	return 0;
 }
 
-double niLayerRead(void *view, int32_t component) {
-	NeonView *v = as(view);
-	switch (component) {
-	case 0: return v.alphaValue;
-	case 1: return v.scaleX;
-	case 2: return v.scaleY;
-	case 3: return v.translateX;
-	case 4: return v.translateY;
-	case 5: return v.rotation;
-	}
-	fail("niLayerRead: layer component out of range");
-	return 0;
-}
-
 static NSArray *layerFrames(NeonView *v, int32_t property, NSData *tuples) {
 	int64_t width = layerWidth(property);
 	const double *values = tuples.bytes;

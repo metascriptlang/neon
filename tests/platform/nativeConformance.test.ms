@@ -1,4 +1,4 @@
-import { nativeViewOf, ownsNativeView, runApp } from "../../src/platform/native/host";
+import { nativeLayerEngine, nativeViewOf, runApp } from "../../src/platform/native/host";
 import { createRoot, runWithOwner } from "../../src/core/owner";
 import { getOwner } from "../../src/core/runtime";
 import { Computation } from "../../src/core/types";
@@ -8,7 +8,7 @@ import { View, ViewHandle } from "../../src/components/primitives";
 import { setFrameDriver } from "../../src/animation/frame";
 import { MotionSignals, neonClock, useAnimatedValue, useMotion } from "../../src/motion/neon";
 import { LayerComponent, installLayerEngine } from "../../src/platform/native/layerEngine";
-import { bridgeLayerEngine, presentedComponent } from "../../src/platform/native/layerMotion";
+import { presentedComponent } from "../../src/platform/native/layerMotion";
 import { Clock } from "pulse/src/clock";
 import { flatten } from "pulse/src/compose";
 import {
@@ -50,7 +50,7 @@ class Stage {
 			now: (): number => this.time,
 			schedule: (fire: () => void): void => { this.fire = fire; },
 		});
-		installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+		installLayerEngine(nativeLayerEngine());
 		for (const property of properties) {
 			this.names.push(property.name);
 			this.signals.number(property.name, CHANNEL, property.initial);

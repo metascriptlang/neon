@@ -11,6 +11,8 @@ import { I18nManager } from "../../api/i18nManager";
 import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, Direction, freeLayoutTreeAt, layoutPassAt, markLayoutDirty } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, StyleValue, claimed, mergeStyle, isBoldWeight, setStyleField, sameLayout } from "../../render/style";
+import { LayerComponent, LayerEngine, LayerProperty, LayerTiming } from "./layerEngine";
+import { layerAnimate, layerRemove, layerWrite } from "./layerMotion";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
@@ -108,6 +110,10 @@ class NativeNode {
 	faded: boolean = false;
 	opacityClaimed: boolean = false;
 	transformClaimed: boolean = false;
+	opacityModel: float64 = 1.0;
+	transformModel: float64[] = [1.0, 1.0, 0.0, 0.0, 0.0];
+	opacityAnimated: boolean = false;
+	transformAnimated: boolean = false;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
 	flex: FlexStyle | null = null;
@@ -277,11 +283,52 @@ export function nativeViewOf(node: HostNode): Ptr<void> {
 	return view as Ptr<void>;
 }
 
+export function nativeLayerEngine(): LayerEngine {
+	return {
+		owns: ownsNativeView,
+		write: (node: HostNode, property: LayerProperty, values: float64[]): void => {
+			const n = node as unknown as NativeNode;
+			if (property === LayerProperty.Opacity) {
+				n.opacityModel = values[0];
+			} else {
+				n.transformModel = values.slice(0);
+			}
+			layerWrite(nativeViewOf(node), property, values);
+		},
+		read: (node: HostNode, component: LayerComponent): float64 => {
+			const n = node as unknown as NativeNode;
+			return match (component) {
+				LayerComponent.Opacity => n.opacityModel,
+				LayerComponent.ScaleX => n.transformModel[0],
+				LayerComponent.ScaleY => n.transformModel[1],
+				LayerComponent.TranslateX => n.transformModel[2],
+				LayerComponent.TranslateY => n.transformModel[3],
+				LayerComponent.Rotation => n.transformModel[4],
+			};
+		},
+		animate: (
+			node: HostNode,
+			property: LayerProperty,
+			keyTimes: float64[],
+			values: float64[],
+			timing: LayerTiming,
+		): void => {
+			const n = node as unknown as NativeNode;
+			if (property === LayerProperty.Opacity) { n.opacityAnimated = true; } else { n.transformAnimated = true; }
+			layerAnimate(nativeViewOf(node), property, keyTimes, values, timing);
+		},
+		remove: (node: HostNode, property: LayerProperty): void => {
+			const n = node as unknown as NativeNode;
+			if (property === LayerProperty.Opacity) { n.opacityAnimated = false; } else { n.transformAnimated = false; }
+			layerRemove(nativeViewOf(node), property);
+		},
+	};
+}
+
 when (ios) {
-	import { bridgeLayerEngine } from "./layerMotion";
 	import { installLayerEngine } from "./layerEngine";
 
-	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	installLayerEngine(nativeLayerEngine());
 }
 
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
@@ -329,9 +376,19 @@ function tweenFrame(n: NativeNode, phase: LayoutPhase): void {
 	});
 }
 
-function ownOpacity(n: NativeNode): number {
-	const style = n.styleCache;
-	return style !== null && (style as Style).opacity !== null ? ((style as Style).opacity as number) : 1.0;
+function modelTransform(n: NativeNode): NativeTransform {
+	const m = n.transformModel;
+	return {
+		scaleX: m[0] as float32,
+		scaleY: m[1] as float32,
+		translateX: m[2] as float32,
+		translateY: m[3] as float32,
+		rotate: m[4] as float32,
+	};
+}
+
+function layerAnimated(n: NativeNode, phase: LayoutPhase): boolean {
+	return phase.property === "opacity" ? n.opacityAnimated : n.transformAnimated;
 }
 
 function showAppearance(view: Ptr<void>, opacity: number, own: NativeTransform, phase: LayoutPhase, shown: number): void {
@@ -354,7 +411,9 @@ function showAppearance(view: Ptr<void>, opacity: number, own: NativeTransform, 
 function animateIn(n: NativeNode, phase: LayoutPhase): void {
 	if (n.view === null) { return; }
 	runLayoutTween(phase, (t: number): void => {
-		if (n.view !== null) { showAppearance(n.view as Ptr<void>, ownOpacity(n), nativeTransform(n.transformCss), phase, t); }
+		if (n.view !== null && !layerAnimated(n, phase)) {
+			showAppearance(n.view as Ptr<void>, n.opacityModel, modelTransform(n), phase, t);
+		}
 	}, (): void => {});
 }
 
@@ -474,6 +533,7 @@ function paintTransform(n: NativeNode, s: Style, force: boolean = false): void {
 	}
 	n.rotation = transform.rotate;
 	n.transformCss = s.transform;
+	n.transformModel = [transform.scaleX, transform.scaleY, transform.translateX, transform.translateY, transform.rotate];
 }
 
 function paintBackground(n: NativeNode, view: Ptr<void>, s: Style): void {
@@ -506,9 +566,11 @@ function paintRadius(n: NativeNode, view: Ptr<void>, s: Style): void {
 function paintOpacity(n: NativeNode, view: Ptr<void>, s: Style): void {
 	if (s.opacity !== null) {
 		niSetOpacity(view, s.opacity as float32);
+		n.opacityModel = s.opacity as number;
 		n.faded = true;
 	} else if (n.faded) {
 		niSetOpacity(view, 1.0);
+		n.opacityModel = 1.0;
 		n.faded = false;
 	}
 }
@@ -1441,8 +1503,8 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 			const leaving = plan !== null && (plan as LayoutAnimationPlan).delete !== null && isMounted(p) &&
 				n.view !== null && !n.isString && n.framed;
 			const view = n.view;
-			const opacity = ownOpacity(n);
-			const own = nativeTransform(n.transformCss);
+			const opacity = n.opacityModel;
+			const own = modelTransform(n);
 			tree.detach(n);
 			if (n.zIndex !== 0) { p.zChildren -= 1; }
 			removePaintChild(p, n);

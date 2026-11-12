@@ -1200,7 +1200,6 @@ void niBringChildToFront(void *child) {
 	[c.superview bringSubviewToFront:c];
 }
 
-
 void niViewSetTag(void *view, int32_t tag) {
 	UIView *v = (__bridge UIView *)view;
 	v.tag = tag;
@@ -1556,14 +1555,6 @@ void niLayerWrite(void *view, int32_t property, const double *values, int64_t co
 		neonApplyTransform(v);
 	}
 	[CATransaction commit];
-}
-
-double niLayerRead(void *view, int32_t component) {
-	UIView *v = (__bridge UIView *)view;
-	if (component == 0) return v.layer.opacity;
-	if (component >= 1 && component <= 5) return neonTransformPart(v, component - 1);
-	fail("niLayerRead: layer component out of range");
-	return 0;
 }
 
 void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_t keyCount,

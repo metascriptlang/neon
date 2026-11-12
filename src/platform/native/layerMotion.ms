@@ -1,10 +1,4 @@
-import { HostNode } from "../../render/hostTypes";
-import {
-	LayerComponent,
-	LayerEngine,
-	LayerProperty,
-	LayerTiming,
-} from "./layerEngine";
+import { LayerComponent, LayerProperty, LayerTiming } from "./layerEngine";
 
 @include("./layerMotion.h");
 
@@ -31,7 +25,6 @@ extern function niLayerWrite(
 	property: int32,
 	values: Readonly<Span<float64>>,
 ): void;
-extern function niLayerRead(view: Ptr<void>, component: int32): float64;
 extern function niLayerAnimate(
 	view: Ptr<void>,
 	property: int32,
@@ -55,44 +48,32 @@ export function presentedComponent(
 	return niLayerPresented(view, componentId(component));
 }
 
-export function bridgeLayerEngine(
-	viewOf: (node: HostNode) => Ptr<void>,
-	owns: (node: HostNode) => boolean,
-): LayerEngine {
-	return {
-		owns,
-		write: (
-			node: HostNode,
-			property: LayerProperty,
-			values: float64[],
-		): void => {
-			niLayerWrite(viewOf(node), propertyId(property), values);
-		},
-		read: (node: HostNode, component: LayerComponent): float64 =>
-			niLayerRead(viewOf(node), componentId(component)),
-		animate: (
-			node: HostNode,
-			property: LayerProperty,
-			keyTimes: float64[],
-			values: float64[],
-			timing: LayerTiming,
-		): void => {
-			niLayerAnimate(
-				viewOf(node),
-				propertyId(property),
-				keyTimes,
-				values,
-				timing.durationMs,
-				timing.repeatCount,
-				timing.autoreverses ? 1 : 0,
-				timing.startMs,
-				timing.offsetMs,
-				timing.speed,
-				timing.lagMs,
-			);
-		},
-		remove: (node: HostNode, property: LayerProperty): void => {
-			niLayerRemove(viewOf(node), propertyId(property));
-		},
-	};
+export function layerWrite(view: Ptr<void>, property: LayerProperty, values: float64[]): void {
+	niLayerWrite(view, propertyId(property), values);
+}
+
+export function layerAnimate(
+	view: Ptr<void>,
+	property: LayerProperty,
+	keyTimes: float64[],
+	values: float64[],
+	timing: LayerTiming,
+): void {
+	niLayerAnimate(
+		view,
+		propertyId(property),
+		keyTimes,
+		values,
+		timing.durationMs,
+		timing.repeatCount,
+		timing.autoreverses ? 1 : 0,
+		timing.startMs,
+		timing.offsetMs,
+		timing.speed,
+		timing.lagMs,
+	);
+}
+
+export function layerRemove(view: Ptr<void>, property: LayerProperty): void {
+	niLayerRemove(view, propertyId(property));
 }

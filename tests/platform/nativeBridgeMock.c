@@ -809,8 +809,8 @@ void niLayerWrite(void *view, int32_t property, const double *values, int64_t co
 	g_transformWrites++;
 }
 
-double niLayerRead(void *view, int32_t component) {
-	MockView *v = live(view, "niLayerRead");
+static double modelComponent(void *view, int32_t component) {
+	MockView *v = live(view, "modelComponent");
 	switch (component) {
 	case 0: return v->opacity;
 	case 1: return v->scaleX;
@@ -819,7 +819,7 @@ double niLayerRead(void *view, int32_t component) {
 	case 4: return v->translateY;
 	case 5: return v->rotation;
 	}
-	fprintf(stderr, "mock bridge: niLayerRead of component %d\n", component);
+	fprintf(stderr, "mock bridge: modelComponent of component %d\n", component);
 	abort();
 }
 
@@ -861,11 +861,11 @@ void niLayerRemove(void *view, int32_t property) {
 double niLayerPresented(void *view, int32_t component) {
 	int property = component == 0 ? 0 : 1;
 	LayerRecord *r = layerRecord(live(view, "niLayerPresented"), property, 0);
-	if (!r || !r->live) return niLayerRead(view, component);
+	if (!r || !r->live) return modelComponent(view, component);
 	double duration = r->timing[0] / 1000.0, repeat = r->timing[1] > 0 ? r->timing[1] : 1, speed = r->timing[5];
 	double period = r->timing[2] != 0 ? duration * 2 : duration;
 	double elapsed = (g_layerNowMs / 1000.0 - r->beginTime) * speed;
-	if (elapsed >= repeat * period) return niLayerRead(view, component);
+	if (elapsed >= repeat * period) return modelComponent(view, component);
 	double local = elapsed < 0 ? 0 : elapsed;
 	double within = local - period * (double)(int64_t)(local / period);
 	double progress = (within > duration ? period - within : within) / duration;

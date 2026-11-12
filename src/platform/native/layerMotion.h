@@ -10,7 +10,6 @@
 
 // Sets the model value with no implicit animation.
 void   niLayerWrite(void *view, int32_t property, const double *values, int64_t count);
-double niLayerRead(void *view, int32_t component);
 // Adds the property's one animation, replacing an earlier one: keyTimes in [0, 1] of durationMs,
 // linear between keys, held before its start. Its active local time is offsetMs startMs after a
 // stamp lagMs before the call and advances at speed; it is removed when its remaining
