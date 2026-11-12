@@ -101,6 +101,9 @@ function runFrame(target: number): void {
 			if (request.live) { request.callback(time); }
 		}
 	});
+	for (const request of pendingInput) {
+		if (request.live) { scheduleFrame(); break; }
+	}
 }
 
 function newRequest(callback: (time: number) => void): FrameRequest {

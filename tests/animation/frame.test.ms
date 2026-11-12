@@ -286,6 +286,20 @@ test "input and its reactive writes precede animation in the same frame" {
 	setFrameDriver(null);
 }
 
+test "input requested during input is delivered on the next frame, not stranded" {
+	const clock = useManualFrames();
+	let calls: int32 = 0;
+	requestInputFrame((time: number): void => {
+		calls += 1;
+		requestInputFrame((next: number): void => { calls += 1; });
+	});
+	clock.advance(16);
+	assert calls === 1 && framePending();
+	clock.advance(16);
+	assert calls === 2 && !framePending();
+	setFrameDriver(null);
+}
+
 test "changing the driver cancels its delayed wake and forgets its requests" {
 	const old = useManualFrames();
 	let calls: int32 = 0;
