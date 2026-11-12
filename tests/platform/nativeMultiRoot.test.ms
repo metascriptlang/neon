@@ -3,13 +3,13 @@ import { View, Pressable, TextInput } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { DevDriver, DevNode, devDriver } from "../../src/devtools/driver";
-import { Accessor } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { WindowDimensions, useWindowDimensions } from "../../src/render/environment";
 import { Dimensions } from "../../src/api/dimensions";
 import { niViewCreate } from "../../src/platform/native/bridge.h";
 import {
 	nmTeardown, nmTapAt, nmTapAtIn, nmTouchFull, nmResize, nmControl, nmLastInputTag, nmLastPressableTag,
-	nmViewsCreated, nmReleaseCalls,
+	nmViewsCreated, nmReleaseCalls, nmLastViewTag, nmLayoutWidth,
 } from "./nativeBridgeMock.h";
 
 class Window {
@@ -121,4 +121,100 @@ test "each native root's useWindowDimensions answers its own size, and Dimension
 	panel.dispose();
 	nmResize(400.0, 800.0);
 	nmTeardown();
+}
+
+test "one input batch lays out many dirty native roots without nesting them" {
+	const [width, setWidth] = createSignal<int32>(10);
+	const panels: NativeRootHandle[] = [];
+	const tags: int32[] = [];
+	runApp((): NeonNode => <Pressable
+		style={{ width: 100, height: 40 }}
+		onPress={(): void => { setWidth(20); }}
+	/>);
+	for (let i: int32 = 0; i < 32; i += 1) {
+		panels.push(mountNativeRoot(
+			niViewCreate(), 200.0, 100.0,
+			(): NeonNode => <Pressable style={{ width: width(), height: 10 }} />,
+		));
+		tags.push(nmLastViewTag());
+	}
+	try {
+		nmTapAt(10.0, 10.0);
+		assert width() === 20;
+		for (const tag of tags) {
+			assert nmLayoutWidth(tag) === 20, `root tag ${tag}: ${nmLayoutWidth(tag)}`;
+		}
+	} finally {
+		for (const panel of panels) { panel.dispose(); }
+		nmTeardown();
+	}
+}
+
+test "onLayout can dirty a root already laid out in the same batch" {
+	const [firstWidth, setFirstWidth] = createSignal<int32>(10);
+	const [secondWidth, setSecondWidth] = createSignal<int32>(10);
+	runApp((): NeonNode => <Pressable
+		style={{ width: 100, height: 40 }}
+		onPress={(): void => { setFirstWidth(20); setSecondWidth(20); }}
+	/>);
+	const first = mountNativeRoot(
+		niViewCreate(), 200.0, 100.0,
+		(): NeonNode => <Pressable style={{ width: firstWidth(), height: 10 }} />,
+	);
+	const tag = nmLastViewTag();
+	const second = mountNativeRoot(
+		niViewCreate(), 200.0, 100.0,
+		(): NeonNode => <View style={{ width: secondWidth(), height: 10 }}
+			onLayout={(e: NeonEvent): void => {
+				if (e.width > 10) { setFirstWidth((e.width * 2) as int32); }
+			}}
+		/>,
+	);
+	try {
+		nmTapAt(10.0, 10.0);
+		assert nmLayoutWidth(tag) === 40;
+	} finally {
+		second.dispose();
+		first.dispose();
+		nmTeardown();
+	}
+}
+
+test "a layout feedback loop between roots is refused and the drain recovers" {
+	const [firstWidth, setFirstWidth] = createSignal<int32>(10);
+	const [secondWidth, setSecondWidth] = createSignal<int32>(10);
+	let enabled = false;
+	runApp((): NeonNode => <Pressable
+		style={{ width: 100, height: 40 }}
+		onPress={(): void => { enabled = true; setFirstWidth(20); }}
+	/>);
+	const first = mountNativeRoot(
+		niViewCreate(), 200.0, 100.0,
+		(): NeonNode => <View style={{ width: firstWidth(), height: 10 }}
+			onLayout={(e: NeonEvent): void => {
+				if (enabled) { setSecondWidth(e.width as int32); }
+			}}
+		/>,
+	);
+	const second = mountNativeRoot(
+		niViewCreate(), 200.0, 100.0,
+		(): NeonNode => <View style={{ width: secondWidth(), height: 10 }}
+			onLayout={(e: NeonEvent): void => {
+				if (enabled) { setFirstWidth(e.width === 10 ? 20 : 10); }
+			}}
+		/>,
+	);
+	let refused = "";
+	try { nmTapAt(10.0, 10.0); }
+	catch (e) { refused = e.message; }
+	enabled = false;
+	try {
+		assert refused.includes("still change the layout after 8 passes"), refused;
+		first.resize(150.0, 80.0);
+		second.resize(150.0, 80.0);
+	} finally {
+		second.dispose();
+		first.dispose();
+		nmTeardown();
+	}
 }

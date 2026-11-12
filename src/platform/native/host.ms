@@ -631,6 +631,7 @@ class NativeRoot {
 	inputNodes: NativeNode[] = [];
 	focusedInput: NativeNode | null = null;
 	layoutDirty: boolean = false;
+	layoutPassDepth: int32 = 0;
 	mountedApp: (() => NeonNode) | null = null;
 	mounted: Dispose | null = null;
 
@@ -1651,25 +1652,47 @@ export function batched(fn: () => void): void {
 	if (batchDepth === 0) { relayoutDirty(); }
 }
 
+const LAYOUT_PASSES: int32 = 8;
+let drainingLayouts = false;
+let activeLayouts: int32 = 0;
+
+function layoutDidNotSettle(): void {
+	throw new Error(`native host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
+}
+
 function relayoutDirty(): void {
-	for (const r of roots.slice(0, roots.length)) {
-		if (r.layoutDirty && roots.indexOf(r) >= 0) { relayout(r); }
+	if (drainingLayouts || activeLayouts > 0) { return; }
+	drainingLayouts = true;
+	try {
+		for (let pass: int32 = 0; pass <= LAYOUT_PASSES; pass += 1) {
+			let dirty = false;
+			for (const r of roots.slice(0, roots.length)) {
+				if (!r.layoutDirty || roots.indexOf(r) < 0) { continue; }
+				if (pass === LAYOUT_PASSES) { layoutDidNotSettle(); }
+				dirty = true;
+				relayout(r);
+			}
+			if (!dirty) { return; }
+		}
+	} finally {
+		drainingLayouts = false;
 	}
 }
 
-const LAYOUT_PASSES: int32 = 8;
-let layoutPassDepth: int32 = 0;
-
 function relayout(r: NativeRoot): void {
-	if (layoutPassDepth === LAYOUT_PASSES) {
-		throw new Error(`native host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
-	}
-	layoutPassDepth += 1;
+	const depth = r.layoutPassDepth;
+	activeLayouts += 1;
 	try {
-		layoutOnce(r);
+		do {
+			if (r.layoutPassDepth === LAYOUT_PASSES) { layoutDidNotSettle(); }
+			r.layoutPassDepth += 1;
+			layoutOnce(r);
+		} while (r.layoutDirty && roots.indexOf(r) >= 0);
 	} finally {
-		layoutPassDepth -= 1;
+		r.layoutPassDepth = depth;
+		activeLayouts -= 1;
 	}
+	if (batchDepth === 0) { relayoutDirty(); }
 }
 
 function layoutOnce(r: NativeRoot): void {
