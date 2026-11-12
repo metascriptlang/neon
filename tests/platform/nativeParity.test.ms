@@ -42,7 +42,7 @@ test "the native host publishes how far the unsafe areas reach into its root, an
 	assert back === "0/0 0", "back inside the safe area: " + back;
 }
 
-test "a native Text sends its textAlign to the label and a centred label spans its parent" {
+test "a native Text sends its textAlign to the label and stretches across its column whatever its alignment" {
 	const [align, setAlign] = createSignal<string>("center");
 	const app = (): NeonNode => <View style={{ width: 300 }}>
 		<Text style={{ textAlign: align() as TextAlign }}>mid</Text>
@@ -60,8 +60,8 @@ test "a native Text sends its textAlign to the label and a centred label spans i
 	nmTeardown();
 	assert centred === "center 300", "centred: " + centred;
 	assert right === "right 300", "right: " + right;
-	assert left === "left 26", "left keeps the text's own width: " + left;
-	assert plain === "<unset> 43", "an unaligned label sends nothing: " + plain;
+	assert left === "left 300", "left stretches across the column as in React Native: " + left;
+	assert plain === "<unset> 300", "an unaligned label sends nothing and stretches: " + plain;
 }
 
 function anyProp(name: string): string {

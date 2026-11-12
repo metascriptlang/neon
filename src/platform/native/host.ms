@@ -8,7 +8,7 @@ import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { extractResponderTerminal } from "../../render/responder";
 import { I18nManager } from "../../api/i18nManager";
-import { FlexStyle, LayoutMeasure, YGNode, Direction, freeLayoutTreeAt, layoutPassAt } from "../../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, Direction, freeLayoutTreeAt, layoutPassAt, markLayoutDirty } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, StyleValue, mergeStyle, isBoldWeight, setStyleField, sameLayout } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
@@ -122,12 +122,10 @@ class NativeNode {
 	framed: boolean = false;
 	contentW: float32 = -1.0;
 	measuredFor: float32 = -1.0;
-	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	textAlign: string = "";
 	writingDirection: string = "";
 	fontFamily: string = "";
-	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
 	visibleContent: VisibleContentPosition | null = null;
@@ -293,7 +291,11 @@ export function layoutGetLastStyle(this n: NativeNode): FlexStyle | null { retur
 export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): void { n.lastFlex = s; }
 export function layoutGetYg(this n: NativeNode): Ptr<YGNode> | null { return n.yg; }
 export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
-export function layoutGetMeasure(this n: NativeNode): LayoutMeasure | null { return null; }
+export function layoutGetMeasure(this n: NativeNode): LayoutMeasure | null {
+	if (!n.isText) { return null; }
+	return (width: float32, widthMode: MeasureMode, height: float32, heightMode: MeasureMode): MeasureSize =>
+		measureLabel(n, width, widthMode, height, heightMode);
+}
 let layoutPlan: LayoutAnimationPlan | null = null;
 let nextTween: int32 = 1;
 let layoutPassId: int32 = 0;
@@ -562,99 +564,22 @@ function applyPaint(n: NativeNode, s: Style, prev: Style | null = null): void {
 	}
 }
 
-// A centred, right or justified label spans the width its parent gives it (RN Text stretches
-// like any flex item), at least as wide as its text; a left-aligned one keeps its text's width.
-function alignsAcross(n: NativeNode): boolean {
-	return n.textAlign === "center" || n.textAlign === "right" || n.textAlign === "justify";
+function fitTo(measured: float32, given: float32, mode: MeasureMode): float32 {
+	if (mode === "exactly") { return given; }
+	return mode === "at-most" && measured > given ? given : measured;
 }
 
+function measureLabel(n: NativeNode, width: float32, widthMode: MeasureMode, height: float32, heightMode: MeasureMode): MeasureSize {
+	if (n.view === null) {
+		return { width: widthMode === "exactly" ? width : 0.0, height: heightMode === "exactly" ? height : 0.0 };
+	}
+	niMeasureText(n.view as Ptr<void>, widthMode === "undefined" ? niScreenWidth() : width);
+	return { width: fitTo(niMeasuredW(), width, widthMode), height: fitTo(niMeasuredH(), height, heightMode) };
+}
 
-// Eager text measure: the bridge's measured size becomes the node's fixed w/h so yoga lays
-// out text without a measure func. Fresh FlexStyle object every time — the
 function remeasureText(n: NativeNode): void {
-	measureTextWithin(n, niScreenWidth());
-}
-
-function measureTextWithin(n: NativeNode, available: float32): void {
-	if (!n.isText || n.view === null) { return; }
-	niMeasureText(n.view, available);
-	const w = niMeasuredW();
-	const h = niMeasuredH();
-	n.measuredFor = available;
-	n.measuredW = w;
-	const old = n.flex;
-	const fresh: FlexStyle = {};
-	if (old !== null) {
-		fresh.flexDirection = old.flexDirection;
-		fresh.justifyContent = old.justifyContent;
-		fresh.alignItems = old.alignItems;
-		fresh.alignSelf = old.alignSelf;
-		fresh.alignContent = old.alignContent;
-		fresh.position = old.position;
-		fresh.flexWrap = old.flexWrap;
-		fresh.display = old.display;
-		fresh.flex = old.flex;
-		fresh.flexGrow = old.flexGrow;
-		fresh.flexShrink = old.flexShrink;
-		fresh.flexBasis = old.flexBasis;
-		fresh.minWidth = old.minWidth;
-		fresh.minHeight = old.minHeight;
-		fresh.maxWidth = old.maxWidth;
-		fresh.maxHeight = old.maxHeight;
-		fresh.aspectRatio = old.aspectRatio;
-		fresh.margin = old.margin;
-		fresh.marginTop = old.marginTop;
-		fresh.marginBottom = old.marginBottom;
-		fresh.marginLeft = old.marginLeft;
-		fresh.marginRight = old.marginRight;
-		fresh.padding = old.padding;
-		fresh.paddingTop = old.paddingTop;
-		fresh.paddingBottom = old.paddingBottom;
-		fresh.paddingLeft = old.paddingLeft;
-		fresh.paddingRight = old.paddingRight;
-		fresh.top = old.top;
-		fresh.left = old.left;
-		fresh.right = old.right;
-		fresh.bottom = old.bottom;
-		fresh.gap = old.gap;
-		fresh.rowGap = old.rowGap;
-		fresh.columnGap = old.columnGap;
-	}
-	if (alignsAcross(n)) {
-		fresh.width = old !== null ? old.width : null;
-		if (fresh.minWidth === null || n.minFromMeasure) {
-			fresh.minWidth = w;
-			n.minFromMeasure = true;
-		}
-	} else {
-		fresh.width = w;
-	}
-	fresh.height = h;
-	if (n.isString) { fresh.display = n.text === "" ? "none" : null; }
-	n.flex = fresh;
-}
-function horizontalInset(yg: Ptr<YGNode>, padding: boolean): float32 {
-	if (padding) {
-		return YGNodeLayoutGetPadding(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetPadding(yg, YGEdge.YGEdgeRight)
-			+ YGNodeLayoutGetBorder(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetBorder(yg, YGEdge.YGEdgeRight);
-	}
-	return YGNodeLayoutGetMargin(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetMargin(yg, YGEdge.YGEdgeRight);
-}
-
-function availableTextWidth(n: NativeNode): float32 {
-	const p = tree.parentOf(n);
-	if (p === null || p.yg === null || p.w <= 0) { return niScreenWidth(); }
-	let width = p.w - horizontalInset(p.yg as Ptr<YGNode>, true);
-	if (n.yg !== null) { width -= horizontalInset(n.yg as Ptr<YGNode>, false); }
-	return Math.max(0, width) as float32;
-}
-
-function textNeedsRemeasure(n: NativeNode): boolean {
-	if (!n.isText || n.view === null || !isMounted(n)) { return false; }
-	const available = availableTextWidth(n);
-	if (Math.abs(available - n.measuredFor) < 0.5) { return false; }
-	const unwrapped = n.measuredW < n.measuredFor - 0.5;
-	return !(unwrapped && available >= n.measuredW);
+	if (n.isString) { n.flex = n.text === "" ? { display: "none" } : {}; }
+	if (n.isText && n.yg !== null) { markLayoutDirty(n); }
 }
 
 // ---- the host ----
@@ -1352,7 +1277,6 @@ function writeStyle(r: NativeRoot, n: NativeNode, style: Style): void {
 	}
 	writeTextInsets(n, style);
 	n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
-	n.minFromMeasure = false;
 	applyPaint(n, style, prev === style ? null : prev);
 	if (n.isText && !n.isString && tree.spansOf(n) !== null) { refreshLabel(n); }
 	else if (n.isText) { remeasureText(n); }
@@ -1705,11 +1629,6 @@ function relayout(r: NativeRoot): void {
 	layoutPassAt(top, width, height, r.direction, pointScale);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
-		for (const t of r.textNodes) {
-			if (!textNeedsRemeasure(t)) { continue; }
-			measureTextWithin(t, availableTextWidth(t));
-			changed = true;
-		}
 		for (const field of r.inputNodes) {
 			if (!growsWithContent(field) || !isMounted(field) || Math.abs(field.w - field.measuredFor) < 0.5) { continue; }
 			if (growInput(field)) { changed = true; }

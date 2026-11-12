@@ -771,7 +771,7 @@ test "native text wraps to the width its container gives it, so a row grows with
 	assert size === "312x42", "the label takes the column's 312pt and wraps to two 21pt lines: " + size;
 	nmResize(800, 400);
 	const wide = `${nmTextWidth(long)}x${nmTextHeight(long)}`;
-	assert wide === "570x21", "a wider window rewraps the same label: " + wide;
+	assert wide === "712x21", "a wider window rewraps the same label onto one line across its column: " + wide;
 	nmResize(400, 800);
 	nmTeardown();
 }
@@ -1254,7 +1254,7 @@ test "the control channel drives the native host: the tree, a press by text thro
 	const s = new ControlSession((line: string): void => { lines.push(line); });
 	handleRequest(s, `{"jsonrpc":"2.0","id":1,"method":"press","params":{"target":"text:go"}}`);
 	nmLoop();
-	assert lines[0].includes(`"result":{"x":8.5,"y":10.5}`), "the centre of the text node, inside the pressable: " + lines[0];
+	assert lines[0].includes(`"result":{"x":50,"y":10.5}`), "the centre of the text node, stretched across the pressable: " + lines[0];
 	assert log === "press;", "the press reaches onPress once: " + log;
 	const input = nmLastInputTag();
 	nmControl(input, 1, "");
