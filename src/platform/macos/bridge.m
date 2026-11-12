@@ -1689,13 +1689,13 @@ void nimFrame(double timeMs) {
 	g_frameTime = timeMs;
 	g_frameRequested = NO;
 	g_inFrame = YES;
-	if (s_loop.fn) invoke(s_loop);
-	else niLoopRun();
 	if (g_frameWanted) {
 		g_frameWanted = NO;
 		if (s_frame.fn) invoke(s_frame);
 	}
 	g_inFrame = NO;
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
 	if (g_frameWanted) requestHostFrame();
 }
 
