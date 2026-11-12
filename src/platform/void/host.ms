@@ -13,13 +13,13 @@ import {
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
-import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign, layoutRuns } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, CornerRadii, BorderWidths } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, LayoutMeasure, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt } from "../../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt, markLayoutDirty } from "../../../../yoga/src/index";
 import { Style, sameLayout, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { I18nManager } from "../../api/i18nManager";
@@ -65,6 +65,7 @@ export class VoidNode {
 	para: NodeRef | null = null;
 	slot: NodeRef | null = null;
 	styledRuns: boolean = false;
+	runs: TextRun[] = [];
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	cellWidths: uint8[] = [];
@@ -209,7 +210,29 @@ export function freeVoidLayoutTree(tree: VoidTree, n: VoidNode): void {
 
 export function layoutGetYg(this l: VoidLayout): Ptr<YGNode> | null { return l.node.yg; }
 export function layoutSetYg(this l: VoidLayout, yg: Ptr<YGNode> | null): void { l.node.yg = yg; }
-export function layoutGetMeasure(this l: VoidLayout): LayoutMeasure | null { return null; }
+function fitTo(laid: float32, given: float32, mode: MeasureMode): float32 {
+	if (mode === "exactly") { return given; }
+	const whole = Math.ceil(laid) as float32;
+	return mode === "at-most" && whole > given ? given : whole;
+}
+
+function measureParagraph(n: VoidNode, width: float32, widthMode: MeasureMode, height: float32, heightMode: MeasureMode): MeasureSize {
+	if (n.para === null || n.cell > 0.0 || n.cellWidths.length > 0) {
+		return { width: widthMode === "exactly" ? width : 0.0, height: heightMode === "exactly" ? height : 0.0 };
+	}
+	const label = n.para as NodeRef;
+	const wrap: float32 = widthMode === "undefined" ? 0.0 : width;
+	const laid = layoutRuns(label.text(), { ...label.textStyle(), maxWidth: wrap }, n.runs);
+	if (!laid.ok) { throw new Error(`void host: a Text could not lay out "${label.text()}": ${laid.error.toString()}`); }
+	return { width: fitTo(laid.value.width, width, widthMode), height: fitTo(laid.value.height, height, heightMode) };
+}
+
+export function layoutGetMeasure(this l: VoidLayout): LayoutMeasure | null {
+	if (!l.node.isText) { return null; }
+	const n = l.node;
+	return (width: float32, widthMode: MeasureMode, height: float32, heightMode: MeasureMode): MeasureSize =>
+		measureParagraph(n, width, widthMode, height, heightMode);
+}
 export function layoutSetFrame(this l: VoidLayout, x: float32, y: float32, w: float32, h: float32): void {
 	const n = l.node;
 	n.ref.setPosition(x, y).setSize(w, h);
@@ -961,6 +984,10 @@ export function createVoidHostWith(
 
 	const waiting: VoidNode[] = [];
 
+	const remeasure = (n: VoidNode): void => {
+		if (n.yg !== null) { markLayoutDirty(layoutOf(tree, n)); }
+	};
+
 	// One label per Text: its spans in order, and a run per span once a span is styled or the Text is decorated.
 	const refreshParagraph = (root: VoidNode): void => {
 		if (root.disposed) { return; }
@@ -1005,15 +1032,18 @@ export function createVoidHostWith(
 			}
 			label.setColor(WHITE);
 			label.setTextRuns(runs);
+			root.runs = runs;
 			root.styledRuns = true;
 		} else {
 			if (root.styledRuns) {
 				const none: TextRun[] = [];
 				label.setTextRuns(none);
+				root.runs = none;
 				root.styledRuns = false;
 			}
 			label.setColor(baseColor);
 		}
+		remeasure(root);
 	};
 
 	const refreshWaiting = (): void => {
@@ -1171,6 +1201,7 @@ export function createVoidHostWith(
 				if (!(cell >= 0.0)) { throw new Error(`void host: cellWidth "${value}" is not zero or more points`); }
 				n.cell = cell;
 				if (n.para !== null) { (n.para as NodeRef).setForceWidth(cell); }
+				remeasure(n);
 			} else if (name === "cellWidths") {
 				if (!n.isText) { throw new Error("void host: cellWidths belongs on a Text"); }
 				const widths: uint8[] = [];
@@ -1181,6 +1212,7 @@ export function createVoidHostWith(
 				}
 				n.cellWidths = widths;
 				if (n.para !== null) { (n.para as NodeRef).setCellWidths(widths); }
+				remeasure(n);
 			} else if (name === "imeRect") {
 				n.imeBox = parseCaretRect(value);
 				if (focusedNode === n && dirtyListener !== null) { (dirtyListener as () => void)(); }
@@ -1202,10 +1234,12 @@ export function createVoidHostWith(
 			else if (name === "cellWidth") {
 				n.cell = 0.0;
 				if (n.para !== null) { (n.para as NodeRef).setForceWidth(0.0); }
+				remeasure(n);
 			}
 			else if (name === "cellWidths") {
 				n.cellWidths = [];
 				if (n.para !== null) { (n.para as NodeRef).setCellWidths(n.cellWidths); }
+				remeasure(n);
 			}
 			woke(was);
 		},
