@@ -3,7 +3,7 @@
 
 import { Host, HostNode, TextMeasure } from "../../render/host";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
-import { Style, StyleValue } from "../../render/style";
+import { Style, StyleValue, claimedFields, unclaimedStyle } from "../../render/style";
 import { registerCss, cssAt, cssIdAt, cssRuleCount, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
@@ -242,6 +242,26 @@ extern class DomEvent {
 
 extern function pointerOrigin(e: DomEvent): boolean from
 	"((e) => typeof e.pointerType === 'string' && e.pointerType.length > 0)(#)";
+
+extern function readInline(css: CssStyle, property: string): string from "((s, p) => s[p])(#, #)";
+extern function writeInline(css: CssStyle, property: string, value: string): void from
+	"((s, p, v) => { s[p] = v; })(#, #, #)";
+
+struct InlineEntry {
+	property: string;
+	value: string;
+}
+
+const INDIVIDUAL_TRANSFORMS: string[] = ["translate", "scale", "rotate"];
+
+function motionInline(css: CssStyle, style: Style): InlineEntry[] {
+	const out: InlineEntry[] = [];
+	for (const field of claimedFields(style)) {
+		const properties = field === "transform" ? INDIVIDUAL_TRANSFORMS : [field];
+		for (const property of properties) { out.push({ property, value: readInline(css, property) }); }
+	}
+	return out;
+}
 
 extern class MediaQueryList {
 	matches: boolean;
@@ -1316,7 +1336,10 @@ export function domHost(): Host {
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			prepareVisibleContent();
-			applyCss((node as unknown as Node).style, style);
+			const css = (node as unknown as Node).style;
+			const kept = motionInline(css, style);
+			applyCss(css, unclaimedStyle(style));
+			for (const entry of kept) { writeInline(css, entry.property, entry.value); }
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
 			scheduleLayouts();

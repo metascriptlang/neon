@@ -10,7 +10,7 @@ import { extractResponderTerminal } from "../../render/responder";
 import { I18nManager } from "../../api/i18nManager";
 import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, Direction, freeLayoutTreeAt, layoutPassAt, markLayoutDirty } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
-import { Style, StyleValue, mergeStyle, isBoldWeight, setStyleField, sameLayout } from "../../render/style";
+import { Style, StyleValue, claimed, mergeStyle, isBoldWeight, setStyleField, sameLayout } from "../../render/style";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
@@ -106,6 +106,8 @@ class NativeNode {
 	painted: boolean = false;
 	rounded: boolean = false;
 	faded: boolean = false;
+	opacityClaimed: boolean = false;
+	transformClaimed: boolean = false;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
 	flex: FlexStyle | null = null;
@@ -463,12 +465,12 @@ function writeTextInsets(n: NativeNode, s: Style): void {
 }
 
 // The paint half of the projection (docs/STYLE.md §5), onto the platform view.
-function paintTransform(n: NativeNode, s: Style): void {
-	if (s.transform === n.transformCss) { return; }
+function paintTransform(n: NativeNode, s: Style, force: boolean = false): void {
+	if (!force && s.transform === n.transformCss) { return; }
 	const transform = nativeTransform(s.transform);
 	if (n.view !== null) {
 		niSetTransform(n.view, transform.scaleX, transform.scaleY, transform.translateX, transform.translateY);
-		if (transform.rotate !== n.rotation) { niSetRotation(n.view, transform.rotate); }
+		if (force || transform.rotate !== n.rotation) { niSetRotation(n.view, transform.rotate); }
 	}
 	n.rotation = transform.rotate;
 	n.transformCss = s.transform;
@@ -526,12 +528,19 @@ function paintOnly(n: NativeNode, name: string, s: Style): boolean {
 }
 
 function applyPaint(n: NativeNode, s: Style, prev: Style | null = null): void {
-	paintTransform(n, s);
+	const transformClaimed = claimed(s, "transform");
+	if (!transformClaimed) { paintTransform(n, s, n.transformClaimed); }
+	n.transformClaimed = transformClaimed;
 	if (n.view === null || !n.isText) {
 		if (n.view !== null) {
 			if (prev === null || prev.backgroundColor !== s.backgroundColor) { paintBackground(n, n.view, s); }
 			if (prev === null || prev.borderRadius !== s.borderRadius) { paintRadius(n, n.view, s); }
-			if (prev === null || prev.opacity !== s.opacity) { paintOpacity(n, n.view, s); }
+			const opacityClaimed = claimed(s, "opacity");
+			if (!opacityClaimed && (n.opacityClaimed || prev === null || prev.opacity !== s.opacity)) {
+				if (n.opacityClaimed) { n.faded = true; }
+				paintOpacity(n, n.view, s);
+			}
+			n.opacityClaimed = opacityClaimed;
 			const clip = s.overflow === "hidden" || s.overflow === "clip" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;
