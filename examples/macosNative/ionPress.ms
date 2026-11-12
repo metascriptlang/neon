@@ -10,6 +10,8 @@ import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable } from "../../src/components/primitives";
+import { MotionSignals, useMotion } from "../../src/motion/neon";
+import { MotionDocument, linearKeyframe } from "pulse/src/document";
 import { nimStoredAccessibility } from "../../src/platform/macos/handoff.h";
 import { harnessIsCheck, harnessPointer } from "./harness.h";
 import { exit } from "std/process";
@@ -26,6 +28,7 @@ const styles = createStyles({
 	c: { position: "absolute", left: 20, top: 120, width: 100, height: 100, backgroundColor: "#2ecc71", transform: "scale(0.5)" },
 	d: { position: "absolute", left: 200, top: 120, width: 140, height: 60, backgroundColor: "#f1c40f" },
 	e: { position: "absolute", left: 130, top: 150, width: 80, height: 20, backgroundColor: "#9b59b6", transform: "rotate(90deg)" },
+	f: { position: "absolute", left: 220, top: 205, width: 40, height: 40, backgroundColor: "#e67e22" },
 	label: { color: "#ffffff", fontSize: 20 },
 });
 
@@ -50,7 +53,28 @@ function note(what: string): (e: NeonEvent) => void {
 	return (e: NeonEvent): void => { log(what); };
 }
 
+// F's translateX runs 0 -> 100 on the layer engine; once it settles, F is pressed where it shows.
+const motion = new MotionSignals();
+motion.number("f", "translateX", 0);
+
+function slide(): MotionDocument {
+	const keyframes = [linearKeyframe("a", 0, 0), linearKeyframe("b", 200, 100)];
+	return {
+		version: 1,
+		root: "main",
+		clips: [{
+			id: "main",
+			duration: 200,
+			tracks: [{ slot: "f", property: "translateX", kind: keyframes[0].value.kind, keyframes }],
+			placements: [],
+			labels: [],
+		}],
+	};
+}
+
 function App(): NeonNode {
+	const slid = motion.ref("f");
+	useMotion(slide(), motion.bindings);
 	return <View style={styles.base}>
 		<Pressable style={styles.a} accessibilityLabel="Press A" onPress={pressed("A")}>
 			<Text style={styles.label}>{"A " + count()}</Text>
@@ -60,6 +84,7 @@ function App(): NeonNode {
 		<Pressable style={styles.c} onPress={pressed("C")} />
 		<Pressable style={styles.d} onPress={pressed("D")} onPressIn={note("in D")} onPressOut={note("out D")} />
 		<Pressable style={styles.e} onPress={pressed("E")} />
+		<Pressable style={[styles.f, motion.style("f")]} ref={slid} onPress={pressed("F")} />
 	</View>;
 }
 
@@ -90,6 +115,8 @@ const steps: Step[] = [
 	{ what: "D where E's unrotated layout box lies", events: click(205, 160), expect: "in D|press D 7|out D" },
 	{ what: "D with pressIn and pressOut", events: click(300, 150), expect: "in D|press D 8|out D" },
 	{ what: "down in D, up outside", events: [DOWN, 300, 150, UP, 380, 240], expect: "in D|out D" },
+	{ what: "F where its settled translateX shows it", events: click(340, 225), expect: "press F 9" },
+	{ what: "F's layout box it slid away from", events: click(240, 225), expect: "" },
 ];
 
 function runSteps(): void {
