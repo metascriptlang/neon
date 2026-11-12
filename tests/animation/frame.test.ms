@@ -8,7 +8,10 @@ import { Errored, Show } from "../../src/macros/ui/flow";
 import { MockNode, HostNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, NeonNode } from "../../src/render/hostTypes";
 import { View, Text } from "../../src/components/primitives";
-import { useManualFrames, framePending, setFrameDriver, requestFrame } from "../../src/animation/frame";
+import {
+	useManualFrames, framePending, frameRequested, setFrameDriver,
+	requestFrame, requestFrameAt, requestInputFrame, cancelFrame,
+} from "../../src/animation/frame";
 import { useFrame } from "../../src/render/voidClock";
 
 function framed(fn: (dt: number, time: number) => void): NeonNode {
@@ -212,4 +215,159 @@ test "a stale target, as Chrome's first animation frame after idle hands over, r
 	(fire as (target: number) => void)(5016.6);
 	assert seen.join(",") === "5000,5016.6", "clamped to the request time, then the display's target: " + seen.join(",");
 	setFrameDriver(null);
+}
+
+test "a delayed frame sleeps until its deadline and fires once in a frame" {
+	const clock = useManualFrames();
+	const seen: number[] = [];
+	const id = requestFrameAt(100, (time: number): void => { seen.push(time); });
+	assert frameRequested(id) && framePending();
+	clock.advance(99);
+	assert clock.frames === 0 && seen.length === 0;
+	clock.advance(1);
+	assert clock.frames === 1 && seen.join(",") === "100";
+	assert !frameRequested(id) && !framePending();
+	clock.advance(200);
+	assert clock.frames === 1 && seen.length === 1;
+	setFrameDriver(null);
+}
+
+test "an earlier deadline preempts a later wake without losing either request" {
+	const clock = useManualFrames();
+	const seen: string[] = [];
+	requestFrameAt(100, (time: number): void => { seen.push(`late ${time}`); });
+	requestFrameAt(50, (time: number): void => { seen.push(`early ${time}`); });
+	clock.advance(50);
+	assert seen.join(",") === "early 50" && clock.frames === 1;
+	clock.advance(49);
+	assert clock.frames === 1;
+	clock.advance(1);
+	assert seen.join(",") === "early 50,late 100" && clock.frames === 2;
+	setFrameDriver(null);
+}
+
+test "cancelling the last delayed frame removes its wake, including after rearming" {
+	const clock = useManualFrames();
+	let calls: int32 = 0;
+	const late = requestFrameAt(100, (time: number): void => { calls += 1; });
+	const early = requestFrameAt(50, (time: number): void => { calls += 1; });
+	cancelFrame(early);
+	assert !frameRequested(early) && frameRequested(late);
+	clock.advance(50);
+	assert clock.frames === 0;
+	cancelFrame(late);
+	assert !framePending();
+	clock.advance(100);
+	assert clock.frames === 0 && calls === 0;
+	setFrameDriver(null);
+}
+
+test "a delayed request already due uses the next frame with the usual clock clamp" {
+	const clock = useManualFrames();
+	clock.advance(100);
+	const seen: number[] = [];
+	requestFrameAt(50, (time: number): void => { seen.push(time); });
+	clock.advance(1);
+	assert seen.join(",") === "101" && clock.frames === 1;
+	setFrameDriver(null);
+}
+
+test "input and its reactive writes precede animation in the same frame" {
+	const clock = useManualFrames();
+	const [value, setValue] = createSignal<int32>(0);
+	const seen: int32[] = [];
+	requestFrame((time: number): void => { seen.push(value()); });
+	requestInputFrame((time: number): void => {
+		setValue(7);
+		requestFrame((next: number): void => { seen.push(value() + 1); });
+	});
+	clock.advance(16);
+	assert seen.join(",") === "7,8" && clock.frames === 1;
+	setFrameDriver(null);
+}
+
+test "changing the driver cancels its delayed wake and forgets its requests" {
+	const old = useManualFrames();
+	let calls: int32 = 0;
+	const id = requestFrameAt(50, (time: number): void => { calls += 1; });
+	const next = useManualFrames();
+	old.advance(100);
+	next.advance(100);
+	assert calls === 0 && !frameRequested(id) && !framePending();
+	assert old.frames === 0 && next.frames === 0;
+	setFrameDriver(null);
+}
+
+test "a delayed wake requests a frame but waits for a hidden driver's delivery" {
+	let now = 0;
+	let wake: (() => void) | null = null;
+	let fire: ((target: number) => void) | null = null;
+	setFrameDriver({
+		now: (): number => now,
+		schedule: (next: (target: number) => void): void => { fire = next; },
+		wakeAt: (time: number, next: () => void): (() => void) => {
+			wake = next;
+			return (): void => { wake = null; };
+		},
+	});
+	const seen: number[] = [];
+	const id = requestFrameAt(100, (time: number): void => { seen.push(time); });
+	assert fire === null;
+	now = 100;
+	(wake as () => void)();
+	assert fire !== null && seen.length === 0 && frameRequested(id);
+	now = 1000;
+	(fire as (target: number) => void)(1008);
+	assert seen.join(",") === "1008" && !frameRequested(id);
+	setFrameDriver(null);
+}
+
+test "cancelling after a delayed wake suppresses its held frame callback" {
+	const clock = useManualFrames();
+	let calls: int32 = 0;
+	const id = requestFrameAt(100, (time: number): void => { calls += 1; });
+	clock.time = 100;
+	(clock.wake as () => void)();
+	cancelFrame(id);
+	clock.advance(16);
+	assert calls === 0 && !framePending();
+	setFrameDriver(null);
+}
+
+test "ManualFrames.runAll advances directly to a sleeping frame's mark" {
+	const clock = useManualFrames();
+	let seen: number = 0;
+	requestFrameAt(10000, (time: number): void => { seen = time; });
+	assert clock.runAll() === 1;
+	assert seen === 10000 && clock.frames === 1;
+	setFrameDriver(null);
+}
+
+test "the runtime timer wakes a driver without a custom clock timer" {
+	let schedules: int32 = 0;
+	let seen: number = -1;
+	setFrameDriver({
+		now: (): number => performance.now(),
+		schedule: (fire: (target: number) => void): void => {
+			schedules += 1;
+			fire(performance.now());
+		},
+	});
+	const deadline = performance.now() + 10;
+	requestFrameAt(deadline, (time: number): void => { seen = time; });
+	assert schedules === 0;
+	await new Promise<void>((resolve: () => void): void => {
+		setTimeout(resolve, 100);
+	});
+	setFrameDriver(null);
+	assert schedules === 1 && seen >= deadline, `${schedules}: ${seen} < ${deadline}`;
+}
+
+test "a delayed frame rejects non-finite deadlines by name" {
+	for (const time of [NaN, Infinity, -Infinity]) {
+		let message = "";
+		try { requestFrameAt(time, (now: number): void => {}); }
+		catch (e) { message = e.message; }
+		assert message === "requestFrameAt: time must be a finite frame-clock timestamp", message;
+	}
 }

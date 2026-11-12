@@ -3,6 +3,7 @@ import { flush } from "../core/runtime";
 export interface FrameDriver {
 	now: () => number;
 	schedule: (fire: (target: number) => void) => void;
+	wakeAt?: (time: number, wake: () => void) => (() => void);
 }
 
 interface FrameRequest {
@@ -11,7 +12,13 @@ interface FrameRequest {
 	live: boolean;
 }
 
+interface DeferredFrame {
+	time: number;
+	request: FrameRequest;
+}
+
 const NATIVE_FRAME_MS = 16;
+const MAX_TIMER_DELAY_MS = 2147483647;
 
 when (js) {
 	extern function requestAnimationFrame(callback: (time: number) => void): number;
@@ -39,6 +46,9 @@ when (js) {
 let driver: FrameDriver | null = null;
 let pending: FrameRequest[] = [];
 let pendingInput: FrameRequest[] = [];
+let deferred: DeferredFrame[] = [];
+let cancelWake: (() => void) | null = null;
+let wakeTime = Infinity;
 let scheduled = false;
 let nextId: int32 = 1;
 let generation: int32 = 0;
@@ -51,6 +61,8 @@ function currentDriver(): FrameDriver {
 }
 
 export function setFrameDriver(next: FrameDriver | null): void {
+	stopWake();
+	deferred = [];
 	driver = next;
 	pending = [];
 	pendingInput = [];
@@ -91,10 +103,13 @@ function runFrame(target: number): void {
 	});
 }
 
-function enqueue(into: FrameRequest[], callback: (time: number) => void): int32 {
+function newRequest(callback: (time: number) => void): FrameRequest {
 	const id = nextId;
 	nextId += 1;
-	into.push({ id, callback, live: true });
+	return { id, callback, live: true };
+}
+
+function scheduleFrame(): void {
 	if (!scheduled) {
 		scheduled = true;
 		requestedAt = currentDriver().now();
@@ -103,11 +118,69 @@ function enqueue(into: FrameRequest[], callback: (time: number) => void): int32 
 			if (owner === generation) { runFrame(target); }
 		});
 	}
-	return id;
+}
+
+function enqueue(into: FrameRequest[], callback: (time: number) => void): int32 {
+	const request = newRequest(callback);
+	into.push(request);
+	scheduleFrame();
+	return request.id;
+}
+
+function stopWake(): void {
+	const cancel = cancelWake;
+	cancelWake = null;
+	wakeTime = Infinity;
+	if (cancel !== null) { cancel(); }
+}
+
+function armWake(): void {
+	let next = Infinity;
+	for (const entry of deferred) { next = Math.min(next, entry.time); }
+	if (next === wakeTime) { return; }
+	stopWake();
+	if (next === Infinity) { return; }
+	wakeTime = next;
+	const owner = generation;
+	const wake = (): void => {
+		if (owner !== generation) { return; }
+		cancelWake = null;
+		wakeTime = Infinity;
+		const due = deferred;
+		deferred = [];
+		const now = frameNow();
+		let ready = false;
+		for (const entry of due) {
+			if (entry.time > now) { deferred.push(entry); }
+			else { pending.push(entry.request); ready = true; }
+		}
+		if (ready) { scheduleFrame(); }
+		armWake();
+	};
+	const platformWake = currentDriver().wakeAt;
+	if (platformWake !== null) {
+		cancelWake = platformWake(next, wake);
+	} else {
+		const delay = Math.min(MAX_TIMER_DELAY_MS,
+			Math.max(0, next - frameNow()));
+		const timer = setTimeout(wake, delay);
+		cancelWake = (): void => { clearTimeout(timer); };
+	}
 }
 
 export function requestFrame(callback: (time: number) => void): int32 {
 	return enqueue(pending, callback);
+}
+
+export function requestFrameAt(time: number, callback: (time: number) => void): int32 {
+	if (!Number.isFinite(time)) {
+		throw new Error("requestFrameAt: time must be a finite frame-clock timestamp");
+	}
+	if (time <= frameNow()) { return requestFrame(callback); }
+	const request = newRequest(callback);
+	deferred.push({ time, request });
+	armWake();
+	return request.id;
 }
 
 export function requestInputFrame(callback: (time: number) => void): int32 {
@@ -115,6 +188,10 @@ export function requestInputFrame(callback: (time: number) => void): int32 {
 }
 
 export function cancelFrame(id: int32): void {
+	for (let i = deferred.length - 1; i >= 0; i -= 1) {
+		if (deferred[i].request.id === id) { deferred.splice(i, 1); }
+	}
+	armWake();
 	for (const request of pendingInput) {
 		if (request.id === id) { request.live = false; }
 	}
@@ -124,6 +201,9 @@ export function cancelFrame(id: int32): void {
 }
 
 export function frameRequested(id: int32): boolean {
+	for (const entry of deferred) {
+		if (entry.request.id === id) { return true; }
+	}
 	for (const request of pendingInput) {
 		if (request.id === id) { return request.live; }
 	}
@@ -134,6 +214,7 @@ export function frameRequested(id: int32): boolean {
 }
 
 export function framePending(): boolean {
+	if (deferred.length > 0) { return true; }
 	for (const request of pendingInput) {
 		if (request.live) { return true; }
 	}
@@ -147,11 +228,19 @@ export class ManualFrames {
 	time: number = 0;
 	fire: ((target: number) => void) | null = null;
 	frames: int32 = 0;
+	wake: (() => void) | null = null;
+	wakeTime: number = Infinity;
 
 	constructor() {}
 
 	advance(ms: number): void {
 		this.time += ms;
+		const wake = this.wake;
+		if (wake !== null && this.time >= this.wakeTime) {
+			this.wake = null;
+			this.wakeTime = Infinity;
+			wake();
+		}
 		const f = this.fire;
 		if (f === null) { return; }
 		this.fire = null;
@@ -165,8 +254,10 @@ export class ManualFrames {
 
 	runAll(): int32 {
 		let ran: int32 = 0;
-		while (this.fire !== null && ran < 100000) {
-			this.advance(NATIVE_FRAME_MS);
+		while ((this.fire !== null || this.wake !== null) && ran < 100000) {
+			const delay = this.fire !== null ? NATIVE_FRAME_MS :
+				Math.max(NATIVE_FRAME_MS, this.wakeTime - this.time);
+			this.advance(delay);
 			ran += 1;
 		}
 		return ran;
@@ -178,6 +269,11 @@ export function useManualFrames(): ManualFrames {
 	setFrameDriver({
 		now: (): number => clock.time,
 		schedule: (fire: (target: number) => void): void => { clock.fire = fire; },
+		wakeAt: (time: number, wake: () => void): (() => void) => {
+			clock.wakeTime = time;
+			clock.wake = wake;
+			return (): void => { clock.wake = null; clock.wakeTime = Infinity; };
+		},
 	});
 	return clock;
 }
