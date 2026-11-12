@@ -16,7 +16,7 @@ extern "C" {
 // root is the NSView an owner hands over (Ion's windowRoot); sizes are in points.
 void *nimAttach(void *root, float scale, float logicalWidth, float logicalHeight);
 void nimDetach(void *handle);
-void nimFrame(void);
+void nimFrame(double timeMs);
 void nimResize(void *handle, float scale, float logicalWidth, float logicalHeight);
 void nimSetFrameRequester(msClosure requester);
 int nimStoredAccessibility(const char *name, const char *value);

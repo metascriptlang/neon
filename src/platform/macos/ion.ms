@@ -72,7 +72,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	onFrame((window: int32, timeMs: float64): void => {
 		if (!attached || timeMs === lastFrameMs || !framesWindow(window)) { return; }
 		lastFrameMs = timeMs;
-		nimFrame();
+		nimFrame(timeMs);
 	});
 
 	onPointer((e: PointerEvent): void => {

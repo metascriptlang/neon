@@ -128,12 +128,11 @@ let wired = false;
 let frameFires: ((target: number) => void)[] = [];
 let firing = false;
 
-function runFrameFires(): void {
+function runFrameFires(target: number): void {
 	if (frameFires.length === 0) { return; }
 	const due = frameFires;
 	frameFires = [];
 	firing = true;
-	const target = performance.now();
 	for (const fire of due) { fire(target); }
 	firing = false;
 }
@@ -289,7 +288,7 @@ function wireInput(): void {
 			requestFrame(owner.win);
 			return;
 		}
-		runFrameFires();
+		runFrameFires(timeMs);
 		flush();
 		if (owner !== null && owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty()) && !viewFrame(owner.view)) {
 			requestFrame(owner.win);

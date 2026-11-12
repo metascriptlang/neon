@@ -122,7 +122,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	onFrame((window: int32, timeMs: float64): void => {
 		if (window !== win.id || !attached) { return; }
 		flush();
-		niwFrame();
+		niwFrame(timeMs);
 		placeIme(win);
 	});
 	onPointer((e: PointerEvent): void => {

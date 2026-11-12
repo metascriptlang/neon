@@ -24,7 +24,7 @@ extern "C" {
 
 void niwAttach(void *dcompDevice2, void *parentVisual2, float dpi, float logicalWidth, float logicalHeight);
 int niwPump(void);
-void niwFrame(void);
+void niwFrame(double timeMs);
 void niwResize(float dpi, float logicalWidth, float logicalHeight);
 void niwPointer(int kind, float pixelX, float pixelY);
 // Wheel notches as WM_MOUSEWHEEL / WM_MOUSEHWHEEL report them over WHEEL_DELTA: positive is away from the user, or right.

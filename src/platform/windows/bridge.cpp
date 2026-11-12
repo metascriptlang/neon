@@ -921,8 +921,11 @@ void niwResize(float dpi, float logicalWidth, float logicalHeight) {
 	changed();
 }
 
-void niwFrame(void) {
+static double g_frameTime = 0;
+
+void niwFrame(double timeMs) {
 	requireAttached("niwFrame");
+	g_frameTime = timeMs;
 	int focusedNow = uia::FocusedElement();
 	if (focusedNow != g_announcedFocus) {
 		g_announcedFocus = focusedNow;
@@ -1402,8 +1405,7 @@ void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 void niSetFrameHandler(msClosure handler) { s_frame = handler; }
-extern "C" double msTimeMonotonic(void);
-double niFrameTime(void) { return msTimeMonotonic(); }
+double niFrameTime(void) { return g_frameTime; }
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 void niSetControlHandler(msClosure handler) { s_control = handler; }
