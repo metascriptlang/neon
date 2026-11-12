@@ -11,6 +11,7 @@ export function MeasurementApp(): NeonNode {
 	const handles: ElementHandle[] = [];
 	const anchors: ElementHandle[] = [];
 	const scrolls: ScrollViewHandle[] = [];
+	const card: ElementHandle[] = [];
 	const measure = (event: NeonEvent): void => {
 		setStatus("measurement running");
 		let parent: number[] = [];
@@ -37,6 +38,13 @@ export function MeasurementApp(): NeonNode {
 			setStatus(`measurement FAIL scroll ${before - after} local ${local[0]},${local[1]}`);
 			return;
 		}
+		let line: number[] = [];
+		card[0].measureLayout(card[1], (left: number, top: number, width: number, height: number): void => { line = [left, width]; }, ancestorFailed);
+		if (line.length === 0) { return; }
+		if (!near(line[0], 16) || !near(line[1], 168)) {
+			setStatus(`measurement FAIL single line ${line[0]},${line[1]} in a 200-wide card padded 16`);
+			return;
+		}
 		setStatus(`measurement PASS ${frame[0]},${frame[1]},${frame[2]},${frame[3]}`);
 	};
 	return <View style={{ flex: 1 }}>
@@ -48,5 +56,8 @@ export function MeasurementApp(): NeonNode {
 		<ScrollView ref={(h: ScrollViewHandle): void => { scrolls.push(h); }} style={{ position: "absolute", left: 20, top: 430, width: 180, height: 100 }}>
 			<View style={{ height: 400 }}><View ref={(h: ElementHandle): void => { anchors.push(h); }} style={{ position: "absolute", left: 12, top: 80, width: 40, height: 20, backgroundColor: "#00aa00" }} /></View>
 		</ScrollView>
+		<View ref={(h: ElementHandle): void => { card.push(h); }} style={{ position: "absolute", left: 20, top: 560, width: 200, padding: 16, backgroundColor: "#dddddd" }}>
+			<Text ref={(h: ElementHandle): void => { card.push(h); }} numberOfLines={1}>{"a single line far longer than the two hundred points of its padded card"}</Text>
+		</View>
 	</View>;
 }
