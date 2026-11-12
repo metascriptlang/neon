@@ -138,12 +138,13 @@ Refused by name until the slice that adds each one:
   of the text (1 or 2 where a cell starts, 0 for its other bytes), and maps to void2d `setCellWidths`, so a wide
   grapheme takes two cells as the terminal's grid decided. The browser and native hosts refuse both by name.
 
-**A Text's size comes from its content on the void host.** A Text gives yoga a measure (`layoutGetMeasure` in
-`src/platform/void/host.ms`) that lays its paragraph out with the face, size and runs it draws, at the width yoga offers,
-rounded up to a whole point, as RN sizes a paragraph through `YGNodeSetMeasureFunc` (`YogaLayoutableShadowNode.cpp:80`).
-A change of text, style or cells marks it dirty. A Text in cell mode (`cellWidth`, `cellWidths`) is not measured,
-because void2d keeps its cell layout private; it takes the size its style gives. The native host does not measure yet
-(`WORKAROUND.md` A8), so a native Text is still as tall as yoga makes it. `tests/platform/voidTextSize.test.ms`.
+**A Text's size comes from its content.** A Text gives yoga a measure (`layoutGetMeasure`), as RN sizes a paragraph
+through `YGNodeSetMeasureFunc` (`YogaLayoutableShadowNode.cpp:80`), and a change of text, style or cells marks it dirty.
+The void host lays its paragraph out with the face, size and runs it draws, at the width yoga offers, rounded up to a
+whole point; a Text in cell mode (`cellWidth`, `cellWidths`) is not measured, because void2d keeps its cell layout
+private, and takes the size its style gives. The native host asks the platform label (`niMeasureText`) at that width.
+Like any flex item, a Text in a column stretches across it whatever its `textAlign`, as in RN.
+`tests/platform/voidTextSize.test.ms`, `tests/platform/nativeHost.test.ms` (wrapping), `tests/platform/nativeParity.test.ms`.
 
 **Measuring a line apart from a Text.** `ViewHandle.measureText(text, style)` returns `width`, `height`, `ascender`
 and `descender` (RN's `TextLayoutLine` names) of one unwrapped line, synchronously, through the host the View is mounted
