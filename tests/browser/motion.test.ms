@@ -1090,3 +1090,61 @@ test "the showcase plays its staggered entrance and its like spring through WAAP
 	restore();
 	dispose();
 }
+
+function contested(animatedLast: boolean, dim: () => float64, tint: () => string): MotionSignals {
+	const signals = new MotionSignals();
+	signals.number("box", "opacity", 0);
+	signals.number("box", "translateX", 0);
+	createRoot((dispose: () => void): void => {
+		const ref = signals.ref("box");
+		useMotion(documentOf([ramp("box", "opacity", 1), ramp("box", "translateX", 100)]), signals.bindings);
+		if (animatedLast) {
+			element(<View ref={ref}
+				style={[{ width: 40, height: 40, opacity: dim(), backgroundColor: tint() }, signals.style("box")]} />)(
+				domHost(), documentBody(), null);
+			return;
+		}
+		element(<View ref={ref}
+			style={[{ width: 40, height: 40, backgroundColor: tint() }, signals.style("box"), { opacity: dim() }]} />)(
+			domHost(), documentBody(), null);
+	});
+	return signals;
+}
+
+test "an animated opacity after a style entry that sets opacity wins over that entry in the browser, as RN's flattened style" {
+	const [dim, setDim] = createSignal(0.5);
+	const [tint, setTint] = createSignal("#333");
+	const signals = contested(true, dim, tint);
+	const el = dom(signals.elements.node("box") as HostNode);
+	await renderedFrames();
+	assert el.getAnimations().length === 2, "opacity and translate handed to WAAPI: " +
+		el.getAnimations().length.toString();
+	setDim(0.3);
+	flush();
+	assert el.style.opacity !== "0.3", "the earlier entry writes no inline opacity: " + el.style.opacity;
+	await sleepAsync(1200);
+	assert near(opacity(el), 1, 1e-6), "ends on the animation: " + computed(el, "opacity");
+	setTint("#444");
+	setDim(0.4);
+	flush();
+	assert near(opacity(el), 1, 1e-6), "a later style write keeps the committed opacity: " + computed(el, "opacity");
+	assert translateX(el) === 100, "a later style write keeps the committed translate: " + computed(el, "translate");
+	el.remove();
+}
+
+test "a style entry after an animated opacity wins over the animation in the browser, as RN's flattened style" {
+	const [dim, setDim] = createSignal(0.5);
+	const [tint, _setTint] = createSignal("#333");
+	const signals = contested(false, dim, tint);
+	const el = dom(signals.elements.node("box") as HostNode);
+	await renderedFrames();
+	assert el.getAnimations().length === 1, "only translate handed to WAAPI: " +
+		el.getAnimations().length.toString();
+	assert near(opacity(el), 0.5, 1e-6), "the later entry shows: " + computed(el, "opacity");
+	setDim(0.4);
+	flush();
+	await sleepAsync(1200);
+	assert near(opacity(el), 0.4, 1e-6), "ends on the later entry: " + computed(el, "opacity");
+	assert translateX(el) === 100, "the unshadowed translate still plays: " + computed(el, "translate");
+	el.remove();
+}

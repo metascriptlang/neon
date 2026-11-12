@@ -321,3 +321,59 @@ test "a player on a slot inside a Show hands its remaining tracks to the remount
 		"the end leaves the remounted view on the last frame: " + nmOpacity(second).toString();
 	close();
 }
+
+class Contested {
+	signals: MotionSignals = new MotionSignals();
+	setDim: (dim: float64) => void;
+	tag: int32 = 0;
+
+	constructor(animatedLast: boolean) {
+		const [dim, setDim] = createSignal(0.5);
+		this.setDim = (next: float64): void => { setDim(next); };
+		this.signals.number("box", "opacity", 0);
+		runApp((): NeonNode => {
+			const ref = this.signals.ref("box");
+			useMotion({
+				version: 1,
+				root: "main",
+				clips: [{ id: "main", duration: 1000, tracks: [ramp("opacity", 1)], placements: [], labels: [] }],
+			}, this.signals.bindings);
+			if (animatedLast) {
+				return <Pressable onPress={() => {}} ref={ref}
+					style={[{ width: 40, height: 40, opacity: dim() }, this.signals.style("box")]} />;
+			}
+			return <Pressable onPress={() => {}} ref={ref}
+				style={[{ width: 40, height: 40 }, this.signals.style("box"), { opacity: dim() }]} />;
+		});
+		this.tag = nmLastPressableTag();
+	}
+}
+
+test "an animated opacity after a style entry that sets opacity wins over that entry, as RN's flattened style" {
+	const frames = useManualFrames();
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	const app = new Contested(true);
+	frames.step(1);
+	assert nmLayerLive(app.tag, OPACITY) === 1, "handed to the layer";
+	app.setDim(0.3);
+	nmLoop();
+	assert nmOpacity(app.tag) === 1, "the earlier entry does not write over the animated model: " +
+		nmOpacity(app.tag).toString();
+	frames.runAll();
+	assert nmOpacity(app.tag) === 1, "ends on the animation: " + nmOpacity(app.tag).toString();
+	close();
+}
+
+test "a style entry after an animated opacity wins over the animation, as RN's flattened style" {
+	const frames = useManualFrames();
+	installLayerEngine(bridgeLayerEngine(nativeViewOf, ownsNativeView));
+	const app = new Contested(false);
+	frames.step(1);
+	frames.step(20);
+	assert Math.abs(nmOpacity(app.tag) - 0.5) < 1e-6, "the later entry shows: " + nmOpacity(app.tag).toString();
+	app.setDim(0.4);
+	nmLoop();
+	frames.runAll();
+	assert Math.abs(nmOpacity(app.tag) - 0.4) < 1e-6, "ends on the later entry: " + nmOpacity(app.tag).toString();
+	close();
+}
