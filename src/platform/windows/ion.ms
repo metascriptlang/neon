@@ -13,7 +13,7 @@ import { useIonStorage } from "../ion/storage";
 import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { NeonNode } from "../../render/node";
 import { flush } from "../../core/runtime";
-import { requestInputFrame, cancelFrame } from "../../animation/frame";
+import { DesktopInput, DesktopPointer } from "../native/desktopInput";
 import {
 	niwAttach, niwFrame, niwResize, niwPointer, niwWheel, niwShutdown, niwKey, niwText, niwPreedit, niwFocus, niwIonCursor,
 	niwDrainImages, niwFocusedCaret, niwCaretPixelX, niwCaretPixelY, niwCaretPixelW, niwCaretPixelH,
@@ -46,36 +46,14 @@ export function nativeWindowOptions(title: string, width: number, height: number
 
 let attached = false;
 let cursor: int32 = 0;
-let moveQueued = false;
-let moveX: float32 = 0.0;
-let moveY: float32 = 0.0;
-let moveFrame: int32 = 0;
 
-function deliverMove(win: Window): void {
-	niwPointer(POINTER_MOVE, moveX, moveY);
+function deliverMove(win: Window, x: float32, y: float32): void {
+	niwPointer(POINTER_MOVE, x, y);
 	const over = niwIonCursor();
 	if (over !== cursor) {
 		cursor = over;
 		setCursor(win, over);
 	}
-}
-
-function queueMove(win: Window, x: float32, y: float32): void {
-	moveX = x;
-	moveY = y;
-	if (moveQueued) { return; }
-	moveQueued = true;
-	moveFrame = requestInputFrame((time: number): void => {
-		moveQueued = false;
-		if (attached) { deliverMove(win); }
-	});
-}
-
-function drainMove(win: Window): void {
-	if (!moveQueued) { return; }
-	moveQueued = false;
-	cancelFrame(moveFrame);
-	deliverMove(win);
 }
 
 function placeIme(win: Window): void {
@@ -97,6 +75,11 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	const created = createWindow("main", options);
 	if (created === null) { return 1; }
 	const win: Window = created;
+	const input = new DesktopInput((e: DesktopPointer): void => {
+		if (!attached) { return; }
+		if (e.kind === "wheel") { niwWheel(e.x, e.y, e.dx, e.dy); }
+		else { deliverMove(win, e.x, e.y); }
+	});
 	setFramePolicy(win, FrameOnDemand);
 	useCaptureServices(ionCaptureServices);
 	useIonStorage(opts.title);
@@ -111,6 +94,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 		const logicalWidth = (width as float64 / scale) as float32;
 		const logicalHeight = (height as float64 / scale) as float32;
 		if (attached) {
+			input.drain();
 			niwResize(dpi, logicalWidth, logicalHeight);
 			return;
 		}
@@ -129,11 +113,14 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 		if (e.window !== win.id || !attached) { return; }
 		const x = e.x as float32;
 		const y = e.y as float32;
-		if (e.kind === PointerKind.Motion) {
-			queueMove(win, x, y);
+		if (e.kind === PointerKind.Motion || e.kind === PointerKind.Wheel) {
+			input.push({
+				kind: e.kind === PointerKind.Motion ? "motion" : "wheel",
+				x, y, dx: e.dx as float32, dy: e.dy as float32,
+			});
 			return;
 		}
-		drainMove(win);
+		input.drain();
 		if (e.kind === PointerKind.Button) {
 			if (e.button === DESKTOP_BACK_BUTTON) {
 				if (!e.pressed) { dispatchHardwareBackPress(); }
@@ -143,19 +130,17 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 			niwPointer(e.pressed ? POINTER_DOWN : POINTER_UP, x, y);
 		} else if (e.kind === PointerKind.Leave) {
 			niwPointer(POINTER_CANCEL, x, y);
-		} else if (e.kind === PointerKind.Wheel) {
-			niwWheel(x, y, e.dx as float32, e.dy as float32);
 		}
 	});
 	onFocus((window: int32, focused: boolean): void => {
 		if (window !== win.id || !attached) { return; }
-		drainMove(win);
+		input.drain();
 		if (!focused) { niwPointer(POINTER_CANCEL, 0.0, 0.0); }
 		niwFocus(focused ? 1 : 0);
 	});
 	onKey((e: KeyEvent): void => {
 		if (e.window !== win.id || !attached) { return; }
-		drainMove(win);
+		input.drain();
 		if (chordBack(e)) {
 			if (e.action === KeyAction.Press) { dispatchHardwareBackPress(); }
 			return;
@@ -164,18 +149,19 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	});
 	onText((window: int32, text: string): void => {
 		if (window === win.id && attached) {
-			drainMove(win);
+			input.drain();
 			niwText(text);
 		}
 	});
 	onImePreedit((window: int32, text: string, caret: int32): void => {
 		if (window === win.id && attached) {
-			drainMove(win);
+			input.drain();
 			niwPreedit(text, caret);
 		}
 	});
 
 	runLoop();
+	input.stop();
 	if (attached) { niwShutdown(); }
 	return 0;
 }
