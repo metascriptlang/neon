@@ -116,6 +116,11 @@ Elsewhere:
 
 GPUI (`dispatch_async`, `PostMessageW`, an eventfd ping) and winit do the same.
 
+Desktop windows run Ion's loop, so these sources are Ion's. Ion has the Linux one, and runs msc
+inside a macOS live resize and the Windows size/move and menu loops; menus and modal panels on
+macOS and modal dialogs on Windows still hold msc and frames until they close (read from Ion
+0572d90, not run).
+
 ## Animation
 
 Animation consumes the Loop's frame clock; it adds no contract. Ownership (2026-11-04): this
@@ -280,6 +285,11 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   iPad Pro 12.9 5 rounds, 4 identical, and the branch's first round right after the iPad was
   unlocked missed 2 vsyncs (max 0.92 ms). Rounds 4-5 on the iPad also carried the uncommitted
   native onLayout bound.
+- **Desktop frame time** (m1m, 120 Hz, 60 `requestFrame` callbacks, lead = frame time −
+  `performance.now()` in the callback, 2026-11-13). Ion window (`examples/voidFrames.ms`):
+  median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
+  median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
+  just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
