@@ -60,21 +60,23 @@ test "display none hides a view and everything under it from drawing, and flex s
 test "a colour or shadow the Void host cannot read is refused by name" {
 	const vh = createVoidHost();
 	let message = "";
-	try { vh.host.setStyle(vh.host.createElement("div"), { borderWidth: 1, borderColor: "tomato" } as Style); } catch (e) { message = e.message; }
-	assert message.indexOf(`borderColor "tomato" is not a colour`) >= 0, "borderColor: " + message;
+	try { vh.host.setStyle(vh.host.createElement("div"), { borderWidth: 1, borderColor: "tomatoes" } as Style); } catch (e) { message = e.message; }
+	assert message.indexOf(`borderColor "tomatoes" is not a CSS colour`) >= 0, "borderColor: " + message;
 	message = "";
 	try { vh.host.setStyle(vh.host.createElement("div"), { boxShadow: "2px #000" } as Style); } catch (e) { message = e.message; }
 	assert message.indexOf("needs two to four lengths") >= 0, "boxShadow: " + message;
 }
 
-test "parseColor reads the eight-digit hex and rgb() forms" {
+test "parseColor reads the eight-digit hex, rgb() and named forms" {
 	const a = parseColor("#11223380") as Color;
 	assert near(a.r, 17.0 / 255.0) && near(a.a, 128.0 / 255.0), "#rrggbbaa";
 	const b = parseColor("rgba(255, 0, 0, 0.5)") as Color;
 	assert near(b.r, 1) && near(b.a, 0.5), "rgba()";
 	const c = parseColor("rgb(0, 255, 0)") as Color;
 	assert near(c.g, 1) && near(c.a, 1), "rgb()";
-	assert parseColor("tomato") === null, "a name stays unread";
+	const d = parseColor("tomato") as Color;
+	assert near(d.r, 1) && near(d.g, 99.0 / 255.0), "a CSS name";
+	assert parseColor("tomatoes") === null, "no colour by that name";
 }
 
 test "a paint-only style write keeps the node's flex style, so yoga stays clean, and a layout write replaces it" {

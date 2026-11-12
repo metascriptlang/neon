@@ -22,6 +22,7 @@ import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, re
 import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt, markLayoutDirty } from "../../../../yoga/src/index";
 import { Style, sameLayout, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
+import { parseColor as parseCssColor } from "../../components/svg/color";
 import { I18nManager } from "../../api/i18nManager";
 import { DevNode } from "../../devtools/driver";
 import {
@@ -329,15 +330,8 @@ export function parseFlexStyle(s: string): FlexStyle {
 	return st;
 }
 
-function hexNibble(c: string): int32 {
-	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
-	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
-	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
-	return -1;
-}
-
-// "#rgb", "#rrggbb", "#rrggbbaa", rgb() and rgba() → normalized rgba. Returns null for anything else so
-// the caller leaves the node's existing colour alone.
+// A CSS colour (svg/color.ms) → normalized rgba. Returns null for anything else so the caller leaves
+// the node's existing colour alone.
 const parsedColors = new Map<string, Color>();
 
 export function parseColor(css: string): Color | null {
@@ -351,42 +345,11 @@ export function parseColor(css: string): Color | null {
 }
 
 function parseColorString(css: string): Color | null {
-	if (css.startsWith("rgb(") || css.startsWith("rgba(")) { return parseRgbFunction(css); }
-	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
-	const body = css.substring(1, css.length);
-	let r = -1;
-	let g = -1;
-	let b = -1;
-	let a = 255;
-	if (body.length === 3) {
-		r = hexNibble(body.charAt(0)) * 17;
-		g = hexNibble(body.charAt(1)) * 17;
-		b = hexNibble(body.charAt(2)) * 17;
-	} else if (body.length === 6 || body.length === 8) {
-		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
-		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
-		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
-		if (body.length === 8) { a = hexNibble(body.charAt(6)) * 16 + hexNibble(body.charAt(7)); }
-	}
-	if (r < 0 || g < 0 || b < 0 || a < 0) { return null; }
+	const parsed = parseCssColor(css);
+	if (!parsed.ok) { return null; }
+	const c = parsed.value;
 	const scale = 255.0 as float32;
-	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: (a as float32) / scale };
-}
-
-function parseRgbFunction(css: string): Color | null {
-	const open = css.indexOf("(");
-	if (!css.endsWith(")")) { return null; }
-	const parts = css.substring(open + 1, css.length - 1).split(",");
-	if (parts.length !== 3 && parts.length !== 4) { return null; }
-	const channel: float32[] = [];
-	for (const p of parts) {
-		const v = parseFloat(p.trim());
-		if (Number.isNaN(v)) { return null; }
-		channel.push(v as float32);
-	}
-	const scale = 255.0 as float32;
-	const alpha: float32 = parts.length === 4 ? channel[3] : 1.0;
-	return { r: channel[0] / scale, g: channel[1] / scale, b: channel[2] / scale, a: alpha };
+	return { r: (c.r as float32) / scale, g: (c.g as float32) / scale, b: (c.b as float32) / scale, a: c.a as float32 };
 }
 
 function num(v: number | null): float32 | null {
@@ -583,7 +546,7 @@ export function applyPaint(n: VoidNode, s: Style): void {
 
 function colorOf(css: string, field: string): Color {
 	const c = parseColor(css);
-	if (c === null) { throw new Error(`void host: ${field} "${css}" is not a colour the Void host reads (#rgb, #rrggbb, #rrggbbaa, rgb(), rgba())`); }
+	if (c === null) { throw new Error(`void host: ${field} "${css}" is not a CSS colour`); }
 	return c as Color;
 }
 

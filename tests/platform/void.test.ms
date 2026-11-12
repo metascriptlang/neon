@@ -6,7 +6,7 @@ import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
-import { createVoidHost, layoutOf, layoutPassAt, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
+import { createVoidHost, layoutOf, layoutPassAt, parseColor, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 import { Void, View, ViewHandle, Text, ScrollView, Pressable } from "../../src/components/primitives";
@@ -132,12 +132,12 @@ test "setStyle: text colour applies to labels" {
 	assert n.ref.textStyle().size > 23.0, "font size applied";
 }
 
-test "setStyle: a non-hex colour leaves the node untouched" {
+test "setStyle: a string that is no CSS colour leaves the node untouched" {
 	const vh = createVoidHost();
 	const node = vh.host.createText("hi");
 	const n = node as VoidNode;
 	const before = n.ref.paint().color.r;
-	vh.host.setStyle(node, { color: "rebeccapurple" } as Style);
+	vh.host.setStyle(node, { color: "notacolour" } as Style);
 	assert n.ref.paint().color.r === before, "unparseable colour is ignored, not zeroed";
 }
 
@@ -521,4 +521,13 @@ test "measuring a dirty tree relays it out at the scale it was last laid out at"
 	const measure = vh.host.measureInWindow as (node: HostNode) => Result<MeasureRect, MeasureError>;
 	const got = measure(second);
 	assert got.ok && got.value.y === 17.5, `2x half point kept: ${got.ok ? got.value.y : -1}`;
+}
+
+test "the Void host reads every CSS colour form RN's normalizeColor takes" {
+	const cases: string[][] = [["#ff000080", "0.502"], ["#f008", "0.533"], ["rebeccapurple", "1.000"], ["hsla(0, 100%, 50%, 0.25)", "0.250"], ["rgba(0, 0, 0, 2)", "1.000"]];
+	for (const pair of cases) {
+		const c = parseColor(pair[0]);
+		assert c !== null && c.a.toFixed(3) === pair[1], pair[0] + " alpha " + (c === null ? "none" : c.a.toString());
+	}
+	assert parseColor("#1g0000") === null, "a bad hex digit is no colour";
 }
