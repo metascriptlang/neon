@@ -290,6 +290,23 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **Windows native frame/loop order** (2026-11-13, d87 desktop console, msc/support
+  `c62ba752f7de`, WARP D3D11 + D2D + DirectComposition; no displayed window).
+  Code tree `3dee2979fc35a82fb3cbaf090ad22d008699bc36`, before this measurement entry;
+  control uses the identical pin with only `bridge.cpp` restored from tree
+  `281de3e792c1e237c43a2a8701fa0e81c10f9405`. Green → red → green:
+  **495/495 → 493 passed / 2 failed → 495/495**. The old order reports loop then frame
+  (21); the candidate reports frame then loop (12), and a loop write requests the next frame.
+  Pin: `tests/platform/windowsFrameOrder.ms`. Compile with `msc test` on that file;
+  this compiler builds the executable but its plain-basename test runner exits 127.
+  The unchanged generated `out/debug/_test_windowsFrameOrder_b0b3bc268f29c030.exe`
+  was run through `~/metascript/.gate-host/desk/desk.sh run`, one core, in the synced checkout.
+  Source hashes matched local files; each executable hash was checked in its desktop job.
+  Final green job `20261113-061658-10301`, executable SHA256
+  `8972ec65d4890d5f785c2969688c90414f9b81236c99c875c0a80d7bdf6b3f5a`.
+  This is a console-scoped pin, not a certified ordinary SSH gate test.
+  It proves bridge ordering and rearming, not the compiler CLI path, physical input
+  latency, target-time lead, nested OS-loop progress, or a performance improvement.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.

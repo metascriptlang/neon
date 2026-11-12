@@ -934,8 +934,6 @@ void niwFrame(double timeMs) {
 	g_frameRequested = false;
 	g_inFrame = true;
 	reportScrolls();
-	if (s_loop.fn) invoke(s_loop);
-	else niLoopRun();
 	stepIndicators();
 	if (g_frameWanted) {
 		g_frameWanted = false;
@@ -947,6 +945,8 @@ void niwFrame(double timeMs) {
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
 	if (scrollsPending() || indicatorsPending() || modalsPending()) requestHostFrame();
 }
 
