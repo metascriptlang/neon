@@ -5,7 +5,7 @@ import { getOwner, isServer, asServer } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { NotReadyError } from "../core/types";
 import { Hole, ServerContext, ServerMarks, serverContext, withServerContext } from "../core/serverContext";
-import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
+import { Style, StyleValue, setStyleField, emptyStyle, settleClaims } from "./style";
 import { Host, HostNode } from "./hostTypes";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
@@ -179,7 +179,9 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 		(last: Style | null): Style => {
 			const s = get();
 			if (s.media === null || (s.cssId !== null && setCls !== null)) { return s; }
-			return mediaResolve(s);
+			const resolved = mediaResolve(s);
+			resolved.claims = s.claims;
+			return resolved;
 		},
 		(s: Style, before: Style | null): Cleanup | null => {
 			const id = s.cssId;
@@ -190,6 +192,7 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 				return null;
 			}
 			if (classed && setCls !== null) { setCls(node, "", ""); classed = false; }
+			settleClaims(s);
 			host.setStyle(node, s);
 			inlined = true;
 			return null;

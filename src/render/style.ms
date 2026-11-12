@@ -39,6 +39,19 @@ export type BorderCollapse = "collapse" | "separate";
 
 styleInterfaceBody("block");
 
+export interface StyleClaim {
+	id: int32;
+	field: string;
+	read: (style: Style) => StyleValue;
+	settle: (won: boolean) => void;
+}
+
+export interface ClaimMark {
+	claim: StyleClaim;
+	value: StyleValue;
+	won: boolean;
+}
+
 styleInterfaceBody(0);
 
 // Every style field's value fits this one union: string-literal unions are
@@ -90,4 +103,64 @@ export function installMediaLayering(layer: (base: Style, over: Style) => StyleB
 
 export function mergeMedia(base: Style, over: Style): StyleBlock[] | null {
 	return base.media === null ? over.media : layerMedia(base, over);
+}
+
+function marksClaim(marks: ClaimMark[], claim: StyleClaim): boolean {
+	for (const mark of marks) {
+		if (mark.claim.id === claim.id) { return true; }
+	}
+	return false;
+}
+
+export function mergeClaims(base: Style, over: Style): ClaimMark[] | null {
+	const below = base.claims;
+	const above = over.claims;
+	if (below === null) { return above; }
+	const out: ClaimMark[] = [];
+	for (const mark of below as ClaimMark[]) {
+		if (above !== null && marksClaim(above as ClaimMark[], mark.claim)) { continue; }
+		const shadowed = mark.won && mark.claim.read(over) !== null;
+		out.push(shadowed ? { claim: mark.claim, value: mark.value, won: false } : mark);
+	}
+	if (above !== null) {
+		for (const mark of above as ClaimMark[]) { out.push(mark); }
+	}
+	return out;
+}
+
+function holds(style: Style, mark: ClaimMark): boolean {
+	return mark.won && mark.claim.read(style) === mark.value;
+}
+
+export function claimed(style: Style, field: string): boolean {
+	const marks = style.claims;
+	if (marks === null) { return false; }
+	for (const mark of marks as ClaimMark[]) {
+		if (mark.claim.field === field && holds(style, mark)) { return true; }
+	}
+	return false;
+}
+
+export function settleClaims(style: Style): void {
+	const marks = style.claims;
+	if (marks === null) { return; }
+	for (const mark of marks as ClaimMark[]) { mark.claim.settle(holds(style, mark)); }
+}
+
+export function claimedFields(style: Style): string[] {
+	const marks = style.claims;
+	const out: string[] = [];
+	if (marks === null) { return out; }
+	for (const mark of marks as ClaimMark[]) {
+		if (holds(style, mark)) { out.push(mark.claim.field); }
+	}
+	return out;
+}
+
+export function unclaimedStyle(style: Style): Style {
+	const fields = claimedFields(style);
+	if (fields.length === 0) { return style; }
+	const copy = mergeStyle(style, {});
+	for (const field of fields) { setStyleField(copy, field, null); }
+	return copy;
 }

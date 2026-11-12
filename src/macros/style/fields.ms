@@ -156,6 +156,7 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["cssId", "string"],
 		["css",   "string"],
 		["media", "StyleBlock[]"],
+		["claims", "ClaimMark[]"],
 	];
 }
 
@@ -580,6 +581,15 @@ export macro mergeStyleBody(node: Node): Node {
 		props.push({
 			kind: NodeKind.CallExpr, line: L, column: C,
 			callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mergeMedia" },
+			arguments: [
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "base" },
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "over" },
+			],
+		});
+		keys.push("claims");
+		props.push({
+			kind: NodeKind.CallExpr, line: L, column: C,
+			callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mergeClaims" },
 			arguments: [
 				{ kind: NodeKind.Identifier, line: L, column: C, name: "base" },
 				{ kind: NodeKind.Identifier, line: L, column: C, name: "over" },
