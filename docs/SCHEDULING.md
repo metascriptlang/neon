@@ -298,10 +298,21 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   Old immediate dispatch: **493 passed / 7 failed**. The added shutdown case then
   exposed **500 passed / 1 failed** before shutdown cancellation was fixed.
   Four local/remote source SHA256 hashes matched after the final run.
-  Native scroll-wheel handling is unchanged; scroll-report coalescing and physical
-  input latency remain unmeasured. Coalescing before delivery follows RN macOS
+  This tree did not include scroll-report coalescing; physical input latency remains
+  unmeasured. Coalescing before delivery follows RN macOS
   `RCTEventDispatcher.mm` `sendEvent` (135–190 at `8941740a4`); the frame boundary
   follows this document's existing main-thread contract, not a JS-thread dispatch.
+- **macOS ordered native input** (2026-11-13, m1m, msc/support `c62ba752f7de`).
+  Checked code tree `4e569793e83d312913b4acabe1cdba9ed538bf27`, before this entry.
+  The same pointer pin now includes real NSScrollView offset changes: ten added
+  cases are red on the preceding code (**501 passed / 10 failed**); final
+  `msc test tests/platform/macosPointerInput.test.ms` is **512/512**, including
+  19 bridge cases and a weak-target release check. Frame-order remains **495/495**.
+  Four local/remote source hashes match. Native offsets change immediately;
+  reports and drags preserve order before the frame callback, with only consecutive
+  matching reports coalesced (the existing `DesktopInput` rule). AppKit wheel
+  processing is unchanged. These are callback/order/lifetime checks, not a physical
+  wheel test, input-latency measurement, or allocator/performance result.
 - **Windows native frame/loop order** (2026-11-13, d87 desktop console, msc/support
   `c62ba752f7de`, WARP D3D11 + D2D + DirectComposition; no displayed window).
   Code tree `3dee2979fc35a82fb3cbaf090ad22d008699bc36`, before this measurement entry;

@@ -8,7 +8,10 @@ static NSView *baseParent, *parent, *root;
 static int moves, order, requests;
 static float lastX;
 static double lastTime;
-static BOOL reenter;
+static BOOL reenter, reenterScroll, stopFromScroll;
+static void *scroll;
+static int scrolls;
+static float scrollY;
 
 static NSEvent *mouse(NSEventType type, float x, double time) {
 	return [NSEvent mouseEventWithType:type location:NSMakePoint(x, 50)
@@ -40,8 +43,24 @@ static void requested(void) { requests++; }
 static void frame(void) { order = order * 10 + 8; }
 static void loop(void) {}
 static void control(void) { order = order * 10 + 5; }
+static void scrolled(void) {
+	scrolls++;
+	scrollY = niLastScrollY();
+	order = order * 10 + 6;
+	if (reenterScroll) {
+		reenterScroll = NO;
+		npiScroll(80);
+	}
+	if (stopFromScroll) {
+		stopFromScroll = NO;
+		nimShutdown();
+	}
+}
 
 void npiBegin(void) {
+	niSetScrollHandler((msClosure){0});
+	if (scroll) { niViewRelease(scroll); scroll = NULL; }
+	reenterScroll = stopFromScroll = NO;
 	if (!baseParent) {
 		baseParent = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 100)];
 		nimAttach((__bridge void *)baseParent, 1, 200, 100);
@@ -61,7 +80,8 @@ void npiBegin(void) {
 	niAddChild((__bridge void *)root, view);
 	niViewRelease(view);
 	nimFrame(1000);
-	moves = order = requests = 0;
+	moves = order = requests = scrolls = 0;
+	scrollY = 0;
 	lastX = 0;
 	lastTime = 0;
 	reenter = NO;
@@ -81,3 +101,34 @@ int32_t npiOrder(void) { return order; }
 int32_t npiRequests(void) { return requests; }
 float npiLastX(void) { return lastX; }
 double npiLastTime(void) { return lastTime; }
+
+void npiScroll(float y) {
+	if (!scroll) {
+		scroll = niScrollCreate();
+		niScrollSetTag(scroll, 17);
+		niSetFrame(scroll, 100, 0, 100, 100);
+		niScrollSetContentSize(scroll, 100, 1000);
+		niAddChild((__bridge void *)root, scroll);
+		niSetScrollHandler((msClosure){(void *)scrolled, NULL});
+	}
+	niScrollTo(scroll, 0, y, 0);
+}
+
+void npiUnregisterScroll(void) { niSetScrollHandler((msClosure){0}); }
+void npiReenterScroll(void) { reenterScroll = YES; }
+void npiStopFromScroll(void) { stopFromScroll = YES; }
+int32_t npiScrolls(void) { return scrolls; }
+float npiScrollY(void) { return scrollY; }
+float npiOffsetY(void) { return niScrollOffsetY(scroll); }
+int32_t npiReleaseScroll(void) {
+	__weak id released;
+	@autoreleasepool {
+		npiBegin();
+		npiScroll(20);
+		released = (__bridge id)scroll;
+		niRemoveFromParent(scroll);
+		niViewRelease(scroll);
+		scroll = NULL;
+	}
+	return released == nil;
+}

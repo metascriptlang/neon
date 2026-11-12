@@ -248,6 +248,31 @@ static NeonView *parentOf(NeonView *view) {
 
 static int32_t spanTagAt(NeonView *view, float lx, float ly);
 
+@class NeonScroll;
+@interface NeonFrameInput : NSObject
+@property(nonatomic, strong) NSMutableArray<NeonView *> *touchChain;
+@property(nonatomic, weak) NeonScroll *scroll;
+@property(nonatomic) int32_t tag;
+@property(nonatomic) NSPoint point;
+@property(nonatomic) NSSize viewport, content;
+@property(nonatomic) double time;
+@end
+@implementation NeonFrameInput
+@end
+
+static NSMutableArray<NeonFrameInput *> *g_inputQueue;
+static BOOL g_inputStopped, g_inputDraining, g_cancelInputDrain;
+
+static void discardInputs(BOOL touch) {
+	NSArray<NeonFrameInput *> *pending = g_inputQueue;
+	g_inputQueue = nil;
+	for (NeonFrameInput *input in pending) {
+		if ((input.touchChain != nil) == touch) continue;
+		if (!g_inputQueue) g_inputQueue = [NSMutableArray array];
+		[g_inputQueue addObject:input];
+	}
+}
+
 static void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
 	if (!s_touch.fn) return;
 	g_touchTag = tag;
@@ -259,9 +284,7 @@ static void reportTag(int32_t tag, int32_t phase, float x, float y, double time)
 }
 
 static struct {
-	BOOL active, movePending;
-	float moveX, moveY;
-	double moveTime;
+	BOOL active;
 	int32_t spanTag;
 	NeonView *spanLabel;
 	NSMutableArray<NeonView *> *chain;
@@ -269,10 +292,10 @@ static struct {
 
 static void endTouch(void) {
 	g_touch.active = NO;
-	g_touch.movePending = NO;
 	g_touch.spanTag = 0;
 	g_touch.spanLabel = nil;
 	g_touch.chain = nil;
+	discardInputs(YES);
 }
 
 static void pointerDown(NeonRoot *root, float x, float y, double time) {
@@ -298,19 +321,20 @@ static void pointerMove(float x, float y, double time) {
 }
 
 static void queuePointerMove(float x, float y, double time) {
-	if (!g_touch.active || !s_touch.fn) return;
-	g_touch.movePending = YES;
-	g_touch.moveX = x;
-	g_touch.moveY = y;
-	g_touch.moveTime = time;
+	if (g_inputStopped || !g_touch.active || !s_touch.fn) return;
+	NeonFrameInput *input = g_inputQueue.lastObject;
+	if (input.touchChain != g_touch.chain) {
+		input = [NeonFrameInput new];
+		input.touchChain = g_touch.chain;
+		if (!g_inputQueue) g_inputQueue = [NSMutableArray array];
+		[g_inputQueue addObject:input];
+	}
+	input.point = NSMakePoint(x, y);
+	input.time = time;
 	requestHostFrame();
 }
 
-static void drainPointerMove(void) {
-	if (!g_touch.movePending) return;
-	g_touch.movePending = NO;
-	pointerMove(g_touch.moveX, g_touch.moveY, g_touch.moveTime);
-}
+static void drainInputs(void);
 
 static void pointerUp(NeonRoot *root, float x, float y, double time) {
 	if (!g_touch.active) return;
@@ -362,7 +386,7 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 - (NSPoint)neonPoint:(NSEvent *)event { return [self convertPoint:event.locationInWindow fromView:nil]; }
 
 - (void)mouseDown:(NSEvent *)event {
-	drainPointerMove();
+	drainInputs();
 	NSPoint p = [self neonPoint:event];
 	pointerDown(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
@@ -374,14 +398,13 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 }
 
 - (void)mouseUp:(NSEvent *)event {
-	drainPointerMove();
+	drainInputs();
 	NSPoint p = [self neonPoint:event];
 	pointerUp(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
 }
 
 - (void)scrollWheel:(NSEvent *)event {
-	drainPointerMove();
 	routeWheel(self, event, [self neonPoint:event]);
 }
 @end
@@ -985,20 +1008,52 @@ static NSWritingDirection writingDirectionOf(const char *value) {
 
 - (void)scrolled:(NSNotification *)note {
 	(void)note;
-	if (!s_scroll.fn || self.neonTag == 0) return;
-	NSPoint p = [self offset];
-	g_scrollTag = self.neonTag;
-	g_scrollPhase = 0;
-	g_scrollX = (float)p.x;
-	g_scrollY = (float)p.y;
-	g_scrollW = self.w;
-	g_scrollH = self.h;
-	g_scrollContentW = fmaxf(self.contentWidth, self.w);
-	g_scrollContentH = fmaxf(self.contentHeight, self.h);
-	invoke(s_scroll);
+	if (g_inputStopped || !s_scroll.fn || self.neonTag == 0) return;
+	NeonFrameInput *input = g_inputQueue.lastObject;
+	if (input.touchChain || input.scroll != self || input.tag != self.neonTag) {
+		input = [NeonFrameInput new];
+		input.scroll = self;
+		input.tag = self.neonTag;
+		if (!g_inputQueue) g_inputQueue = [NSMutableArray array];
+		[g_inputQueue addObject:input];
+	}
+	input.point = [self offset];
+	input.viewport = NSMakeSize(self.w, self.h);
+	input.content = NSMakeSize(fmaxf(self.contentWidth, self.w),
+		fmaxf(self.contentHeight, self.h));
 	requestHostFrame();
 }
 @end
+
+static void drainInputs(void) {
+	if (g_inputDraining || g_inputStopped || !g_inputQueue.count) return;
+	g_inputDraining = YES;
+	g_cancelInputDrain = NO;
+	NSArray<NeonFrameInput *> *due = g_inputQueue;
+	g_inputQueue = nil;
+	for (NeonFrameInput *input in due) {
+		if (g_cancelInputDrain) break;
+		if (input.touchChain) {
+			if (input.touchChain == g_touch.chain && g_touch.active) {
+				pointerMove((float)input.point.x, (float)input.point.y, input.time);
+			}
+			continue;
+		}
+		NeonScroll *scroll = input.scroll;
+		if (!scroll || !s_scroll.fn || scroll.neonTag != input.tag ||
+			![g_roots containsObject:rootOf(scroll)]) continue;
+		g_scrollTag = input.tag;
+		g_scrollPhase = 0;
+		g_scrollX = (float)input.point.x;
+		g_scrollY = (float)input.point.y;
+		g_scrollW = (float)input.viewport.width;
+		g_scrollH = (float)input.viewport.height;
+		g_scrollContentW = (float)input.content.width;
+		g_scrollContentH = (float)input.content.height;
+		invoke(s_scroll);
+	}
+	g_inputDraining = NO;
+}
 
 static NeonScroll *scrollOf(void *view, const char *what) {
 	if ([as(view) isKindOfClass:NeonScroll.class]) return (NeonScroll *)as(view);
@@ -1032,7 +1087,7 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot) {
 // for secureTextEntry) and RCTUITextView (an NSTextView in an NSScrollView) inside a NeonView ---
 
 static void emitControlSized(int32_t tag, int phase, NSString *value, float width, float height) {
-	drainPointerMove();
+	drainInputs();
 	if (tag == 0 || !s_control.fn) return;
 	free(g_controlValue);
 	g_controlValue = strdup(value.UTF8String);
@@ -1670,6 +1725,7 @@ void *nimAttach(void *root, float scale, float logicalWidth, float logicalHeight
 		if (held.superview == parent) fail("nimAttach on a view that already holds a Neon root");
 	}
 	if (!g_roots) g_roots = [NSMutableArray array];
+	g_inputStopped = NO;
 	NeonRoot *attached = [[NeonRoot alloc] initWithFrame:parent.bounds];
 	attached.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 	attached.w = (float)parent.bounds.size.width;
@@ -1695,7 +1751,7 @@ void nimDetach(void *handle) {
 
 void nimResize(void *handle, float scale, float logicalWidth, float logicalHeight) {
 	NeonRoot *root = attachedRoot(handle, "nimResize");
-	drainPointerMove();
+	drainInputs();
 	root.w = logicalWidth;
 	root.h = logicalHeight;
 	if (root == defaultRoot()) {
@@ -1714,7 +1770,7 @@ void nimFrame(double timeMs) {
 	g_frameTime = timeMs;
 	g_frameRequested = NO;
 	g_inFrame = YES;
-	drainPointerMove();
+	drainInputs();
 	if (g_frameWanted) {
 		g_frameWanted = NO;
 		if (s_frame.fn) invoke(s_frame);
@@ -1722,7 +1778,7 @@ void nimFrame(double timeMs) {
 	g_inFrame = NO;
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
-	if (g_frameWanted || g_touch.movePending) requestHostFrame();
+	if (g_frameWanted || g_inputQueue.count) requestHostFrame();
 }
 
 void nimSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -1743,6 +1799,9 @@ int nimStoredAccessibility(const char *name, const char *value) {
 int nimLayoutsBuilt(void) { return g_layoutsBuilt; }
 
 void nimShutdown(void) {
+	g_inputStopped = YES;
+	g_cancelInputDrain = YES;
+	g_inputQueue = nil;
 	endTouch();
 	if (s_teardown.fn) invoke(s_teardown);
 }
@@ -2023,7 +2082,10 @@ void niSetTouchHandler(msClosure handler) {
 	s_touch = handler;
 	if (!handler.fn) endTouch();
 }
-void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
+void niSetScrollHandler(msClosure handler) {
+	s_scroll = handler;
+	if (!handler.fn) discardInputs(NO);
+}
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
 void niSetAppHandler(msClosure handler) { s_app = handler; }
