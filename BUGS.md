@@ -26,6 +26,13 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-11-12 — iOS: the Counter's first Text draws under the status bar.** `examples/ios`
+  (`examples/components/counter.ms`) on an iPhone 17 Pro simulator: the title "Neon Counter" is hidden behind
+  the status bar, only fragments of its glyphs show between the clock and the indicators, while "0", the buttons
+  and "even" sit below it. The same on neon `5ee483f0` and with the text-measure change, so it is not text sizing;
+  not traced (safe area versus the root's frame is the first lead). Reproduce: build the project with
+  `ion generate examples/ios/project.ms`, install on a fresh simulator, `xcrun simctl io <device> screenshot`.
+
 - **OPEN 2026-11-08 — Chrome: a camera pick after a canceled library pick never opens its file
   input.** `tests/browser/capture.test.ms` "a canceled file input answers canceled, and a camera pick
   asks the input to capture" fails with `timed out waiting for the camera input` in every run on m1m (6 of 6)
