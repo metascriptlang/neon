@@ -290,6 +290,18 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **macOS native pointer phase** (2026-11-13, m1m, msc/support `c62ba752f7de`,
+  real AppKit bridge with synthetic NSView events, no physical device input).
+  Checked code tree `ea1e43f1cf11fb8740e31239b9f421ec5121dfc4`, before this entry:
+  `msc test tests/platform/macosPointerInput.test.ms` is **501/501**;
+  `msc test tests/platform/macosFrameOrder.test.ms` remains **495/495**.
+  Old immediate dispatch: **493 passed / 7 failed**. The added shutdown case then
+  exposed **500 passed / 1 failed** before shutdown cancellation was fixed.
+  Four local/remote source SHA256 hashes matched after the final run.
+  Native scroll-wheel handling is unchanged; scroll-report coalescing and physical
+  input latency remain unmeasured. Coalescing before delivery follows RN macOS
+  `RCTEventDispatcher.mm` `sendEvent` (135–190 at `8941740a4`); the frame boundary
+  follows this document's existing main-thread contract, not a JS-thread dispatch.
 - **Windows native frame/loop order** (2026-11-13, d87 desktop console, msc/support
   `c62ba752f7de`, WARP D3D11 + D2D + DirectComposition; no displayed window).
   Code tree `3dee2979fc35a82fb3cbaf090ad22d008699bc36`, before this measurement entry;

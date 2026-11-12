@@ -249,6 +249,7 @@ static NeonView *parentOf(NeonView *view) {
 static int32_t spanTagAt(NeonView *view, float lx, float ly);
 
 static void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
+	if (!s_touch.fn) return;
 	g_touchTag = tag;
 	g_touchPhase = phase;
 	g_touchX = x;
@@ -258,7 +259,9 @@ static void reportTag(int32_t tag, int32_t phase, float x, float y, double time)
 }
 
 static struct {
-	BOOL active;
+	BOOL active, movePending;
+	float moveX, moveY;
+	double moveTime;
 	int32_t spanTag;
 	NeonView *spanLabel;
 	NSMutableArray<NeonView *> *chain;
@@ -266,6 +269,7 @@ static struct {
 
 static void endTouch(void) {
 	g_touch.active = NO;
+	g_touch.movePending = NO;
 	g_touch.spanTag = 0;
 	g_touch.spanLabel = nil;
 	g_touch.chain = nil;
@@ -291,6 +295,21 @@ static void pointerMove(float x, float y, double time) {
 	if (!g_touch.active) return;
 	if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 4, x, y, time);
 	for (NeonView *view in [g_touch.chain copy]) reportTag(view.neonTag, 4, x, y, time);
+}
+
+static void queuePointerMove(float x, float y, double time) {
+	if (!g_touch.active || !s_touch.fn) return;
+	g_touch.movePending = YES;
+	g_touch.moveX = x;
+	g_touch.moveY = y;
+	g_touch.moveTime = time;
+	requestHostFrame();
+}
+
+static void drainPointerMove(void) {
+	if (!g_touch.movePending) return;
+	g_touch.movePending = NO;
+	pointerMove(g_touch.moveX, g_touch.moveY, g_touch.moveTime);
 }
 
 static void pointerUp(NeonRoot *root, float x, float y, double time) {
@@ -343,6 +362,7 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 - (NSPoint)neonPoint:(NSEvent *)event { return [self convertPoint:event.locationInWindow fromView:nil]; }
 
 - (void)mouseDown:(NSEvent *)event {
+	drainPointerMove();
 	NSPoint p = [self neonPoint:event];
 	pointerDown(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
@@ -350,17 +370,20 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot);
 
 - (void)mouseDragged:(NSEvent *)event {
 	NSPoint p = [self neonPoint:event];
-	pointerMove((float)p.x, (float)p.y, event.timestamp * 1000.0);
-	requestHostFrame();
+	queuePointerMove((float)p.x, (float)p.y, event.timestamp * 1000.0);
 }
 
 - (void)mouseUp:(NSEvent *)event {
+	drainPointerMove();
 	NSPoint p = [self neonPoint:event];
 	pointerUp(self, (float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
 }
 
-- (void)scrollWheel:(NSEvent *)event { routeWheel(self, event, [self neonPoint:event]); }
+- (void)scrollWheel:(NSEvent *)event {
+	drainPointerMove();
+	routeWheel(self, event, [self neonPoint:event]);
+}
 @end
 
 // --- text: one NSLayoutManager per label, the shape RN macOS's RCTTextLayoutManager keeps ---
@@ -1009,6 +1032,7 @@ static void routeWheel(NeonRoot *root, NSEvent *event, NSPoint pointInRoot) {
 // for secureTextEntry) and RCTUITextView (an NSTextView in an NSScrollView) inside a NeonView ---
 
 static void emitControlSized(int32_t tag, int phase, NSString *value, float width, float height) {
+	drainPointerMove();
 	if (tag == 0 || !s_control.fn) return;
 	free(g_controlValue);
 	g_controlValue = strdup(value.UTF8String);
@@ -1671,6 +1695,7 @@ void nimDetach(void *handle) {
 
 void nimResize(void *handle, float scale, float logicalWidth, float logicalHeight) {
 	NeonRoot *root = attachedRoot(handle, "nimResize");
+	drainPointerMove();
 	root.w = logicalWidth;
 	root.h = logicalHeight;
 	if (root == defaultRoot()) {
@@ -1689,6 +1714,7 @@ void nimFrame(double timeMs) {
 	g_frameTime = timeMs;
 	g_frameRequested = NO;
 	g_inFrame = YES;
+	drainPointerMove();
 	if (g_frameWanted) {
 		g_frameWanted = NO;
 		if (s_frame.fn) invoke(s_frame);
@@ -1696,7 +1722,7 @@ void nimFrame(double timeMs) {
 	g_inFrame = NO;
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
-	if (g_frameWanted) requestHostFrame();
+	if (g_frameWanted || g_touch.movePending) requestHostFrame();
 }
 
 void nimSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -1717,6 +1743,7 @@ int nimStoredAccessibility(const char *name, const char *value) {
 int nimLayoutsBuilt(void) { return g_layoutsBuilt; }
 
 void nimShutdown(void) {
+	endTouch();
 	if (s_teardown.fn) invoke(s_teardown);
 }
 
@@ -1992,7 +2019,10 @@ void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 void niSetFrameHandler(msClosure handler) { s_frame = handler; }
 double niFrameTime(void) { return g_frameTime; }
-void niSetTouchHandler(msClosure handler) { s_touch = handler; }
+void niSetTouchHandler(msClosure handler) {
+	s_touch = handler;
+	if (!handler.fn) endTouch();
+}
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 void niSetControlHandler(msClosure handler) { s_control = handler; }
 void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
