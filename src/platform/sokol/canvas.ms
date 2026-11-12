@@ -7,6 +7,7 @@ import { publishKeyboard, publishSafeArea } from "../../render/environment";
 import { canvasFont } from "./canvasFont";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { flush } from "../../core/runtime";
+import { installFrameDriver } from "../../animation/frame";
 import {
 	WindowArea,
 	windowHost,
@@ -69,6 +70,7 @@ interface Canvas {
 	input: SokolInput | null;
 	owed: boolean;
 	dispose: (() => void) | null;
+	frameFires: ((target: number) => void)[];
 }
 
 let _canvas: Canvas | null = null;
@@ -116,6 +118,13 @@ function initCanvas(): void {
 	gfxSetup();
 	setup2d();
 	preparePipelines([BlendMode.Alpha]);
+	installFrameDriver({
+		now: (): number => performance.now(),
+		schedule: (fire: (target: number) => void): void => {
+			c.frameFires.push(fire);
+			c.owed = true;
+		},
+	});
 	const app = c.app;
 	c.dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, canvasHost(c), windowNode("window"));
 	onAppEvent((e: AppEvent): void => {
@@ -132,6 +141,10 @@ function frameCanvas(): void {
 	msRunOnce(0 as int32);
 	const c = running();
 	if (c.input !== null) { flushKey(c.input as SokolInput); }
+	const due = c.frameFires;
+	c.frameFires = [];
+	const time = performance.now();
+	for (const fire of due) { fire(time); }
 	flush();
 	if (c.area === null) { return; }
 	const area = c.area as WindowArea;
@@ -165,7 +178,7 @@ export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
 		return 3;
 	}
 	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
-	_canvas = { app, font: font.value, family, area: null, input: null, owed: true, dispose: null };
+	_canvas = { app, font: font.value, family, area: null, input: null, owed: true, dispose: null, frameFires: [] };
 	voidRun(opts.width as int32, opts.height as int32, initCanvas, frameCanvas);
 	const c = running();
 	if (c.dispose !== null) { (c.dispose as () => void)(); }
