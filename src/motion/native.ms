@@ -413,9 +413,24 @@ function sameNode(a: HostNode | null, b: HostNode | null): boolean {
 	return (a as HostNode) === (b as HostNode);
 }
 
-function resolvedNode(elements: MotionElements, slot: string): HostNode | null {
-	const node = elements.node(slot);
+function layerField(property: LayerProperty): string {
+	return match (property) {
+		LayerProperty.Opacity => "opacity",
+		LayerProperty.Transform => "transform",
+	};
+}
+
+function resolvedNode(
+	elements: MotionElements,
+	slot: string,
+	property: LayerProperty,
+): HostNode | null {
+	const node = elements.nodeFor(slot, layerField(property));
 	return node !== null && nativeOwns(node as HostNode) ? node : null;
+}
+
+function stillPlaced(elements: MotionElements, slot: string, node: HostNode | null): boolean {
+	return node !== null && sameNode(elements.node(slot), node);
 }
 
 function keyedAt(
@@ -513,9 +528,13 @@ class NativeRun {
 	}
 
 	resolve(): boolean {
-		const node = resolvedNode(this.elements, this.plan.slot);
+		const node = resolvedNode(this.elements, this.plan.slot, this.plan.property);
 		if (!sameNode(node, this.node)) {
-			this.release();
+			if (stillPlaced(this.elements, this.plan.slot, this.node)) {
+				this.stop();
+			} else {
+				this.release();
+			}
 			this.last = [];
 			this.node = node;
 		}
@@ -524,7 +543,7 @@ class NativeRun {
 
 	unmounted(): boolean {
 		return this.elements.declared.includes(this.plan.slot) &&
-			this.elements.node(this.plan.slot) === null;
+			this.elements.nodeFor(this.plan.slot, layerField(this.plan.property)) === null;
 	}
 
 	release(): void {
@@ -990,7 +1009,7 @@ class ValueParts {
 		this.elements = elements;
 		this.slot = slot;
 		this.channel = channel;
-		const eager = resolvedNode(elements, slot);
+		const eager = resolvedNode(elements, slot, channel.property);
 		this.target =
 			target ??
 			(eager === null ? null : elementTarget(eager as HostNode, channel.name));
@@ -1118,12 +1137,16 @@ export class NativeElementValue extends AnimatedValue {
 		if (this.disposed) {
 			return parts.node;
 		}
-		const node = resolvedNode(parts.elements, parts.slot);
+		const node = resolvedNode(parts.elements, parts.slot, parts.channel.property);
 		if (sameNode(node, parts.node)) {
 			return node;
 		}
 		if (this.handed) {
 			this.dropHandover();
+			if (stillPlaced(parts.elements, parts.slot, parts.node)) {
+				const engine = layerEngine() as LayerEngine;
+				engine.remove(parts.node as HostNode, parts.channel.property);
+			}
 		}
 		parts.node = node;
 		if (node !== null) {

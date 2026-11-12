@@ -10,7 +10,7 @@ import { Composition, MotionTarget } from "pulse/src/target";
 import { AnimatedValue } from "pulse/src/value";
 import { ViewHandle } from "../components/primitives";
 import { HostNode } from "../render/hostTypes";
-import { Style } from "../render/style";
+import { ClaimMark, Style, StyleClaim, StyleValue } from "../render/style";
 import { MotionElements } from "./waapi";
 
 export interface ElementMotion {
@@ -233,9 +233,30 @@ class SignalTarget extends MotionTarget {
 	}
 }
 
+let nextClaim: int32 = 1;
+
+function readField(field: string): (style: Style) => StyleValue {
+	return match (field) {
+		"transform" => (style: Style): StyleValue => style.transform,
+		"opacity" => (style: Style): StyleValue => style.opacity,
+		"width" => (style: Style): StyleValue => style.width,
+		"height" => (style: Style): StyleValue => style.height,
+		"left" => (style: Style): StyleValue => style.left,
+		"top" => (style: Style): StyleValue => style.top,
+		"right" => (style: Style): StyleValue => style.right,
+		"bottom" => (style: Style): StyleValue => style.bottom,
+		"borderRadius" => (style: Style): StyleValue => style.borderRadius,
+		"backgroundColor" => (style: Style): StyleValue => style.backgroundColor,
+		"color" => (style: Style): StyleValue => style.color,
+		"borderColor" => (style: Style): StyleValue => style.borderColor,
+		_ => { throw new Error("motion: no style field " + field + " to claim"); },
+	};
+}
+
 class OwnedSlot {
 	slot: string;
 	ahead: boolean;
+	claims: StyleClaim[] = [];
 	owned: Accessor<boolean>;
 	own: (owned: boolean) => void;
 	node: HostNode | null = null;
@@ -258,6 +279,22 @@ class OwnedSlot {
 			this.current = node;
 			setPlaced(untrack((): int32 => placed()) + 1);
 		};
+	}
+
+	claim(field: string, elements: MotionElements): StyleClaim {
+		for (const claim of this.claims) {
+			if (claim.field === field) { return claim; }
+		}
+		const slot = this.slot;
+		const claim: StyleClaim = {
+			id: nextClaim,
+			field,
+			read: readField(field),
+			settle: (won: boolean): void => { elements.yieldField(slot, field, !won); },
+		};
+		nextClaim += 1;
+		this.claims.push(claim);
+		return claim;
 	}
 }
 
@@ -406,35 +443,49 @@ export class MotionSignals {
 
 	style(slot: string): Style {
 		const style: Style = {};
-		const owned = this.ownedSlot(slot).owned();
+		const owned = this.ownedSlot(slot);
 		const motion = elementMotion;
-		const shows = (property: string): boolean =>
-			!owned || motion === null || !motion.carries(property);
+		const claiming = owned.owned() && motion !== null;
+		const holds = (property: string): boolean =>
+			claiming && (motion as ElementMotion).carries(property);
+		const value = (entry: SlotStyle): float64 =>
+			holds(entry.property) ? untrack(entry.number) : entry.number();
+		const text = (entry: SlotStyle): string =>
+			holds(entry.property) ? untrack(entry.text) : entry.text();
+		const held: string[] = [];
 		const parts: string[] = [];
 		for (const property of TRANSFORM_ORDER) {
 			for (const entry of this.styles) {
-				if (entry.slot === slot && entry.property === property && shows(property)) {
-					parts.push(transformPart(property, entry.number()));
+				if (entry.slot === slot && entry.property === property) {
+					parts.push(transformPart(property, value(entry)));
+					if (holds(property) && !held.includes("transform")) { held.push("transform"); }
 				}
 			}
 		}
 		if (parts.length > 0) { style.transform = parts.join(" "); }
 		for (const entry of this.styles) {
-			if (entry.slot !== slot || !shows(entry.property)) { continue; }
+			if (entry.slot !== slot) { continue; }
 			match (entry.property) {
-				"opacity" => { style.opacity = entry.number(); },
-				"width" => { style.width = entry.number(); },
-				"height" => { style.height = entry.number(); },
-				"left" => { style.left = entry.number(); },
-				"top" => { style.top = entry.number(); },
-				"right" => { style.right = entry.number(); },
-				"bottom" => { style.bottom = entry.number(); },
-				"borderRadius" => { style.borderRadius = entry.number(); },
-				"backgroundColor" => { style.backgroundColor = entry.text(); },
-				"color" => { style.color = entry.text(); },
-				"borderColor" => { style.borderColor = entry.text(); },
-				_ => {},
+				"opacity" => { style.opacity = value(entry); },
+				"width" => { style.width = value(entry); },
+				"height" => { style.height = value(entry); },
+				"left" => { style.left = value(entry); },
+				"top" => { style.top = value(entry); },
+				"right" => { style.right = value(entry); },
+				"bottom" => { style.bottom = value(entry); },
+				"borderRadius" => { style.borderRadius = value(entry); },
+				"backgroundColor" => { style.backgroundColor = text(entry); },
+				"color" => { style.color = text(entry); },
+				"borderColor" => { style.borderColor = text(entry); },
+				_ => { continue; },
 			};
+			if (holds(entry.property)) { held.push(entry.property); }
+		}
+		if (held.length > 0) {
+			style.claims = held.map((field: string): ClaimMark => {
+				const claim = owned.claim(field, this.elements);
+				return { claim, value: claim.read(style), won: true };
+			});
 		}
 		return style;
 	}
@@ -442,7 +493,7 @@ export class MotionSignals {
 	show(slot: string, property: string, value: MotionValue): void {
 		const node = this.ownedSlot(slot).node;
 		const motion = elementMotion;
-		if (node !== null && motion !== null && motion.carries(property)) {
+		if (node !== null && motion !== null && motion.carries(property) && !this.elements.yields(slot, property)) {
 			motion.show(node, property, value);
 		}
 	}

@@ -584,10 +584,30 @@ export struct MotionElement {
 	node: HostNode;
 }
 
+struct YieldedField {
+	slot: string;
+	field: string;
+}
+
+const TRANSFORM_PARTS: string[] = [
+	"translate",
+	"translateX",
+	"translateY",
+	"rotate",
+	"scale",
+	"scaleX",
+	"scaleY",
+];
+
+export function styleFieldOf(property: string): string {
+	return TRANSFORM_PARTS.includes(property) ? "transform" : property;
+}
+
 export class MotionElements {
 	declared: string[] = [];
 	private entries: MotionElement[] = [];
 	private watchers: (() => void)[] = [];
+	private yielded: YieldedField[] = [];
 
 	watch(placed: () => void): () => void {
 		this.watchers.push(placed);
@@ -626,6 +646,30 @@ export class MotionElements {
 			if (entry.slot === slot) { return entry.node; }
 		}
 		return null;
+	}
+
+	yields(slot: string, property: string): boolean {
+		const field = styleFieldOf(property);
+		for (const entry of this.yielded) {
+			if (entry.slot === slot && entry.field === field) { return true; }
+		}
+		return false;
+	}
+
+	nodeFor(slot: string, property: string): HostNode | null {
+		return this.yields(slot, property) ? null : this.node(slot);
+	}
+
+	yieldField(slot: string, field: string, yielded: boolean): void {
+		if (this.yields(slot, field) === yielded) { return; }
+		if (yielded) {
+			this.yielded.push({ slot, field });
+		} else {
+			this.yielded = this.yielded.filter(
+				(entry: YieldedField): boolean => entry.slot !== slot || entry.field !== field,
+			);
+		}
+		this.placed();
 	}
 }
 
@@ -1263,7 +1307,7 @@ when (js) {
 		}
 
 		private placed(run: StyleRun): HTMLElement | null {
-			const node = this.elements.node(run.plan.slot);
+			const node = this.elements.nodeFor(run.plan.slot, run.plan.css);
 			return node !== null && isDomNode(node) ? node as unknown as HTMLElement : null;
 		}
 
@@ -1280,6 +1324,8 @@ when (js) {
 						run.element = element;
 						run.mode = RunMode.Dom;
 						this.adopt(run);
+					} else if (this.elements.node(run.plan.slot) !== null) {
+						run.mode = RunMode.Unmounted;
 					} else {
 						run.mode = RunMode.Fallback;
 					}
@@ -1801,7 +1847,7 @@ when (js) {
 		private element(): HTMLElement | null {
 			const parts = this.parts;
 			if (this.disposed) { return parts.element; }
-			const node = parts.elements.node(parts.slot);
+			const node = parts.elements.nodeFor(parts.slot, parts.style.name);
 			const element = node !== null && isDomNode(node) ? node as unknown as HTMLElement : null;
 			if (element === parts.element) { return element; }
 			const left = this.dropHandover();
