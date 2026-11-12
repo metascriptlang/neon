@@ -13,6 +13,7 @@ import { exit } from "std/process";
 
 when (windows) {
 	@compile("./harness.cpp");
+	@compile("./harnessWake.cpp");
 	@passL("-ld3d11");
 	@passL("-ld2d1");
 	@passL("-ldcomp");

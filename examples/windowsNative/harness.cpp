@@ -568,6 +568,7 @@ int harnessRun(void) {
 		SetForegroundWindow(g_window);
 		ULONGLONG settled = GetTickCount64() + 500;
 		for (int i = 0; i < 30 || GetTickCount64() < settled; i++) {
+			niwDrainImages();
 			niwPump();
 			pumpMessages();
 			DwmFlush();
@@ -575,6 +576,7 @@ int harnessRun(void) {
 		status = sample() == 0 ? 0 : 1;
 	} else {
 		for (;;) {
+			niwDrainImages();
 			int next = niwPump();
 			MsgWaitForMultipleObjects(0, nullptr, FALSE, next < 0 ? INFINITE : (DWORD)next, QS_ALLINPUT);
 			if (!pumpMessages()) break;
