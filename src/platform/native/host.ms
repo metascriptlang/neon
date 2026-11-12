@@ -20,6 +20,7 @@ import { VisibleContentPosition, parseVisibleContent } from "../../render/visibl
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, armedLayoutAnimation, takeLayoutAnimation, runLayoutTween } from "../../motion/layoutAnimation";
+import { parseColor } from "../../components/svg/color";
 import "../android/library";
 when (hcr) {
 	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
@@ -455,53 +456,15 @@ export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: fl
 // ---- style projection + paint ----
 
 
-function hexNibble(c: string): int32 {
-	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
-	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
-	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
-	return -1;
-}
-
 interface Rgba { r: float32; g: float32; b: float32; a: float32; }
 
-function parseRgbFunction(css: string): Rgba | null {
-	const open = css.indexOf("(");
-	const close = css.lastIndexOf(")");
-	if (open < 0 || close < open) { return null; }
-	const name = css.substring(0, open).trim();
-	if (name !== "rgb" && name !== "rgba") { return null; }
-	const parts = css.substring(open + 1, close).split(",");
-	if (parts.length !== 3 && parts.length !== 4) { return null; }
-	const r = parseFloat(parts[0].trim());
-	const g = parseFloat(parts[1].trim());
-	const b = parseFloat(parts[2].trim());
-	const a = parts.length === 4 ? parseFloat(parts[3].trim()) : 1.0;
-	if (r !== r || g !== g || b !== b || a !== a) { return null; }
+function cssRgba(css: string): Rgba | null {
+	const parsed = parseColor(css);
+	if (!parsed.ok) { return null; }
+	const c = parsed.value;
 	const s = 255.0;
-	return { r: (r / s) as float32, g: (g / s) as float32, b: (b / s) as float32, a: Math.min(1.0, Math.max(0.0, a)) as float32 };
+	return { r: (c.r / s) as float32, g: (c.g / s) as float32, b: (c.b / s) as float32, a: c.a as float32 };
 }
-
-function parseHex(css: string): Rgba | null {
-	if (css.startsWith("rgb")) { return parseRgbFunction(css); }
-	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
-	const body = css.substring(1, css.length);
-	let r = -1;
-	let g = -1;
-	let b = -1;
-	if (body.length === 3) {
-		r = hexNibble(body.charAt(0)) * 17;
-		g = hexNibble(body.charAt(1)) * 17;
-		b = hexNibble(body.charAt(2)) * 17;
-	} else if (body.length === 6) {
-		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
-		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
-		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
-	}
-	if (r < 0 || g < 0 || b < 0) { return null; }
-	const s = 255.0 as float32;
-	return { r: (r as float32) / s, g: (g as float32) / s, b: (b as float32) / s, a: 1.0 };
-}
-
 
 function points(v: number | string | null): number {
 	if (v === null || typeof v === "string") { return -1; }
@@ -539,12 +502,9 @@ function paintTransform(n: NativeNode, s: Style, force: boolean = false): void {
 function paintBackground(n: NativeNode, view: Ptr<void>, s: Style): void {
 	const bg = s.backgroundColor;
 	if (bg !== null) {
-		const c = parseHex(bg as string);
+		const c = cssRgba(bg as string);
 		if (c !== null) {
 			niSetBackgroundColor(view, c.r, c.g, c.b, c.a);
-			n.painted = true;
-		} else if (bg === "transparent") {
-			niSetBackgroundColor(view, 0.0, 0.0, 0.0, 0.0);
 			n.painted = true;
 		}
 	} else if (n.painted) {
@@ -613,7 +573,7 @@ function applyPaint(n: NativeNode, s: Style, prev: Style | null = null): void {
 	if ((n.isText || n.isInput) && n.view !== null) {
 		const fg = s.color;
 		if (fg !== null) {
-			const c = parseHex(fg as string);
+			const c = cssRgba(fg as string);
 			if (c !== null) { niSetTextColor(n.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
@@ -1019,7 +979,7 @@ function materializeString(r: NativeRoot, child: NativeNode, parent: NativeNode)
 	if (ps !== null && child.view !== null) {
 		const fg = ps.color;
 		if (fg !== null) {
-			const c = parseHex(fg as string);
+			const c = cssRgba(fg as string);
 			if (c !== null) { niSetTextColor(child.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = ps.fontSize !== null ? (ps.fontSize as number) : 17.0;

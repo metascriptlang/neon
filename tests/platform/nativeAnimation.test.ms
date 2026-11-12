@@ -59,6 +59,19 @@ test "an rgba background from a colour interpolation parses on native" {
 	setFrameDriver(null);
 }
 
+test "a native background takes every CSS colour form RN's normalizeColor takes" {
+	const [bg, setBg] = createSignal("#ff000080");
+	runApp((): NeonNode => <Pressable onPress={() => {}} style={{ width: 10, height: 10, backgroundColor: bg() }} />);
+	const tag = nmLastPressableTag();
+	const cases: string[][] = [["#ff000080", "0.502"], ["#f008", "0.533"], ["rebeccapurple", "1.000"], ["hsla(0, 100%, 50%, 0.25)", "0.250"], ["transparent", "0.000"]];
+	for (const pair of cases) {
+		setBg(pair[0]);
+		flush();
+		assert nmBackgroundAlpha(tag).toFixed(3) === pair[1], pair[0] + " alpha " + nmBackgroundAlpha(tag).toString();
+	}
+	nmTeardown();
+}
+
 function prop(tag: int32, name: string): string {
 	return nmProp(tag, name) as string;
 }
