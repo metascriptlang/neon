@@ -196,3 +196,20 @@ test "a frame callback reads the driver's target time, never earlier than the la
 	assert seen.join(",") === "1016.6,1033.3,1033.3", "target time, clamped monotonic: " + seen.join(",");
 	setFrameDriver(null);
 }
+
+test "a stale target, as Chrome's first animation frame after idle hands over, reads no earlier than the request" {
+	let now = 5000;
+	let fire: ((target: number) => void) | null = null;
+	setFrameDriver({
+		now: (): number => now,
+		schedule: (next: (target: number) => void): void => { fire = next; },
+	});
+	const seen: number[] = [];
+	requestFrame((time: number): void => { seen.push(time); });
+	now = 5001;
+	(fire as (target: number) => void)(3108.1);
+	requestFrame((time: number): void => { seen.push(time); });
+	(fire as (target: number) => void)(5016.6);
+	assert seen.join(",") === "5000,5016.6", "clamped to the request time, then the display's target: " + seen.join(",");
+	setFrameDriver(null);
+}

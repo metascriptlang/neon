@@ -43,6 +43,7 @@ let scheduled = false;
 let nextId: int32 = 1;
 let generation: int32 = 0;
 let lastFrameTime = -Infinity;
+let requestedAt = -Infinity;
 
 function currentDriver(): FrameDriver {
 	if (driver === null) { driver = platformDriver(); }
@@ -56,6 +57,7 @@ export function setFrameDriver(next: FrameDriver | null): void {
 	scheduled = false;
 	generation += 1;
 	lastFrameTime = -Infinity;
+	requestedAt = -Infinity;
 }
 
 export function installFrameDriver(next: FrameDriver): void {
@@ -67,7 +69,7 @@ export function frameNow(): number {
 }
 
 function runFrame(target: number): void {
-	const time = Math.max(target, lastFrameTime);
+	const time = Math.max(Math.max(target, lastFrameTime), requestedAt);
 	lastFrameTime = time;
 	const input = pendingInput;
 	pendingInput = [];
@@ -95,6 +97,7 @@ function enqueue(into: FrameRequest[], callback: (time: number) => void): int32 
 	into.push({ id, callback, live: true });
 	if (!scheduled) {
 		scheduled = true;
+		requestedAt = currentDriver().now();
 		const owner = generation;
 		currentDriver().schedule((target: number): void => {
 			if (owner === generation) { runFrame(target); }
