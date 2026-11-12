@@ -1,6 +1,7 @@
 // An Ion window whose app paces itself with requestFrame: the callback runs once per Ion frame, before
-// that frame draws, an idle window asks for none, and a frame that changes nothing draws nothing. It prints the
-// measured gaps and exits.
+// that frame draws, at the frame's target presentation time, an idle window asks for none, and a frame that changes
+// nothing draws nothing. It prints the measured gaps and the lead of the frame time over performance.now(), and exits 1
+// when the median lead is not inside one frame ahead.
 
 import { element } from "../src/macros/ui/element";
 import { NeonNode } from "../src/render/node";
@@ -15,8 +16,10 @@ const FRAMES = 60;
 function App(): NeonNode {
 	const [n, setN] = createSignal<number>(0);
 	const times: number[] = [];
+	const leads: number[] = [];
 	const tick = (time: number): void => {
 		times.push(time);
+		leads.push(time - performance.now());
 		setN(times.length);
 		if (times.length < FRAMES) {
 			requestFrame(tick);
@@ -32,6 +35,13 @@ function App(): NeonNode {
 		const mean = (times[times.length - 1] - times[0]) / (times.length - 1);
 		const before = frameCounts();
 		console.log(`frames ${times.length} gap mean ${mean} min ${least} max ${most} drawn ${before[1]}`);
+		leads.sort((a: number, b: number): number => a - b);
+		const lead = leads[leads.length / 2];
+		console.log(`lead median ${lead} min ${leads[0]} max ${leads[leads.length - 1]}`);
+		if (lead <= 0 || lead > most + 1) {
+			console.log("FAIL frame time is not the target presentation: median lead outside (0, max gap + 1]");
+			exit(1);
+		}
 		setTimeout((): void => {
 			const after = frameCounts();
 			console.log(`idle 500 ms: requested ${after[0] - before[0]} drawn ${after[1] - before[1]}`);
