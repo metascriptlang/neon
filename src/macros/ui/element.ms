@@ -413,16 +413,6 @@ export macro element(node: Node): Node {
 		const expanded = peelTypeRef(impl as Node);
 		return expanded.kind === NodeKind.TypeObject ? expanded : null;
 	}
-	// WORKAROUND.md N2.
-	function staticFieldType(sym: Node, name: string): Node | null {
-		const impl = getImpl(sym);
-		if (impl === null || (impl as Node).kind !== NodeKind.ClassDecl) { return null; }
-		for (const m of (impl as Node).classBody) {
-			if (m.kind !== NodeKind.PropertyDecl || !m.propIsStatic || m.propName !== name) { continue; }
-			if (m.propInitializer !== null) { return m.propInitializer.nodeType; }
-		}
-		return null;
-	}
 	function tagType(c: Node): Node | null {
 		const tag = c.typeExpr;
 		if (tag !== null && tag.resolvedSym !== null) { return getType(tag); }
@@ -441,7 +431,6 @@ export macro element(node: Node): Node {
 					if (holder.typExprFieldNames[j] === parts[i]) { t = holder.typExprFieldTypes[j]; }
 				}
 			}
-			if (t === null && i === 1) { t = staticFieldType(sym as Node, parts[i]); }
 			if (t === null) {
 				error("<" + c.jsxTag + "> names no field '" + parts[i] + "'", c);
 				return null;
