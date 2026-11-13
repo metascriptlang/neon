@@ -487,8 +487,7 @@ void report(View *view, int32_t phase, float x, float y, double time) {
 	invoke(s_touch);
 }
 
-void reportScrolls() {
-	double now = nowMs();
+void reportScrolls(double now) {
 	std::vector<View *> due = g_scrolls;
 	for (View *view : due) {
 		Scroller *s = view->scroller.get();
@@ -933,7 +932,7 @@ void niwFrame(double timeMs) {
 	}
 	g_frameRequested = false;
 	g_inFrame = true;
-	reportScrolls();
+	reportScrolls(timeMs);
 	stepIndicators();
 	if (g_frameWanted) {
 		g_frameWanted = false;
@@ -1048,7 +1047,7 @@ void niwWheel(float pixelX, float pixelY, float notchesX, float notchesY) {
 
 int niwPump(void) {
 	requireAttached("niwPump");
-	reportScrolls();
+	reportScrolls(nowMs());
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	stepIndicators();

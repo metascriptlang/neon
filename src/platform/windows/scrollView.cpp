@@ -454,7 +454,7 @@ bool Scroller::Wheel(float dx, float dy, float viewWidth, float viewHeight, floa
 
 bool Scroller::Step(double nowMs) {
 	if (!animating) return false;
-	double t = duration > 0 ? (nowMs - start) / duration : 1.0;
+	double t = duration > 0 ? std::clamp((nowMs - start) / duration, 0.0, 1.0) : 1.0;
 	if (t >= 1.0) {
 		animating = false;
 		moveTo(toX, toY);

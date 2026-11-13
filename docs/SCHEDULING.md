@@ -108,7 +108,8 @@ These are implementation pointers and clock-domain limits, not new timing measur
   the batched writer below is intended, not shipped by this arc.
 - Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms` must be pinned
   together: first-wheel application before the motion phase is not yet measured.
-  Native scroller/indicator Step timestamps also remain to be checked against the target.
+  The native scroller sampler is pinned in §Measured. Indicator/modal Step timestamps
+  still use callback-time `nowMs()` rather than the frame target.
 - `requestFrameAt` has timer/cancellation/held-driver tests; those do not certify a real
   hidden window's wake behavior. No whole-host idle, late-frame, or nested-loop verdict
   follows from the driver unit tests.
@@ -321,6 +322,21 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **Windows native scroll target-time sampling** (2026-11-13, d87 desktop console,
+  msc/support `c62ba752f7de`, WARP composition fixture, no displayed window).
+  Checked code tree `4508bc0b05aa978c471922fc466f923f1d9cd231`, before this entry.
+  `msc test tests/platform/windowsFrameOrder.ms` compiled but the parked CLI still
+  returned **127**; the unchanged generated executable ran through the desktop runner
+  using the runner described under **Windows native frame/loop order**. Initial scroll cases:
+  **495 passed / 3 failed** → **498/498**. Removing only the sampler clamp (plus the
+  control file's CRLF rewrite) gives **497 passed / 1 failed**, with a stale-target
+  offset of **−2155.54** → restored **498/498**. The strengthened fixture that snapshots
+  the scroll report at app-frame entry also passes **498/498**. Five final source hashes
+  match; desktop job `20261113-075335-3072` checked executable SHA-256
+  `975238a923988cfc5348ed861bc66972265d36f16b2e9b03357d96596b4f1175` before running.
+  This proves animated/direct-wheel offset and report sampling before the app-frame
+  callback, including a target before the animation starts. It does not certify Ion's
+  queued first wheel, indicator/modal clocks, physical input, display latency or the CLI.
 - **DOM shared-observer cleanup** (2026-11-13, m1m, Chrome, playwright-core 1.63.0,
   msc/support `c62ba752f7de`). Checked code tree
   `8f7d98d90864e21768261f4e8ede01faf4321c4d`, before this entry.

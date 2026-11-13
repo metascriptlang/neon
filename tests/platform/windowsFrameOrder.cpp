@@ -71,3 +71,44 @@ int32_t nfwOrder(int32_t requestFromLoop) {
 
 int32_t nfwRequests(void) { return requests; }
 const char *nfwStage(void) { return setupStage; }
+
+static void *sampledScroll;
+static float frameOffset, reportedOffset, reportedAtFrame;
+static int scrollReports;
+static void sampledFrame(void) {
+	frameOffset = niScrollOffsetY(sampledScroll);
+	reportedAtFrame = reportedOffset;
+}
+static void reported(void) {
+	reportedOffset = niLastScrollY();
+	scrollReports++;
+}
+
+float nfwScrollFrame(int32_t wheel, double leadMs) {
+	sampledScroll = niScrollCreate();
+	niSetFrame(sampledScroll, 0, 0, 100, 100);
+	niScrollSetTag(sampledScroll, 71);
+	niScrollSetContentSize(sampledScroll, 100, 400);
+	niAddChild(niContainerView(), sampledScroll);
+	frameOffset = reportedOffset = reportedAtFrame = -1;
+	scrollReports = 0;
+	niSetFrameHandler(msClosure{(void *)sampledFrame, nullptr});
+	niSetScrollHandler(msClosure{(void *)reported, nullptr});
+	if (wheel) niwWheel(10, 10, 0, -1);
+	else niScrollTo(sampledScroll, 0, 120, 1);
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	double target = (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart + leadMs;
+	niRequestFrame();
+	niwFrame(target);
+	niSetFrameHandler(msClosure{});
+	niSetScrollHandler(msClosure{});
+	niRemoveFromParent(sampledScroll);
+	niViewRelease(sampledScroll);
+	sampledScroll = nullptr;
+	return frameOffset;
+}
+
+float nfwReportedScroll(void) { return reportedAtFrame; }
+int32_t nfwScrollReports(void) { return scrollReports; }
