@@ -3,11 +3,12 @@ import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Show } from "../../src/macros/ui/flow";
 import { render, HostNode } from "../../src/render/host";
-import { NeonNode } from "../../src/render/hostTypes";
+import { NeonNode, Host } from "../../src/render/hostTypes";
+import { NeonEvent } from "../../src/render/event";
 import { Void, View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { VoidNode } from "../../src/platform/void/host";
 import { AreaWindow, WindowArea, windowHost, windowNode, deliverPointer, deliverResize, drainInput, logicalWidth, logicalHeight } from "../../src/platform/void/windowHost";
-import { AreaPointerKind } from "../../src/render/voidAreaHandle";
+import { AreaPointerKind, AreaPointerEvent, LayerAnchor } from "../../src/render/voidAreaHandle";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import {
 	DevScope, DevRef, DevRefusal, DevScopeError, DevActRefusal, ScopeNode, ScopeTree,
@@ -56,6 +57,9 @@ const [throwOnCancel, setThrowOnCancel] = createSignal(false);
 const [swapOnDown, setSwapOnDown] = createSignal(false);
 const [swapped, setSwapped] = createSignal(false);
 const [appTaps, setAppTaps] = createSignal(0);
+const [listenLate, setListenLate] = createSignal(false);
+let outsideNode: HostNode | null = null;
+let lateHost: Host | null = null;
 
 class Counts {
 	editor: int32 = 0;
@@ -66,6 +70,10 @@ class Counts {
 	replacement: int32 = 0;
 	replacementUp: int32 = 0;
 	appUp: int32 = 0;
+	layerHits: int32 = 0;
+	areaPointers: int32 = 0;
+	areaTexts: int32 = 0;
+	lateUp: int32 = 0;
 	typed: string = "";
 	editorTyped: string = "";
 }
@@ -88,7 +96,10 @@ function appPane(): NeonNode {
 			onTouchCancel={(): void => { if (throwOnCancel()) { throw new Error("app cancel failed"); } }}>
 			<Show when={appShown() && !swapped()}>
 				<Pressable style={{ width: 100, height: 40 }}
-					onPressIn={(): void => { if (swapOnDown()) { setSwapped(true); } }}
+					onPressIn={(): void => {
+						if (swapOnDown()) { setSwapped(true); }
+						if (listenLate()) { (lateHost as Host).addEvent(outsideNode as HostNode, "onPointerUp", (e: NeonEvent): void => { counts.lateUp += 1; }); }
+					}}
 					onPress={(): void => {
 						if (throwOnPress()) { throw new Error("app handler failed"); }
 						counts.app += 1;
@@ -127,6 +138,7 @@ function mount(shell: boolean): Fixture {
 	setSwapOnDown(false);
 	setSwapped(false);
 	setAppTaps(0);
+	setListenLate(false);
 	resetErrorHalt();
 	const areas: WindowArea[] = [];
 	const panes = shell ? shellPanes() : plainPanes();
@@ -139,6 +151,8 @@ function mount(shell: boolean): Fixture {
 		</Void>
 	), windowHost(testWindow(areas)), windowNode("window"));
 	const area = areas[0];
+	outsideNode = area.vh.tree.childrenOf(area.vh.root as VoidNode)[0] as unknown as HostNode;
+	lateHost = area.vh.host;
 	const row = area.vh.tree.childrenOf(area.vh.tree.childrenOf(area.vh.root as VoidNode)[0])[0];
 	const editor = openDevScope(area.vh.host, area.vh.tree.childrenOf(row)[0] as unknown as HostNode);
 	const app = openDevScope(area.vh.host, area.vh.tree.childrenOf(row)[1] as unknown as HostNode);
@@ -271,6 +285,42 @@ test "a node moved out of its scope is refused as outside the scope" {
 	f.area.vh.host.append(f.editor.root as unknown as HostNode, moved.node as unknown as HostNode);
 	assert reason(scopePress(f.app, moved)) === DevRefusal.OutsideScope.toString(), "outside the scope";
 	assert counts.app === 0 && counts.editor === 0, "nothing ran";
+	f.dispose();
+}
+
+test "an area layer that takes pointer input or an area-wide listener makes presses and typing unsupported, and none of them hears anything" {
+	const f = mount(false);
+	laid(f);
+	const anchor: LayerAnchor = { node: f.area.vh.root as unknown, inText: false };
+	const off = f.area.hub.addLayer({
+		anchor,
+		layout: (w: int32, h: int32): void => {},
+		prepare: (w: int32, h: int32): void => {},
+		draw: (): void => {},
+		hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => { counts.layerHits += 1; return true; },
+	});
+	assert reason(scopePress(f.app, pressableIn(f.app))) === DevRefusal.Unsupported.toString(), "a layer that hits";
+	off();
+	const offPointer = f.area.hub.handle.onPointer((e: AreaPointerEvent): void => { counts.areaPointers += 1; });
+	assert reason(scopePress(f.app, pressableIn(f.app))) === DevRefusal.Unsupported.toString(), "an area pointer listener";
+	offPointer();
+	assert scopePress(f.app, inputIn(f.app)).ok, "with neither, the app field takes focus";
+	const offText = f.area.hub.handle.onText((t: string): void => { counts.areaTexts += 1; });
+	assert reason(scopeType(f.app, inputIn(f.app), "x")) === DevRefusal.Unsupported.toString(), "an area text listener";
+	offText();
+	assert counts.layerHits === 0 && counts.areaPointers === 0 && counts.areaTexts === 0 && counts.app === 0 && counts.typed === "",
+		`nothing heard: layer ${counts.layerHits}, pointer ${counts.areaPointers}, text ${counts.areaTexts}, app ${counts.app}`;
+	f.dispose();
+}
+
+test "a listener added outside the scope during the down stops the press with no release or cancel sent" {
+	const f = mount(false);
+	laid(f);
+	setListenLate(true);
+	const r = scopePress(f.app, pressableIn(f.app));
+	assert reason(r) === DevRefusal.ForeignListenerDuringPress.toString(), "late listener: " + why<void>(r);
+	assert counts.lateUp === 0 && counts.appUp === 0 && counts.app === 0, `no release was sent: late ${counts.lateUp}, app up ${counts.appUp}, app ${counts.app}`;
+	assert f.area.held === (1 as int32), "the gesture stays held for its own release";
 	f.dispose();
 }
 

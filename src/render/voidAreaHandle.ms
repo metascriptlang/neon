@@ -89,6 +89,7 @@ export interface Listeners<T> {
 	add: (fn: (e: T) => void) => Unsubscribe;
 	emit: (e: T) => void;
 	clear: () => void;
+	size: () => int32;
 }
 
 interface Listener<T> {
@@ -106,6 +107,7 @@ export function listeners<T>(): Listeners<T> {
 				if (i >= 0) { entries.splice(i, 1); }
 			};
 		},
+		size: (): int32 => entries.length as int32,
 		emit: (e: T): void => {
 			const snapshot = entries.slice(0);
 			for (const entry of snapshot) {
@@ -141,6 +143,8 @@ export interface AreaHub {
 	text: (text: string) => void;
 	preedit: (e: AreaPreedit) => void;
 	pointer: (e: AreaPointerEvent) => void;
+	pointerListeners: () => int32;
+	textListeners: () => int32;
 	focus: (focused: boolean) => void;
 	resize: (e: AreaResize) => void;
 	close: () => void;
@@ -248,6 +252,8 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 		text: texts.emit,
 		preedit: preedits.emit,
 		pointer: pointers.emit,
+		pointerListeners: pointers.size,
+		textListeners: (): int32 => (texts.size() + keys.size()) as int32,
 		focus: focuses.emit,
 		resize: (e: AreaResize): void => {
 			width = e.pixelWidth;

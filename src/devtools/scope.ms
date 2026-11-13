@@ -7,6 +7,7 @@ export interface DevArea {
 	text: (text: string) => void;
 	cancel: () => void;
 	busy: () => boolean;
+	unproven: (typing: boolean) => string | null;
 }
 
 export enum DevScopeError { NotAVoidArea, NotInArea, Removed }
@@ -24,6 +25,8 @@ export enum DevRefusal {
 	TargetGoneDuringPress,
 	Busy,
 	InvalidLimits,
+	Unsupported,
+	ForeignListenerDuringPress,
 	HandlerFailed,
 }
 
@@ -227,6 +230,8 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 	const area = aimed.value;
 	const vh = area.vh;
 	if (area.busy()) { return Result.err(refusal(DevRefusal.Busy, "a button is held or input is waiting for the next frame on this area; it is left alone")); }
+	const unproven = area.unproven(false);
+	if (unproven !== null) { return Result.err(refusal(DevRefusal.Unsupported, unproven as string)); }
 	if (vh.settle(ref.node) === null) { return Result.err(refusal(DevRefusal.Removed, "the node was removed")); }
 	const d = vh.describe(ref.node);
 	const x = d.x + d.w / 2.0;
@@ -250,6 +255,11 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 	if (ref.node.disposed || scope.area === null || scope.root.disposed || !inside(vh, ref.node, scope.root)) {
 		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled and no release was sent" + cancelled(area)));
 	}
+	const late = vh.outsideListener(hit as VoidNode, scope.root, x, y, false);
+	if (late !== null || area.unproven(false) !== null) {
+		const who = late !== null ? `<${(late as VoidNode).tag}>` : "the area";
+		return Result.err(refusal(DevRefusal.ForeignListenerDuringPress, `${who} outside the scope started listening during the press; no release or cancel was sent, so the gesture stays held until a physical release, and that listener may have heard the down`));
+	}
 	try {
 		area.pointer(x, y, false);
 	} catch (e) {
@@ -264,6 +274,8 @@ export function scopeType(scope: DevScope, ref: DevRef, text: string): Result<vo
 	if (!aimed.ok) { return Result.err(aimed.error); }
 	const area = aimed.value;
 	if (area.busy()) { return Result.err(refusal(DevRefusal.Busy, "a button is held or input is waiting for the next frame on this area; it is left alone")); }
+	const unproven = area.unproven(true);
+	if (unproven !== null) { return Result.err(refusal(DevRefusal.Unsupported, unproven as string)); }
 	const focused = area.vh.focused();
 	if (focused === ref.node) {
 		const outside = area.vh.outsideListener(ref.node, scope.root, 0.0, 0.0, true);

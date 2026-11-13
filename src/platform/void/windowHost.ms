@@ -164,6 +164,14 @@ export function windowHost(w: AreaWindow): Host {
 				w.requestFrame();
 			},
 			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0,
+			unproven: (typing: boolean): string | null => {
+				if (typing) { return area.hub.textListeners() > 0 ? "the area has text or key listeners of its own, outside any scope" : null; }
+				if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
+				for (const layer of area.hub.layers()) {
+					if (layer.hit !== null) { return "the area has a layer that takes pointer input, which a scope cannot place"; }
+				}
+				return null;
+			},
 		});
 		when (hcr || testBuild) {
 			setDevDriver({
