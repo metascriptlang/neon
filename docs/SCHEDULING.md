@@ -238,6 +238,54 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows text CPU diagnostic, 2026-11-13
+
+`bench/textWork.cpp` exercises the real `TextLabel`/DirectWrite measurement path, no
+window or GPU. d87, MinGW g++16.2.0, `-std=c++17 -O2 -DNOMINMAX`, two reserved cores;
+base tree `51e53cd6956903890d7793b3d7b016f0fe345d57` plus benchmark SHA-256
+`1c64614c9ba6a1b61f1f580aa6fbe4966f5e7c6bdafafce1b02fe441aaaf126a`.
+Native `dwriteText.cpp` `e02cf79355d81457d543564f853bbabbb1da4ac17819cb9df30161898c935bb3`,
+`dwriteText.h` `5c1973d61ce50a856ff03f715069923cea4c58b03bc181c098c9354528459df5`,
+`composition.h` `469d9aa41c0cb62a2803a5f4a58439e0ac281232db80fb4e683fe002b0ad2236`.
+No MetaScript compiler was used for this standalone diagnostic.
+
+```bash
+g++ -std=c++17 -O2 -DNOMINMAX \
+  bench/textWork.cpp src/platform/windows/dwriteText.cpp \
+  -o out/text-work.exe -ldwrite -ld2d1 -lole32 -ldxguid -luuid
+out/text-work.exe
+```
+
+Run through `.gate-host/run-remote.sh --windows --no-msc --cores 2`. Five rounds per
+pattern/length/phase, 200 records, expected layout-object counts, finite wrapped bounds,
+cache/paint metric stability and UTF-16 length checks passed, exit zero. Existing font
+factory/fallback is warmed first; size17, scale1, width320 then160. The longest cases:
+
+| Phase, median ms | Latin, 73,728 UTF-8 bytes | Mixed Arabic, 98,304 bytes |
+|---|---:|---:|
+| SetText + initial Measure | 13.1193 | 138.7843 |
+| Cached Measure, per-call average over100 | 0.000015 | 0.000015 |
+| Colour write + Measure | 0.0001 | 0.0002 |
+| Width change + Measure | 13.8474 | 117.3574 |
+| Text change + Measure | 14.2294 | 119.1023 |
+
+A width change built **zero new layout objects** yet did substantial work: the object
+counter is not a shaping/reflow cost counter. Cache hits and colour writes do not justify
+a blanket worker crossing; large changed paragraphs are a different case. This is not a
+thread-offload A/B, quiet-box, paint/latency or glyph-correctness certificate. Patterns are
+synthetic and repeated; font coverage and fallback appearance were not checked. Tiny
+cached values are averages of100 calls, not a promised per-call deadline or a tail percentile.
+
+Raw `/tmp/native-threads-text-work-smoke.log`; executable SHA-256
+`ba95857fd2a2b774ab6f126ece6f528c0704a81f674fba890138f5f1c7f1f0ee`, independently
+rehashed in `*-fingerprint.log`; all four native/benchmark source hashes matched the run.
+Reserved wall time103s plus1s admission wait: a recorded slow diagnostic, not an edit-loop
+check to repeat automatically. `src/platform/native/host.ms` `measureLabel` and
+`src/platform/windows/bridge.cpp` `niMeasureText` remain synchronous. No permission to
+silently make layout asynchronous or call a live native label from a worker follows from
+this measurement. A future offload must preserve the pre-paint geometry contract and
+prove its own immutable-input/result handoff.
+
 ### Windows image CPU diagnostic, 2026-11-13
 
 `bench/imageWork.cpp` calls the real `ImagePicture` load/report path without a window,
