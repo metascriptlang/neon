@@ -88,13 +88,23 @@ Rules around it:
 | macOS native; Ion + Void on macOS | Ion `src/platform/macos/core/frame.m` `IonFrameTarget.tick` | display-link target rebased to the runtime monotonic clock |
 | Android native | `src/platform/android/bridge.c` `frameTick` / `niRequestFrame` | native AChoreographer vsync stamp; 32-bit `long` path samples current monotonic time instead |
 | Windows native; Ion + Void on Windows | Ion `src/platform/windows/webview/poll.c` `vsyncThread` / `tickMs` | QPC after the selected output's WaitForVBlank plus estimated refresh period; compositor-clock fallback |
-| Linux, Ion + Void | Ion `src/platform/linux/core/frame.c` `onTick` | GDK frame-start time, not a future presentation target: gap remains |
+| Linux, Ion + Void | Ion `src/platform/linux/core/frame.c` `onTick` | GDK animation clock; future presentation lead is not established |
 | sokol canvas | `src/platform/sokol/canvas.ms` `frameCanvas` | callback-time performance.now(), not an exposed display target; idle callback pause not proved |
 | terminal, native fallback | `src/animation/frame.ms` `platformDriver` | requested 16-ms timer, current monotonic time; no display-target clock installed by terminal host |
 | browser | `src/animation/frame.ms` `platformDriver` | requestAnimationFrame callback timestamp |
 
 Ion paths above were read at `0572d900c4468b8aeb20dab2ce20939f0fd19b62` (clean checkout).
 These are implementation pointers and clock-domain limits, not new timing measurements.
+
+GTK reference `bac4a949b151eedada8bc60a97429d2176b0b28b`,
+[`gdkframeclockidle.c`](https://github.com/GNOME/gtk/blob/bac4a949b151eedada8bc60a97429d2176b0b28b/gdk/gdkframeclockidle.c)
+`gdk_frame_clock_idle_get_frame_time`, returns smoothed animation time during a frame,
+not the literal raw cycle-start time. GDK's
+[`get_refresh_info`](https://docs.gtk.org/gdk3/method.FrameClock.get_refresh_info.html)
+separately predicts a presentation time after a supplied base time, returning zero
+when history is unavailable. Neither source reading certifies the installed Linux
+backend's target lead; measure that before changing Ion. The earlier "frame-start"
+label was too strong, just as "predicted presentation target" would be.
 
 ### Source-read conformance gaps
 
