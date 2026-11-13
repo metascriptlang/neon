@@ -7,7 +7,7 @@ const VOID_FONT = "../void/assets/font.ttf";
 function bytesOf(path: string): uint8[] {
 	const read = readFileBytes(path);
 	if (!read.ok) { throw new Error(`${path} did not read; run from the Neon checkout root beside ../void`); }
-	return read.value;
+	return [...read.value];
 }
 
 test "a canvas font and the default font load from bytes under a name no file has" {
