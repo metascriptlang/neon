@@ -238,6 +238,66 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Isolated Windows decode queue ownership, 2026-11-13
+
+`src/platform/windows/imageDecode.h` `ImageDecodeQueue` and
+`tests/platform/windowsImageDecode.cpp` are the isolated producer/result check; they are
+**not wired into ImagePicture**. Checked code tree
+`40c2a7fb072eee7c3fde08c0d9e7ad6f0e0bb551` (base
+`7ff3302008a86e31aa0b59b34495c1c223fdfa58` plus the five owned source/test files,
+excluding this documentation and parked modal fixtures). Source `32f9b9ac`, header
+`ad7d0192`, protocol `fc78b597`, runner `0a421ae2`, legacy fixture `9de89c73`.
+
+Run through `run-remote.sh --windows --no-msc --cores 2`:
+
+```bash
+bash tests/platform/windowsImageDecode.sh
+```
+
+On d87/MinGW g++16.2.0, `-std=c++17 -O2 -DNOMINMAX`, no MSC, **11 positive groups
+passed**. Every PBGRA byte for64² and4096² matched the STA/WIC cached-bitmap reference
+after queue close/destruction. Gates reached the two-worker ceiling, oversized-output
+exclusion, reservation retained until main takes the result, queued/running/ready
+cancellation, source replacement, error delivery, close with ready output and close during
+a blocked decode. Main remained the consumer; successful decode probes reported MTA.
+The completion callback is a process-lifetime event stub, **not real Ion-loop progress**.
+The check does not wait for every OS worker thread to exit before the pixel comparison.
+
+Five controlled failures reached their intended assertions, exit1 each: legacy
+ImagePicture still decoded on host; changing the worker ceiling to3 failed the worker-cap
+assertion; removing byte admission failed oversized exclusion; releasing reservation at
+decode completion failed `ready pixels escaped byte reservation`; removing encoded-NUL
+URI rejection loaded the prefix file and failed that assertion. Overall job exit0. The
+last control covers the shared metadata URI path too, not only the new queue.
+
+Admission/cancellation prior art is React Native macOS `RCTImageLoader.mm`
+`dequeueTasks`/`decodeImageData`, commit `8941740a4ec1accbbccf5e8ccc251a60b5cead87`.
+Its inclusive comparisons and once-computed active-decode count at471–530 are not proof
+of a strict two-job ceiling. The checked queue's ceiling and handoff reservation are
+established by the gates and mutations above, not by copying the reference's defaults.
+
+An earlier active-decode-only candidate passed nine groups, but returned its reservation
+before the loader transferred ownership. That leaves completed buffers outside the
+budget; it was rejected before integration. The current output reservation is not a
+process-RSS bound: compressed inputs, queued URI descriptors, codec working memory and
+results already taken by the consumer are outside it. One oversized output is admitted
+alone. There is no new network-loading bound, exhaustive codec/real-image coverage,
+performance/quiet-host/device/GPU certificate, complete ImagePicture cancellation or
+shutdown proof, normal-host/full-gate run, or production offload claim. Metadata-versus-
+pixel requests, request-ID domains and actual Ion-loop delivery still need integration
+pins; synchronous text geometry and storage ordering have not moved.
+
+Raw `/tmp/native-threads-image-decode-handoff.log`; seven source hashes matched. Main
+executable `6f285248af65d1aff2681c9360ab03b6d57a3d6e4e81506bfc3c89248bd93f5d`, legacy
+executable `fbd33fe2a94abda56f2ac0516e70857bd2b42b7166a2632e123b7c4d07059baf` and all
+four control executables were independently rehashed with the64²/4096² inputs in
+`*-handoff-fingerprint.log`. Source mutations and their hashes are recorded by the runner.
+Reservation132s plus1s admission: recorded slow check, not an automatic edit-loop repeat;
+each executable retained the20s guard. A first log parser counted control runs' positive
+preambles twice (20 rather than11); counting the initial GREEN block fixed the parser,
+not the product. Earlier nine-group artifacts remain separately in
+`/tmp/native-threads-image-decode-{protocol,fingerprint}.log` at their own source scope.
+
 ### Windows image decode ownership RED, 2026-11-13
 
 `tests/platform/windowsImageWorker.cpp` with the opt-in `NEON_IMAGE_WORKER_TEST` seam in
@@ -254,7 +314,8 @@ header/setup validation, then failed **`decode ran on host thread`**, exit1:
 specific failure and exited0. This is a reached ownership RED, not a timeout/setup failure.
 Only the first assertion was reached: later MTA/wake/main-delivery/one-report assertions
 are not yet exercised, and the event stub is not a real Ion-loop wake certificate.
-Cancellation, replacement, bounded work, shutdown and production offload remain unproved.
+Integrated ImagePicture cancellation, replacement, bounded work, shutdown and production
+offload remain unproved; the isolated queue result above does not close this consumer gap.
 This standalone fixture is not yet registered with `tests/run.sh`.
 
 Through `run-remote.sh --windows --no-msc --cores 2`:
@@ -329,10 +390,10 @@ Raw `/tmp/native-threads-image-gpu-smoke.log`; executable
 `48aa9271c2dd204504ec02f74665d7bb17ab07b0058319b11b70e35504d51b3a` and all four
 PNG hashes independently rechecked in `*-fingerprint.log`; both source hashes matched.
 Reservation92s plus11s admission wait: recorded slow diagnostic, not an automatic edit-loop
-run. Production `image.cpp`/`image.h` remain `49fe51de`/`667063f5`; no modal ownership
-safeguard was changed or exercised. The raw-result option avoids COM interfaces crossing
-apartments in principle, but its complete production lifetime/bounded queue still needs
-reference tracing and regression pins before implementation.
+run. This measurement used native baseline `image.cpp`/`image.h` `49fe51de`/`667063f5`;
+no modal ownership safeguard was changed or exercised. The later isolated queue check
+above exercises the raw-result option; it does not yet prove the complete production
+pipeline's lifetime, bounded loading or real-loop delivery.
 
 ### Independent MTA lifetime diagnostic, 2026-11-13
 

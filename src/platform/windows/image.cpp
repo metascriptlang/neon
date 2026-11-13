@@ -11,7 +11,13 @@
 #include <map>
 #include <mutex>
 #include <vector>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <limits>
+#include <new>
 #include "image.h"
+#include "imageDecode.h"
 #include "must.h"
 
 using Microsoft::WRL::ComPtr;
@@ -20,6 +26,7 @@ extern "C" void ionWakeLoop(void);
 
 #ifdef NEON_IMAGE_WORKER_TEST
 extern "C" void imageWorkerDecodeProbe(void);
+extern "C" void imageDecodeJobDoneProbe(uint32_t id);
 #endif
 
 namespace {
@@ -141,11 +148,14 @@ bool base64Decoded(const char *text, std::vector<BYTE> *bytes) {
 bool startsWith(const char *text, const char *prefix) { return strncmp(text, prefix, strlen(prefix)) == 0; }
 
 // The WIC decoder of a source, or an error naming why it has none.
-HRESULT openDecoder(const char *uri, std::vector<BYTE> *data, ComPtr<IWICBitmapDecoder> *decoder, std::string *error) {
-	IWICImagingFactory *wic = factory();
+HRESULT openDecoder(IWICImagingFactory *wic, const char *uri, std::vector<BYTE> *data, ComPtr<IWICBitmapDecoder> *decoder, std::string *error) {
 	if (startsWith(uri, "file://")) {
 		std::string path = percentDecoded(uri + 7);
 		if (path.size() > 2 && path[0] == '/' && path[2] == ':') path.erase(0, 1);
+		if (path.find('\0') != std::string::npos) {
+			*error = "malformed URI";
+			return E_INVALIDARG;
+		}
 		int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, nullptr, 0);
 		if (length == 0) {
 			*error = "malformed URI";
@@ -162,6 +172,10 @@ HRESULT openDecoder(const char *uri, std::vector<BYTE> *data, ComPtr<IWICBitmapD
 		std::string header = comma ? std::string(uri, comma) : "";
 		if (!comma || header.size() < 7 || header.compare(header.size() - 7, 7, ";base64") != 0 || !base64Decoded(comma + 1, data)) {
 			*error = "unsupported data URI";
+			return E_INVALIDARG;
+		}
+		if (data->size() > std::numeric_limits<DWORD>::max()) {
+			*error = "data URI exceeds WIC stream limit";
 			return E_INVALIDARG;
 		}
 		ComPtr<IWICStream> stream;
@@ -189,12 +203,241 @@ ImageSize frameSize(HRESULT opened, IWICBitmapDecoder *decoder, std::string erro
 
 }
 
+size_t ImageDecodeByteCount(uint32_t width, uint32_t height) {
+	uint64_t pixels = (uint64_t)width * height;
+	if (!width || !height || pixels > std::numeric_limits<UINT>::max() / 4) return 0;
+	return (size_t)(pixels * 4);
+}
+
+struct ImageDecodeQueue::State : std::enable_shared_from_this<ImageDecodeQueue::State> {
+	static constexpr uint32_t workerLimit = 2;
+	static constexpr size_t byteBudget = 30 * 1024 * 1024;
+	struct Job {
+		uint32_t id = 0;
+		std::string uri;
+		std::atomic<bool> canceled{false};
+	};
+	struct Ready { std::shared_ptr<Job> job; ImageDecoded image; };
+	std::mutex mutex;
+	std::condition_variable changed;
+	std::deque<std::shared_ptr<Job>> queued;
+	std::map<uint32_t, std::shared_ptr<Job>> jobs;
+	std::vector<Ready> ready;
+	void (*postWake)(void);
+	std::atomic<bool> closing{false};
+	bool started = false;
+	uint32_t next = 1;
+	size_t activeBytes = 0;
+#ifdef NEON_IMAGE_WORKER_TEST
+	uint32_t workers = 0;
+	size_t waitingForBytes = 0;
+#endif
+
+	explicit State(void (*wake)(void)) : postWake(wake) {
+		if (!wake) refuse("image decode queue", "missing postWake");
+	}
+
+	bool acquire(size_t bytes, const std::shared_ptr<Job> &job) {
+		std::unique_lock<std::mutex> lock(mutex);
+#ifdef NEON_IMAGE_WORKER_TEST
+		waitingForBytes++;
+#endif
+		changed.wait(lock, [&] {
+			return closing || job->canceled.load() || activeBytes == 0 ||
+				(activeBytes <= byteBudget && bytes <= byteBudget - activeBytes);
+		});
+#ifdef NEON_IMAGE_WORKER_TEST
+		waitingForBytes--;
+#endif
+		if (closing || job->canceled.load()) return false;
+		activeBytes += bytes;
+		return true;
+	}
+
+	void release(size_t bytes) {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			activeBytes -= bytes;
+		}
+		changed.notify_all();
+	}
+
+	ImageDecoded decode(IWICImagingFactory *wic, const std::shared_ptr<Job> &job) {
+		ImageDecoded result;
+		result.id = job->id;
+		if (job->canceled.load()) return result;
+		std::vector<BYTE> data;
+		ComPtr<IWICBitmapDecoder> decoder;
+		ComPtr<IWICBitmapFrameDecode> frame;
+		ComPtr<IWICFormatConverter> converter;
+		HRESULT hr = openDecoder(wic, job->uri.c_str(), &data, &decoder, &result.error);
+		UINT width = 0, height = 0;
+		if (SUCCEEDED(hr)) hr = decoder->GetFrame(0, &frame);
+		if (SUCCEEDED(hr)) hr = frame->GetSize(&width, &height);
+		if (FAILED(hr)) {
+			if (result.error.empty()) result.error = loadError("cannot decode image", hr);
+			return result;
+		}
+		size_t bytes = ImageDecodeByteCount(width, height);
+		if (!bytes) {
+			result.error = "decoded image dimensions exceed WIC buffer limit";
+			return result;
+		}
+		if (!acquire(bytes, job)) return result;
+#ifdef NEON_IMAGE_WORKER_TEST
+		imageWorkerDecodeProbe();
+#endif
+		if (!closing.load() && !job->canceled.load()) {
+			result.pixels.reset(new (std::nothrow) uint8_t[bytes]);
+			if (!result.pixels) hr = E_OUTOFMEMORY;
+			if (SUCCEEDED(hr)) hr = wic->CreateFormatConverter(&converter);
+			if (SUCCEEDED(hr)) hr = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppPBGRA,
+				WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom);
+			if (SUCCEEDED(hr)) hr = converter->CopyPixels(nullptr, width * 4, (UINT)bytes, result.pixels.get());
+			if (FAILED(hr)) {
+				result.pixels.reset();
+				result.error = loadError("cannot decode image", hr);
+			} else {
+				result.width = width;
+				result.height = height;
+				result.byteCount = bytes;
+			}
+		}
+		if (!result.byteCount) release(bytes);
+		return result;
+	}
+
+	void finish(const std::shared_ptr<Job> &job, ImageDecoded result) {
+		std::lock_guard<std::mutex> lock(mutex);
+		if (closing || job->canceled.load()) {
+			activeBytes -= result.byteCount;
+			changed.notify_all();
+			jobs.erase(job->id);
+			return;
+		}
+		ready.push_back({job, std::move(result)});
+		postWake();
+	}
+
+	static DWORD WINAPI run(void *arg) {
+		std::unique_ptr<std::shared_ptr<State>> given(static_cast<std::shared_ptr<State> *>(arg));
+		std::shared_ptr<State> self = std::move(*given);
+		given.reset();
+		must(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "image decode MTA");
+		ComPtr<IWICImagingFactory> wic;
+		must(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+			IID_PPV_ARGS(&wic)), "image decode WIC factory");
+		for (;;) {
+			std::shared_ptr<Job> job;
+			std::deque<std::shared_ptr<Job>> discardedQueue;
+			std::map<uint32_t, std::shared_ptr<Job>> discardedJobs;
+			std::vector<Ready> discardedReady;
+			bool stop = false;
+			{
+				std::unique_lock<std::mutex> lock(self->mutex);
+				self->changed.wait(lock, [&] { return self->closing || !self->queued.empty(); });
+				if (self->closing) {
+					self->queued.swap(discardedQueue);
+					self->jobs.swap(discardedJobs);
+					self->ready.swap(discardedReady);
+					for (auto &entry : discardedReady) self->activeBytes -= entry.image.byteCount;
+					stop = true;
+				} else {
+					job = std::move(self->queued.front());
+					self->queued.pop_front();
+				}
+			}
+			if (stop) break;
+			self->finish(job, self->decode(wic.Get(), job));
+#ifdef NEON_IMAGE_WORKER_TEST
+			imageDecodeJobDoneProbe(job->id);
+#endif
+		}
+		wic.Reset();
+		CoUninitialize();
+		return 0;
+	}
+
+	void start() {
+		if (started) return;
+		started = true;
+		for (uint32_t i = 0; i < workerLimit; i++) {
+			auto owner = new std::shared_ptr<State>(shared_from_this());
+			HANDLE thread = CreateThread(nullptr, 0, run, owner, 0, nullptr);
+			if (!thread) {
+				DWORD error = GetLastError();
+				delete owner;
+				must(HRESULT_FROM_WIN32(error), "image decode CreateThread");
+			}
+			CloseHandle(thread);
+#ifdef NEON_IMAGE_WORKER_TEST
+			workers++;
+#endif
+		}
+	}
+};
+
+ImageDecodeQueue::ImageDecodeQueue(void (*postWake)(void)) : state(std::make_shared<State>(postWake)) {}
+ImageDecodeQueue::~ImageDecodeQueue() { Close(); }
+
+uint32_t ImageDecodeQueue::Submit(const char *uri) {
+	auto job = std::make_shared<State::Job>();
+	job->uri = uri;
+	std::lock_guard<std::mutex> lock(state->mutex);
+	if (state->closing) refuse("image decode queue", "submit after close");
+	if (!state->next) refuse("image decode queue", "request id exhausted");
+	job->id = state->next++;
+	state->jobs[job->id] = job;
+	state->queued.push_back(job);
+	state->start();
+	state->changed.notify_all();
+	return job->id;
+}
+
+void ImageDecodeQueue::Cancel(uint32_t id) {
+	{
+		std::lock_guard<std::mutex> lock(state->mutex);
+		auto at = state->jobs.find(id);
+		if (at != state->jobs.end()) at->second->canceled.store(true);
+	}
+	state->changed.notify_all();
+}
+
+std::vector<ImageDecoded> ImageDecodeQueue::Take() {
+	std::vector<ImageDecoded> results;
+	std::lock_guard<std::mutex> lock(state->mutex);
+	if (state->closing) return results;
+	for (auto &entry : state->ready) {
+		state->activeBytes -= entry.image.byteCount;
+		if (!entry.job->canceled.load()) results.push_back(std::move(entry.image));
+		state->jobs.erase(entry.job->id);
+	}
+	state->ready.clear();
+	state->changed.notify_all();
+	return results;
+}
+
+void ImageDecodeQueue::Close() {
+	{
+		std::lock_guard<std::mutex> lock(state->mutex);
+		state->closing = true;
+	}
+	state->changed.notify_all();
+}
+
+#ifdef NEON_IMAGE_WORKER_TEST
+ImageDecodeQueue::Stats ImageDecodeQueue::Inspect() {
+	std::lock_guard<std::mutex> lock(state->mutex);
+	return {state->workers, state->waitingForBytes, state->activeBytes};
+}
+#endif
+
 // RNW ImageLoader getSize (ImageViewManagerModule.cpp:21-84) reads IWICBitmapSource::GetSize of frame 0 of the decoded stream.
 ImageSize ImageHeaderSize(const char *uri) {
 	std::vector<BYTE> data;
 	ComPtr<IWICBitmapDecoder> decoder;
 	std::string error;
-	HRESULT hr = openDecoder(uri, &data, &decoder, &error);
+	HRESULT hr = openDecoder(factory(), uri, &data, &decoder, &error);
 	return frameSize(hr, decoder.Get(), error);
 }
 
@@ -272,7 +515,7 @@ void ImagePicture::Load(const char *newUri) {
 	}
 	std::vector<BYTE> data;
 	ComPtr<IWICBitmapDecoder> decoder;
-	if (FAILED(openDecoder(newUri, &data, &decoder, &failure))) {
+	if (FAILED(openDecoder(factory(), newUri, &data, &decoder, &failure))) {
 		pending = kImageError;
 		return;
 	}

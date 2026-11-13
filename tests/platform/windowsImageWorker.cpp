@@ -18,6 +18,8 @@ extern "C" void imageWorkerDecodeProbe(void) {
 	decodeThread.store(GetCurrentThreadId());
 }
 
+extern "C" void imageDecodeJobDoneProbe(uint32_t) {}
+
 extern "C" void ionWakeLoop(void) {
 	wakeThread.store(GetCurrentThreadId());
 	if (!SetEvent(processWakeEvent)) {
