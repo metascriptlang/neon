@@ -1,11 +1,11 @@
 import { Host, HostNode } from "../render/hostTypes";
-import { VoidHost, VoidNode } from "../platform/void/host";
+import { VoidHost, VoidNode, GUARD_NESTED } from "../platform/void/host";
 
 export interface DevArea {
 	vh: VoidHost;
-	pointer: (x: float32, y: float32, pressed: boolean) => void;
-	text: (text: string) => void;
-	cancel: () => void;
+	pointer: (x: float32, y: float32, pressed: boolean) => string | null;
+	text: (text: string) => string | null;
+	clearHeld: () => void;
 	busy: () => boolean;
 	unproven: (typing: boolean) => string | null;
 }
@@ -26,7 +26,7 @@ export enum DevRefusal {
 	Busy,
 	InvalidLimits,
 	Unsupported,
-	ForeignListenerDuringPress,
+	ForeignListenerBlocked,
 	HandlerFailed,
 }
 
@@ -208,18 +208,47 @@ function hitRef(scope: DevScope, vh: VoidHost, hit: VoidNode | null): DevRef | n
 	return new DevRef(scope, hit as VoidNode);
 }
 
-function failed(message: string): Result<void, DevActRefusal> {
-	return Result.err(refusal(DevRefusal.HandlerFailed, message));
+class EdgeOutcome {
+	blocked: string | null = null;
+	hub: string | null = null;
+	thrown: string | null = null;
+	nested: boolean = false;
 }
 
-function cancelled(area: DevArea): string {
+function runEdge(scope: DevScope, area: DevArea, deliver: () => string | null): EdgeOutcome {
+	const out = new EdgeOutcome();
 	try {
-		area.cancel();
+		const blocked = area.vh.guarded(scope.root, false, (): void => { out.hub = deliver(); });
+		if (blocked === GUARD_NESTED) { out.nested = true; } else { out.blocked = blocked; }
+	} catch (e) {
+		if (e instanceof Error) { out.thrown = (e as Error).message; } else { out.thrown = NOT_AN_ERROR; }
+		out.blocked = area.vh.lastBlocked();
+	}
+	return out;
+}
+
+function stopped(o: EdgeOutcome): DevActRefusal | null {
+	if (o.nested) { return refusal(DevRefusal.Busy, "another scoped operation is running on this area"); }
+	if (o.thrown !== null) { return refusal(DevRefusal.HandlerFailed, o.thrown as string); }
+	if (o.blocked !== null) { return refusal(DevRefusal.ForeignListenerBlocked, `${o.blocked as string} outside the scope was not called; the operation stopped there`); }
+	if (o.hub !== null) { return refusal(DevRefusal.Unsupported, o.hub as string); }
+	return null;
+}
+
+function cleanup(scope: DevScope, area: DevArea): string {
+	let note = "";
+	try {
+		area.vh.guarded(scope.root, true, (): void => { area.vh.abortGesture(); });
 	} catch (e) {
 		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
-		return `; cancelling the gesture also threw: ${message}`;
+		note = `; cleaning up the gesture also threw: ${message}`;
 	}
-	return "";
+	area.clearHeld();
+	return note;
+}
+
+function withNote(r: DevActRefusal, note: string): DevActRefusal {
+	return refusal(r.reason, r.detail + note, r.hit);
 }
 
 const NOT_AN_ERROR = "a handler threw a value that is not an Error (a thrown string is unreadable until .inbox/compiler/2026-11-13-a-caught-string-narrowed-by-typeof-emits-a-pointer-to-msstring-cast.md)";
@@ -246,26 +275,18 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 	if (outside !== null) {
 		return Result.err(refusal(DevRefusal.Intercepted, `the press would reach <${(outside as VoidNode).tag}> outside the scope (a listener above the scope, a hovered node it leaves, or a focus it moves)`));
 	}
-	try {
-		area.pointer(x, y, true);
-	} catch (e) {
-		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
-		return failed(message + cancelled(area));
-	}
+	const down = stopped(runEdge(scope, area, (): string | null => area.pointer(x, y, true)));
+	if (down !== null) { return Result.err(withNote(down as DevActRefusal, cleanup(scope, area))); }
 	if (ref.node.disposed || scope.area === null || scope.root.disposed || !inside(vh, ref.node, scope.root)) {
-		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled and no release was sent" + cancelled(area)));
+		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled within the scope and no release was sent" + cleanup(scope, area)));
 	}
 	const late = vh.outsideListener(hit as VoidNode, scope.root, x, y, false);
 	if (late !== null || area.unproven(false) !== null) {
 		const who = late !== null ? `<${(late as VoidNode).tag}>` : "the area";
-		return Result.err(refusal(DevRefusal.ForeignListenerDuringPress, `${who} outside the scope started listening during the press; no release or cancel was sent, so the gesture stays held until a physical release, and that listener may have heard the down`));
+		return Result.err(refusal(DevRefusal.ForeignListenerBlocked, `${who} outside the scope started listening during the press and was not called; the gesture was cancelled within the scope` + cleanup(scope, area)));
 	}
-	try {
-		area.pointer(x, y, false);
-	} catch (e) {
-		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
-		return failed(message + cancelled(area));
-	}
+	const up = stopped(runEdge(scope, area, (): string | null => area.pointer(x, y, false)));
+	if (up !== null) { return Result.err(withNote(up as DevActRefusal, cleanup(scope, area))); }
 	return Result.ok(undefined);
 }
 
@@ -289,11 +310,7 @@ export function scopeType(scope: DevScope, ref: DevRef, text: string): Result<vo
 		}
 		return Result.err(refusal(DevRefusal.NotFocused, "the target does not hold focus", hitRef(scope, area.vh, focused)));
 	}
-	try {
-		area.text(text);
-	} catch (e) {
-		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
-		return failed(message);
-	}
+	const typed = stopped(runEdge(scope, area, (): string | null => area.text(text)));
+	if (typed !== null) { return Result.err(typed as DevActRefusal); }
 	return Result.ok(undefined);
 }

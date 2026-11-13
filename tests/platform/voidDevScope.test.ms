@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
+import { createRoot } from "../../src/core/owner";
 import { Show } from "../../src/macros/ui/flow";
 import { render, HostNode } from "../../src/render/host";
 import { NeonNode, Host } from "../../src/render/hostTypes";
@@ -58,6 +59,11 @@ const [swapOnDown, setSwapOnDown] = createSignal(false);
 const [swapped, setSwapped] = createSignal(false);
 const [appTaps, setAppTaps] = createSignal(0);
 const [listenLate, setListenLate] = createSignal(false);
+const [listenLateDown, setListenLateDown] = createSignal(false);
+const [listenLateHub, setListenLateHub] = createSignal(false);
+const [listenLateText, setListenLateText] = createSignal(false);
+let lateOff: (() => void)[] = [];
+let lateArea: WindowArea | null = null;
 let outsideNode: HostNode | null = null;
 let lateHost: Host | null = null;
 
@@ -74,6 +80,10 @@ class Counts {
 	areaPointers: int32 = 0;
 	areaTexts: int32 = 0;
 	lateUp: int32 = 0;
+	lateDown: int32 = 0;
+	lateHub: int32 = 0;
+	lateText: int32 = 0;
+	appText: int32 = 0;
 	typed: string = "";
 	editorTyped: string = "";
 }
@@ -92,13 +102,15 @@ function appPane(): NeonNode {
 	return <View style={{ width: 200 }}>
 		<View style={{ flexDirection: "column" }}
 			onPointerUp={(): void => { counts.appUp += 1; }}
+			onPointerDown={(): void => { if (listenLateDown()) { listenOutside("onPointerDown", (): void => { counts.lateDown += 1; }); } }}
 			onTouchStart={(): void => { if (throwOnDown()) { throw new Error("app down failed"); } }}
 			onTouchCancel={(): void => { if (throwOnCancel()) { throw new Error("app cancel failed"); } }}>
 			<Show when={appShown() && !swapped()}>
 				<Pressable style={{ width: 100, height: 40 }}
 					onPressIn={(): void => {
 						if (swapOnDown()) { setSwapped(true); }
-						if (listenLate()) { (lateHost as Host).addEvent(outsideNode as HostNode, "onPointerUp", (e: NeonEvent): void => { counts.lateUp += 1; }); }
+						if (listenLate()) { listenOutside("onPointerUp", (): void => { counts.lateUp += 1; }); }
+						if (listenLateHub()) { lateOff.push((lateArea as WindowArea).hub.handle.onPointer((e: AreaPointerEvent): void => { counts.lateHub += 1; })); }
 					}}
 					onPress={(): void => {
 						if (throwOnPress()) { throw new Error("app handler failed"); }
@@ -113,7 +125,24 @@ function appPane(): NeonNode {
 			</Show>
 		</View>
 		<TextInput style={{ width: 100, height: 30 }} onChangeText={(t: string): void => { counts.typed = t; }} />
+		<View style={{ width: 100, height: 20 }} focusable
+			onTextInput={(): void => {
+				counts.appText += 1;
+				if (listenLateText()) { listenOutside("onTextInput", (): void => { counts.lateText += 1; }); }
+			}} />
 	</View>;
+}
+
+function listenOutside(name: string, run: () => void): void {
+	createRoot((dispose: () => void): void => {
+		(lateHost as Host).addEvent(outsideNode as HostNode, name, (e: NeonEvent): void => { run(); });
+		lateOff.push(dispose);
+	});
+}
+
+function unlisten(): void {
+	for (const off of lateOff) { off(); }
+	lateOff = [];
 }
 
 function shellPanes(): NeonNode {
@@ -139,6 +168,10 @@ function mount(shell: boolean): Fixture {
 	setSwapped(false);
 	setAppTaps(0);
 	setListenLate(false);
+	setListenLateDown(false);
+	setListenLateHub(false);
+	setListenLateText(false);
+	lateOff = [];
 	resetErrorHalt();
 	const areas: WindowArea[] = [];
 	const panes = shell ? shellPanes() : plainPanes();
@@ -153,6 +186,7 @@ function mount(shell: boolean): Fixture {
 	const area = areas[0];
 	outsideNode = area.vh.tree.childrenOf(area.vh.root as VoidNode)[0] as unknown as HostNode;
 	lateHost = area.vh.host;
+	lateArea = area;
 	const row = area.vh.tree.childrenOf(area.vh.tree.childrenOf(area.vh.root as VoidNode)[0])[0];
 	const editor = openDevScope(area.vh.host, area.vh.tree.childrenOf(row)[0] as unknown as HostNode);
 	const app = openDevScope(area.vh.host, area.vh.tree.childrenOf(row)[1] as unknown as HostNode);
@@ -313,14 +347,70 @@ test "an area layer that takes pointer input or an area-wide listener makes pres
 	f.dispose();
 }
 
-test "a listener added outside the scope during the down stops the press with no release or cancel sent" {
+test "a listener added outside the scope during the down is never called, the gesture is cleared, and the next press works" {
 	const f = mount(false);
 	laid(f);
 	setListenLate(true);
+	flush();
 	const r = scopePress(f.app, pressableIn(f.app));
-	assert reason(r) === DevRefusal.ForeignListenerDuringPress.toString(), "late listener: " + why<void>(r);
-	assert counts.lateUp === 0 && counts.appUp === 0 && counts.app === 0, `no release was sent: late ${counts.lateUp}, app up ${counts.appUp}, app ${counts.app}`;
-	assert f.area.held === (1 as int32), "the gesture stays held for its own release";
+	assert reason(r) === DevRefusal.ForeignListenerBlocked.toString() && !r.ok && r.error.detail.indexOf("started listening during the press") > 0, "blocked before the release: " + why<void>(r);
+	assert counts.lateUp === 0 && counts.appUp === 0 && counts.app === 0, `nothing released: late ${counts.lateUp}, app up ${counts.appUp}, app ${counts.app}`;
+	assert f.area.held === (0 as int32), "the gesture was cleared";
+	setListenLate(false);
+	unlisten();
+	flush();
+	assert scopePress(f.app, pressableIn(f.app)).ok, "the next press works";
+	flush();
+	laid(f);
+	assert find(treeOf(f.app).root, (n: ScopeNode): boolean => n.text === "app 1") !== null && counts.lateUp === 0, "the tree shows app 1, and the removed listener never ran";
+	f.dispose();
+}
+
+test "a listener added during the down on an outside ancestor not yet reached never runs" {
+	const f = mount(false);
+	laid(f);
+	setListenLateDown(true);
+	flush();
+	const r = scopePress(f.app, pressableIn(f.app));
+	assert reason(r) === DevRefusal.ForeignListenerBlocked.toString() && !r.ok && r.error.detail.indexOf("onPointerDown outside the scope was not called") > 0, "blocked in the down: " + why<void>(r);
+	assert counts.lateDown === 0 && counts.app === 0 && f.area.held === (0 as int32), `never ran: late down ${counts.lateDown}, app ${counts.app}, held ${f.area.held}`;
+	setListenLateDown(false);
+	unlisten();
+	flush();
+	assert scopePress(f.app, pressableIn(f.app)).ok && counts.app === 1, `the next press works: ${counts.app}`;
+	f.dispose();
+}
+
+test "an area pointer subscriber added during the down never hears the release or the cleanup" {
+	const f = mount(false);
+	laid(f);
+	setListenLateHub(true);
+	flush();
+	const r = scopePress(f.app, pressableIn(f.app));
+	assert reason(r) === DevRefusal.ForeignListenerBlocked.toString() && !r.ok && r.error.detail.indexOf("the area outside the scope started listening") === 0, "stopped before the release by the new subscriber: " + why<void>(r);
+	assert counts.lateHub === 0 && counts.app === 0 && f.area.held === (0 as int32), `never heard: hub ${counts.lateHub}, app ${counts.app}, held ${f.area.held}`;
+	setListenLateHub(false);
+	unlisten();
+	flush();
+	assert scopePress(f.app, pressableIn(f.app)).ok && counts.app === 1 && counts.lateHub === 0, `the next press works: ${counts.app}`;
+	f.dispose();
+}
+
+test "text bubbling to a listener added outside the scope during the same text never reaches it" {
+	const f = mount(false);
+	laid(f);
+	const field = find(treeOf(f.app).root, (n: ScopeNode): boolean => n.tag === "view" && n.w === 100.0 && n.h === 20.0);
+	assert field !== null, "the focusable view is in the app scope";
+	assert scopePress(f.app, field as DevRef).ok, "the view takes focus";
+	setListenLateText(true);
+	flush();
+	const r = scopeType(f.app, field as DevRef, "x");
+	assert reason(r) === DevRefusal.ForeignListenerBlocked.toString() && !r.ok && r.error.detail.indexOf("onTextInput outside the scope was not called") > 0, `blocked in the bubble: ${why<void>(r)} (app text ${counts.appText}, late ${counts.lateText})`;
+	assert counts.appText === 1 && counts.lateText === 0, `the app heard it, the outside listener did not: app ${counts.appText}, late ${counts.lateText}`;
+	setListenLateText(false);
+	unlisten();
+	flush();
+	assert scopeType(f.app, field as DevRef, "y").ok && counts.appText === 2 && counts.lateText === 0, `the next text works: ${counts.appText}`;
 	f.dispose();
 }
 

@@ -150,17 +150,20 @@ export function windowHost(w: AreaWindow): Host {
 		w.opened(area);
 		const unregister = registerDevArea({
 			vh,
-			pointer: (x: float32, y: float32, pressed: boolean): void => {
-				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
+			pointer: (x: float32, y: float32, pressed: boolean): string | null => {
+				if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
+				deliverFramePointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
 				w.requestFrame();
+				return null;
 			},
-			text: (text: string): void => {
+			text: (text: string): string | null => {
+				if (area.hub.textListeners() > 0) { return "the area has text or key listeners of its own, outside any scope"; }
 				deliverText(area, text);
 				w.requestFrame();
+				return null;
 			},
-			cancel: (): void => {
+			clearHeld: (): void => {
 				area.held = 0 as int32;
-				deliverPointer(area, { kind: AreaPointerKind.Leave, pixelX: 0.0, pixelY: 0.0, button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 });
 				w.requestFrame();
 			},
 			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0,

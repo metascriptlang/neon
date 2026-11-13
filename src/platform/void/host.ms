@@ -273,6 +273,9 @@ export interface VoidHost {
 	laidOut: () => boolean;
 	hitAt: (x: float32, y: float32) => VoidNode | null;
 	outsideListener: (hit: VoidNode, top: VoidNode, x: float32, y: float32, typing: boolean) => VoidNode | null;
+	guarded: (top: VoidNode, cleanup: boolean, body: () => void) => string | null;
+	lastBlocked: () => string | null;
+	abortGesture: () => void;
 	layerSlot: (anchor: LayerAnchor) => NodeRef | null;
 }
 
@@ -404,6 +407,8 @@ const PRESS_HANDLERS = [
 const HOVER_HANDLERS = ["onPointerMove", "onPointerEnter", "onPointerLeave"];
 const WHEEL_HANDLERS = ["onWheel"];
 const TEXT_HANDLERS = ["onTextInput", "onKeyDown", "onKeyUp", "onPreedit"];
+const CLEANUP_HANDLERS = ["onPointerCancel", "onTouchCancel", "onPointerLeave"];
+export const GUARD_NESTED = "a scoped operation is already running";
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -779,13 +784,40 @@ export function createVoidHostWith(
 		(dirtyListener as () => void)();
 	};
 
+	let guardTop: VoidNode | null = null;
+	let guardCleanup = false;
+	let guardBlock: string | null = null;
+	let touchSpanNode: VoidNode | null = null;
+
+	const owned = (n: VoidNode): boolean =>
+		guardTop === null || (!n.disposed && attached(n) && within(tree, n, guardTop as VoidNode));
+
+	const block = (what: string): void => {
+		if (!guardCleanup && guardBlock === null) { guardBlock = what; }
+	};
+
+	const admits = (n: VoidNode, name: string): boolean => {
+		if (guardTop === null) { return true; }
+		if (guardCleanup) { return owned(n) && CLEANUP_HANDLERS.indexOf(name) >= 0; }
+		if (guardBlock !== null) { return false; }
+		if (owned(n)) { return true; }
+		block(`<${n.tag}> ${name}`);
+		return false;
+	};
+
+	const admitsLayer = (): boolean => {
+		if (guardTop === null) { return true; }
+		block("an area layer");
+		return false;
+	};
+
 	const fire = (n: VoidNode, name: string, e: NeonEvent): boolean => {
 		const due: ((e: NeonEvent) => void)[] = [];
 		for (const entry of events) {
 			if (entry.node === n && entry.name === name) { due.push(entry.handler); }
 		}
 		for (const handler of due) {
-			if (n.disposed) { break; }
+			if (n.disposed || !admits(n, name)) { break; }
 			handler(e);
 		}
 		return due.length > 0;
@@ -852,6 +884,10 @@ export function createVoidHostWith(
 	};
 
 	const setValue = (c: ClientEntry, v: TextEditingValue): void => {
+		if (guardTop !== null && (guardCleanup || guardBlock !== null || !owned(c.node))) {
+			block(`<${c.node.tag}> text`);
+			return;
+		}
 		const was = wasDirty();
 		c.value = v;
 		c.client.updateEditingValue(v);
@@ -860,6 +896,13 @@ export function createVoidHostWith(
 
 	const focus = (n: VoidNode | null): void => {
 		if (n === focusedNode) { return; }
+		if (guardTop !== null) {
+			const leaving = focusedNode;
+			if (guardCleanup || guardBlock !== null || (leaving !== null && !owned(leaving as VoidNode)) || (n !== null && !owned(n as VoidNode))) {
+				block(`focus of <${(n !== null ? n as VoidNode : leaving as VoidNode).tag}>`);
+				return;
+			}
+		}
 		const was = wasDirty();
 		const old = focusedNode;
 		focusedNode = n;
@@ -1452,7 +1495,7 @@ export function createVoidHostWith(
 		const span = touchSpan;
 		if (span === null) { return; }
 		const touch = (span as TextSpan).onTouch;
-		if (touch !== null) { (touch as (name: string, e: NeonEvent) => void)(name, ev); }
+		if (touch !== null && touchSpanNode !== null && admits(touchSpanNode as VoidNode, name)) { (touch as (name: string, e: NeonEvent) => void)(name, ev); }
 	};
 
 	const handles = (n: VoidNode | null, names: string[]): boolean => {
@@ -1490,6 +1533,7 @@ export function createVoidHostWith(
 		for (let i = order.length - 1; i >= 0; i -= 1) {
 			if (covered(order[i], under)) { continue; }
 			const hit = order[i].hit;
+			if (hit !== null && !admitsLayer()) { return null; }
 			if (hit !== null && (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev)) {
 				return order[i];
 			}
@@ -1499,7 +1543,7 @@ export function createVoidHostWith(
 
 	const tellLayer = (layer: AreaLayer, x: float32, y: float32, kind: AreaPointerKind, ev: NeonEvent): void => {
 		const hit = layer.hit;
-		if (hit !== null) { (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev); }
+		if (hit !== null && admitsLayer()) { (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev); }
 	};
 
 	const leaveLayer = (x: float32, y: float32): void => {
@@ -1551,7 +1595,7 @@ export function createVoidHostWith(
 			return;
 		}
 		const press = (span as TextSpan).onPress;
-		if (press !== null && spanAt(under as VoidNode, x, y) === span) { (press as (e: NeonEvent) => void)(ev); }
+		if (press !== null && spanAt(under as VoidNode, x, y) === span && admits(under as VoidNode, "onPress")) { (press as (e: NeonEvent) => void)(ev); }
 	};
 
 	const pointerDown = (x: float32, y: float32, button: int32, mods?: number): boolean => {
@@ -1588,6 +1632,7 @@ export function createVoidHostWith(
 			pressNode = spanPress ? under : pressableOn(under);
 			pressSpan = spanPress ? span : null;
 			touchSpan = span !== null && (span as TextSpan).onTouch !== null ? span : null;
+			touchSpanNode = touchSpan !== null ? under : null;
 			const touch = touchEvent("touchstart", ev);
 			spanTouch("onTouchStart", touch);
 			pointerAt("onTouchStart", target, x, y, touch);
@@ -1643,6 +1688,7 @@ export function createVoidHostWith(
 			const touch = touchEvent("touchend", ev);
 			spanTouch("onTouchEnd", touch);
 			touchSpan = null;
+			touchSpanNode = null;
 			if (!h.disposed && attached(h)) { pointerAt("onTouchEnd", h, x, y, touch); }
 			pressAt(under, x, y, ev.timeStamp);
 		}
@@ -1671,6 +1717,7 @@ export function createVoidHostWith(
 		}
 		touching = false;
 		touchSpan = null;
+		touchSpanNode = null;
 		hoverTo(null, x, y);
 	};
 
@@ -2029,6 +2076,35 @@ export function createVoidHostWith(
 		settle: (n: VoidNode): VoidNode | null => settled(n as HostNode),
 		laidOut: (): boolean => laidWidth >= 0.0,
 		hitAt: (x: float32, y: float32): VoidNode | null => deepestAt(tree, root, x, y, null),
+		guarded: (top: VoidNode, cleanup: boolean, body: () => void): string | null => {
+			if (guardTop !== null) { return GUARD_NESTED; }
+			guardTop = top;
+			guardCleanup = cleanup;
+			guardBlock = null;
+			try {
+				body();
+			} finally {
+				guardTop = null;
+				guardCleanup = false;
+			}
+			return guardBlock;
+		},
+		lastBlocked: (): string | null => guardBlock,
+		abortGesture: (): void => {
+			try {
+				pointerLeave();
+			} finally {
+				captured = null;
+				capturedLayer = null;
+				pressNode = null;
+				pressSpan = null;
+				touching = false;
+				touchSpan = null;
+				touchSpanNode = null;
+				hovered = [];
+				hoverLayer = null;
+			}
+		},
 		outsideListener: (hit: VoidNode, top: VoidNode, x: float32, y: float32, typing: boolean): VoidNode | null => {
 			const path = pathFrom(hit);
 			const above = path.slice(path.indexOf(top) + 1);
