@@ -238,6 +238,41 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows image bridge and real Ion loop pin, 2026-11-13
+
+`tests/platform/windowsImageLoop.ms` is a compiled app using `runNativeWindow`,
+not a replacement event pump. On d87's console, msc `fca3f0a80cc6`, checked tree
+`1088882e21cf4f02b9a5f0f27de3af6ae8a72d95` (HEAD `62a511f2` plus the fixture),
+the owned HTTP server delivered metadata **4×2** and picture **4×4** through the
+actual bridge. There were **2 Ion onWake callbacks, 2 reports on the host thread,
+1 pixel decode**. Only then did the ownership assertion reach expected **RED 1**:
+`pixel decode ran on host thread`. ImagePicture is still synchronous; this is
+not an integrated worker GREEN.
+
+Build through `run-remote.sh --windows --cores 4 --job … -- msc build
+ tests/platform/windowsImageLoop.ms --passC=-DNEON_IMAGE_WORKER_TEST
+ --output=out/windows-image-loop.exe`. Run on the console through
+`desk.sh run --cores 2 --quiet 2 --cwd <remote worktree> -- powershell -NoProfile
+ -ExecutionPolicy Bypass -File tests/platform/windowsImageLoop.ps1`. The runner
+refuses to open the window after console input in the preceding 60 seconds,
+uses a 20-second executable guard, and the app has a 5-second watchdog. No
+screen pixels, foreign windows, topmost flag or synthetic wake function are used.
+
+Build and independent console SHA256 agree on executable
+`d815f42d868d381e5b4b9633b7f0e7c4005749ec718d9ec8bbf96c37f4b3b2fa`.
+All eight fixture/production/input hashes printed on the console match the local
+files. Raw logs: `/tmp/native-threads-image-loop-build.log` and
+`/tmp/native-threads-image-loop-red-exit.log`. The first runner printed a blank
+PowerShell Process.ExitCode; it did not certify RED 1. The corrected runner
+retains the process handle and checks GetExitCodeProcess; the unchanged binary
+then reached the same named failure with native exit code 1.
+
+This proves current mixed metadata/picture routing and normal-loop notification,
+not cancellation/replacement/shutdown, worker ownership, full-pixel equality,
+modal-loop progress, frame latency, performance, the test-runner CLI or a full
+host gate. The fixture is an explicit app build/run, not a renamed test used to
+close the separately recorded Windows `msc test` CLI failure.
+
 ### Windows image request identity, 2026-11-13
 
 `tests/platform/windowsImageIds.cpp` exercises two real decode queues alongside
