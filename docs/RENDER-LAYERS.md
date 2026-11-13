@@ -81,7 +81,7 @@ If every OS ships a mature B+C for free, why carry your own?
 
 Void = the opt-in heavy backend for apps whose pixels the native B+C cannot produce. Neon-default (native) stays light for the apps that don't need it. See Void's `CLAUDE.md` "Direction" for the scope discipline that keeps Void from drifting into a game engine.
 
-## Void as a native component — the boundary is built, the native hosts are not
+## Void as a native component — built on iOS, Android and desktop native hosts still to come
 
 Void has a second role beside "the platform": **one native component among the others**. An iOS or Android app stays on the native host, with `View` and `Text` borrowed from UIKit and Android Views. One element in that tree is a Void view that owns a GPU surface and draws a `Scene2D` into it. React Native gets the same thing from a GL or Skia canvas view. The two roles differ only in where the Void subtree starts:
 
@@ -103,7 +103,7 @@ Void has a second role beside "the platform": **one native component among the o
 
 **What is missing:**
 - **Input on the sokol canvas.** Void's window driver keeps every sokol_app event to itself, and quits on Escape. `src/platform/sokol/input.ms` holds Neon's half; BUGS.md has the parked row.
-- **The native hosts, still in progress.** A component needs a host tree to sit in. The native host (`src/platform/native/host.ms`, with the UIKit bridge `src/platform/ios/bridge.m` and the Android bridge `src/platform/android/bridge.c`; `docs/IOS.md`, `docs/ANDROID.md`) sets `voidArea: null`, so a `<Void>` inside it fails at mount. Both belong to `ROADMAP.md` Next #1, Mobile App Foundation. The desktop hosts follow on the same bridge (`VISION.md`, `docs/WINDOWS.md`).
+- **Android and the desktop native hosts.** On iOS an app that imports `src/platform/native/voidArea.ms` gets a `<Void>` as its own `CAMetalLayer` view (`src/platform/ios/voidArea.m`) beside UIKit views. The area opens through the window host's `openWindowArea`, frames run in the native host's display-link tick, and touches feed the area's `TouchGesture` (`tests/ios/voidArea.sh`, iPhone 17 Pro simulator: drawn, resized on rotation, a tap reaches `onPointerDown`). Without that import, `<Void>` mounts its `fallback`. Not built yet: Android's view, the area's `backgroundColor` as its clear colour, hardware keys and IME (`.wt/ios-void-area.md` S2, S3), Pencil pressure and tilt, and a device run.
 - **More than one area per Ion window.** The window host refuses a second `<Void>`: it places one visual that fills the window and hit-tests with the area's own `clickAt`. A Void area beside other elements needs the host to place each visual and hit-test its own tree, which Ion leaves to the app (`ion/docs/WINDOW-CONTENT.md`; `VISION.md` "Window, frame and input").
 
 Inside a Void view there are only Void components: `Text` and `View` become void2d, and no native view is ever a child of a Void view (`VISION.md` "Worlds, nested one way").
