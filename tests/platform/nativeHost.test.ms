@@ -26,7 +26,7 @@ import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style, StyleValue } from "../../src/render/style";
 import { AccessibilityInfo } from "../../src/api/accessibilityInfo";
-import { Text } from "../../src/components/primitives";
+import { Text, Void } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 
 import {
@@ -1405,5 +1405,14 @@ test "a full style write leaves an unchanged paint field alone on the view, so a
 	flush();
 	nmLoop();
 	assert nmOpacityWrites() === writes, "unchanged opacity is not rewritten: " + (nmOpacityWrites() - writes).toString();
+	nmTeardown();
+}
+
+test "a <Void> mounts its fallback on a native host whose app does not import the native Void area" {
+	const app = (): NeonNode => <View>
+		<Void fallback={<Text>no area</Text>}><View /></Void>
+	</View>;
+	runApp(app);
+	assert nmHasLabel("no area") === 1, "the fallback mounts in the area's place";
 	nmTeardown();
 }
