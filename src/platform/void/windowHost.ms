@@ -23,6 +23,7 @@ import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";
+import { registerDevArea } from "../../devtools/scope";
 when (hcr || testBuild) {
 	import { DevNode, setDevDriver } from "../../devtools/driver";
 }
@@ -147,6 +148,23 @@ export function windowHost(w: AreaWindow): Host {
 		};
 		current = area;
 		w.opened(area);
+		const unregister = registerDevArea({
+			vh,
+			pointer: (x: float32, y: float32, pressed: boolean): void => {
+				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
+				w.requestFrame();
+			},
+			text: (text: string): void => {
+				deliverText(area, text);
+				w.requestFrame();
+			},
+			cancel: (): void => {
+				area.held = 0 as int32;
+				deliverPointer(area, { kind: AreaPointerKind.Leave, pixelX: 0.0, pixelY: 0.0, button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 });
+				w.requestFrame();
+			},
+			busy: (): boolean => area.held !== (0 as int32),
+		});
 		when (hcr || testBuild) {
 			setDevDriver({
 				host: w.name,
@@ -180,6 +198,7 @@ export function windowHost(w: AreaWindow): Host {
 			hub,
 			release: (): void => {
 				current = null;
+				unregister();
 				dropQueuedInput(area);
 				when (hcr || testBuild) {
 					setDevDriver(null);

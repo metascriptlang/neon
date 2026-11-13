@@ -268,6 +268,11 @@ export interface VoidHost {
 	onDirty: (fn: () => void) => void;
 	mutate: (body: () => void) => void;
 	snapshot: () => DevNode;
+	describe: (n: VoidNode) => DevNode;
+	settle: (n: VoidNode) => VoidNode | null;
+	laidOut: () => boolean;
+	hitAt: (x: float32, y: float32) => VoidNode | null;
+	receiverOf: (n: VoidNode) => VoidNode | null;
 	layerSlot: (anchor: LayerAnchor) => NodeRef | null;
 }
 
@@ -1944,13 +1949,9 @@ export function createVoidHostWith(
 		return false;
 	};
 
-	const snapshot = (n: VoidNode): DevNode => {
+	const describe = (n: VoidNode): DevNode => {
 		const at = n.ref.localToGlobal(vec2(0.0, 0.0));
 		const f = frameOf(n);
-		const children: DevNode[] = [];
-		for (const c of tree.childrenOf(n)) {
-			if (!c.disposed) { children.push(snapshot(c)); }
-		}
 		return {
 			tag: n.tag,
 			text: ownText(n),
@@ -1961,8 +1962,16 @@ export function createVoidHostWith(
 			y: at.y,
 			w: f.w,
 			h: f.h,
-			children,
+			children: [],
 		};
+	};
+
+	const snapshot = (n: VoidNode): DevNode => {
+		const d = describe(n);
+		for (const c of tree.childrenOf(n)) {
+			if (!c.disposed) { d.children.push(snapshot(c)); }
+		}
+		return d;
 	};
 
 	// A layer inside a Text paints after the Text's paragraph, at a slot kept as the Text's last child.
@@ -2015,5 +2024,14 @@ export function createVoidHostWith(
 			}
 		},
 		snapshot: (): DevNode => snapshot(root),
+		describe,
+		settle: (n: VoidNode): VoidNode | null => settled(n as HostNode),
+		laidOut: (): boolean => laidWidth >= 0.0,
+		hitAt: (x: float32, y: float32): VoidNode | null => deepestAt(tree, root, x, y, null),
+		receiverOf: (n: VoidNode): VoidNode | null => {
+			let cur: VoidNode | null = n;
+			while (cur !== null && !pressable(cur as VoidNode) && !focusable(cur as VoidNode)) { cur = tree.parentOf(cur as VoidNode); }
+			return cur;
+		},
 	};
 }
