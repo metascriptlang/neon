@@ -321,6 +321,14 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **Native host timestamp forwarding** (2026-11-13, m1m, msc/support `c62ba752f7de`).
+  Checked code tree `27ce1faf311da24ec0dc09c29109a79f20f8ccd9`, before this entry.
+  `msc test tests/platform/nativeFrameClock.test.ms`: mock-stub control
+  **493 passed / 1 failed** → opt-in frame seam **494/494**. The default mock-path
+  consumer `tests/platform/nativeHost.test.ms` remains **567/567**. Three source
+  hashes match the tested remote checkout. This checks niFrameTime forwarding through
+  the real native Host adapter into input/motion, monotonicity and one-shot/reentrant
+  scheduling; it does not measure a physical display or change a production bridge.
 - **macOS native pointer phase** (2026-11-13, m1m, msc/support `c62ba752f7de`,
   real AppKit bridge with synthetic NSView events, no physical device input).
   Checked code tree `ea1e43f1cf11fb8740e31239b9f421ec5121dfc4`, before this entry:

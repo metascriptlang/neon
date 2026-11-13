@@ -433,9 +433,30 @@ void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
-void niSetFrameHandler(msClosure handler) { (void)handler; }
-int niRequestFrame(void) { return 0; }
-double niFrameTime(void) { return 0; }
+static msClosure s_frame;
+static int g_framesEnabled, g_frameRequested;
+static double g_frameTime;
+
+void nmEnableFrames(int32_t enabled) {
+	g_framesEnabled = enabled != 0;
+	g_frameRequested = 0;
+}
+int32_t nmFrameRequested(void) { return g_frameRequested; }
+int32_t nmFrame(double time) {
+	if (!g_frameRequested || !s_frame.fn) return 0;
+	g_frameRequested = 0;
+	g_frameTime = time;
+	call0(s_frame);
+	return 1;
+}
+
+void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+int niRequestFrame(void) {
+	if (!g_framesEnabled) return 0;
+	g_frameRequested = 1;
+	return 1;
+}
+double niFrameTime(void) { return g_frameTime; }
 
 int niRunApp(void) {
 	call0(s_mount);
