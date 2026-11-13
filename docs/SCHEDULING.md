@@ -106,10 +106,10 @@ These are implementation pointers and clock-domain limits, not new timing measur
   §Measured; that does not close the layout-drain bound.
 - Android `bridge.c` `niSetTransform` / `niSetOpacity` still make separate JNI calls;
   the batched writer below is intended, not shipped by this arc.
-- Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms` must be pinned
-  together: first-wheel application before the motion phase is not yet measured.
-  The native scroller sampler is pinned in §Measured. Indicator/modal Step timestamps
-  still use callback-time `nowMs()` rather than the frame target.
+- Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms`
+  `runNativeWindow` have sampler and controlled-clock queue pins in §Measured,
+  not physical first-wheel latency proof. Indicator/modal Step timestamps still
+  use callback-time `nowMs()` rather than the frame target.
 - `requestFrameAt` has timer/cancellation/held-driver tests; those do not certify a real
   hidden window's wake behavior. No whole-host idle, late-frame, or nested-loop verdict
   follows from the driver unit tests.
@@ -322,6 +322,21 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **Windows Ion queued-wheel ordering** (2026-11-13, d87 desktop console,
+  msc/support `c62ba752f7de`). Checked code tree
+  `7a6dd73218ff6367820ad873a7a3f30fa3f60430`, before this entry.
+  `msc test tests/platform/windowsIonWheel.ms` builds; the parked CLI still returns127.
+  Run its unchanged generated executable through the desktop runner:
+  `out/debug/_test_windowsIonWheel_d6b71d2403a999e6.exe`.
+  Corrected consumer fixture **508 passed / 1 failed** (first-motion report **−1**)
+  → **509/509** (report **120**); earlier setup-only failures are excluded.
+  Four adapter/fixture hashes plus Ion's queue implementation match the remote files.
+  Job `20261113-081634-68602` checked executable SHA-256
+  `1210e3a1dc139daa1e2684fd11311ffb2240fcfe0306c7d83577f878ad2c2819` before running.
+  The real `runNativeWindow` consumes adjacent synthetic wheel/frame records through
+  Ion's queue with a deliberately future target, then observes the report in the first
+  motion callback. This proves queue/phase order, not physical wheel delivery, display
+  latency, idle behavior, modal-loop progress or the CLI.
 - **Windows native scroll target-time sampling** (2026-11-13, d87 desktop console,
   msc/support `c62ba752f7de`, WARP composition fixture, no displayed window).
   Checked code tree `4508bc0b05aa978c471922fc466f923f1d9cd231`, before this entry.
