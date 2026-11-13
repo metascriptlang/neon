@@ -272,7 +272,7 @@ export interface VoidHost {
 	settle: (n: VoidNode) => VoidNode | null;
 	laidOut: () => boolean;
 	hitAt: (x: float32, y: float32) => VoidNode | null;
-	receiverOf: (n: VoidNode) => VoidNode | null;
+	outsideListener: (hit: VoidNode, top: VoidNode, x: float32, y: float32, typing: boolean) => VoidNode | null;
 	layerSlot: (anchor: LayerAnchor) => NodeRef | null;
 }
 
@@ -403,6 +403,7 @@ const PRESS_HANDLERS = [
 ];
 const HOVER_HANDLERS = ["onPointerMove", "onPointerEnter", "onPointerLeave"];
 const WHEEL_HANDLERS = ["onWheel"];
+const TEXT_HANDLERS = ["onTextInput", "onKeyDown", "onKeyUp", "onPreedit"];
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -2028,10 +2029,24 @@ export function createVoidHostWith(
 		settle: (n: VoidNode): VoidNode | null => settled(n as HostNode),
 		laidOut: (): boolean => laidWidth >= 0.0,
 		hitAt: (x: float32, y: float32): VoidNode | null => deepestAt(tree, root, x, y, null),
-		receiverOf: (n: VoidNode): VoidNode | null => {
-			let cur: VoidNode | null = n;
-			while (cur !== null && !pressable(cur as VoidNode) && !focusable(cur as VoidNode)) { cur = tree.parentOf(cur as VoidNode); }
-			return cur;
+		outsideListener: (hit: VoidNode, top: VoidNode, x: float32, y: float32, typing: boolean): VoidNode | null => {
+			const path = pathFrom(hit);
+			const above = path.slice(path.indexOf(top) + 1);
+			const names = typing ? TEXT_HANDLERS : PRESS_HANDLERS;
+			for (const n of above) {
+				for (const name of names) {
+					if (hasHandler(n, name)) { return n; }
+				}
+			}
+			if (typing) { return null; }
+			for (const n of hovered) {
+				if (path.indexOf(n) < 0 && !within(tree, n, top) && hasHandler(n, "onPointerLeave")) { return n; }
+			}
+			const gains = deepestAt(tree, root, x, y, focusable);
+			if (gains !== null && !within(tree, gains as VoidNode, top)) { return gains; }
+			const loses = focusedNode;
+			if (loses !== null && loses !== gains && !within(tree, loses as VoidNode, top)) { return loses; }
+			return null;
 		},
 	};
 }

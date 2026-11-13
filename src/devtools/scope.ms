@@ -107,6 +107,9 @@ export function openDevScope(host: Host, root: HostNode): Result<DevScope, DevSc
 	const n = root as VoidNode;
 	if (n.disposed) { return Result.err(DevScopeError.Removed); }
 	if (!inside(area.vh, n, area.vh.root as VoidNode)) { return Result.err(DevScopeError.NotInArea); }
+	for (let i = scopes.length - 1; i >= 0; i -= 1) {
+		if (scopes[i].root.disposed) { closeScope(scopes[i]); }
+	}
 	const scope = new DevScope(area, n);
 	scopes.push(scope);
 	return Result.ok(scope);
@@ -202,6 +205,16 @@ function failed(message: string): Result<void, DevActRefusal> {
 	return Result.err(refusal(DevRefusal.HandlerFailed, message));
 }
 
+function cancelled(area: DevArea): string {
+	try {
+		area.cancel();
+	} catch (e) {
+		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
+		return `; cancelling the gesture also threw: ${message}`;
+	}
+	return "";
+}
+
 const NOT_AN_ERROR = "a handler threw a value that is not an Error (a thrown string is unreadable until .inbox/compiler/2026-11-13-a-caught-string-narrowed-by-typeof-emits-a-pointer-to-msstring-cast.md)";
 
 export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRefusal> {
@@ -209,6 +222,7 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 	if (!aimed.ok) { return Result.err(aimed.error); }
 	const area = aimed.value;
 	const vh = area.vh;
+	if (area.busy()) { return Result.err(refusal(DevRefusal.Busy, "a button is held or input is waiting for the next frame on this area; it is left alone")); }
 	if (vh.settle(ref.node) === null) { return Result.err(refusal(DevRefusal.Removed, "the node was removed")); }
 	const d = vh.describe(ref.node);
 	const x = d.x + d.w / 2.0;
@@ -219,27 +233,24 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 		const what = hit === null ? "no node" : at === null ? `<${(hit as VoidNode).tag}> outside the scope` : `<${(hit as VoidNode).tag}> inside the scope`;
 		return Result.err(refusal(DevRefusal.Intercepted, `the point (${x}, ${y}) lands on ${what}`, at));
 	}
-	const receiver = vh.receiverOf(hit as VoidNode);
-	if (receiver !== null && !inside(vh, receiver as VoidNode, scope.root)) {
-		return Result.err(refusal(DevRefusal.Intercepted, `the press would reach <${(receiver as VoidNode).tag}>'s handler outside the scope`));
+	const outside = vh.outsideListener(hit as VoidNode, scope.root, x, y, false);
+	if (outside !== null) {
+		return Result.err(refusal(DevRefusal.Intercepted, `the press would reach <${(outside as VoidNode).tag}> outside the scope (a listener above the scope, a hovered node it leaves, or a focus it moves)`));
 	}
-	if (area.busy()) { return Result.err(refusal(DevRefusal.Busy, "a button is already held on this area; its gesture is left alone")); }
 	try {
 		area.pointer(x, y, true);
 	} catch (e) {
-		area.cancel();
-		if (e instanceof Error) { return failed((e as Error).message); }
-		return failed(NOT_AN_ERROR);
+		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
+		return failed(message + cancelled(area));
 	}
 	if (ref.node.disposed || scope.area === null || scope.root.disposed || !inside(vh, ref.node, scope.root)) {
-		area.cancel();
-		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled and no release was sent"));
+		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled and no release was sent" + cancelled(area)));
 	}
 	try {
 		area.pointer(x, y, false);
 	} catch (e) {
-		if (e instanceof Error) { return failed((e as Error).message); }
-		return failed(NOT_AN_ERROR);
+		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
+		return failed(message + cancelled(area));
 	}
 	return Result.ok(undefined);
 }
@@ -248,7 +259,14 @@ export function scopeType(scope: DevScope, ref: DevRef, text: string): Result<vo
 	const aimed = target(scope, ref);
 	if (!aimed.ok) { return Result.err(aimed.error); }
 	const area = aimed.value;
+	if (area.busy()) { return Result.err(refusal(DevRefusal.Busy, "a button is held or input is waiting for the next frame on this area; it is left alone")); }
 	const focused = area.vh.focused();
+	if (focused === ref.node) {
+		const outside = area.vh.outsideListener(ref.node, scope.root, 0.0, 0.0, true);
+		if (outside !== null) {
+			return Result.err(refusal(DevRefusal.Intercepted, `the text would reach <${(outside as VoidNode).tag}> outside the scope`));
+		}
+	}
 	if (focused !== ref.node) {
 		if (focused !== null && !inside(area.vh, focused as VoidNode, scope.root)) {
 			return Result.err(refusal(DevRefusal.ForeignFocus, "a field outside the scope holds focus"));
@@ -258,8 +276,8 @@ export function scopeType(scope: DevScope, ref: DevRef, text: string): Result<vo
 	try {
 		area.text(text);
 	} catch (e) {
-		if (e instanceof Error) { return failed((e as Error).message); }
-		return failed(NOT_AN_ERROR);
+		const message = e instanceof Error ? (e as Error).message : NOT_AN_ERROR;
+		return failed(message);
 	}
 	return Result.ok(undefined);
 }

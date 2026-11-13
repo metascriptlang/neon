@@ -163,7 +163,7 @@ export function windowHost(w: AreaWindow): Host {
 				deliverPointer(area, { kind: AreaPointerKind.Leave, pixelX: 0.0, pixelY: 0.0, button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 });
 				w.requestFrame();
 			},
-			busy: (): boolean => area.held !== (0 as int32),
+			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0,
 		});
 		when (hcr || testBuild) {
 			setDevDriver({
