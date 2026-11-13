@@ -238,6 +238,61 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows image COM lifetime diagnostic, 2026-11-13
+
+`bench/imageTransfer.cpp` tests an MTA-worker → STA-main transfer using
+`CoMarshalInterThreadInterfaceInStream` / `CoGetInterfaceAndReleaseStream`, not the
+production image pipeline. Worker-local decoder, converter, factory and bitmap references
+are released before its ready signal; only the marshaled result and expected pixel bytes
+remain. Default mode exits the worker before main consumes it. `--keep-mta` keeps that
+worker's COM apartment alive while main compares every PBGRA byte, then exits the worker
+and calls `GetSize` again on the same interface.
+
+On d87/MinGW g++16.2.0, two reserved cores, `-std=c++17 -O2 -DNOMINMAX`, base tree
+`d76f824563edb0e50f6038129b639a4d68e01d95` plus benchmark SHA-256
+`ddf4dfeaba72b9c33edc99e22dd17a0580a21aceb36a754f186879c1d968985e`:
+
+- Same executable: default64² case failed `GetSize` with `0x80010108`
+  (`RPC_E_DISCONNECTED`), expected exit2.
+- Keeping MTA/worker alive: 64², 512², 2048² and4096² all matched dimensions and **every
+  pixel byte** after unmarshaling on STA. All four then returned that same disconnected
+  error after worker exit. Overall controlled job exit0.
+- `IAgileObject` query returned `0x80004002` (`E_NOINTERFACE`) in every process.
+
+This control changes MTA **and worker-thread** lifetime together; it does not distinguish
+last-apartment uninitialization from thread exit. It does not test the reference's direct
+COM-reference path, nor prove that path unsafe. Do not infer a safe production handoff
+from successful marshaling alone. Holding MTA independently of the decoding thread is the
+next distinguishing probe. Request replacement, cancellation, shutdown, UI-loop wake and
+GPU upload/draw remain untested. Adoption timestamps exclude pixel copying/comparison and
+are not a main-frame cost certificate.
+
+Build/run through `.gate-host/run-remote.sh --windows --no-msc --cores 2`:
+
+```bash
+g++ -std=c++17 -O2 -DNOMINMAX bench/imageTransfer.cpp \
+  -o out/image-transfer.exe -lwindowscodecs -lole32 -luuid
+python3 bench/imageInputs.py out/image-transfer
+out/image-transfer.exe "$(cygpath -ma out/image-transfer/4096.png)" --keep-mta
+```
+
+Generator SHA-256 remains `6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
+Raw `/tmp/native-threads-image-transfer-control.log`; executable
+`3d9017dae87f08b3f4e6e980b5d2f7a9676ef0bf493977ac50f6b2a9ce927deb` and all four
+PNG hashes independently rechecked in `*-fingerprint.log`; both source hashes matched.
+Reservation105s plus1s admission wait: another recorded slow diagnostic, not an automatic
+edit-loop run. Earlier exit-only source `bce56a10`/exe `53789042` and first PNG also bound
+`/tmp/native-threads-image-transfer{,-fingerprint}.log`; paired control above supersedes
+that single observation, not its scope.
+
+[WIC's MTA guidance](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-howwicworks)
+says in-box codecs support MTAs and codecs must use COM model Both; that alone does not
+establish an apartment-independent result lifetime.
+[`IAgileObject`](https://learn.microsoft.com/en-us/windows/win32/api/objidlbase/nn-objidlbase-iagileobject)
+marks apartment agility and is recognized by the Global Interface Table, but does not
+change normal call marshaling. Neither API reading certifies the installed bitmap's
+untested transfer paths. Production remains unchanged.
+
 ### Windows text CPU diagnostic, 2026-11-13
 
 `bench/textWork.cpp` exercises the real `TextLabel`/DirectWrite measurement path, no
