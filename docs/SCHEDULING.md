@@ -227,7 +227,7 @@ This is a scoped consumer recommendation, not a workaround that closes the compi
 the benchmark. For capture, move, actor and cancellation rules, see recompiler
 `docs/LANG-PREFERENCE.md` §9; JS scheduling is not native thread execution.
 
-Still owed: image/text profiles, production offloads justified by those measurements, and
+Still owed: remaining-host/real-load profiles, production offloads justified by measurements, and
 a long-task report (main held longer than a frame) naming its owner. `AsyncStorage.mergeItem`
 must retain read/merge/write ordering if its CPU work moves; blindly submitting independent
 merges can lose updates. Its async surface alone proves neither offload nor safe concurrency.
@@ -237,6 +237,61 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 5 s ANR.
 
 ## Measured
+
+### Owned WARP image consumer diagnostic, 2026-11-13
+
+The next `bench/imageTransfer.cpp` variant reaches the Direct2D bitmap consumer used by
+`src/platform/windows/image.cpp` `ImagePicture::Draw`: `CreateBitmapFromWicBitmap` with
+BGRA8/premultiplied alpha/96dpi. It compares the retained-MTA proxy with `CreateBitmap`
+from the worker's packed PBGRA bytes. These are **owned offscreen resources**, not desktop
+sampling, window presentation, the parked modal test or the full Neon image pipeline.
+
+Base tree `a9c2e42e5b25552b82ca303ce266bc6fc0096aa1` plus benchmark SHA-256
+`adeb0f79416d6eb81a4f40e33973f1a1c8e4ded54beb7581f89cce2905aa2bb7`, generator still
+`6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
+d87/MinGW g++16.2.0, no MSC, two reserved cores; WARP helper constrains process affinity to
+mask3 (first two logical CPUs), refusing that diagnostic setup if unavailable. Device,
+shader/target and both creation paths are warmed. Five paired rounds alternate path order.
+
+All **40 size/path/round records** matched every byte of the raw-reference GPU readback;
+reference was explicitly nonblank. Changing one reference pixel then failed the specific
+GPU equality assertion, exit2. Same executable also retained no-cookie lifetime failure
+(expected2) and a64² independent-MTA CPU pixel pass. Overall controlled job exit0.
+
+| Size | Raw CreateBitmap ms, median/max | WIC-proxy creation ms, median/max |
+|---|---:|---:|
+| 64² | 0.0304 / 0.0543 | 0.3638 / 0.4030 |
+| 512² | 0.1806 / 0.2375 | 0.5379 / 0.6002 |
+| 2048² | 2.5834 / 2.7879 | 3.2467 / 3.6356 |
+| 4096² | 9.1496 / 9.6140 | 9.2974 / 12.1332 |
+
+These are synchronous API-call times on **software WARP**, not hardware GPU timings or a
+quiet-host/tail/frame certificate. The separate draw/readback/copy field includes target
+readback and CPU buffer collection, not presentation. Worker decode and its pixel copy,
+resource initialization, callback scheduling, full Image resize/blur behaviour, cancellation,
+shutdown and loop wake are outside these numbers. At4096² both creation paths still cost
+about9ms here: transport success does not eliminate main resource-creation cost. No
+end-to-end offload speedup or production payload choice is established by this diagnostic.
+
+Current combined diagnostic build/run, through `run-remote.sh --windows --no-msc --cores 2`:
+
+```bash
+g++ -std=c++17 -O2 -DNOMINMAX bench/imageTransfer.cpp \
+  -o out/image-transfer.exe -lwindowscodecs -lole32 -luuid \
+  -ld3d11 -ld2d1 -ldxguid
+python3 bench/imageInputs.py out/image-transfer
+out/image-transfer.exe "$(cygpath -ma out/image-transfer/4096.png)" --warp
+```
+
+`--warp-corrupt` must exit2 with `GPU pixels differ from raw reference`, not a setup error.
+Raw `/tmp/native-threads-image-gpu-smoke.log`; executable
+`48aa9271c2dd204504ec02f74665d7bb17ab07b0058319b11b70e35504d51b3a` and all four
+PNG hashes independently rechecked in `*-fingerprint.log`; both source hashes matched.
+Reservation92s plus11s admission wait: recorded slow diagnostic, not an automatic edit-loop
+run. Production `image.cpp`/`image.h` remain `49fe51de`/`667063f5`; no modal ownership
+safeguard was changed or exercised. The raw-result option avoids COM interfaces crossing
+apartments in principle, but its complete production lifetime/bounded queue still needs
+reference tracing and regression pins before implementation.
 
 ### Independent MTA lifetime diagnostic, 2026-11-13
 
@@ -251,7 +306,8 @@ checked to remain STA in every mode; this does not move the UI into MTA.
 Base tree `877906b29ca6c00e0219b66136d7f30184e5e944` plus benchmark SHA-256
 `0a6528da2dd4ee59dc33b669294dcece15054037407ff7e8da9c4d389cb768bc`, generator unchanged
 `6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
-d87/MinGW g++16.2.0, same build flags/libraries as below, two reserved cores, no MSC:
+d87/MinGW g++16.2.0, historical `-std=c++17 -O2 -DNOMINMAX` build with
+`-lwindowscodecs -lole32 -luuid`, two reserved cores, no MSC:
 
 - Same executable retained the no-cookie exit-before-consume failure (`GetSize`
   `0x80010108`, expected exit2) and live-worker64² pixel pass followed by disconnect.
@@ -261,7 +317,7 @@ d87/MinGW g++16.2.0, same build flags/libraries as below, two reserved cores, no
   Standard marshaling plus retained MTA resources, not an untested direct reference,
   provided this successful path.
 
-Run the same build from below with
+The current combined build above retains this mode:
 `out/image-transfer.exe "$(cygpath -ma out/image-transfer/4096.png)" --mta-usage`.
 Raw `/tmp/native-threads-image-mta-usage-retry.log`; executable
 `0f4525f1624ba4113cd1b4e8e0e4ed9121aa7a415580f89f376bc2f20a145cda` and all four
@@ -304,18 +360,13 @@ This control changes MTA **and worker-thread** lifetime together; it does not di
 last-apartment uninitialization from thread exit. It does not test the reference's direct
 COM-reference path, nor prove that path unsafe. Do not infer a safe production handoff
 from successful marshaling alone. The independent-MTA follow-up above separates those
-lifetimes. Request replacement, cancellation, shutdown, UI-loop wake and
-GPU upload/draw remain untested. Adoption timestamps exclude pixel copying/comparison and
-are not a main-frame cost certificate.
+lifetimes. Request replacement, cancellation, shutdown and UI-loop wake remain untested.
+The owned WARP follow-up above observes a scoped Direct2D consumer, not the full window
+renderer. Adoption timestamps exclude pixel copying/comparison and are not a main-frame
+cost certificate.
 
-Build/run through `.gate-host/run-remote.sh --windows --no-msc --cores 2`:
-
-```bash
-g++ -std=c++17 -O2 -DNOMINMAX bench/imageTransfer.cpp \
-  -o out/image-transfer.exe -lwindowscodecs -lole32 -luuid
-python3 bench/imageInputs.py out/image-transfer
-out/image-transfer.exe "$(cygpath -ma out/image-transfer/4096.png)" --keep-mta
-```
+The historical pre-GPU build linked `-lwindowscodecs -lole32 -luuid`; the current combined
+recipe above retains `--keep-mta` for the same controlled lifetime check.
 
 Generator SHA-256 remains `6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
 Raw `/tmp/native-threads-image-transfer-control.log`; executable
