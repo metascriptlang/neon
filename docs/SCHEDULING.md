@@ -5,6 +5,10 @@ what was measured, what was tried and rejected, and where the references do the 
 The code is the truth for how a host implements them (`src/platform/*/bridge.*`,
 `src/platform/native/loop.c`, `src/animation/frame.ms`, `src/render/bind.ms`).
 
+The rules below are the intended contract, not a certificate that every host meets it.
+Only §Measured records runtime evidence, within each entry's stated limits. The current
+source-read gaps are listed separately; none is closed by inspecting its implementation.
+
 ## Three contracts
 
 Neon's core asks a host for three things; each platform maps them onto its own machinery, as a
@@ -39,14 +43,15 @@ Order, from Flutter's `SchedulerBinding` and Android's Choreographer
 0. **Input.** Continuous input (pointer move, wheel) is coalesced into the next frame and runs
    ahead of step 1 (`requestInputFrame` in `src/animation/frame.ms`): a move keeps the latest
    position, wheel deltas of one mode and modifier set sum, and a different kind in between keeps
-   the order, as the browser aligns pointermove and wheel to rAF (from memory of Chromium, not read). Discrete
+   the order (`DesktopInput` in `src/platform/native/desktopInput.ms`). Discrete
    input (press, release, leave, key, text, preedit, focus, resize) first delivers whatever
    continuous input is queued, then runs its handlers and flushes at once. Layout and sink follow
    on the frame that paints it, so no frame shows effects without their layout. The raw stream
    still reaches area subscribers per OS event (`VoidAreaHandle.onPointer`), as
    `getCoalescedEvents` keeps it in the browser. Desktop hosts: `src/platform/void/windowHost.ms`
-   (Ion window, sokol) and `src/platform/windows/ion.ms`; iOS and Android hand touches over once
-   per frame already.
+   (Ion window, sokol), `src/platform/windows/ion.ms`, and macOS `bridge.m` `drainInputs`.
+   Native ScrollView offsets may update immediately; their coalesced reports precede motion.
+   Physical input-to-paint proof is still required on each host.
 1. **Animation** ticks at the frame's *target presentation time*, clamped monotonic (Flutter
    `animator.cc:135` `GetVsyncTargetTime`). An animation started in a handler reads elapsed 0
    on its first frame (Flutter `ticker.dart:205`).
@@ -79,15 +84,36 @@ Rules around it:
 
 | platform | source | timestamp |
 |---|---|---|
-| iOS, macOS | `CADisplayLink` / `NSView.displayLink` in common modes, on main | `targetTimestamp` (`CACurrentMediaTime` base) |
-| Android | Java `Choreographer.postFrameCallback` (ANIMATION slot, same vsync as TRAVERSAL) | `frameTimeNanos` (`CLOCK_MONOTONIC`) |
-| Windows | pacer thread on the frame-latency waitable or `DCompositionWaitForCompositorClock`, `DwmFlush` fallback; posts only when a frame is wanted | `DwmGetCompositionTimingInfo` (QPC) |
-| Wayland | `wl_surface.frame`, requested before commit, plus a retry timer | callback ms |
-| X11 | timer at the RandR refresh rate while visible | monotonic |
-| terminal | monotonic timer, only while frames are requested | monotonic |
-| browser | `requestAnimationFrame` | rAF time = `document.timeline` |
+| iOS native | `src/platform/ios/bridge.m` `NeonFrameTarget.tick` | display-link target rebased to the runtime monotonic clock |
+| macOS native; Ion + Void on macOS | Ion `src/platform/macos/core/frame.m` `IonFrameTarget.tick` | display-link target rebased to the runtime monotonic clock |
+| Android native | `src/platform/android/bridge.c` `frameTick` / `niRequestFrame` | native AChoreographer vsync stamp; 32-bit `long` path samples current monotonic time instead |
+| Windows native; Ion + Void on Windows | Ion `src/platform/windows/webview/poll.c` `vsyncThread` / `tickMs` | QPC after the selected output's WaitForVBlank plus estimated refresh period; compositor-clock fallback |
+| Linux, Ion + Void | Ion `src/platform/linux/core/frame.c` `onTick` | GDK frame-start time, not a future presentation target: gap remains |
+| sokol canvas | `src/platform/sokol/canvas.ms` `frameCanvas` | callback-time performance.now(), not an exposed display target; idle callback pause not proved |
+| terminal, native fallback | `src/animation/frame.ms` `platformDriver` | requested 16-ms timer, current monotonic time; no display-target clock installed by terminal host |
+| browser | `src/animation/frame.ms` `platformDriver` | requestAnimationFrame callback timestamp |
 
-Traps the references hit:
+Ion paths above were read at `0572d900c4468b8aeb20dab2ce20939f0fd19b62` (clean checkout).
+These are implementation pointers and clock-domain limits, not new timing measurements.
+
+### Source-read conformance gaps
+
+- `src/animation/frame.ms` `runFrame` performs synchronous input and animation flushes;
+  it has no separate mid-frame microtask drain. The step-2 rule remains a target.
+- `src/platform/browser/dom.jms` `flushLayouts` and its shared ResizeObserver do not
+  implement the native host's named eight-pass refusal. Browser loop handling is not
+  proof of the same Neon contract. Per-element cleanup does call `unobserve`; its
+  regression pin remains owed.
+- Android `bridge.c` `niSetTransform` / `niSetOpacity` still make separate JNI calls;
+  the batched writer below is intended, not shipped by this arc.
+- Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms` must be pinned
+  together: first-wheel application before the motion phase is not yet measured.
+  Native scroller/indicator Step timestamps also remain to be checked against the target.
+- `requestFrameAt` has timer/cancellation/held-driver tests; those do not certify a real
+  hidden window's wake behavior. No whole-host idle, late-frame, or nested-loop verdict
+  follows from the driver unit tests.
+
+Reference pitfalls (not claims that every mitigation below is implemented here):
 - **Apple.** Pin `preferredFrameRateRange` to the window's screen. Sokol reads `mainScreen`
   (`void/deps/sokol/sokol_app.h:5421`), and an unpinned range throttles a static window to
   30 Hz (makepad). ProMotion on iPhone also needs `CADisableMinimumFrameDurationOnPhone` in
@@ -98,8 +124,9 @@ Traps the references hit:
   Perfetto). The `long` callback rolls over on 32-bit.
 - **Windows.** `DwmFlush` returns at once while the display is off; a 1 ms guard falls back to
   sleep (GPUI `vsync.rs`). Present-vsync combined with on-demand drawing spun a core (Zed
-  #35379). `WaitForVBlank` locks to the primary output. Inside `WM_ENTERSIZEMOVE` and menu
-  loops, a `USER_TIMER_MINIMUM` timer drains the dispatcher and runs the frame (GPUI
+  #35379). Follow the requesting window's output rather than assuming the primary.
+  Inside `WM_ENTERSIZEMOVE` and menu loops, a `USER_TIMER_MINIMUM` timer drains the
+  dispatcher and runs the frame (GPUI
   `events.rs:276-312`).
 - **Linux.** Flutter's fixed 60 Hz timer is still an open bug (#191245); do not copy it.
 
@@ -108,18 +135,18 @@ Traps the references hit:
 A finished worker signals the dispatcher's selector fd. The host adds that fd to the OS loop:
 `CFFileDescriptor` in common modes on iOS, `ALooper_addFd` on Android. Before that, the
 native loop ran only on its own timer, so a result waited for the next timer or touch.
-Elsewhere:
-- macOS: a common-modes `CFRunLoopSource`, not a posted `NSEvent`, which menus, `runModal`
-  and live resize do not deliver.
-- Windows: a hidden message-only window (Flutter `task_runner_window`).
-- Linux: the epoll fd as a GLib source (`g_unix_fd_add`).
 
-GPUI (`dispatch_async`, `PostMessageW`, an eventfd ping) and winit do the same.
+Desktop windows run Ion's loop; read its `src/platform/*/webview/poll.*`, not a
+proposed Neon wake primitive. At Ion `0572d90` (source read, not a modal-loop run):
+- macOS `mscWatcher` / `postNudge` relays readiness with an NSEvent; it is NOT the
+  common-mode CFRunLoopSource previously claimed here.
+- Windows `mscWatcher` / `ionWakeLoop` signals events in the normal message wait;
+  it is NOT a Flutter-style hidden message-only wake window.
+- Linux `ionLoopArm` registers the dispatcher selector with GLib.
 
-Desktop windows run Ion's loop, so these sources are Ion's. Ion has the Linux one, and runs msc
-inside a macOS live resize and the Windows size/move and menu loops; menus and modal panels on
-macOS and modal dialogs on Windows still hold msc and frames until they close (read from Ion
-0572d90, not run).
+The Loop contract still requires all nested OS loops to service work. Ion has explicit
+macOS live-resize and Windows size/move/menu pumps; menus/modal panels on macOS and modal
+dialogs on Windows remain source-read gaps, not measured freezes or verified progress.
 
 ## Animation
 
@@ -137,13 +164,16 @@ Android has no public off-main View animation:
   by Android 10.
 
 Compose `graphicsLayer`, RN's native driver, Litho and Flutter all tick on main. So Android's
-path is paint-only on main: one batched JNI call of (view, prop, value) into
+target is paint-only on main: one batched JNI call of (view, prop, value) into
 `setTranslation`/`setScale`/`setRotation`/`setAlpha`, with no Style rebuild and no yoga.
+The batched JNI call is still owed; see the source-read gaps above.
 
 Rules learned from React Native and Motion:
 - **Begin time.** The mirror and the platform take one frame stamp.
   - Core Animation: `targetTimestamp` via `convertTime`.
-  - DComp: `nextEstimatedFrameTime`.
+  - DComp target: the matching frame clock. Current `dcompComposition.cpp`
+    `DCompVisual::compositionStamp` uses frame statistics `currentTime` minus lag,
+    not `nextEstimatedFrameTime`; mirror/platform alignment remains unproved.
   - WAAPI: an explicit `startTime`.
   - Cap a late start at 40 ms (Motion `resolve-start-time.ts`).
 - **Reactive writes vs animation.** A reactive style write must merge the animated values
@@ -158,16 +188,17 @@ Rules learned from React Native and Motion:
 ## Heavy work
 
 `spawn` stays explicit. `new Promise` keeps its TS meaning: the executor runs synchronously on
-the caller, as in the browser. Flutter `compute`, Kotlin `withContext` and Swift 6.2
-`@concurrent` are explicit too.
+the caller, as in the browser. Async syntax alone does not authorize moving the work
+to another thread.
 
 Neon and std move their *own* heavy work off main, behind APIs that are already async:
 - candidates are large `response.json()`, image decode, and text shaping and measurement;
 - each is measured before it moves, because a crossing costs more than a small task.
 
-A user guide says when an author reaches for `spawn`, and a long-task report (main thread
-blocked longer than one frame) points at where. IO (fetch, sockets, files) is non-blocking on
-the dispatcher and needs no `spawn`.
+Still owed: a user guide for when an author reaches for `spawn`, and a long-task report
+(main thread blocked longer than one frame) that points at where. An asynchronous API's
+shape is not proof that decoding or other CPU work inside it is off main; profile that
+work before choosing an offload. Synchronous APIs still block their caller.
 
 On JS, WASM and workerd, `spawn` only schedules: Worker is same-thread until Web Workers back
 it. On Android a worker must never call `ni*` (JNI binding), and one long flush on main is a
