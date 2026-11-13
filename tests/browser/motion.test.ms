@@ -659,16 +659,18 @@ test "cancel on a removed element drops the animation and keeps no inline value"
 	player.dispose();
 }
 
-test "a connected element that refuses commitStyles fails the cancel loudly" {
+test "cancel on a hidden element writes the value at the player's time inline" {
 	const node = mount();
 	const el = dom(node);
 	const player = fadeAndSlide(node, paused());
 	player.seek(400);
+	const shown = computed(el, "opacity");
 	el.style.display = "none";
-	let message = "";
-	try { player.cancel(); } catch (e) { message = e.message; }
-	assert message.startsWith("motion: the browser refused to commit opacity"), message;
-	assert el.getAnimations().length === 0, "every animation is cancelled before the throw";
+	player.cancel();
+	assert el.getAnimations().length === 0, "cancel removes the animations";
+	assert el.style.opacity === shown, "inline " + el.style.opacity + ", shown " + shown;
+	assert el.style.opacity !== "" && el.style.opacity !== "1", "a value inside the run: " + el.style.opacity;
+	player.dispose();
 	el.remove();
 }
 

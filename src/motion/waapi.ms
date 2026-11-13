@@ -862,7 +862,7 @@ when (js) {
 		element: HTMLElement,
 		property: string,
 	): void from
-		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { throw new Error(`motion: the browser refused to commit ${p} on a connected element: ${e.message}`); } })(#, #, #)";
+		"((a, el, p) => { if (!el.isConnected) { return; } try { a.commitStyles(); } catch (e) { const v = getComputedStyle(el).getPropertyValue(p); if (v === '') { throw new Error(`motion: the browser refused to commit ${p} and computed no value for it: ${e.message}`); } el.style.setProperty(p, v); } })(#, #, #)";
 	extern function timelineTime(): float64 from
 		"((typeof document === 'undefined' || document.timeline.currentTime === null) ? -1 : document.timeline.currentTime)";
 
