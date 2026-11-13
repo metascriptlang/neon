@@ -238,6 +238,47 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Independent MTA lifetime diagnostic, 2026-11-13
+
+A follow-up to the paired control below separates decoding-thread exit from MTA lifetime.
+`bench/imageTransfer.cpp --mta-usage` pins MTA resources independently with
+[`CoIncrementMTAUsage`](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coincrementmtausage),
+then releases that usage once after the COM results are destroyed, before process shutdown
+([release contract](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-codecrementmtausage)).
+The API explicitly supports MTA resources surviving zero MTA threads. Main's apartment is
+checked to remain STA in every mode; this does not move the UI into MTA.
+
+Base tree `877906b29ca6c00e0219b66136d7f30184e5e944` plus benchmark SHA-256
+`0a6528da2dd4ee59dc33b669294dcece15054037407ff7e8da9c4d389cb768bc`, generator unchanged
+`6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
+d87/MinGW g++16.2.0, same build flags/libraries as below, two reserved cores, no MSC:
+
+- Same executable retained the no-cookie exit-before-consume failure (`GetSize`
+  `0x80010108`, expected exit2) and live-worker64² pixel pass followed by disconnect.
+- Independent usage cookie: **all four64²/512²/2048²/4096² dimensions and every PBGRA byte
+  matched on STA after the decoding worker had exited**. Overall job exit0.
+- All six processes checked main STA; all reported `IAgileObject` `E_NOINTERFACE`.
+  Standard marshaling plus retained MTA resources, not an untested direct reference,
+  provided this successful path.
+
+Run the same build from below with
+`out/image-transfer.exe "$(cygpath -ma out/image-transfer/4096.png)" --mta-usage`.
+Raw `/tmp/native-threads-image-mta-usage-retry.log`; executable
+`0f4525f1624ba4113cd1b4e8e0e4ed9121aa7a415580f89f376bc2f20a145cda` and all four
+PNG hashes independently rechecked in `*-fingerprint.log`; both source hashes matched.
+Reservation100s plus1s admission wait is a recorded slow diagnostic. An earlier180s caller
+timeout spent86s waiting and95s reserved in admission/sync, produced no compiler/test
+output, and left the old executable. LedgerEND, no local runner/matching remote
+transfer/compiler process and the old executable were checked in
+`/tmp/native-threads-image-mta-{usage,timeout-check}.log`; this attempt gave no test
+result, not a product RED or test pass.
+
+This is a functional stock-PNG transport/lifetime result, not an offload speedup, UI-frame,
+GPU upload/paint, cancellation/replacement, shutdown or wake certificate. The timing field
+still excludes pixel copying/comparison. A production owner must outlive its COM results
+and pending jobs; that full lifetime has not been implemented or tested. No production
+code changed. The reference's direct-reference path remains untested here.
+
 ### Windows image COM lifetime diagnostic, 2026-11-13
 
 `bench/imageTransfer.cpp` tests an MTA-worker → STA-main transfer using
@@ -262,8 +303,8 @@ On d87/MinGW g++16.2.0, two reserved cores, `-std=c++17 -O2 -DNOMINMAX`, base tr
 This control changes MTA **and worker-thread** lifetime together; it does not distinguish
 last-apartment uninitialization from thread exit. It does not test the reference's direct
 COM-reference path, nor prove that path unsafe. Do not infer a safe production handoff
-from successful marshaling alone. Holding MTA independently of the decoding thread is the
-next distinguishing probe. Request replacement, cancellation, shutdown, UI-loop wake and
+from successful marshaling alone. The independent-MTA follow-up above separates those
+lifetimes. Request replacement, cancellation, shutdown, UI-loop wake and
 GPU upload/draw remain untested. Adoption timestamps exclude pixel copying/comparison and
 are not a main-frame cost certificate.
 

@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <objidl.h>
+#include <combaseapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <cstdio>
@@ -30,6 +31,19 @@ static void waitFor(HANDLE handle) {
 	fprintf(stderr, "image-transfer: wait failed\n");
 	ExitProcess(2);
 }
+
+struct MtaUsage {
+	CO_MTA_USAGE_COOKIE cookie = nullptr;
+
+	~MtaUsage() {
+		if (!cookie) return;
+		HRESULT result = CoDecrementMTAUsage(cookie);
+		if (SUCCEEDED(result)) return;
+		fprintf(stderr, "image-transfer: CoDecrementMTAUsage 0x%08lx\n",
+			(unsigned long)result);
+		ExitProcess(2);
+	}
+};
 
 struct Job {
 	std::wstring path;
@@ -102,8 +116,10 @@ static DWORD WINAPI decode(void *argument) {
 
 int main(int argc, char **argv) {
 	bool keepMta = argc == 3 && std::string(argv[2]) == "--keep-mta";
-	if (argc != 2 && !keepMta) {
-		fprintf(stderr, "usage: image-transfer native-path [--keep-mta]\n");
+	bool mtaUsage = argc == 3 && std::string(argv[2]) == "--mta-usage";
+	if (argc != 2 && !keepMta && !mtaUsage) {
+		fprintf(stderr,
+			"usage: image-transfer native-path [--keep-mta|--mta-usage]\n");
 		return 2;
 	}
 	HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -113,6 +129,16 @@ int main(int argc, char **argv) {
 	}
 	int result = 0;
 	try {
+		MtaUsage usage;
+		if (mtaUsage) {
+			check(CoIncrementMTAUsage(&usage.cookie), "CoIncrementMTAUsage");
+		}
+		APTTYPE apartment;
+		APTTYPEQUALIFIER qualifier;
+		check(CoGetApartmentType(&apartment, &qualifier), "main apartment");
+		if (apartment != APTTYPE_STA && apartment != APTTYPE_MAINSTA) {
+			throw std::runtime_error("main no longer STA");
+		}
 		Job job;
 		job.keepMta = keepMta;
 		job.prepared = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -130,8 +156,9 @@ int main(int argc, char **argv) {
 		if (!job.worker) throw std::runtime_error("CreateThread failed");
 		waitFor(keepMta ? job.prepared : job.worker);
 		if (!job.error.empty()) throw std::runtime_error(job.error);
-		fprintf(stderr, "image-transfer-state keep-mta=%d agile=0x%08lx\n",
-			keepMta, (unsigned long)job.agile);
+		fprintf(stderr, "image-transfer-state keep-mta=%d mta-usage=%d "
+			"main-sta=1 agile=0x%08lx\n", keepMta, mtaUsage,
+			(unsigned long)job.agile);
 		double started = now();
 		ComPtr<IWICBitmap> pixels;
 		check(CoGetInterfaceAndReleaseStream(job.stream.Detach(),
@@ -149,8 +176,8 @@ int main(int argc, char **argv) {
 			throw std::runtime_error("bitmap pixels changed across STA");
 		}
 		printf("image-transfer %u %u %zu agile=0x%08lx adopt-ms=%.6f "
-			"worker-exited=%d pixels-equal=1\n", width, height,
-			actual.size(), (unsigned long)job.agile, adopted, !keepMta);
+			"mta-usage=%d worker-exited=%d pixels-equal=1\n", width, height,
+			actual.size(), (unsigned long)job.agile, adopted, mtaUsage, !keepMta);
 		if (keepMta) {
 			SetEvent(job.release);
 			waitFor(job.worker);
