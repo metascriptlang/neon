@@ -29,6 +29,7 @@ const styles = createStyles({
 	d: { position: "absolute", left: 200, top: 120, width: 140, height: 60, backgroundColor: "#f1c40f" },
 	e: { position: "absolute", left: 130, top: 150, width: 80, height: 20, backgroundColor: "#9b59b6", transform: "rotate(90deg)" },
 	f: { position: "absolute", left: 220, top: 205, width: 40, height: 40, backgroundColor: "#e67e22" },
+	g: { position: "absolute", left: 60, top: 232, width: 20, height: 20, backgroundColor: "#1abc9c" },
 	label: { color: "#ffffff", fontSize: 20 },
 });
 
@@ -85,6 +86,7 @@ function App(): NeonNode {
 		<Pressable style={styles.d} onPress={pressed("D")} onPressIn={note("in D")} onPressOut={note("out D")} />
 		<Pressable style={styles.e} onPress={pressed("E")} />
 		<Pressable style={[styles.f, motion.style("f")]} ref={slid} onPress={pressed("F")} />
+		<Pressable style={styles.g} hitSlop={8} android_ripple={{ color: "#ffffff" }} accessibilityState={{ selected: true }} onPress={pressed("G")} />
 	</View>;
 }
 
@@ -117,6 +119,8 @@ const steps: Step[] = [
 	{ what: "down in D, up outside", events: [DOWN, 300, 150, UP, 380, 240], expect: "in D|out D" },
 	{ what: "F where its settled translateX shows it", events: click(340, 225), expect: "press F 9" },
 	{ what: "F's layout box it slid away from", events: click(240, 225), expect: "" },
+	{ what: "G's hitSlop of 8, 5 points left of its box", events: click(55, 240), expect: "press G 10" },
+	{ what: "12 points left of G, past its hitSlop", events: click(48, 240), expect: "" },
 ];
 
 function runSteps(): void {
