@@ -16,3 +16,7 @@ export function nativeElement(tag: string, component: string): NativeElement {
 	}
 	return elements.get(tag) as NativeElement;
 }
+
+export function registeredElement(tag: string): NativeElement | null {
+	return elements.has(tag) ? elements.get(tag) as NativeElement : null;
+}

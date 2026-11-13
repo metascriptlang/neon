@@ -2,6 +2,7 @@
 #include "../../src/platform/native/components.h"
 #include "../../src/platform/native/loop.h"
 #include "../../src/platform/native/layerMotion.h"
+#include "../../src/platform/native/voidArea.h"
 #include "nativeBridgeMock.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,6 +138,26 @@ void *niWebViewCreate(void) { return createControl(10); }
 void *niVideoCreate(void) { return createControl(11); }
 void *niCameraCreate(void) { return createControl(12); }
 void *niSvgCreate(void) { return createControl(9); }
+
+enum { VOID_AREA_KIND = 14 };
+static msClosure s_voidArea;
+static void *g_voidAreaView;
+static int g_voidAreaEvent;
+static float g_voidTouchX, g_voidTouchY;
+
+void *niVoidAreaCreate(void) { return createControl(VOID_AREA_KIND); }
+long long niVoidAreaLayer(void *view) { (void)view; return 0; }
+void niSetVoidAreaHandler(msClosure handler) { s_voidArea = handler; }
+void *niLastVoidAreaView(void) { return g_voidAreaView; }
+int niLastVoidAreaEvent(void) { return g_voidAreaEvent; }
+int niLastVoidAreaWidth(void) { return 0; }
+int niLastVoidAreaHeight(void) { return 0; }
+float niLastVoidAreaScale(void) { return 0; }
+int niLastVoidAreaTouchCount(void) { return 1; }
+long long niLastVoidAreaTouchId(int index) { (void)index; return 1; }
+float niLastVoidAreaTouchX(int index) { (void)index; return g_voidTouchX; }
+float niLastVoidAreaTouchY(int index) { (void)index; return g_voidTouchY; }
+int niLastVoidAreaTouchChanged(int index) { (void)index; return 1; }
 
 void niControlSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niControlSetTag");
@@ -918,3 +939,25 @@ double nmLayerTiming(int32_t tag, int32_t property, int32_t field) {
 	return taggedLayer(tag, property)->timing[field];
 }
 float nmTranslateY(int32_t tag) { return tagged(tag)->translateY; }
+
+int32_t nmVoidAreas(void) {
+	int32_t count = 0;
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->control == VOID_AREA_KIND) count++;
+	}
+	return count;
+}
+
+void nmVoidAreaTouch(int32_t event, float x, float y) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (v->released || v->control != VOID_AREA_KIND) continue;
+		g_voidAreaView = v;
+		g_voidAreaEvent = event;
+		g_voidTouchX = x;
+		g_voidTouchY = y;
+		call0(s_voidArea);
+		return;
+	}
+	fprintf(stderr, "mock bridge: no live Void area view\n");
+	abort();
+}

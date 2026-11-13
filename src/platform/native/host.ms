@@ -1,4 +1,4 @@
-import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { Host, HostNode, NeonNode, VoidArea, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
 import { Accessor, createSignal, untrack } from "../../core/signal";
@@ -14,7 +14,7 @@ import { Style, StyleValue, claimed, mergeStyle, isBoldWeight, setStyleField, sa
 import { LayerComponent, LayerEngine, LayerProperty, LayerTiming } from "./layerEngine";
 import { layerAnimate, layerRemove, layerWrite } from "./layerMotion";
 import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, NativeTransform, nativeTransform } from "./contract";
-import { nativeElement } from "./elements";
+import { nativeElement, registeredElement } from "./elements";
 import { WindowDimensions, publishWindow, publishRootWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
@@ -1061,11 +1061,30 @@ function growInput(n: NativeNode): boolean {
 
 let frameFire: ((target: number) => void) | null = null;
 
+export interface NativeVoidAreas {
+	open: (view: Ptr<void>) => VoidArea;
+	frame: () => void;
+}
+
+let voidAreas: NativeVoidAreas | null = null;
+
+export function installVoidAreas(areas: NativeVoidAreas): void {
+	if (voidAreas !== null) { throw new Error("installVoidAreas: the native host already draws its Void areas through another module"); }
+	voidAreas = areas;
+}
+
+function openVoidArea(node: HostNode): VoidArea {
+	const n = node as unknown as NativeNode;
+	if (n.view === null) { throw new Error("native host: a <Void> needs its native view, and this node has none"); }
+	return (voidAreas as NativeVoidAreas).open(n.view as Ptr<void>);
+}
+
 function onFrame(): void {
 	const fire = frameFire;
 	frameFire = null;
 	const target = niFrameTime();
 	if (fire !== null) { batched((): void => { (fire as (target: number) => void)(target); }); }
+	if (voidAreas !== null) { (voidAreas as NativeVoidAreas).frame(); }
 }
 
 function scheduleFrame(fire: (target: number) => void): void {
@@ -1341,7 +1360,8 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 				n = nativeNode(element.create(), false, false);
 				n.sizesItself = element.sizesItself;
 			} else {
-				n = nativeNode(niViewCreate(), false, false);
+				const element = registeredElement(tag);
+				n = nativeNode(element !== null ? element.create() : niViewCreate(), false, false);
 			}
 			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
 			if (tag === "pressable" || kind === NativeElementKind.Input || tag === "switch" ||
@@ -1505,7 +1525,7 @@ function nativeHostOf(r: NativeRoot): NativeHost {
 			return tree.childrenOf(n)[0] as unknown as HostNode;
 		},
 		cloneNode: null,
-		voidArea: null,
+		voidArea: voidAreas === null ? null : openVoidArea,
 		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
 			spanParagraph(spansTo, node, kids, spans);
 		},
@@ -1621,7 +1641,7 @@ function requestLayout(r: NativeRoot): void {
 	relayout(r);
 }
 
-function batched(fn: () => void): void {
+export function batched(fn: () => void): void {
 	batchDepth += 1;
 	try {
 		if (batchDepth === 1) { flush(fn); } else { fn(); }

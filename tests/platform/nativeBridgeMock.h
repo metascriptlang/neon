@@ -76,3 +76,5 @@ double nmLayerValue(int32_t tag, int32_t property, int32_t index);
 double nmLayerTiming(int32_t tag, int32_t property, int32_t field);
 void nmLayerSetNow(double ms);
 float nmTranslateY(int32_t tag);
+int32_t nmVoidAreas(void);
+void nmVoidAreaTouch(int32_t event, float x, float y);
