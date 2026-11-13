@@ -238,6 +238,58 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows image CPU diagnostic, 2026-11-13
+
+`bench/imageWork.cpp` calls the real `ImagePicture` load/report path without a window,
+composition device or GPU. d87, MinGW g++16.2.0, `-std=c++17 -O2 -DNOMINMAX`, two
+reserved cores; base tree `8179ee0db25f3bc861e887a91c3db30404f7b4e8` plus benchmark
+SHA-256 `5d968044a1317da1da6abad245db76ed7c5591eb4928629b9a0289dd3f6dd3a5` and
+`bench/imageInputs.py` `6ee637b588f735a0c6b1a7b9ec5ce93c073119466172527641d72fd723095aaf`.
+Native sources `image.cpp` `49fe51dec0998e90e83e7ba62bd14c035ed8e6785d3fca79077279ff5d5e1c9b`,
+`image.h` `667063f5d302df7a97570e3859e5d9af816bdd845dcc31daed26ce31df62be18`.
+No MetaScript compiler was used for this standalone C++ diagnostic.
+
+Build with:
+
+```bash
+g++ -std=c++17 -O2 -DNOMINMAX \
+  bench/imageWork.cpp src/platform/windows/image.cpp \
+  -o out/image-work.exe -lurlmon -lole32 -lwindowscodecs \
+  -ld2d1 -ldxguid -luuid
+```
+
+Generate inputs with `python3 bench/imageInputs.py out/image-work` (Python3.15.2), then
+run `out/image-work.exe "file://$(cygpath -ma out/image-work/SIZE.png)" SIZE SIZE`
+for each generated size, through `.gate-host/run-remote.sh --windows --no-msc --cores 2`.
+
+| PNG dimensions | Load/decode/release median | Max, ms |
+|---|---:|---:|
+| 64 × 64 | 0.110 ms | 0.215 |
+| 512 × 512 | 0.728 ms | 0.860 |
+| 2048 × 2048 | 9.064 ms | 9.159 |
+| 4096 × 4096 | 30.744 ms | 31.482 |
+
+Five samples per size, 20 records, expected load reports and dimensions, exit zero.
+Executable SHA-256 `6a0c929607dce3f7ed2930284f0e41c880768cca25318d62a8e088121f326f27`;
+raw output `/tmp/native-threads-image-work-smoke.log`. The executable and all four PNGs
+were independently rehashed afterward in `*-fingerprint.log`; all matched the run.
+This was not quiet or an interleaved worker A/B. Header inspection warms WIC/file access;
+load timing includes pixel realization and release, not network, paint, GPU upload or
+onLoad dispatch. Inputs are synthetic, not a photo corpus; no pixel checksum was checked.
+The reserved run took100s plus34s admission wait: a recorded slow diagnostic, not an edit-loop
+check to repeat automatically. No host/frame-latency certificate or byte cutoff follows.
+
+The measured candidate is `src/platform/windows/image.cpp` `Load`/`Deliver` → `Decode`:
+full WIC pixel materialization still runs on the host. Reference RN Windows
+`aedf6c5a400c6037f56078d066aa43db385fd456`,
+`vnext/Microsoft.ReactNative/Fabric/WindowsImageManager.cpp` `requestImage` and
+`StreamImageResponse::ResolveImage`, resolves pixels before posting completion to the UI
+and uses a weak observer coordinator. `wicBitmapSourceFromStream` creates a factory for
+that resolve; `Composition/ImageComponentView.cpp` consumes the resulting WIC bitmap.
+This supports an off-thread decode candidate, not moving Neon's shared STA-initialized
+factory or a live `ImagePicture` onto an arbitrary worker. Still prove COM ownership,
+cancel/source replacement/shutdown and actual main-loop handoff cost before adopting it.
+
 ### JSON worker-entry diagnostic, 2026-11-13
 
 This is a CPU/loop diagnostic, **not** a physical frame-latency or final performance
