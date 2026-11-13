@@ -525,6 +525,64 @@ test "a real KeyboardEvent reaches the handler with React Native's key fields" {
 	probe(el).remove();
 }
 
+extern class LayoutObserverProbe {
+	observed: int32;
+	removed: int32;
+	removedId: string;
+	live: int32;
+	disconnected: int32;
+	shared: boolean;
+	extern restore(): void;
+}
+extern function watchLayoutObservers(): LayoutObserverProbe from
+	"(() => { const p = ResizeObserver.prototype; const observe = p.observe, unobserve = p.unobserve, disconnect = p.disconnect; const targets = new Set(); let owner; const s = { observed: 0, removed: 0, removedId: '', live: 0, disconnected: 0, shared: true, restore() { p.observe = observe; p.unobserve = unobserve; p.disconnect = disconnect; } }; p.observe = function(target, options) { if (target.id.startsWith('neon-layout-cleanup-')) { s.observed++; if (owner && owner !== this) s.shared = false; owner = this; targets.add(target); s.live = targets.size; } return observe.call(this, target, options); }; p.unobserve = function(target) { if (targets.delete(target)) { s.removed++; s.removedId = target.id; s.live = targets.size; } return unobserve.call(this, target); }; p.disconnect = function() { if (this === owner) { s.disconnected++; targets.clear(); s.live = 0; } return disconnect.call(this); }; return s; })()";
+
+test "layout cleanup unobserves each node without stopping its live sibling" {
+	const watched = watchLayoutObservers();
+	const h = domHost();
+	const parent = documentBody();
+	const first = h.createElement("view");
+	const second = h.createElement("view");
+	h.setAttr(first, "id", "neon-layout-cleanup-first");
+	h.setAttr(second, "id", "neon-layout-cleanup-second");
+	h.setStyle(first, styleWith("height", 40));
+	h.setStyle(second, styleWith("height", 40));
+	h.append(parent, first);
+	h.append(parent, second);
+	let firstCalls = 0;
+	let secondCalls = 0;
+	const dispose = createRoot((stop) => {
+		h.addEvent(first, "onLayout", (e: NeonEvent): void => { firstCalls += 1; });
+		h.addEvent(second, "onLayout", (e: NeonEvent): void => { secondCalls += 1; });
+		return stop;
+	});
+	try {
+		await sleepAsync(100);
+		assert watched.observed === 2 && watched.shared;
+		assert watched.live === 2;
+		assert firstCalls === 1 && secondCalls === 1;
+		h.removeChild(parent, first);
+		assert watched.removed === 1 && watched.live === 1;
+		assert watched.removedId === "neon-layout-cleanup-first";
+		assert watched.disconnected === 0;
+		await sleepAsync(100);
+		const before = secondCalls;
+		probe(first).style.height = "80px";
+		probe(second).style.height = "80px";
+		await sleepAsync(100);
+		assert firstCalls === 1;
+		assert secondCalls > before;
+		h.removeChild(parent, second);
+		assert watched.removed === 2 && watched.live === 0;
+		assert watched.removedId === "neon-layout-cleanup-second";
+	} finally {
+		dispose();
+		probe(first).remove();
+		probe(second).remove();
+		watched.restore();
+	}
+}
+
 test "onLayout reports the frame relative to the parent, and again when it changes" {
 	const h = domHost();
 	const outer = mount("view");

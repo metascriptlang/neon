@@ -102,8 +102,8 @@ These are implementation pointers and clock-domain limits, not new timing measur
   it has no separate mid-frame microtask drain. The step-2 rule remains a target.
 - `src/platform/browser/dom.jms` `flushLayouts` and its shared ResizeObserver do not
   implement the native host's named eight-pass refusal. Browser loop handling is not
-  proof of the same Neon contract. Per-element cleanup does call `unobserve`; its
-  regression pin remains owed.
+  proof of the same Neon contract. Per-element cleanup is separately pinned in
+  §Measured; that does not close the layout-drain bound.
 - Android `bridge.c` `niSetTransform` / `niSetOpacity` still make separate JNI calls;
   the batched writer below is intended, not shipped by this arc.
 - Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms` must be pinned
@@ -321,6 +321,14 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   median 7.22 ms, min 4.63 ms; macOS native host (`examples/macosNative/ionFrameLead.ms`):
   median 7.16 ms, min 3.20 ms; gaps 8.33 ms. Before, both hosts stamped `performance.now()`
   just ahead of the callback, so the lead could not exceed 0. Windows built, not run.
+- **DOM shared-observer cleanup** (2026-11-13, m1m, Chrome, playwright-core 1.63.0,
+  msc/support `c62ba752f7de`). Checked code tree
+  `8f7d98d90864e21768261f4e8ede01faf4321c4d`, before this entry.
+  `bash tests/browser/run.sh tests/browser/dom.test.ms`: **158/158** → removing only
+  `observer.unobserve(el)` **157 passed / 1 failed** → restored **158/158**.
+  Production/test source hashes match the remote checkout. This pins target-specific
+  cleanup, a retained detached node receiving no app callbacks, and a live sibling
+  still reporting external CSS resizes. It is not a layout-loop-bound or latency proof.
 - **Native host timestamp forwarding** (2026-11-13, m1m, msc/support `c62ba752f7de`).
   Checked code tree `27ce1faf311da24ec0dc09c29109a79f20f8ccd9`, before this entry.
   `msc test tests/platform/nativeFrameClock.test.ms`: mock-stub control
