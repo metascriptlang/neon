@@ -26,14 +26,10 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
-- **OPEN 2026-11-14 — A captured function passed as `onPress` inside a `For` row is called instead of passed.**
-  `<Pressable onPress={pressed}>` with `pressed: () => void` a parameter of the enclosing component type-checks at
-  the component's top level and with `onPress={() => pressed()}`. Inside `<For each={items}>{(item, ix) => …}</For>`,
-  `msc check` on bac1b95e1948 refuses it: `type 'void' is not assignable to type 'function | null' — a void call
-  produces no value`, pointing at `pressed` (repro `/tmp/neon-onpress/b.ms` against `/tmp/neon-onpress/a.ms`, which
-  checks OK). Some layer between flow.ms's row callback and element.ms's component props reads the captured identifier
-  as an accessor and calls it; `isReactiveExpr` (`src/macros/ui/reactive.ms:34`) returns false for a bare identifier,
-  so the capture arrives as another node kind. Not traced yet; found writing `bench/raiserBridge/rows.ms`.
+- **PARKED 2026-11-14 — a zero-argument handler in a `For` row: `onPress={pressed}` is typed `void`.** Compiler card
+  `~/metascript/.inbox/compiler/2026-11-14-a-fewer-params-function-passed-inside-an-arrow-a-macro-returns-types-as-void.md`.
+  A `() => void` passed into `addEvent`'s `(e: NeonEvent) => void` slot loses its type when it is inside an arrow the
+  element macro hands back. Reduced to 15 lines with no JSX and no Neon. Site: `bench/raiserBridge/rows.ms:18`.
 
 - **OPEN 2026-11-13 — Void host: a `<View>` with no `style` drops out of layout with its whole subtree.**
   `src/platform/void/host.ms` `createElement` gives `flex = {}` only to the root and to a Text; a `view`, `pressable`
