@@ -4,8 +4,9 @@ cd "$(dirname "$0")/../.."
 case "$(g++ -dumpmachine)" in *mingw*) ;; *) echo 'windowsImageDecode needs MinGW on Windows' >&2; exit 2;; esac
 mkdir -p out/image-decode
 build() {
+	fixture=$1; source=$2; output=$3; shift 3
 	g++ -std=c++17 -O2 -DNOMINMAX -DNEON_IMAGE_WORKER_TEST -I src/platform/windows \
-		"$1" "$2" -o "$3" -lurlmon -lole32 -lwindowscodecs -ld2d1 -ldxguid -luuid
+		"$fixture" "$source" -o "$output" -lurlmon -lole32 -lwindowscodecs -ld2d1 -ldxguid -luuid "$@"
 }
 expectRed() {
 	name=$1; message=$2; shift 2
@@ -19,13 +20,15 @@ expectRed() {
 }
 g++ --version | head -1
 sha256sum src/platform/windows/image.cpp src/platform/windows/imageDecode.h src/platform/windows/image.h \
-	tests/platform/windowsImageDecode.cpp tests/platform/windowsImageWorker.cpp \
+	tests/platform/windowsImageDecode.cpp tests/platform/windowsImageWorker.cpp tests/platform/windowsImageIds.cpp \
 	tests/platform/windowsImageDecode.sh bench/imageInputs.py
 python3 bench/imageInputs.py out/image-decode
 small=$(cygpath -ma out/image-decode/64.png)
 large=$(cygpath -ma out/image-decode/4096.png)
 build tests/platform/windowsImageDecode.cpp src/platform/windows/image.cpp out/windows-image-decode.exe
 timeout 20 out/windows-image-decode.exe "$small" "$large"
+build tests/platform/windowsImageIds.cpp src/platform/windows/image.cpp out/windows-image-ids.exe -lws2_32
+timeout 20 out/windows-image-ids.exe "$small"
 build tests/platform/windowsImageWorker.cpp src/platform/windows/image.cpp out/windows-image-worker.exe
 uri=$(python3 -c 'from pathlib import Path; print(Path("out/image-decode/4096.png").resolve().as_uri())' | tr -d '\r')
 expectRed legacy 'image-worker assertion: decode ran on host thread' out/windows-image-worker.exe "$uri"
@@ -58,5 +61,5 @@ for mode in workers bytes early nul; do
 	esac
 	expectRed "$mode" "image-decode assertion: $message" "out/windows-image-decode-$mode.exe" "$small" "$large"
 done
-sha256sum out/windows-image-decode.exe out/windows-image-worker.exe \
+sha256sum out/windows-image-decode.exe out/windows-image-worker.exe out/windows-image-ids.exe \
 	out/windows-image-decode-{workers,bytes,early,nul}.exe out/image-decode/{workers,bytes,early,nul}.cpp

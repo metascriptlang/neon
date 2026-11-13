@@ -64,7 +64,15 @@ std::string systemText(HRESULT hr) {
 std::mutex g_downloadsLock;
 std::vector<ImageDownload> g_downloads;
 std::map<uint32_t, ImagePicture *> g_waiting;
-uint32_t g_nextFetch = 1;
+std::atomic<uint32_t> g_nextImageId{1};
+
+uint32_t imageRequestId() {
+	uint32_t id = g_nextImageId.load(std::memory_order_relaxed);
+	for (;;) {
+		if (!id) refuse("image request", "request id exhausted");
+		if (g_nextImageId.compare_exchange_weak(id, id + 1, std::memory_order_relaxed)) return id;
+	}
+}
 
 struct FetchJob {
 	uint32_t id;
@@ -226,7 +234,6 @@ struct ImageDecodeQueue::State : std::enable_shared_from_this<ImageDecodeQueue::
 	void (*postWake)(void);
 	std::atomic<bool> closing{false};
 	bool started = false;
-	uint32_t next = 1;
 	size_t activeBytes = 0;
 #ifdef NEON_IMAGE_WORKER_TEST
 	uint32_t workers = 0;
@@ -385,8 +392,7 @@ uint32_t ImageDecodeQueue::Submit(const char *uri) {
 	job->uri = uri;
 	std::lock_guard<std::mutex> lock(state->mutex);
 	if (state->closing) refuse("image decode queue", "submit after close");
-	if (!state->next) refuse("image decode queue", "request id exhausted");
-	job->id = state->next++;
+	job->id = imageRequestId();
 	state->jobs[job->id] = job;
 	state->queued.push_back(job);
 	state->start();
@@ -450,7 +456,7 @@ ImageSize ImageHeaderSizeOfFile(const std::wstring &path) {
 bool ImageIsNetwork(const char *uri) { return isNetwork(uri); }
 
 uint32_t ImageFetch(const char *uri) {
-	uint32_t id = g_nextFetch++;
+	uint32_t id = imageRequestId();
 	HANDLE thread = CreateThread(nullptr, 0, fetchWorker, new FetchJob{id, uri}, 0, nullptr);
 	if (!thread) {
 		fprintf(stderr, "neon windows bridge: CreateThread for an image download failed, error %lu\n", GetLastError());

@@ -238,6 +238,42 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows image request identity, 2026-11-13
+
+`tests/platform/windowsImageIds.cpp` exercises two real decode queues alongside
+`ImageFetch`/`ImageHeaderSizeOfFile` from `src/platform/windows/image.cpp`. A fixture-owned
+HTTP loopback server supplies the64² PNG; a fresh URL prevents a cache hit from replacing
+the request. All three outputs and the metadata header are validated before the ID
+assertion. This is the producer/API boundary, **not niwDrainImages or the Ion loop**.
+
+At tree `7d1317c5a348bb56aef5d491a0b05ebad18e4d97`, fixture SHA-256
+`5267275a3730096fa34f968dfff92698d92b249b1f0aa32354a3072bb853d29b` reached
+`request IDs collide across pixel and metadata producers`, exit1: valid
+`pixel64/pixel64/metadata64 probes=2 ids=1,1,1`. Controlled job exit0; no setup failure
+was counted as RED. This collision must be removed before merging these producers with
+main-owned request maps. Reusing the existing request-counter idiom across producers
+avoids introducing another routing namespace; these IDs are opaque, not author values.
+
+Checked fixed code tree `fef8e756a67b87570b4c53e3915f81f2a213e7c9` (base above plus the
+three owned source/test files; documentation and parked modal fixtures excluded), source
+`7c671417`, unchanged fixture, runner `076efb18`: `ids=1,2,3` and
+`image-id domains/header-only delivery passed`. The two pixel probes were MTA; metadata
+used the header API without another pixel-decode probe. The11 producer groups and all
+five intended RED controls from the queue check below passed again. Overall job exit0.
+Run the same `bash tests/platform/windowsImageDecode.sh` through
+`run-remote.sh --windows --no-msc --cores 2`; MinGW g++16.2.0, C++17/-O2, no MSC. Each
+executable still has its20s guard. No quiet-host or timing-performance comparison.
+
+Raw `/tmp/native-threads-image-ids-{red,green}.log`; five RED/eight GREEN source hashes
+matched. RED executable `b068af46177007076157984c3957a093ff5671d898dd59e484f5be338ddda345`
+and64² input were independently rehashed; GREEN executable
+`37e23b43e724f4954c2f0b6306677dc4cb673a560d79e5c89da4d00f48f473e8`, the six other
+executables and64²/4096² inputs match independent `*-{red,green}-fingerprint.log` records.
+RED reservation124s plus22s admission; GREEN319s plus2s admission: recorded slow checks,
+not automatic repeat recipes. This does not certify concurrent-allocation stress,
+counter exhaustion, live size/picture routing, graph/report delivery, real-loop wake, production offload or a
+normal-host/full-gate/physical-device run. Those integrated consumer pins still follow.
+
 ### Isolated Windows decode queue ownership, 2026-11-13
 
 `src/platform/windows/imageDecode.h` `ImageDecodeQueue` and
