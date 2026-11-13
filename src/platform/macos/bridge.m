@@ -2144,6 +2144,21 @@ void niSetProp(void *view, const char *name, const char *value) {
 		[l changed:YES];
 		return;
 	}
+	if (isLabel(as(view)) && !strcmp(name, "numberOfLines")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.container.maximumNumberOfLines = (NSUInteger)(text[0] ? atoi(text) : 0);
+		if (l.container.lineBreakMode == NSLineBreakByWordWrapping) l.container.lineBreakMode = NSLineBreakByTruncatingTail;
+		[l changed:YES];
+		return;
+	}
+	if (isLabel(as(view)) && !strcmp(name, "ellipsizeMode")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.container.lineBreakMode = !strcmp(text, "head") ? NSLineBreakByTruncatingHead :
+			!strcmp(text, "middle") ? NSLineBreakByTruncatingMiddle :
+			!strcmp(text, "clip") ? NSLineBreakByClipping : NSLineBreakByTruncatingTail;
+		[l changed:YES];
+		return;
+	}
 	if (isLabel(as(view)) && !strcmp(name, "writingDirection")) {
 		NeonLabel *l = (NeonLabel *)as(view);
 		l.direction = writingDirectionOf(text);
