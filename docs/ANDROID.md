@@ -220,6 +220,9 @@ the script fails on all four counts.
 - **Async/timers**: no Neon queue. The std event loop owns timers and completions; one
   `timerfd` on the main `ALooper` is armed for its next deadline after every JNI entry, and
   its callback runs one loop pass inside the host's layout batch (`src/platform/native/loop.c`).
+  The runtime's selector fd (`msGetDispatcherSelectorFd`: sockets, the I/O engine, pool
+  completions) is a second `ALooper` fd that runs the same pass when it turns readable, so an
+  awaited `recv` resumes without a timer (Qt's socket notifiers on the native loop are the shape).
   The reference instead woke an eventfd from a sleeping thread per timer.
 - **`nativeID` and `accessibilityLabelledBy`**: `nativeID` is kept per view (`A11y.NATIVE_IDS`) and
   `accessibilityLabelledBy` resolves the first listed id to a view under the root when the node info is built, then

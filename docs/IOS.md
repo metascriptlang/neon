@@ -384,7 +384,10 @@ measurements are not claimed.
 - **Timers**: no main-queue `dispatch_source` per timer. The std event loop owns timers;
   one repeating `CFRunLoopTimer` in the common modes (so it fires while a scroll view
   tracks) is set to its next deadline after every bridge entry, and fires one loop pass
-  inside the host's layout batch (`src/platform/native/loop.c`).
+  inside the host's layout batch (`src/platform/native/loop.c`). A `CFFileDescriptor` on
+  the runtime's selector fd (`msGetDispatcherSelectorFd`), in the same modes, runs the same
+  pass when socket data or a pool completion arrives (Qt's `QCFSocketNotifier` shape), so an
+  awaited `recv` resumes without a timer: `tests/ios/ioWake.sh`.
 - **Safe area and resize**: UIKit owns the container frame through
   `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createNativeHost`, which
   refreshes the root dimensions and reruns Yoga only when the frame changes. The root's
