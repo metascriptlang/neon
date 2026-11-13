@@ -28,8 +28,59 @@ import { MotionPolicy } from "pulse/src/policy";
 import { Composition } from "pulse/src/target";
 import { AnimatedValue, AnimationSpec } from "pulse/src/value";
 import { CHANNEL, boundDocument, conformanceReport } from "../motion/conformanceBindings";
-import { nmLayerSetNow, nmTeardown } from "./nativeBridgeMock.h";
+import {
+	nmLayerSetNow,
+	nmTeardown,
+	nmViewLayerKeyCount,
+	nmViewLayerKeyTime,
+	nmViewLayerLive,
+	nmViewLayerTiming,
+	nmViewLayerValue,
+} from "./nativeBridgeMock.h";
 import { layerSupport } from "./layerSupport";
+
+@include("./windowsLayerCurve.h");
+@compile("./windowsLayerCurve.cpp");
+
+extern function wlmHand(
+	view: Ptr<void>,
+	property: int32,
+	keyTimes: Readonly<Span<float64>>,
+	values: Readonly<Span<float64>>,
+	durationMs: float64,
+	repeatCount: float64,
+	autoreverses: int32,
+	startMs: float64,
+	offsetMs: float64,
+	speed: float64,
+): void;
+extern function wlmTranslateX(view: Ptr<void>, seconds: float64): float64;
+extern function wlmReset(): void;
+
+type LayerReader = (node: HostNode, time: float64) => float64;
+
+const TRANSFORM: int32 = 1;
+const TRANSFORM_WIDTH: int32 = 5;
+
+function bridgeTranslateX(node: HostNode, time: float64): float64 {
+	return presentedComponent(nativeViewOf(node), LayerComponent.TranslateX);
+}
+
+// The track the bridge was handed, rebuilt through the Windows bridge's handLayer and sampled from the
+// DirectComposition begin time bridge.cpp sets (the composition time at hand-over minus its lag).
+function directCompositionTranslateX(node: HostNode, time: float64): float64 {
+	const view = nativeViewOf(node);
+	if (nmViewLayerLive(view, TRANSFORM) === 0) { return presentedComponent(view, LayerComponent.TranslateX); }
+	const keyCount = nmViewLayerKeyCount(view, TRANSFORM);
+	const keyTimes: float64[] = [];
+	const values: float64[] = [];
+	for (let i: int32 = 0; i < keyCount; i += 1) { keyTimes.push(nmViewLayerKeyTime(view, TRANSFORM, i)); }
+	for (let i: int32 = 0; i < keyCount * TRANSFORM_WIDTH; i += 1) { values.push(nmViewLayerValue(view, TRANSFORM, i)); }
+	const timing = (field: int32): float64 => nmViewLayerTiming(view, TRANSFORM, field);
+	wlmHand(view, TRANSFORM, keyTimes, values, timing(0), timing(1), timing(2) as int32, timing(3), timing(4), timing(5));
+	const begin = timing(7) - timing(6);
+	return wlmTranslateX(view, Math.max(0, time - begin) / 1000);
+}
 
 // Each conformance property is a View whose slot is ref'd through MotionSignals, so players and
 // values reach the bridge's layer engine; reads go through niLayerPresented at the frame clock.
@@ -42,9 +93,11 @@ class Stage {
 	nodes: HostNode[] = [];
 	owner: Computation | null = null;
 	disposeOwner: () => void = (): void => {};
+	reader: LayerReader;
 
-	constructor(properties: ConformanceProperty[], policy: MotionPolicy) {
+	constructor(properties: ConformanceProperty[], policy: MotionPolicy, reader: LayerReader) {
 		this.policy = policy;
+		this.reader = reader;
 		nmLayerSetNow(0);
 		setFrameDriver({
 			now: (): number => this.time,
@@ -140,12 +193,13 @@ class Stage {
 	read(property: string): float64 {
 		const index = this.names.indexOf(property) as int32;
 		if (index < 0) { throw new Error("conformance native: unknown property " + property); }
-		return presentedComponent(nativeViewOf(this.nodes[index]), LayerComponent.TranslateX);
+		return this.reader(this.nodes[index], this.time);
 	}
 
 	close(): void {
 		this.disposeOwner();
 		nmTeardown();
+		wlmReset();
 		installLayerEngine(null);
 		setFrameDriver(null);
 	}
@@ -155,12 +209,12 @@ class LayerConformance {
 	stage: Stage | null = null;
 	adapter: ConformanceAdapter;
 
-	constructor() {
+	constructor(name: string, reader: LayerReader) {
 		this.adapter = {
-			name: "neon native layer",
+			name,
 			support: layerSupport,
 			begin: (properties: ConformanceProperty[], policy: MotionPolicy): void => {
-				this.stage = new Stage(properties, policy);
+				this.stage = new Stage(properties, policy, reader);
 			},
 			player: (document: MotionDocument, timing: ConformanceTiming, emit: (event: string) => void): ConformancePlayer =>
 				this.live().player(document, timing, emit),
@@ -184,8 +238,16 @@ class LayerConformance {
 }
 
 test "the native layer engine passes Pulse's conformance suite on the mock bridge" {
-	const results = runConformance(new LayerConformance().adapter, conformanceCases(), CONFORMANCE_GOLDEN);
+	const results = runConformance(new LayerConformance("neon native layer", bridgeTranslateX).adapter, conformanceCases(), CONFORMANCE_GOLDEN);
 	const failures = conformanceReport("neon native layer", results);
+	assert results.length > 0;
+	assert failures.length === 0, failures.join("\n");
+}
+
+test "the curves the Windows bridge hands DirectComposition pass Pulse's conformance suite" {
+	const name = "neon DirectComposition curves";
+	const results = runConformance(new LayerConformance(name, directCompositionTranslateX).adapter, conformanceCases(), CONFORMANCE_GOLDEN);
+	const failures = conformanceReport(name, results);
 	assert results.length > 0;
 	assert failures.length === 0, failures.join("\n");
 }

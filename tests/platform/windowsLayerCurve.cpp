@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <map>
 #include <string>
 #include "../../src/platform/windows/viewLayer.h"
 #include "windowsLayerCurve.h"
@@ -188,3 +189,25 @@ double wlvShownOpacity(double seconds) {
 }
 
 double wlvShownMatrix(int32_t element, double seconds) { return g_visual.shownMatrix(element, seconds); }
+
+// One recording visual per mock view, so the conformance suite reads each track as DirectComposition would
+// run the curves handLayer builds for it.
+struct HandedView {
+	MockVisual visual;
+	ViewLayer layer;
+};
+
+static std::map<const void *, HandedView> g_handed;
+
+void wlmHand(const void *view, int32_t property, const double *keyTimes, int64_t keyCount, const double *values,
+	int64_t valueCount, double durationMs, double repeatCount, int32_t autoreverses, double startMs, double offsetMs,
+	double speed) {
+	(void)valueCount;
+	HandedView &handed = g_handed[view];
+	handLayer(&handed.visual, handed.layer, property, keyTimes, keyCount, values, durationMs, repeatCount, autoreverses != 0,
+		startMs, offsetMs, speed, 0);
+}
+
+double wlmTranslateX(const void *view, double seconds) { return sampled(g_handed[view].visual.motionCurves[4], seconds); }
+
+void wlmReset(void) { g_handed.clear(); }

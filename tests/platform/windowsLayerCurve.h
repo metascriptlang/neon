@@ -25,6 +25,11 @@ void wlvHand(int32_t property, const double *keyTimes, int64_t keyCount, const d
 void wlvRelease(int32_t property);
 double wlvShownOpacity(double seconds);
 double wlvShownMatrix(int32_t element, double seconds);
+void wlmHand(const void *view, int32_t property, const double *keyTimes, int64_t keyCount, const double *values,
+	int64_t valueCount, double durationMs, double repeatCount, int32_t autoreverses, double startMs, double offsetMs,
+	double speed);
+double wlmTranslateX(const void *view, double seconds);
+void wlmReset(void);
 
 #ifdef __cplusplus
 }

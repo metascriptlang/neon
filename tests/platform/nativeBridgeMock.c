@@ -788,7 +788,7 @@ typedef struct LayerRecord {
 	int live;
 	int64_t keyCount, valueCount;
 	double *keyTimes, *values;
-	double timing[6];
+	double timing[8];
 	double beginTime;
 } LayerRecord;
 
@@ -863,7 +863,7 @@ void niLayerAnimate(void *view, int32_t property, const double *keyTimes, int64_
 	memcpy(r->values, values, sizeof(double) * (size_t)valueCount);
 	r->keyCount = keyCount;
 	r->valueCount = valueCount;
-	double timing[6] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed};
+	double timing[8] = {durationMs, repeatCount, autoreverses, startMs, offsetMs, speed, lagMs, g_layerNowMs};
 	memcpy(r->timing, timing, sizeof timing);
 	r->beginTime = niLayerBeginTime(g_layerNowMs / 1000.0, startMs, offsetMs, speed, lagMs);
 	if (r->beginTime == 0) r->beginTime = g_layerNowMs / 1000.0;
@@ -934,8 +934,30 @@ double nmLayerValue(int32_t tag, int32_t property, int32_t index) {
 	requireIndex(index, r->valueCount, "nmLayerValue");
 	return r->values[index];
 }
+// The record of a view's last hand-over, by view: a view without a handler has no tag of its own.
+int32_t nmViewLayerLive(void *view, int32_t property) {
+	LayerRecord *r = layerRecord(live(view, "nmViewLayerLive"), property, 0);
+	return r != NULL && r->live;
+}
+int32_t nmViewLayerKeyCount(void *view, int32_t property) {
+	return (int32_t)layerRecord(live(view, "nmViewLayerKeyCount"), property, 0)->keyCount;
+}
+double nmViewLayerKeyTime(void *view, int32_t property, int32_t index) {
+	LayerRecord *r = layerRecord(live(view, "nmViewLayerKeyTime"), property, 0);
+	requireIndex(index, r->keyCount, "nmViewLayerKeyTime");
+	return r->keyTimes[index];
+}
+double nmViewLayerValue(void *view, int32_t property, int32_t index) {
+	LayerRecord *r = layerRecord(live(view, "nmViewLayerValue"), property, 0);
+	requireIndex(index, r->valueCount, "nmViewLayerValue");
+	return r->values[index];
+}
+double nmViewLayerTiming(void *view, int32_t property, int32_t field) {
+	requireIndex(field, 8, "nmViewLayerTiming");
+	return layerRecord(live(view, "nmViewLayerTiming"), property, 0)->timing[field];
+}
 double nmLayerTiming(int32_t tag, int32_t property, int32_t field) {
-	requireIndex(field, 6, "nmLayerTiming");
+	requireIndex(field, 8, "nmLayerTiming");
 	return taggedLayer(tag, property)->timing[field];
 }
 float nmTranslateY(int32_t tag) { return tagged(tag)->translateY; }
