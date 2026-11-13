@@ -26,6 +26,15 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-11-13 — Void host: a `<View>` with no `style` drops out of layout with its whole subtree.**
+  `src/platform/void/host.ms` `createElement` gives `flex = {}` only to the root and to a Text; a `view`, `pressable`
+  or `scrollview` keeps `flex = null` until a style arrives, and yoga skips a node whose style is null as manually
+  positioned (`yoga/src/sync.ms:16`, `:133`). Measured in `tests/platform/voidDevScope.test.ms` before its fixture
+  styled its wrapper: an unstyled `<View onPointerUp>` under the area root laid out as 0x0 and every descendant,
+  including a `width: 200` View, as 0x0, while the root was 640x360. RN lays out every View. Not fixed: giving
+  groups `flex = {}` changes layout for every void app, and `flowText` relies on `flex === null` for inline labels
+  (`:1764`), so it needs its own change and the void suites.
+
 - **OPEN 2026-11-12 — iOS: the Counter's first Text draws under the status bar.** `examples/ios`
   (`examples/components/counter.ms`) on an iPhone 17 Pro simulator: the title "Neon Counter" is hidden behind
   the status bar, only fragments of its glyphs show between the clock and the indicators, while "0", the buttons
