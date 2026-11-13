@@ -103,6 +103,84 @@ function applyAreaStyle(vh: VoidHost, style: Style): void {
 	}
 }
 
+export function openWindowArea(w: AreaWindow): VoidArea {
+	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), w.font, w.family);
+	const hub = createAreaHub({
+		initialPixelWidth: w.pixelWidth(),
+		initialPixelHeight: w.pixelHeight(),
+		requestFrame: w.requestFrame,
+		setImeRect: w.setImeRect,
+		enter: (mount: () => void): void => {
+			const face: AreaFace = { font: w.font, family: w.family };
+			getAreaFaceContext().provider({
+				value: accessor((): AreaFace => face),
+				children: (host: Host, parent: HostNode, before: HostNode | null): void => { mount(); },
+			})(vh.host, vh.root, null);
+		},
+	});
+	const area: WindowArea = {
+		vh,
+		hub,
+		width: 0 as int32,
+		height: 0 as int32,
+		scale: 1.0,
+		held: 0 as int32,
+		composing: false,
+		textInput: false,
+		painted: [],
+		queued: [],
+		inputFrame: 0 as int32,
+	};
+	w.opened(area);
+	const unregister = registerDevArea({
+		vh,
+		pointer: (x: float32, y: float32, pressed: boolean): EdgeStop | null => {
+			if (area.queued.length > 0) { return { busy: true, detail: "physical input arrived during the operation and waits for its frame; it is left queued" }; }
+			if (area.hub.pointerListeners() > 0) { return { busy: false, detail: "the area has pointer listeners of its own, outside any scope" }; }
+			deliverFramePointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
+			w.requestFrame();
+			return null;
+		},
+		text: (text: string): EdgeStop | null => {
+			if (area.queued.length > 0) { return { busy: true, detail: "physical input waits for its frame; it is left queued" }; }
+			if (area.hub.textListeners() > 0) { return { busy: false, detail: "the area has text or key listeners of its own, outside any scope" }; }
+			deliverText(area, text);
+			w.requestFrame();
+			return null;
+		},
+		clearHeld: (): void => {
+			area.held = 0 as int32;
+			w.requestFrame();
+		},
+		busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0 || vh.inGesture(),
+		unproven: (typing: boolean): string | null => {
+			if (typing) { return area.hub.textListeners() > 0 ? "the area has text or key listeners of its own, outside any scope" : null; }
+			if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
+			for (const layer of area.hub.layers()) {
+				if (layer.hit !== null) { return "the area has a layer that takes pointer input, which a scope cannot place"; }
+			}
+			return null;
+		},
+	});
+	vh.onDirty(w.dirty);
+	vh.setLayers((): AreaLayer[] => {
+		const order: AreaLayer[] = [];
+		for (const d of layersInPaintOrder(vh, hub.layers(), area.painted)) { order.push(d.layer); }
+		return order;
+	});
+	return {
+		host: vh.host,
+		root: vh.root as unknown as HostNode,
+		hub,
+		release: (): void => {
+			unregister();
+			dropQueuedInput(area);
+			vh.scene.close();
+			w.released(area);
+		},
+	};
+}
+
 export function windowHost(w: AreaWindow): Host {
 	let current: WindowArea | null = null;
 	let pendingStyle: Style | null = null;
@@ -119,107 +197,48 @@ export function windowHost(w: AreaWindow): Host {
 
 	const openArea = (node: HostNode): VoidArea => {
 		if (current !== null) { refuse("a second <Void> was mounted"); }
-		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), w.font, w.family);
-		const hub = createAreaHub({
-			initialPixelWidth: w.pixelWidth(),
-			initialPixelHeight: w.pixelHeight(),
+		return openWindowArea({
+			name: w.name,
+			font: w.font,
+			family: w.family,
+			pixelWidth: w.pixelWidth,
+			pixelHeight: w.pixelHeight,
 			requestFrame: w.requestFrame,
+			dirty: w.dirty,
 			setImeRect: w.setImeRect,
-			enter: (mount: () => void): void => {
-				const face: AreaFace = { font: w.font, family: w.family };
-				getAreaFaceContext().provider({
-					value: accessor((): AreaFace => face),
-					children: (host: Host, parent: HostNode, before: HostNode | null): void => { mount(); },
-				})(vh.host, vh.root, null);
-			},
-		});
-		const area: WindowArea = {
-			vh,
-			hub,
-			width: 0 as int32,
-			height: 0 as int32,
-			scale: 1.0,
-			held: 0 as int32,
-			composing: false,
-			textInput: false,
-			painted: [],
-			queued: [],
-			inputFrame: 0 as int32,
-		};
-		current = area;
-		w.opened(area);
-		const unregister = registerDevArea({
-			vh,
-			pointer: (x: float32, y: float32, pressed: boolean): EdgeStop | null => {
-				if (area.queued.length > 0) { return { busy: true, detail: "physical input arrived during the operation and waits for its frame; it is left queued" }; }
-				if (area.hub.pointerListeners() > 0) { return { busy: false, detail: "the area has pointer listeners of its own, outside any scope" }; }
-				deliverFramePointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
-				w.requestFrame();
-				return null;
-			},
-			text: (text: string): EdgeStop | null => {
-				if (area.queued.length > 0) { return { busy: true, detail: "physical input waits for its frame; it is left queued" }; }
-				if (area.hub.textListeners() > 0) { return { busy: false, detail: "the area has text or key listeners of its own, outside any scope" }; }
-				deliverText(area, text);
-				w.requestFrame();
-				return null;
-			},
-			clearHeld: (): void => {
-				area.held = 0 as int32;
-				w.requestFrame();
-			},
-			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0 || vh.inGesture(),
-			unproven: (typing: boolean): string | null => {
-				if (typing) { return area.hub.textListeners() > 0 ? "the area has text or key listeners of its own, outside any scope" : null; }
-				if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
-				for (const layer of area.hub.layers()) {
-					if (layer.hit !== null) { return "the area has a layer that takes pointer input, which a scope cannot place"; }
+			opened: (area: WindowArea): void => {
+				current = area;
+				w.opened(area);
+				when (hcr || testBuild) {
+					setDevDriver({
+						host: w.name,
+						tree: (): DevNode => area.vh.snapshot(),
+						pressAt: (x: float32, y: float32): void => {
+							const px = (x * area.scale) as float64;
+							const py = (y * area.scale) as float64;
+							deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
+							deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
+							w.requestFrame();
+						},
+						type: (text: string): void => {
+							deliverText(area, text);
+							w.requestFrame();
+						},
+					});
 				}
-				return null;
+				if (pendingStyle !== null) {
+					applyAreaStyle(area.vh, pendingStyle as Style);
+					w.requestFrame();
+				}
 			},
-		});
-		when (hcr || testBuild) {
-			setDevDriver({
-				host: w.name,
-				tree: (): DevNode => vh.snapshot(),
-				pressAt: (x: float32, y: float32): void => {
-					const px = (x * area.scale) as float64;
-					const py = (y * area.scale) as float64;
-					deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
-					deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
-					w.requestFrame();
-				},
-				type: (text: string): void => {
-					deliverText(area, text);
-					w.requestFrame();
-				},
-			});
-		}
-		if (pendingStyle !== null) {
-			applyAreaStyle(vh, pendingStyle as Style);
-			w.requestFrame();
-		}
-		vh.onDirty(w.dirty);
-		vh.setLayers((): AreaLayer[] => {
-			const order: AreaLayer[] = [];
-			for (const d of layersInPaintOrder(vh, hub.layers(), area.painted)) { order.push(d.layer); }
-			return order;
-		});
-		return {
-			host: vh.host,
-			root: vh.root as unknown as HostNode,
-			hub,
-			release: (): void => {
+			released: (area: WindowArea): void => {
 				current = null;
-				unregister();
-				dropQueuedInput(area);
 				when (hcr || testBuild) {
 					setDevDriver(null);
 				}
-				vh.scene.close();
 				w.released(area);
 			},
-		};
+		});
 	};
 
 	return {
@@ -424,13 +443,22 @@ export function deliverPreedit(a: WindowArea, text: string, cursor: int32): void
 	flush((): void => { a.vh.composeText(text, cursor); });
 }
 
-export function deliverResize(a: WindowArea, width: int32, height: int32, scale: float64): void {
+function sizeArea(a: WindowArea, width: int32, height: int32, scale: float64): void {
 	drainInput(a);
 	a.width = width;
 	a.height = height;
 	a.scale = scale as float32;
+}
+
+export function deliverResize(a: WindowArea, width: int32, height: int32, scale: float64): void {
+	sizeArea(a, width, height, scale);
 	publishScale(scale, 1);
 	publishWindow(a.logicalWidth(), a.logicalHeight());
+	a.hub.resize({ pixelWidth: width, pixelHeight: height, scale: a.scale });
+}
+
+export function deliverAreaResize(a: WindowArea, width: int32, height: int32, scale: float64): void {
+	sizeArea(a, width, height, scale);
 	a.hub.resize({ pixelWidth: width, pixelHeight: height, scale: a.scale });
 }
 
