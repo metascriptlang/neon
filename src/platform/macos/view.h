@@ -10,6 +10,7 @@
 @property(nonatomic) float x, y, w, h;
 @property(nonatomic) float scaleX, scaleY, translateX, translateY, rotation, radius;
 @property(nonatomic) BOOL clips;
+@property(nonatomic) NSEdgeInsets hitSlop;
 @property(nonatomic, strong) NSColor *neonBackground;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *accessibility;
 @end

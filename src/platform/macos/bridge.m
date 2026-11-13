@@ -211,7 +211,9 @@ static NeonView *hitIn(NeonView *view, float px, float py, float *foundX, float 
 			if (found) return found;
 		}
 	}
-	if (!inside || (isLabel(view) && !view.pressable)) return nil;
+	NSEdgeInsets slop = view.hitSlop;
+	BOOL inSlop = lx >= -slop.left && lx <= view.w + slop.right && ly >= -slop.top && ly <= view.h + slop.bottom;
+	if (!inSlop || (isLabel(view) && !view.pressable)) return nil;
 	*foundX = lx;
 	*foundY = ly;
 	return view;
@@ -2112,6 +2114,10 @@ static BOOL isAccessibilityProp(const char *name) {
 	return NO;
 }
 
+static BOOL hasNoMeaningOnMacOS(const char *name) {
+	return !strcmp(name, "androidRipple") || !strcmp(name, "statusBarStyle") || !strcmp(name, "statusBarHidden") || !strcmp(name, "statusBarTranslucent");
+}
+
 void niSetProp(void *view, const char *name, const char *value) {
 	const char *text = value ? value : "";
 	if (!strcmp(name, "overflow")) {
@@ -2120,6 +2126,13 @@ void niSetProp(void *view, const char *name, const char *value) {
 		requestHostFrame();
 		return;
 	}
+	if (!strcmp(name, "hitSlop")) {
+		float top = 0, left = 0, bottom = 0, right = 0;
+		if (text[0] && sscanf(text, "%f,%f,%f,%f", &top, &left, &bottom, &right) != 4) fail("niSetProp(hitSlop): want top,left,bottom,right");
+		as(view).hitSlop = NSEdgeInsetsMake(top, left, bottom, right);
+		return;
+	}
+	if (hasNoMeaningOnMacOS(name)) return;
 	if (isInput(as(view)) && !isAccessibilityProp(name)) {
 		[(NeonInput *)as(view) setProp:name value:text];
 		return;
