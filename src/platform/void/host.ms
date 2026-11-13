@@ -276,6 +276,7 @@ export interface VoidHost {
 	guarded: (top: VoidNode, cleanup: boolean, body: () => void) => string | null;
 	lastBlocked: () => string | null;
 	abortGesture: () => void;
+	inGesture: () => boolean;
 	layerSlot: (anchor: LayerAnchor) => NodeRef | null;
 }
 
@@ -2090,6 +2091,7 @@ export function createVoidHostWith(
 			return guardBlock;
 		},
 		lastBlocked: (): string | null => guardBlock,
+		inGesture: (): boolean => captured !== null || capturedLayer !== null || touching || pressNode !== null || pressSpan !== null,
 		abortGesture: (): void => {
 			try {
 				pointerLeave();

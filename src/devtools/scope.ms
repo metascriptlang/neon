@@ -3,11 +3,16 @@ import { VoidHost, VoidNode, GUARD_NESTED } from "../platform/void/host";
 
 export interface DevArea {
 	vh: VoidHost;
-	pointer: (x: float32, y: float32, pressed: boolean) => string | null;
-	text: (text: string) => string | null;
+	pointer: (x: float32, y: float32, pressed: boolean) => EdgeStop | null;
+	text: (text: string) => EdgeStop | null;
 	clearHeld: () => void;
 	busy: () => boolean;
 	unproven: (typing: boolean) => string | null;
+}
+
+export interface EdgeStop {
+	busy: boolean;
+	detail: string;
 }
 
 export enum DevScopeError { NotAVoidArea, NotInArea, Removed }
@@ -210,15 +215,15 @@ function hitRef(scope: DevScope, vh: VoidHost, hit: VoidNode | null): DevRef | n
 
 class EdgeOutcome {
 	blocked: string | null = null;
-	hub: string | null = null;
+	stop: EdgeStop | null = null;
 	thrown: string | null = null;
 	nested: boolean = false;
 }
 
-function runEdge(scope: DevScope, area: DevArea, deliver: () => string | null): EdgeOutcome {
+function runEdge(scope: DevScope, area: DevArea, deliver: () => EdgeStop | null): EdgeOutcome {
 	const out = new EdgeOutcome();
 	try {
-		const blocked = area.vh.guarded(scope.root, false, (): void => { out.hub = deliver(); });
+		const blocked = area.vh.guarded(scope.root, false, (): void => { out.stop = deliver(); });
 		if (blocked === GUARD_NESTED) { out.nested = true; } else { out.blocked = blocked; }
 	} catch (e) {
 		if (e instanceof Error) { out.thrown = (e as Error).message; } else { out.thrown = NOT_AN_ERROR; }
@@ -231,7 +236,7 @@ function stopped(o: EdgeOutcome): DevActRefusal | null {
 	if (o.nested) { return refusal(DevRefusal.Busy, "another scoped operation is running on this area"); }
 	if (o.thrown !== null) { return refusal(DevRefusal.HandlerFailed, o.thrown as string); }
 	if (o.blocked !== null) { return refusal(DevRefusal.ForeignListenerBlocked, `${o.blocked as string} outside the scope was not called; the operation stopped there`); }
-	if (o.hub !== null) { return refusal(DevRefusal.Unsupported, o.hub as string); }
+	if (o.stop !== null) { return refusal((o.stop as EdgeStop).busy ? DevRefusal.Busy : DevRefusal.Unsupported, (o.stop as EdgeStop).detail); }
 	return null;
 }
 
@@ -275,7 +280,7 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 	if (outside !== null) {
 		return Result.err(refusal(DevRefusal.Intercepted, `the press would reach <${(outside as VoidNode).tag}> outside the scope (a listener above the scope, a hovered node it leaves, or a focus it moves)`));
 	}
-	const down = stopped(runEdge(scope, area, (): string | null => area.pointer(x, y, true)));
+	const down = stopped(runEdge(scope, area, (): EdgeStop | null => area.pointer(x, y, true)));
 	if (down !== null) { return Result.err(withNote(down as DevActRefusal, cleanup(scope, area))); }
 	if (ref.node.disposed || scope.area === null || scope.root.disposed || !inside(vh, ref.node, scope.root)) {
 		return Result.err(refusal(DevRefusal.TargetGoneDuringPress, "the target left during the press; the gesture was cancelled within the scope and no release was sent" + cleanup(scope, area)));
@@ -285,7 +290,7 @@ export function scopePress(scope: DevScope, ref: DevRef): Result<void, DevActRef
 		const who = late !== null ? `<${(late as VoidNode).tag}>` : "the area";
 		return Result.err(refusal(DevRefusal.ForeignListenerBlocked, `${who} outside the scope started listening during the press and was not called; the gesture was cancelled within the scope` + cleanup(scope, area)));
 	}
-	const up = stopped(runEdge(scope, area, (): string | null => area.pointer(x, y, false)));
+	const up = stopped(runEdge(scope, area, (): EdgeStop | null => area.pointer(x, y, false)));
 	if (up !== null) { return Result.err(withNote(up as DevActRefusal, cleanup(scope, area))); }
 	return Result.ok(undefined);
 }
@@ -310,7 +315,7 @@ export function scopeType(scope: DevScope, ref: DevRef, text: string): Result<vo
 		}
 		return Result.err(refusal(DevRefusal.NotFocused, "the target does not hold focus", hitRef(scope, area.vh, focused)));
 	}
-	const typed = stopped(runEdge(scope, area, (): string | null => area.text(text)));
+	const typed = stopped(runEdge(scope, area, (): EdgeStop | null => area.text(text)));
 	if (typed !== null) { return Result.err(typed as DevActRefusal); }
 	return Result.ok(undefined);
 }

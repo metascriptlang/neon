@@ -62,6 +62,7 @@ const [listenLate, setListenLate] = createSignal(false);
 const [listenLateDown, setListenLateDown] = createSignal(false);
 const [listenLateHub, setListenLateHub] = createSignal(false);
 const [listenLateText, setListenLateText] = createSignal(false);
+const [queueOnDown, setQueueOnDown] = createSignal(false);
 let lateOff: (() => void)[] = [];
 let lateArea: WindowArea | null = null;
 let outsideNode: HostNode | null = null;
@@ -110,6 +111,7 @@ function appPane(): NeonNode {
 					onPressIn={(): void => {
 						if (swapOnDown()) { setSwapped(true); }
 						if (listenLate()) { listenOutside("onPointerUp", (): void => { counts.lateUp += 1; }); }
+						if (queueOnDown()) { deliverPointer(lateArea as WindowArea, { kind: AreaPointerKind.Motion, pixelX: 250.0, pixelY: 20.0, button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 }); }
 						if (listenLateHub()) { lateOff.push((lateArea as WindowArea).hub.handle.onPointer((e: AreaPointerEvent): void => { counts.lateHub += 1; })); }
 					}}
 					onPress={(): void => {
@@ -171,6 +173,7 @@ function mount(shell: boolean): Fixture {
 	setListenLateDown(false);
 	setListenLateHub(false);
 	setListenLateText(false);
+	setQueueOnDown(false);
 	lateOff = [];
 	resetErrorHalt();
 	const areas: WindowArea[] = [];
@@ -527,6 +530,55 @@ test "a button already held on the area makes a scoped press refused as busy, an
 	assert reason(scopePress(f.app, pressableIn(f.app))) === DevRefusal.Busy.toString(), "busy";
 	deliverPointer(f.area, { kind: AreaPointerKind.Button, pixelX: at[0], pixelY: at[1], button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
 	assert counts.editor === 1 && counts.app === 0, `the held gesture completed as its own: editor ${counts.editor}, app ${counts.app}`;
+	f.dispose();
+}
+
+test "a physical touch in progress (button 0, held 0) makes a scoped press busy, and the touch completes as its own" {
+	const f = mount(false);
+	laid(f);
+	const target = pressableIn(f.app);
+	const at = centre(f.app, target);
+	deliverPointer(f.area, { kind: AreaPointerKind.Button, pixelX: at[0], pixelY: at[1], button: 0 as int32, pressed: true, dx: 0.0, dy: 0.0 });
+	assert f.area.held === (0 as int32), "a touch leaves held at 0";
+	assert reason(scopePress(f.app, pressableIn(f.app))) === DevRefusal.Busy.toString(), "busy while the touch is down";
+	assert counts.app === 0 && counts.appUp === 0, `no synthetic callbacks: app ${counts.app}, app up ${counts.appUp}`;
+	deliverPointer(f.area, { kind: AreaPointerKind.Button, pixelX: at[0], pixelY: at[1], button: 0 as int32, pressed: false, dx: 0.0, dy: 0.0 });
+	assert counts.app === 1 && counts.appUp === 1, `the touch completed once as its own: app ${counts.app}, app up ${counts.appUp}`;
+	f.dispose();
+}
+
+test "left down, right down, right up leaves held 0 with the left gesture captured, and a scoped press stays busy" {
+	const f = mount(false);
+	laid(f);
+	const at = centre(f.app, pressableIn(f.app));
+	const button = (b: int32, pressed: boolean): void => {
+		deliverPointer(f.area, { kind: AreaPointerKind.Button, pixelX: at[0], pixelY: at[1], button: b, pressed, dx: 0.0, dy: 0.0 });
+	};
+	button(1 as int32, true);
+	button(2 as int32, true);
+	button(2 as int32, false);
+	assert f.area.held === (0 as int32), "held reads 0 after the right release";
+	assert reason(scopePress(f.app, pressableIn(f.app))) === DevRefusal.Busy.toString(), "busy while the left gesture is captured";
+	assert counts.app === 0, `no synthetic press: app ${counts.app}`;
+	button(1 as int32, false);
+	assert counts.app === 1, `the left gesture completed once as its own: app ${counts.app}`;
+	f.dispose();
+}
+
+test "physical input queued during the down stops the press before the release and stays queued for its frame" {
+	const f = mount(false);
+	laid(f);
+	setQueueOnDown(true);
+	flush();
+	const r = scopePress(f.app, pressableIn(f.app));
+	assert reason(r) === DevRefusal.Busy.toString() && !r.ok && r.error.detail.indexOf("arrived during the operation") > 0, "busy at the release: " + why<void>(r);
+	assert counts.app === 0 && counts.appUp === 0 && f.area.held === (0 as int32), `no release, gesture cleared: app ${counts.app}, up ${counts.appUp}, held ${f.area.held}`;
+	assert f.area.queued.length === 1, `the physical motion is still queued: ${f.area.queued.length}`;
+	drainInput(f.area);
+	assert f.area.queued.length === 0, "its frame drained it";
+	setQueueOnDown(false);
+	flush();
+	assert scopePress(f.app, pressableIn(f.app)).ok && counts.app === 1, `the next press works: ${counts.app}`;
 	f.dispose();
 }
 

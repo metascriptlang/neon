@@ -23,7 +23,7 @@ import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";
-import { registerDevArea } from "../../devtools/scope";
+import { registerDevArea, EdgeStop } from "../../devtools/scope";
 when (hcr || testBuild) {
 	import { DevNode, setDevDriver } from "../../devtools/driver";
 }
@@ -150,14 +150,16 @@ export function windowHost(w: AreaWindow): Host {
 		w.opened(area);
 		const unregister = registerDevArea({
 			vh,
-			pointer: (x: float32, y: float32, pressed: boolean): string | null => {
-				if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
+			pointer: (x: float32, y: float32, pressed: boolean): EdgeStop | null => {
+				if (area.queued.length > 0) { return { busy: true, detail: "physical input arrived during the operation and waits for its frame; it is left queued" }; }
+				if (area.hub.pointerListeners() > 0) { return { busy: false, detail: "the area has pointer listeners of its own, outside any scope" }; }
 				deliverFramePointer(area, { kind: AreaPointerKind.Button, pixelX: (x * area.scale) as float64, pixelY: (y * area.scale) as float64, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
 				w.requestFrame();
 				return null;
 			},
-			text: (text: string): string | null => {
-				if (area.hub.textListeners() > 0) { return "the area has text or key listeners of its own, outside any scope"; }
+			text: (text: string): EdgeStop | null => {
+				if (area.queued.length > 0) { return { busy: true, detail: "physical input waits for its frame; it is left queued" }; }
+				if (area.hub.textListeners() > 0) { return { busy: false, detail: "the area has text or key listeners of its own, outside any scope" }; }
 				deliverText(area, text);
 				w.requestFrame();
 				return null;
@@ -166,7 +168,7 @@ export function windowHost(w: AreaWindow): Host {
 				area.held = 0 as int32;
 				w.requestFrame();
 			},
-			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0,
+			busy: (): boolean => area.held !== (0 as int32) || area.queued.length > 0 || vh.inGesture(),
 			unproven: (typing: boolean): string | null => {
 				if (typing) { return area.hub.textListeners() > 0 ? "the area has text or key listeners of its own, outside any scope" : null; }
 				if (area.hub.pointerListeners() > 0) { return "the area has pointer listeners of its own, outside any scope"; }
