@@ -112,6 +112,16 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Pin:** `tests/platform/voidInput.test.ms` ("a layout change an onLayout handler makes is laid out in the frame that ran it", "a node an onLayout handler mounts is laid out before the frame is drawn", "an onLayout handler that never settles is refused"); `tests/platform/nativeHost.test.ms` ("a native onLayout handler's write is laid out before the frame it measured ends", "a native onLayout handler that never settles is refused by name"); `tests/browser/dom.test.ms` ("onLayout after a resize the host did not make runs in the frame that laid it out, before the next animation frame", red on the previous DOM host with `next frame|layout 60`).
 - **Checked:** 2026-11-09, read (RN, Flutter, HTML) and measured on the native mock host and in Chrome; decided under the person's delegation ("bro chọn").
 
+### SF-9 · On native, `LayoutAnimation` fades or scales only the root of a created or deleted subtree
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** Fabric's `LayoutAnimationKeyFrameManager` makes a keyframe for every non-move `Insert` and `Remove` mutation that has a configuration (`ReactCommon/react/renderer/animations/LayoutAnimationKeyFrameManager.cpp:435-470`, opacity set to 0 at the start for a view kind), and the differ inserts each node of a new subtree (`ReactCommon/react/renderer/mounting/Differentiator.cpp:1021-1040` inserts the child, then recurses with no old children), so every view in it fades or scales on its own and nested opacities multiply.
+- **MS:** `src/platform/native/host.ms` (the `layoutSetFrame` tween branch with `src/motion/layoutAnimation.ms`) animates the inserted subtree root in and the removed subtree root out, keeping removed views until the `delete` phase ends; the browser does the same for inserted elements and drops `delete` (`WORKAROUND.md` N7, parked with native's "next relayout, not next commit" by the person, 2026-11-14).
+- **Why:** one fade per subtree shows the subtree at the configured opacity; a child fading inside a fading parent shows the product (0.25 at the halfway point of a linear fade), which no app asked for, and the browser path animates roots too, so the two hosts agree.
+- **Don't:** animate every inserted view to match RN's mutation list.
+- **Pin:** `tests/platform/nativeLayoutAnimation.test.ms` ("a created view fades in under the easeInEaseOut preset; siblings below slide": "only the inserted root fades, not its children"; "a removed view fades out under the delete phase and is released when it ends").
+- **Checked:** 2026-11-14, read (RN `693e9628e8c`); approved by the person ("theo đề xuất đi").
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
