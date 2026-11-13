@@ -29,7 +29,12 @@ void harnessExpectCentre(const char *name, const char *layout, int left, int top
 
 void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth) {
 	if (!g_sizes) g_sizes = [NSMutableArray array];
-	[g_sizes addObject:@[@(layout), @(text), @(fontSize), @(bold), @(maxWidth)]];
+	[g_sizes addObject:@[@(layout), @(text), @(fontSize), @(bold), @(maxWidth), @0]];
+}
+
+void harnessExpectLines(const char *layout, const char *text, float fontSize, int bold, float maxWidth, int lines) {
+	if (!g_sizes) g_sizes = [NSMutableArray array];
+	[g_sizes addObject:@[@(layout), @(text), @(fontSize), @(bold), @(maxWidth), @(lines)]];
 }
 
 static int checkSize(NSArray *c) {
@@ -43,6 +48,8 @@ static int checkSize(NSArray *c) {
 	NSLayoutManager *manager = [NSLayoutManager new];
 	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:NSMakeSize([c[4] doubleValue], CGFLOAT_MAX)];
 	container.lineFragmentPadding = 0;
+	container.maximumNumberOfLines = (NSUInteger)[c[5] intValue];
+	if ([c[5] intValue] > 0) container.lineBreakMode = NSLineBreakByTruncatingTail;
 	[manager addTextContainer:container];
 	[storage addLayoutManager:manager];
 	[manager ensureLayoutForTextContainer:container];

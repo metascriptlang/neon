@@ -10,7 +10,7 @@ import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text } from "../../src/components/primitives";
-import { harnessIsCheck, harnessExpect, harnessLayout, harnessExpectCentre, harnessExpectCount, harnessExpectSize, harnessSample, harnessClick } from "./harness.h";
+import { harnessIsCheck, harnessExpect, harnessLayout, harnessExpectCentre, harnessExpectCount, harnessExpectSize, harnessExpectLines, harnessSample, harnessClick } from "./harness.h";
 import { nimLayoutsBuilt } from "../../src/platform/macos/handoff.h";
 import { exit } from "std/process";
 
@@ -26,6 +26,7 @@ const styles = createStyles({
 	big: { marginLeft: 20, marginTop: 10 },
 	hello: { marginLeft: 30, marginTop: 20 },
 	wrapped: { marginLeft: 20, marginTop: 20, alignSelf: "flex-start", maxWidth: 200 },
+	oneLine: { position: "absolute", left: 400, top: 128, maxWidth: 200 },
 	bigText: { color: "#ffffff", fontSize: 96, fontWeight: "bold" },
 	helloText: { color: "#ffd23f", fontSize: 32 },
 	wrapText: { color: "#101820", fontSize: 20 },
@@ -60,6 +61,9 @@ function App(): NeonNode {
 				<Text style={styles.wrapText}>The quick brown fox jumps over the lazy dog</Text>
 			</View>
 		</View>
+		<View style={styles.oneLine} onLayout={layout("oneLine")}>
+			<Text style={styles.wrapText} numberOfLines={1}>The quick brown fox jumps over the lazy dog</Text>
+		</View>
 		<View style={styles.alignPanel}>
 			<Text style={styles.rightText}>right</Text>
 		</View>
@@ -89,6 +93,7 @@ if (check) {
 	harnessExpectSize("big", "I", 96, 1, 640);
 	harnessExpectSize("hello", "Hello macOS", 32, 0, 640);
 	harnessExpectSize("wrapped", "The quick brown fox jumps over the lazy dog", 20, 0, 200);
+	harnessExpectLines("oneLine", "The quick brown fox jumps over the lazy dog", 20, 0, 200, 1);
 	harnessExpectCount("run drawn red", 20, 290, 560, 60, 255, 0, 0, 60, 300, 100000);
 	harnessExpectCount("text around the run is white", 20, 290, 560, 60, 255, 255, 255, 60, 200, 100000);
 }
