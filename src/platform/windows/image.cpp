@@ -18,6 +18,10 @@ using Microsoft::WRL::ComPtr;
 
 extern "C" void ionWakeLoop(void);
 
+#ifdef NEON_IMAGE_WORKER_TEST
+extern "C" void imageWorkerDecodeProbe(void);
+#endif
+
 namespace {
 
 IWICImagingFactory *factory() {
@@ -276,6 +280,9 @@ void ImagePicture::Load(const char *newUri) {
 }
 
 void ImagePicture::Decode(IWICBitmapDecoder *decoder) {
+#ifdef NEON_IMAGE_WORKER_TEST
+	imageWorkerDecodeProbe();
+#endif
 	IWICImagingFactory *wic = factory();
 	ComPtr<IWICBitmapFrameDecode> frame;
 	ComPtr<IWICFormatConverter> converter;

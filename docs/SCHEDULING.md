@@ -238,6 +238,47 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Windows image decode ownership RED, 2026-11-13
+
+`tests/platform/windowsImageWorker.cpp` with the opt-in `NEON_IMAGE_WORKER_TEST` seam in
+`src/platform/windows/image.cpp` `ImagePicture::Decode` makes the current thread-owner gap
+visible. Base tree `c4c6354e5e63a281a1963520ce517da4be3acf5e`, plus fixture SHA-256
+`ced0d3f620ee9ea8fac34b6b3e13d5cd141f5a36cda5c194bfc84af1e0f972a0` and instrumented source
+`647f052cce96be84171e8243f692b9ab3364ac35d07845d7bd483ecbea99ddc2`.
+Header remains `667063f5`; generator remains `6ee637b5`. Removing only the macro blocks
+exactly recovers native baseline `49fe51de`; this step does not move production work.
+
+On d87/MinGW g++16.2.0, two reserved cores, standalone C++/no MSC, the4096² PNG passed
+header/setup validation, then failed **`decode ran on host thread`**, exit1:
+`host=22996 decode=22996 apartment=3` (MAINSTA). The controlled wrapper expected that
+specific failure and exited0. This is a reached ownership RED, not a timeout/setup failure.
+Only the first assertion was reached: later MTA/wake/main-delivery/one-report assertions
+are not yet exercised, and the event stub is not a real Ion-loop wake certificate.
+Cancellation, replacement, bounded work, shutdown and production offload remain unproved.
+This standalone fixture is not yet registered with `tests/run.sh`.
+
+Through `run-remote.sh --windows --no-msc --cores 2`:
+
+```bash
+g++ -std=c++17 -O2 -DNOMINMAX -DNEON_IMAGE_WORKER_TEST \
+  tests/platform/windowsImageWorker.cpp src/platform/windows/image.cpp \
+  -o out/windows-image-worker.exe \
+  -lurlmon -lole32 -lwindowscodecs -ld2d1 -ldxguid -luuid
+python3 bench/imageInputs.py out/image-worker
+uri=$(python3 -c 'from pathlib import Path; print(Path("out/image-worker/4096.png").resolve().as_uri())' | tr -d '\r')
+timeout 20 out/windows-image-worker.exe "$uri"
+```
+
+Raw `/tmp/native-threads-image-worker-red-retry.log`; all four source hashes matched.
+Executable `9c68d3887ef8929ed3d1352bb513ee3b3fb2b15154aeaed877fc59aa1fe9f8a4` and input
+PNG `aae368ca0f86f0c573c95dfadebdcbcb9dd20723f56782a6919c622a89c806c6` independently
+rehashed in `*-red-fingerprint.log`. Reservation98s plus293s admission wait: a recorded
+slow check, not an automatic edit-loop repeat. Earlier360s caller timeout produced only
+`pick-host: still waiting after 308s`, no allocation/build/test output. No owned
+runner/picker/waiter or matching remote test/compiler remained in cleanup snapshots
+(`/tmp/native-threads-image-worker-{red,timeout-check,timeout-processes}.log`). Retry
+extended the caller's admission budget, not the unchanged20s executable guard.
+
 ### Owned WARP image consumer diagnostic, 2026-11-13
 
 The next `bench/imageTransfer.cpp` variant reaches the Direct2D bitmap consumer used by
