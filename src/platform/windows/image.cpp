@@ -65,6 +65,8 @@ std::mutex g_downloadsLock;
 std::vector<ImageDownload> g_downloads;
 std::map<uint32_t, ImagePicture *> g_waiting;
 std::atomic<uint32_t> g_nextImageId{1};
+std::unique_ptr<ImageDecodeQueue> g_pictureDecodes;
+bool g_imagesClosed = false;
 
 uint32_t imageRequestId() {
 	uint32_t id = g_nextImageId.load(std::memory_order_relaxed);
@@ -100,9 +102,11 @@ DWORD WINAPI fetchWorker(void *arg) {
 	if (SUCCEEDED(init)) CoUninitialize();
 	{
 		std::lock_guard<std::mutex> lock(g_downloadsLock);
-		g_downloads.push_back(std::move(done));
+		if (!g_imagesClosed) {
+			g_downloads.push_back(std::move(done));
+			ionWakeLoop();
+		}
 	}
-	ionWakeLoop();
 	return 0;
 }
 
@@ -456,6 +460,10 @@ ImageSize ImageHeaderSizeOfFile(const std::wstring &path) {
 bool ImageIsNetwork(const char *uri) { return isNetwork(uri); }
 
 uint32_t ImageFetch(const char *uri) {
+	{
+		std::lock_guard<std::mutex> lock(g_downloadsLock);
+		if (g_imagesClosed) refuse("image download", "submit after shutdown");
+	}
 	uint32_t id = imageRequestId();
 	HANDLE thread = CreateThread(nullptr, 0, fetchWorker, new FetchJob{id, uri}, 0, nullptr);
 	if (!thread) {
@@ -474,6 +482,20 @@ std::vector<ImageDownload> ImageTakeDownloads() {
 	return taken;
 }
 
+std::vector<ImageDecoded> ImageTakeDecoded() {
+	return g_pictureDecodes ? g_pictureDecodes->Take() : std::vector<ImageDecoded>();
+}
+
+void ImageShutdown() {
+	{
+		std::lock_guard<std::mutex> lock(g_downloadsLock);
+		g_imagesClosed = true;
+		g_downloads.clear();
+	}
+	if (g_pictureDecodes) g_pictureDecodes->Close();
+	while (!g_waiting.empty()) g_waiting.begin()->second->CancelFetch();
+}
+
 ImagePicture *ImagePicture::Waiting(uint32_t id) {
 	auto at = g_waiting.find(id);
 	return at == g_waiting.end() ? nullptr : at->second;
@@ -482,11 +504,22 @@ ImagePicture *ImagePicture::Waiting(uint32_t id) {
 ImagePicture::~ImagePicture() { CancelFetch(); }
 
 void ImagePicture::CancelFetch() {
-	if (fetching) g_waiting.erase(fetching);
+	if (fetching) {
+		g_waiting.erase(fetching);
+		if (g_pictureDecodes) g_pictureDecodes->Cancel(fetching);
+	}
 	fetching = 0;
 }
 
+void ImagePicture::QueueDecode(const char *value) {
+	if (g_imagesClosed) refuse("image decode", "submit after shutdown");
+	if (!g_pictureDecodes) g_pictureDecodes.reset(new ImageDecodeQueue(ionWakeLoop));
+	fetching = g_pictureDecodes->Submit(value);
+	g_waiting[fetching] = this;
+}
+
 void ImagePicture::Deliver(const ImageDownload &download) {
+	if (download.id != fetching) refuse("image download", "delivery to stale picture");
 	fetching = 0;
 	g_waiting.erase(download.id);
 	paintDirty = true;
@@ -495,20 +528,27 @@ void ImagePicture::Deliver(const ImageDownload &download) {
 		pending = kImageError;
 		return;
 	}
-	ComPtr<IWICBitmapDecoder> decoder;
-	HRESULT hr = factory()->CreateDecoderFromFilename(download.path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder);
-	if (FAILED(hr)) {
-		failure = loadError("cannot decode image", hr);
+	int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, download.path.c_str(), -1, nullptr, 0, nullptr, nullptr);
+	if (!length) {
+		failure = "malformed image cache path";
 		pending = kImageError;
 		return;
 	}
-	Decode(decoder.Get());
+	std::string path((size_t)length, '\0');
+	WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, download.path.c_str(), -1, path.data(), length, nullptr, nullptr);
+	path.pop_back();
+	std::string value = "file://";
+	for (char byte : path) {
+		if (byte == '%') value += "%25";
+		else value += byte;
+	}
+	QueueDecode(value.c_str());
 }
 
 void ImagePicture::Load(const char *newUri) {
 	uri = newUri;
 	CancelFetch();
-	pixels.Reset();
+	pixels.reset();
 	pixelsWide = pixelsHigh = 0;
 	pending = kImageNone;
 	failure.clear();
@@ -519,33 +559,25 @@ void ImagePicture::Load(const char *newUri) {
 		g_waiting[fetching] = this;
 		return;
 	}
-	std::vector<BYTE> data;
-	ComPtr<IWICBitmapDecoder> decoder;
-	if (FAILED(openDecoder(factory(), newUri, &data, &decoder, &failure))) {
-		pending = kImageError;
-		return;
-	}
-	Decode(decoder.Get());
+	QueueDecode(newUri);
 }
 
-void ImagePicture::Decode(IWICBitmapDecoder *decoder) {
-#ifdef NEON_IMAGE_WORKER_TEST
-	imageWorkerDecodeProbe();
-#endif
-	IWICImagingFactory *wic = factory();
-	ComPtr<IWICBitmapFrameDecode> frame;
-	ComPtr<IWICFormatConverter> converter;
-	HRESULT hr = decoder->GetFrame(0, &frame);
-	if (SUCCEEDED(hr)) hr = wic->CreateFormatConverter(&converter);
-	if (SUCCEEDED(hr)) hr = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
-	if (SUCCEEDED(hr)) hr = wic->CreateBitmapFromSource(converter.Get(), WICBitmapCacheOnLoad, &pixels);
-	if (SUCCEEDED(hr)) hr = pixels->GetSize(&pixelsWide, &pixelsHigh);
-	if (FAILED(hr)) {
-		pixels.Reset();
-		failure = loadError("cannot decode image", hr);
+void ImagePicture::Deliver(ImageDecoded decoded) {
+	if (decoded.id != fetching) refuse("image decode", "delivery to stale picture");
+	g_waiting.erase(fetching);
+	fetching = 0;
+	paintDirty = true;
+	failure = std::move(decoded.error);
+	if (!failure.empty()) {
 		pending = kImageError;
 		return;
 	}
+	if (!decoded.pixels || !decoded.byteCount ||
+		decoded.byteCount != ImageDecodeByteCount(decoded.width, decoded.height))
+		refuse("image decode", "invalid pixel result");
+	pixels = std::move(decoded.pixels);
+	pixelsWide = decoded.width;
+	pixelsHigh = decoded.height;
 	pending = kImageLoad;
 }
 
@@ -613,8 +645,8 @@ void ImagePicture::Draw(ICompositionContext *context, IVisual *visual, int32_t p
 		return;
 	}
 	ComPtr<ID2D1Bitmap> bitmap;
-	must(target->CreateBitmapFromWicBitmap(pixels.Get(),
-		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f), &bitmap), "CreateBitmapFromWicBitmap");
+	must(target->CreateBitmap(D2D1::SizeU(pixelsWide, pixelsHigh), pixels.get(), pixelsWide * 4,
+		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f), &bitmap), "CreateBitmap image pixels");
 	float boxW = (float)pixelWidth, boxH = (float)pixelHeight;
 	float imageW = (float)pixelsWide, imageH = (float)pixelsHigh;
 	D2D1_MATRIX_3X2_F origin;

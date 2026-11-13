@@ -9,8 +9,11 @@ static std::atomic<DWORD> decodeThread{0};
 static std::atomic<int> decodeApartment{-1};
 static std::atomic<DWORD> wakeThread{0};
 static HANDLE processWakeEvent = nullptr;
+static DWORD hostThread = 0;
+static std::atomic<bool> decodedOnHost{false};
 
 extern "C" void imageWorkerDecodeProbe(void) {
+	if (GetCurrentThreadId() == hostThread) decodedOnHost.store(true);
 	APTTYPE apartment;
 	APTTYPEQUALIFIER qualifier;
 	HRESULT hr = CoGetApartmentType(&apartment, &qualifier);
@@ -49,12 +52,12 @@ int main(int argc, char **argv) {
 			header.width, header.height, header.error.c_str());
 		return 2;
 	}
-	DWORD hostThread = GetCurrentThreadId();
+	hostThread = GetCurrentThreadId();
 	ImagePicture picture;
 	if (!picture.SetProp("source", argv[1])) return failed("source not accepted");
 	printf("image-worker ownership host=%lu decode=%lu apartment=%d\n",
 		hostThread, decodeThread.load(), decodeApartment.load());
-	if (decodeThread.load() == hostThread) return failed("decode ran on host thread");
+	if (decodedOnHost.load()) return failed("decode ran on host thread");
 	std::string error;
 	float width = 0, height = 0;
 	if (picture.TakeReport(&error, &width, &height) != kImageNone) {
@@ -71,11 +74,12 @@ int main(int argc, char **argv) {
 		return failed("completion wake was not from worker");
 	}
 	int delivered = 0;
-	for (const ImageDownload &result : ImageTakeDownloads()) {
+	for (ImageDecoded &result : ImageTakeDecoded()) {
 		ImagePicture *target = ImagePicture::Waiting(result.id);
 		if (target != &picture) return failed("result has no matching live picture");
-		target->Deliver(result);
-		if (ImagePicture::Waiting(result.id)) return failed("delivered request still waiting");
+		uint32_t id = result.id;
+		target->Deliver(std::move(result));
+		if (ImagePicture::Waiting(id)) return failed("delivered request still waiting");
 		delivered++;
 	}
 	if (delivered != 1) return failed("expected one worker result");
@@ -86,6 +90,8 @@ int main(int argc, char **argv) {
 	if (picture.TakeReport(&error, &width, &height) != kImageNone) {
 		return failed("load report repeated");
 	}
+	if (decodedOnHost.load()) return failed("decode ran on host thread");
+	ImageShutdown();
 	printf("image-worker passed: MTA decode, worker wake, host delivery, one load report\n");
 	return 0;
 }

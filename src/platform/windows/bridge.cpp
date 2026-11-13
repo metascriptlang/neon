@@ -1076,9 +1076,18 @@ void niwDrainImages(void) {
 			queuePicture(static_cast<View *>(picture->owner));
 		}
 	}
+	for (ImageDecoded &decoded : ImageTakeDecoded()) {
+		if (ImagePicture *picture = ImagePicture::Waiting(decoded.id)) {
+			picture->Deliver(std::move(decoded));
+			queuePicture(static_cast<View *>(picture->owner));
+		}
+	}
 }
 
 void niwShutdown(void) {
+	ImageShutdown();
+	g_sizeFetches.clear();
+	g_sizeReady.clear();
 	if (s_teardown.fn) invoke(s_teardown);
 }
 

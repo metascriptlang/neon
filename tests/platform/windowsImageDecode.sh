@@ -31,11 +31,14 @@ build tests/platform/windowsImageIds.cpp src/platform/windows/image.cpp out/wind
 timeout 20 out/windows-image-ids.exe "$small"
 build tests/platform/windowsImageWorker.cpp src/platform/windows/image.cpp out/windows-image-worker.exe
 uri=$(python3 -c 'from pathlib import Path; print(Path("out/image-decode/4096.png").resolve().as_uri())' | tr -d '\r')
-expectRed legacy 'image-worker assertion: decode ran on host thread' out/windows-image-worker.exe "$uri"
+timeout 20 out/windows-image-worker.exe "$uri"
 python3 - <<'PY'
 from pathlib import Path
 source = Path('src/platform/windows/image.cpp').read_text()
 variants = {}
+host = 'void ImagePicture::Load(const char *newUri) {'
+assert source.count(host) == 1
+variants['host'] = source.replace(host, host + '\n\timageWorkerDecodeProbe();', 1)
 for name, old, new in [
     ('workers', 'static constexpr uint32_t workerLimit = 2;', 'static constexpr uint32_t workerLimit = 3;'),
     ('bytes', '(activeBytes <= byteBudget && bytes <= byteBudget - activeBytes)', 'true'),
@@ -51,6 +54,8 @@ variants['nul'] = source[:start] + source[end:]
 for name, content in variants.items():
     Path('out/image-decode/' + name + '.cpp').write_text(content)
 PY
+build tests/platform/windowsImageWorker.cpp out/image-decode/host.cpp out/windows-image-worker-host.exe
+expectRed host 'image-worker assertion: decode ran on host thread' out/windows-image-worker-host.exe "$uri"
 for mode in workers bytes early nul; do
 	build tests/platform/windowsImageDecode.cpp "out/image-decode/$mode.cpp" "out/windows-image-decode-$mode.exe"
 	case "$mode" in
@@ -62,4 +67,4 @@ for mode in workers bytes early nul; do
 	expectRed "$mode" "image-decode assertion: $message" "out/windows-image-decode-$mode.exe" "$small" "$large"
 done
 sha256sum out/windows-image-decode.exe out/windows-image-worker.exe out/windows-image-ids.exe \
-	out/windows-image-decode-{workers,bytes,early,nul}.exe out/image-decode/{workers,bytes,early,nul}.cpp
+	out/windows-image-worker-host.exe out/windows-image-decode-{workers,bytes,early,nul}.exe out/image-decode/{host,workers,bytes,early,nul}.cpp

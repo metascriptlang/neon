@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "composition.h"
+#include "imageDecode.h"
 
 enum ImageReport { kImageNone, kImageLoad, kImageError };
 
@@ -29,16 +30,15 @@ bool ImageIsNetwork(const char *uri);
 // ionWakeLoop when it is done; the host thread then takes the results with ImageTakeDownloads.
 uint32_t ImageFetch(const char *uri);
 std::vector<ImageDownload> ImageTakeDownloads();
-
-// An Image decodes its source once, through WIC, into a premultiplied BGRA bitmap and draws it into the view's
-// surface at one device-independent pixel per image pixel, as the macOS host does. A source is a data: URI with
-// base64 content, a file: URI or an http(s) URI downloaded into the URL cache; the outcome waits for TakeReport, which the frame sends as onLoad or onError.
+std::vector<ImageDecoded> ImageTakeDecoded();
+void ImageShutdown();
 class ImagePicture {
 public:
 	~ImagePicture();
 	void *owner = nullptr;
 	static ImagePicture *Waiting(uint32_t id);
 	void Deliver(const ImageDownload &download);
+	void Deliver(ImageDecoded decoded);
 	bool SetProp(const char *name, const char *value);
 	void SetBackground(Color color);
 	ImageReport TakeReport(std::string *error, float *width, float *height);
@@ -47,17 +47,18 @@ public:
 	void Draw(ICompositionContext *context, IVisual *visual, int32_t pixelWidth, int32_t pixelHeight, float scale);
 
 private:
+	friend void ImageShutdown();
 	enum Mode { kCover, kContain, kStretch, kCenter, kRepeat };
 
 	void Load(const char *uri);
-	void Decode(IWICBitmapDecoder *decoder);
 	void CancelFetch();
+	void QueueDecode(const char *uri);
 
 	std::string uri;
 	Mode mode = kCover;
 	float blur = 0;
 	Color background = {0, 0, 0, 0};
-	Microsoft::WRL::ComPtr<IWICBitmap> pixels;
+	std::unique_ptr<uint8_t[]> pixels;
 	uint32_t pixelsWide = 0, pixelsHigh = 0;
 	ImageReport pending = kImageNone;
 	std::string failure;

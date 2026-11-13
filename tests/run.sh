@@ -42,6 +42,12 @@ for f in $files; do
 done
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
+	echo "== windows image producer ownership"
+	bash tests/platform/windowsImageDecode.sh || fail=1
+	echo "== windows image consumer lifecycle and drawing"
+	bash tests/platform/windowsImageConsumer.sh || fail=1
+	echo "== windows image real-loop app build (console run is separate)"
+	"$MSC" build tests/platform/windowsImageLoop.ms --passC=-DNEON_IMAGE_WORKER_TEST --output=out/windows-image-loop.exe || fail=1
 	echo "== desktop examples/voidWindow.ms"
 	"$MSC" build examples/voidWindow.ms --output=out/voidWindow.exe || fail=1
 	echo "== desktop examples/voidDraw.ms"

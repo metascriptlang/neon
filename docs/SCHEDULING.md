@@ -238,6 +238,70 @@ it. On Android a worker must never call `ni*` (JNI binding), and one long flush 
 
 ## Measured
 
+### Integrated Windows image decode, 2026-11-13
+
+Checked implementation/test tree `969e503e566c870de90f9014186be8615ea73581`
+(HEAD `b8ce83da` plus the offload and focused checks, before gate registration
+and this documentation): d87, MinGW 16.2, C++17/O2, test-only decode probes.
+`ImagePicture` now uses the existing bounded queue; no worker receives a view,
+picture pointer or main-apartment COM object. The reference remains RN Windows
+`WindowsImageManager::requestImage` / `ImageComponentView::didReceiveImage` at
+`aedf6c5a400c6037f56078d066aa43db385fd456`: background image work, notification
+serialized with view lifetime on UI, UI-owned drawing. The raw-transfer choice
+and its independent WARP/MTA diagnostics are recorded below.
+
+`tests/platform/windowsImageConsumer.sh`, through `run-remote.sh --windows
+--no-msc --cores 2 --job … -- bash tests/platform/windowsImageConsumer.sh`,
+passed **3 consumer groups**: destroy/reuse and main adoption with production
+`ImagePicture::Draw` full 64² offscreen WARP readback equal to the transferred
+buffer; ready cancellation, already-taken stale batch and replacement/error;
+nonblocking shutdown with two held decodes and a queued request, no late decode
+wake or report. It also passed the updated **4096² ImagePicture worker** check.
+Three independently compiled mutations reached named **RED 1**: retaining a
+destroyed request's owner; omitting queue cancellation; corrupting the adopted
+pixel buffer. These are kernel-event lifecycle checks, not an Ion event loop.
+
+The unchanged real-loop fixture from the next section now passes on the console:
+**metadata 4×2, picture 4×4, 3 Ion wakes, 2 main reports, 1 MTA pixel decode,
+0 host decodes, exit 0**. The app executable is
+`2b5ffd3b71739d2a283caab119d4363a35f5bcd9a2bec007cdc4d1be1143699b`.
+An independent PowerShell Get-FileHash read bound **9 local sources, 6 executables
+and 2 PNGs** to the consumer and app logs. Consumer positive executable
+`050b080b3c537aa4de7c522c5df0d1ac90683f7e6e40523784cdea1b01ad55ca`;
+4096 worker executable
+`2e4694bdb844ef38d31fd4c84751502d25cb6d4f7889e8310a4ba4b0fa51191f`.
+
+The updated `tests/platform/windowsImageDecode.sh` also passed **11 producer
+groups**, full 64²/4096² equality to the STA WIC reference, **IDs 1,2,3** with
+header-only metadata, and the ImagePicture ownership positive. Its **5 expected
+RED controls** passed. The former synchronous legacy control is now an explicit
+host-probe injection, not a claim that the removed legacy decode path still
+runs. The producer queue algorithm and output-budget exclusions are unchanged.
+
+Raw artifacts: `/tmp/native-threads-image-consumer-{candidate,controls,fingerprint}.log`,
+`/tmp/native-threads-image-loop-green.log`, and
+`/tmp/native-threads-image-integrated-producer.log`. Its 8 sources, 8 executables
+and 5 mutated sources independently match PowerShell fingerprints in
+`/tmp/native-threads-image-integrated-fingerprint.log` plus
+`/tmp/native-threads-image-nul-fingerprint.log`: Get-FileHash cannot resolve the
+Windows reserved name `nul.cpp`; .NET ReadAllBytes using the extended path
+returned the matching SHA256 `2f5892f7b8cbfb727ee9347167e811f3cad58ae885ac7f91437c47480225bfb3`.
+Reservation times including
+sync/build: candidate **128 s / 4 cores**, consumer/control recipe **121 s /
+2 cores**, producer recipe **135 s / 2 cores**; console app **3 s** under its
+quiet reservation. These are slow checks, not decode latency or speedup numbers;
+do not repeat them unchanged in the edit loop. Executable guards remain 20 s.
+
+Gate registration is in the Windows branch of `tests/run.sh`: both standalone
+recipes run, the real-loop app only builds there; its guarded console run stays
+separate. Full gate and land have not run. WARP identity draw is not a hardware
+presentation/resize/blur certificate; lifecycle cases were isolated, not all
+replayed through JSX/Ion. Shutdown with an in-flight URL download is source-read
+only (publication and wake share the shutdown lock); no network cancellation or
+new network-concurrency bound is claimed. No physical A/B, end-to-end performance,
+modal-loop progress, all-codec coverage or compiler CLI certification is implied.
+Synchronous geometry/layout and AsyncStorage ordering are unchanged.
+
 ### Windows image bridge and real Ion loop pin, 2026-11-13
 
 `tests/platform/windowsImageLoop.ms` is a compiled app using `runNativeWindow`,
