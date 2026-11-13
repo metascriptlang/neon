@@ -55,6 +55,7 @@ const [throwOnDown, setThrowOnDown] = createSignal(false);
 const [throwOnCancel, setThrowOnCancel] = createSignal(false);
 const [swapOnDown, setSwapOnDown] = createSignal(false);
 const [swapped, setSwapped] = createSignal(false);
+const [appTaps, setAppTaps] = createSignal(0);
 
 class Counts {
 	editor: int32 = 0;
@@ -91,7 +92,8 @@ function appPane(): NeonNode {
 					onPress={(): void => {
 						if (throwOnPress()) { throw new Error("app handler failed"); }
 						counts.app += 1;
-					}}><Text>app</Text></Pressable>
+						setAppTaps(appTaps() + 1);
+					}}><Text>{`app ${appTaps()}`}</Text></Pressable>
 			</Show>
 			<Show when={appShown() && swapped()}>
 				<View style={{ flexDirection: "column" }} onPointerUp={(): void => { counts.replacementUp += 1; }}>
@@ -124,6 +126,7 @@ function mount(shell: boolean): Fixture {
 	setThrowOnCancel(false);
 	setSwapOnDown(false);
 	setSwapped(false);
+	setAppTaps(0);
 	resetErrorHalt();
 	const areas: WindowArea[] = [];
 	const panes = shell ? shellPanes() : plainPanes();
@@ -254,6 +257,23 @@ test "a press that would make a hovered editor node hear its pointer leave is re
 	f.dispose();
 }
 
+test "limits that would walk nothing are refused before anything is read" {
+	const f = mount(false);
+	assert reason(scopeTree(f.app, { maxNodes: 0 as int32, maxDepth: 4 as int32 })) === DevRefusal.InvalidLimits.toString(), "no nodes";
+	assert reason(scopeTree(f.app, { maxNodes: 4 as int32, maxDepth: -1 as int32 })) === DevRefusal.InvalidLimits.toString(), "negative depth";
+	f.dispose();
+}
+
+test "a node moved out of its scope is refused as outside the scope" {
+	const f = mount(false);
+	laid(f);
+	const moved = pressableIn(f.app);
+	f.area.vh.host.append(f.editor.root as unknown as HostNode, moved.node as unknown as HostNode);
+	assert reason(scopePress(f.app, moved)) === DevRefusal.OutsideScope.toString(), "outside the scope";
+	assert counts.app === 0 && counts.editor === 0, "nothing ran";
+	f.dispose();
+}
+
 test "an editor ref handed to the app scope is refused as foreign" {
 	const f = mount(false);
 	laid(f);
@@ -317,9 +337,11 @@ test "a release whose handler throws is reported as failed, and the scope keeps 
 	const r = scopePress(f.app, pressableIn(f.app));
 	assert reason(r) === DevRefusal.HandlerFailed.toString() && !r.ok && r.error.detail.indexOf("app handler failed") === 0, "failed: " + why<void>(r);
 	assert f.area.held === (0 as int32), "no button is left held";
-	resetErrorHalt();
 	setThrowOnPress(false);
 	assert scopePress(f.app, pressableIn(f.app)).ok && counts.app === 1, `recovered: ${counts.app}`;
+	flush();
+	laid(f);
+	assert find(treeOf(f.app).root, (n: ScopeNode): boolean => n.text === "app 1") !== null, "the tree shows the recovered press without a reset";
 	f.dispose();
 }
 
@@ -332,10 +354,12 @@ test "a down that throws and a cancel that throws are both reported, inside the 
 	assert reason(r) === DevRefusal.HandlerFailed.toString(), "failed: " + why<void>(r);
 	assert !r.ok && r.error.detail.indexOf("app down failed") === 0 && r.error.detail.indexOf("app cancel failed") > 0, "both failures named: " + why<void>(r);
 	assert f.area.held === (0 as int32) && counts.app === 0, `no button held, no press: held ${f.area.held}, app ${counts.app}`;
-	resetErrorHalt();
 	setThrowOnDown(false);
 	setThrowOnCancel(false);
 	assert scopePress(f.app, pressableIn(f.app)).ok && counts.app === 1, `recovered: ${counts.app}`;
+	flush();
+	laid(f);
+	assert find(treeOf(f.app).root, (n: ScopeNode): boolean => n.text === "app 1") !== null, "the tree shows the recovered press without a reset";
 	f.dispose();
 }
 

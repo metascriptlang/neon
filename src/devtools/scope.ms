@@ -23,6 +23,7 @@ export enum DevRefusal {
 	ForeignFocus,
 	TargetGoneDuringPress,
 	Busy,
+	InvalidLimits,
 	HandlerFailed,
 }
 
@@ -150,6 +151,9 @@ export function scopeTree(scope: DevScope, limits: ScopeLimits): Result<ScopeTre
 	const opened = openArea(scope);
 	if (!opened.ok) { return Result.err(opened.error); }
 	const vh = opened.value.vh;
+	if (limits.maxNodes < (1 as int32) || limits.maxDepth < (0 as int32)) {
+		return Result.err(refusal(DevRefusal.InvalidLimits, `maxNodes must be at least 1 and maxDepth at least 0; got ${limits.maxNodes} and ${limits.maxDepth}`));
+	}
 	if (!vh.laidOut()) { return Result.err(refusal(DevRefusal.NotLaidOut, "the area has not been laid out")); }
 	const settled = vh.settle(scope.root);
 	if (settled === null) {
