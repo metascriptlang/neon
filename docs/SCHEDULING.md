@@ -206,16 +206,82 @@ Neon and std move their *own* heavy work off main, behind APIs that are already 
 - candidates are large `response.json()`, image decode, and text shaping and measurement;
 - each is measured before it moves, because a crossing costs more than a small task.
 
-Still owed: a user guide for when an author reaches for `spawn`, and a long-task report
-(main thread blocked longer than one frame) that points at where. An asynchronous API's
-shape is not proof that decoding or other CPU work inside it is off main; profile that
-work before choosing an offload. Synchronous APIs still block their caller.
+### Choosing async or spawn
+
+Use async/await for I/O that can suspend. Use native `spawn` for substantial independent
+CPU work, not every small calculation. A Promise executor and a synchronous parser still
+run on their caller; putting either in an async function does not make a worker.
+
+The runnable example is `bench/ownWork.ms` `sample`: compare whole-result round trips
+with worker-side consumption, rather than assuming that moving construction moves every
+cost. Submit independent jobs before joining them; awaiting each submission serializes
+a batch. Keep borrowed inputs alive and unchanged until the join. Worker code must not
+write signals or touch a Host, native view, JNI binding or GPU resource. Apply the result
+on the owning loop, and discard it when its owner/request is no longer current. An abort
+flag is not CPU preemption; completion and shutdown still need ownership.
+
+On the checked native compiler, start UI jobs from their handler/async callback, not from
+a pending module-level await: the entry control below observes different loop progress.
+This is a scoped consumer recommendation, not a workaround that closes the compiler card
+`2026-11-05-await-of-a-spawn-handle-blocks-the-event-loop.md`. Both entry forms remain in
+the benchmark. For capture, move, actor and cancellation rules, see recompiler
+`docs/LANG-PREFERENCE.md` §9; JS scheduling is not native thread execution.
+
+Still owed: image/text profiles, production offloads justified by those measurements, and
+a long-task report (main held longer than a frame) naming its owner. `AsyncStorage.mergeItem`
+must retain read/merge/write ordering if its CPU work moves; blindly submitting independent
+merges can lose updates. Its async surface alone proves neither offload nor safe concurrency.
 
 On JS, WASM and workerd, `spawn` only schedules: Worker is same-thread until Web Workers back
 it. On Android a worker must never call `ni*` (JNI binding), and one long flush on main is a
 5 s ANR.
 
 ## Measured
+
+### JSON worker-entry diagnostic, 2026-11-13
+
+This is a CPU/loop diagnostic, **not** a physical frame-latency or final performance
+certificate. RTX Ryzen 9 9950X, Linux x86-64, two reserved cores, release build,
+compiler/support `260e884307c5`; base tree
+`b8d490fa7fdbd6a1b113648c9fc75142b92c12d0` plus `bench/ownWork.ms` SHA-256
+`59831c4355e15c662eb61e80217f69fa7707a5b782d23a0c8841281775f379f1`.
+Consumer hashes: `src/api/asyncStorage.ms` `0ffc8f63289283385dae13bb89e9e7e7d4897818e2b435c46ca8f29113f941a7`,
+`src/api/storageServices.ms` `e286bb22bcfaebf1344081a2f15a2baece5901936a5fa00037c0f9d6cd1c7e30`.
+Executable SHA-256 `f7a7bf21c14c5080129c3fec96e9217cdc8581a9e5f93d2a9274feacd8cb428f`.
+
+Recipe: build `msc build --release --output=out/native-threads-json.exe bench/ownWork.ms`;
+run the unchanged executable once normally and once with `--timer-entry`, through
+`.gate-host/run-remote.sh --host rtx --cores 2`. Raw output:
+`/tmp/native-threads-own-work-json-entry-smoke.log`. Five samples per entry/mode/size,
+200 records total, row-count/last-ID and merge-marker checks passed, exit zero; this is
+not a whole-graph checksum. Modes alternate forward/reverse
+within each entry. The two entries ran module first, timer second, not process-order A/B.
+
+At 65,536 rows / 10,856,766 ASCII bytes, milliseconds (median; gap max in parentheses):
+
+| Entry / work | Completion | Largest 2-ms heartbeat gap |
+|---|---:|---:|
+| module await / parse + scalar result | 22.57 | 22.56 (24.35) |
+| timer callback / parse on main | 22.64 | 22.64 (25.98) |
+| timer callback / return parsed graph from worker | 23.49 | 8.07 (9.23) |
+| timer callback / consume graph in worker, return scalar | 23.76 | 2.15 (2.58) |
+| timer callback / actual AsyncStorage merge | 38.29 | 38.29 (40.57) |
+
+The storage case uses installed in-memory services: no disk/network cost is claimed.
+The graph-return and scalar-return controls differ in where validation and final graph
+ownership/destruction occur; they do not isolate destruction from every continuation or
+transfer cost. The module and timer controls differ in entry/wait path, not workload or
+executable. Treat the result as evidence to inspect both boundaries, not proof of a
+particular compiler implementation defect. Returning a large graph is not a free handoff.
+
+Earlier reserved-quiet data (benchmark `b2c1e53d…`, 75 records) sampled an unrelated `msc`
+in lifetime-CPU output; this does not quantify its instantaneous load. The subsequent
+same-candidate quiet repeat timed out before admission/output after 180 seconds. No
+matching waiter, pending pick, ledger row or local job remained on cleanup. There is no
+quiet-repeat result. Do not derive a universal byte threshold or promise these numbers on
+Windows, Apple devices, browsers, escaped/Unicode JSON or a mounted rendering host.
+
+### Host wake and frame measurements
 
 Interleaved A/B; the control is the branch with that platform's wake commit reverted.
 
