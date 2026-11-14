@@ -10,7 +10,7 @@ import {
 } from "../../src/platform/raiser/native";
 import { Rows } from "./rows";
 import { argv } from "std/process";
-import { machineSystem } from "../../../../.metascript/src/embed/index";
+import { machineSystem } from "../../../recompiler/src/embed/index";
 
 let host: Host = mockHost();
 

@@ -4,9 +4,9 @@ import {
 	Interpreter, Routine, Diagnostic, System, RaiserValue, RaiserValueKind, RaiserHostValue,
 	boxInt, boxFloat, boxBool, boxVoid, unboxInt, unboxFloat, unboxString, unboxBool,
 	hostValue, hostString, hostObject, hostArray,
-} from "../../../../../.metascript/src/embed/index";
-import { applyProjectConfig } from "../../../../../.metascript/src/compiler/options";
-import { ErrorSeverity } from "../../../../../.metascript/src/module/graph";
+} from "../../../../recompiler/src/embed/index";
+import { applyProjectConfig } from "../../../../recompiler/src/compiler/options";
+import { ErrorSeverity } from "../../../../recompiler/src/module/graph";
 import { Host, HostNode, NeonNode, TextSpan, MeasureRect, MeasureError } from "../../render/hostTypes";
 import { Style, emptyStyle, setStyleField } from "../../render/style";
 import { styleTable } from "../../macros/style/fields";
@@ -26,7 +26,7 @@ import { realpath } from "std/fs";
 
 export {
 	Diagnostic, RaiserHostValue, hostValue, hostString, hostObject, hostArray, boxInt, boxFloat, boxBool, unboxInt,
-} from "../../../../../.metascript/src/embed/index";
+} from "../../../../recompiler/src/embed/index";
 
 const STYLE_TABLE: string[][] = styleTable();
 
