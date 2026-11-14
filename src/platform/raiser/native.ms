@@ -513,14 +513,21 @@ function guestError(path: string, message: string): Diagnostic {
 	return { file: path, line: 0, column: 0, message, severity: ErrorSeverity.Error };
 }
 
-export function openGuest(projectRoot: string, system: System | null = null): Result<GuestProgram, string> {
+export interface GuestOptions {
+	projectRoot: string;
+	runtimeRoot?: string | null;
+	system?: System | null;
+}
+
+export function openGuest(options: GuestOptions): Result<GuestProgram, string> {
 	if (!registered) {
 		implementUi();
 		registered = true;
 	}
-	const made = createInterpreter(`${homeDir()}/.metascript`, [], system);
+	const runtimeRoot = options.runtimeRoot ?? `${homeDir()}/.metascript`;
+	const made = createInterpreter(runtimeRoot, [], options.system ?? null);
 	if (!made.ok) { return Result.err(made.error); }
-	const configured = applyProjectConfig(made.value.opts, realpath(projectRoot));
+	const configured = applyProjectConfig(made.value.opts, realpath(options.projectRoot));
 	if (!configured.ok) { return Result.err(configured.error); }
 	return Result.ok(new GuestProgram(made.value));
 }

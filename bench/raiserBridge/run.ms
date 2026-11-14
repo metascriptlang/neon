@@ -118,7 +118,7 @@ function presses(p: GuestProgram, root: HostNode): void {
 }
 
 function program(sandboxed: boolean): GuestProgram {
-	const opened = openGuest(".", sandboxed ? machineSystem() : null);
+	const opened = openGuest({ projectRoot: ".", system: sandboxed ? machineSystem() : null });
 	if (!opened.ok) { throw new Error(opened.error); }
 	const t0 = performance.now();
 	const loaded = loadGuest(opened.value, "bench/raiserBridge/guest.ms");

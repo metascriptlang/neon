@@ -8,6 +8,7 @@ import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { neonEvent, eventType } from "../../src/render/event";
 import { sleepAsync } from "std/core/promise";
+import { homeDir } from "std/os";
 import {
 	GuestProgram, GuestSlot, openGuest, loadGuest, callGuest, hostString, unboxInt,
 } from "../../src/platform/raiser/native";
@@ -19,7 +20,7 @@ let clock = 1000.0;
 
 function program(): GuestProgram {
 	if (shared !== null) { return shared as GuestProgram; }
-	const opened = openGuest(".");
+	const opened = openGuest({ projectRoot: "." });
 	if (!opened.ok) { throw new Error(opened.error); }
 	const p = opened.value;
 	p.onError = (message: string): void => { errors.push(message); };
@@ -176,4 +177,13 @@ test "a failed edit keeps the last good tree, and a new program mounts before th
 	assert mockToString(root).includes("pressed 0") && !mockToString(root).includes("pressed 2"), mockToString(root);
 	assert errors.length === 0, errors.join("\n");
 	unmount();
+}
+
+test "openGuest compiles against the runtime root it is given" {
+	const installed = openGuest({ projectRoot: ".", runtimeRoot: `${homeDir()}/.metascript` });
+	if (!installed.ok) { throw new Error(installed.error); }
+	assert loadGuest(installed.value, "tests/platform/raiser/app.ms").ok, "the guest compiles against the installed root";
+	const missing = "/nonexistent/raiser-runtime";
+	const refused = openGuest({ projectRoot: ".", runtimeRoot: missing });
+	assert !refused.ok && refused.error.includes(missing), refused.ok ? "a missing runtime root was accepted" : refused.error;
 }
