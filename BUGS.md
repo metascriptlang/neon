@@ -273,6 +273,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-11-15 — a guest `<Show>` that flips fails in the Raiser VM.** Not Neon's: `createMemo<T>`
+  wraps its compute in a lambda taking `prev: T | null` (`src/core/memo.ms:209`), and for a scalar `T` the
+  VM refuses the first recompute with `internal: register R5 of $lifted_createMemo_3mlvpj__boolean_33 is Ref,
+  got Bool`; `Show` holds a `createMemo<boolean>`. Reduced without Neon in card
+  `~/metascript/.inbox/compiler/2026-11-15-raiser-a-t-or-null-parameter-of-a-generic-lambda-refuses-a-scalar.md`.
+  Parked at `tests/platform/raiserShowPlace.parked.ms`; the place's removal notice is proven through `<For>`
+  in `tests/platform/raiserBridge.test.ms` meanwhile.
+
 - **PARKED 2026-10-19 — the sokol canvas under `-d:voidGlCore` draws every frame.** Not Neon's: Void's
   `bridgeWin.c` `_frame` asks `sapp_skip_present()` for a frame that drew nothing, and sokol_app honours it only
   in `_sapp_d3d11_present` (`void/deps/sokol/sokol_app.h:9128`); the WGL swap presents regardless, so a skipped
