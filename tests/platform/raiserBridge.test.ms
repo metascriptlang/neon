@@ -2,31 +2,43 @@ import {
 	render, mockHost, mockNode, mockToString, fireEventWith, fireTouch, MockNode, HostNode,
 } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { View, Text } from "../../src/components/primitives";
+import { View, Text, Pressable } from "../../src/components/primitives";
 import { Show } from "../../src/macros/ui/flow";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
-import { neonEvent, eventType } from "../../src/render/event";
+import { neonEvent, eventType, NeonEvent } from "../../src/render/event";
 import { sleepAsync } from "std/core/promise";
 import { homeDir } from "std/os";
 import {
-	GuestProgram, GuestSlot, openGuest, loadGuest, callGuest, hostString, unboxInt,
+	GuestProgram, GuestSlot, SlotHandle, SlotOutcome, SlotShown, SlotRoot,
+	openGuest, loadGuest, callGuest, openSlot, closeSlot, slotStatus, hostString, unboxInt,
 } from "../../src/platform/raiser/native";
 import { Card } from "./raiser/views";
 
 const errors: string[] = [];
 let shared: GuestProgram | null = null;
+let running = "";
 let clock = 1000.0;
 
+function load(p: GuestProgram, path: string): boolean {
+	const loaded = loadGuest(p, `tests/platform/raiser/${path}`);
+	if (loaded.ok) { running = path; }
+	return loaded.ok;
+}
+
 function program(): GuestProgram {
-	if (shared !== null) { return shared as GuestProgram; }
-	const opened = openGuest({ projectRoot: "." });
-	if (!opened.ok) { throw new Error(opened.error); }
-	const p = opened.value;
-	p.onError = (message: string): void => { errors.push(message); };
+	if (shared !== null && running === "app.ms") { return shared as GuestProgram; }
+	if (shared === null) {
+		const opened = openGuest({ projectRoot: "." });
+		if (!opened.ok) { throw new Error(opened.error); }
+		shared = opened.value;
+		(shared as GuestProgram).onError = (message: string): void => { errors.push(message); };
+	}
+	const p = shared as GuestProgram;
 	const loaded = loadGuest(p, "tests/platform/raiser/app.ms");
 	if (!loaded.ok) { throw new Error(loaded.error.map((d) => `${d.file}:${d.line}: ${d.message}`).join("\n")); }
-	shared = p;
+	running = "app.ms";
+	errors.length = 0;
 	return p;
 }
 
@@ -57,6 +69,16 @@ function tap(node: MockNode): void {
 	click.pointerOrigin = true;
 	fireEventWith(node, "onPress", click);
 	flush();
+}
+
+function identity(slot: SlotHandle): string {
+	const root = slotStatus(slot).root;
+	return root === null ? "none" : `${(root as SlotRoot).key}/${(root as SlotRoot).generation}`;
+}
+
+function shown(slot: SlotHandle): string {
+	const status = slotStatus(slot);
+	return `outcome ${status.outcome as int32} shown ${status.shown as int32} root ${identity(slot)}`;
 }
 
 function cleanups(p: GuestProgram): int32 {
@@ -158,25 +180,49 @@ test "a failed edit keeps the last good tree, and a new program mounts before th
 	const good = mockToString(root);
 	assert good.includes("pressed 1"), good;
 
-	const broken = loadGuest(p, "tests/platform/raiser/broken.ms");
-	assert !broken.ok, "the broken edit does not compile";
+	assert !load(p, "broken.ms"), "the broken edit does not compile";
 	assert mockToString(root) === good, mockToString(root);
 	tap(find(root, "pressable", 0));
 	assert mockToString(root).includes("pressed 2"), "the last good program still runs: " + mockToString(root);
 
 	errors.length = 0;
 	const kept = mockToString(root);
-	const throwing = loadGuest(p, "tests/platform/raiser/throwing.ms");
-	assert throwing.ok, "the throwing edit compiles";
+	assert load(p, "throwing.ms"), "the throwing edit compiles";
 	assert errors.length === 1 && errors[0].includes("this edit fails at mount"), errors.join("\n");
 	assert mockToString(root) === kept, mockToString(root);
 
 	errors.length = 0;
-	const fixed = loadGuest(p, "tests/platform/raiser/app.ms");
-	assert fixed.ok, "the fixed edit compiles";
+	tap(find(root, "pressable", 0));
+	assert errors.length > 0 && errors.every((e) => e.includes("refused onTouchStart") || e.includes("refused onTouchEnd") || e.includes("refused onPress")), "the inert tree refuses its events: " + errors.join("\n");
+	assert mockToString(root) === kept, mockToString(root);
+
+	errors.length = 0;
+	assert load(p, "app.ms"), "the fixed edit compiles";
 	assert mockToString(root).includes("pressed 0") && !mockToString(root).includes("pressed 2"), mockToString(root);
 	assert errors.length === 0, errors.join("\n");
 	unmount();
+}
+
+test "openSlot mounts a guest outside any reactive owner, and closeSlot removes it and disposes its root" {
+	const p = program();
+	const host = mockHost();
+	const parent = mockNode("root");
+	const before = cleanups(p);
+	const slot = openSlot(p, "card", [hostString("open")], host, parent as unknown as HostNode, null);
+	assert mockToString(parent).includes("<text>open</text>"), mockToString(parent);
+	closeSlot(slot);
+	assert parent.children.length === 0, mockToString(parent);
+	assert cleanups(p) === before + 1, "the guest root was disposed";
+	assert errors.length === 0, errors.join("\n");
+}
+
+test "a second closeSlot is refused by name" {
+	const p = program();
+	const slot = openSlot(p, "card", [hostString("twice")], mockHost(), mockNode("root") as unknown as HostNode, null);
+	closeSlot(slot);
+	let refused = "none";
+	try { closeSlot(slot); } catch (e) { refused = (e as Error).message; }
+	assert refused.includes("card") && refused.includes("already closed"), refused;
 }
 
 test "openGuest compiles against the runtime root it is given" {
@@ -186,4 +232,63 @@ test "openGuest compiles against the runtime root it is given" {
 	const missing = "/nonexistent/raiser-runtime";
 	const refused = openGuest({ projectRoot: ".", runtimeRoot: missing });
 	assert !refused.ok && refused.error.includes(missing), refused.ok ? "a missing runtime root was accepted" : refused.error;
+}
+
+test "a slot reports each load's outcome and binds its root's identity to one mount" {
+	const p = program();
+	const host = mockHost();
+	const parent = mockNode("root");
+	const slot = openSlot(p, "card", [hostString("status")], host, parent as unknown as HostNode, null);
+	const first = slotStatus(slot);
+	assert first.outcome === SlotOutcome.Mounted && first.shown === SlotShown.Guest && first.root !== null, shown(slot);
+	const mounted = identity(slot);
+
+	assert !load(p, "broken.ms"), "the broken edit does not compile";
+	assert slotStatus(slot).outcome === SlotOutcome.EvalFailed && slotStatus(slot).shown === SlotShown.Guest, shown(slot);
+	assert identity(slot) === mounted, `${shown(slot)} after ${mounted}`;
+
+	errors.length = 0;
+	assert load(p, "throwing.ms"), "the throwing edit compiles";
+	assert slotStatus(slot).outcome === SlotOutcome.ViewThrew && slotStatus(slot).shown === SlotShown.InertGuest, shown(slot);
+	assert identity(slot) === mounted, `${shown(slot)} after ${mounted}`;
+
+	assert !load(p, "noDispatch.ms"), "a program without raiserDispatch is refused";
+	assert slotStatus(slot).outcome === SlotOutcome.MissingExports && slotStatus(slot).shown === SlotShown.InertGuest, shown(slot);
+	assert identity(slot) === mounted, `${shown(slot)} after ${mounted}`;
+
+	assert load(p, "app.ms"), "the fixed edit compiles";
+	const again = slotStatus(slot);
+	assert again.outcome === SlotOutcome.Mounted && again.shown === SlotShown.Guest, shown(slot);
+	const old = first.root as SlotRoot;
+	const now = again.root as SlotRoot;
+	assert now.key !== old.key && now.generation > old.generation, `${shown(slot)} after ${mounted}`;
+	closeSlot(slot);
+	errors.length = 0;
+}
+
+test "a view that throws on reload shows the compiled fallback, which stays interactive" {
+	const p = program();
+	const host = mockHost();
+	const parent = mockNode("root");
+	const [presses, setPresses] = createSignal<int32>(0);
+	const fallback = element(<Pressable onPress={(e: NeonEvent): void => { setPresses(presses() + 1); }}>
+		<Text>fallback</Text>
+	</Pressable>);
+	const slot = openSlot(p, "card", [hostString("guest")], host, parent as unknown as HostNode, null, fallback);
+	assert mockToString(parent).includes("<text>guest</text>"), mockToString(parent);
+
+	errors.length = 0;
+	assert load(p, "throwing.ms"), "the throwing edit compiles";
+	assert slotStatus(slot).outcome === SlotOutcome.ViewThrew && slotStatus(slot).shown === SlotShown.Fallback, shown(slot);
+	assert mockToString(parent).includes("fallback") && !mockToString(parent).includes("guest"), mockToString(parent);
+	tap(find(parent, "pressable", 0));
+	assert presses() === 1, `the compiled handler ran ${presses()} times`;
+
+	errors.length = 0;
+	assert load(p, "app.ms"), "the fixed edit compiles";
+	assert slotStatus(slot).shown === SlotShown.Guest, shown(slot);
+	assert mockToString(parent).includes("<text>guest</text>") && !mockToString(parent).includes("fallback"), mockToString(parent);
+	assert errors.length === 0, errors.join("\n");
+	closeSlot(slot);
+	assert parent.children.length === 0, mockToString(parent);
 }
