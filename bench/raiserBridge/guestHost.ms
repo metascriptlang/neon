@@ -65,7 +65,7 @@ export function fire(handler: int32, x: number, y: number, timeStamp: number, bu
 	handlers[handler](e);
 }
 
-export function bridgeHost(): Host {
+export function bridgeHost(paragraphs: boolean): Host {
 	return {
 		createElement: (tag: string): HostNode => remoteOf(uiCreateElement(tag)) as HostNode,
 		createText: (s: string): HostNode => remoteOf(uiCreateText(s)) as HostNode,
@@ -93,8 +93,8 @@ export function bridgeHost(): Host {
 		voidArea: null,
 		scrollTo: null,
 		measureText: null,
-		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
+		paragraph: paragraphs ? (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
 			spanParagraph(deliver, node, kids, spans);
-		},
+		} : null,
 	};
 }

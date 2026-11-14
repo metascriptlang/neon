@@ -10,10 +10,10 @@ let presses: int32 = 0;
 let tick: int32 = 0;
 let dispose: Dispose | null = null;
 
-export function mount(root: int32, n: int32, local: boolean): void {
+export function mount(root: int32, n: int32, local: boolean, paragraphs: boolean): void {
 	const d = dispose;
 	if (d !== null) { d(); }
-	const host = local ? mockHost() : bridgeHost();
+	const host = local ? mockHost() : bridgeHost(paragraphs);
 	const parent = local ? host.createElement("root") : remoteOf(root) as HostNode;
 	dispose = render(Rows(n, label, (): void => { presses += 1; }), host, parent);
 	flush();

@@ -9,6 +9,7 @@ import { createVoidHost, VoidHost } from "../../src/platform/void/host";
 import { Rows } from "./rows";
 import { homeDir } from "std/os";
 import { argv } from "std/process";
+import { realpath } from "std/fs";
 import {
 	createInterpreter, evalModule, selectRoutine, callRoutine, implementRoutine, unboxValue, machineSystem,
 	RaiserValue, RaiserValueKind, RaiserHostValue, Interpreter, Routine,
@@ -161,7 +162,7 @@ function guest(interp: Interpreter, name: string, kind: string, local: boolean, 
 		const rootId = add(root);
 		calls = 0;
 		const t0 = performance.now();
-		call(interp, "mount", [hostValue(boxInt(rootId)), hostValue(boxInt(n)), hostValue(boxBool(local))]);
+		call(interp, "mount", [hostValue(boxInt(rootId)), hostValue(boxInt(n)), hostValue(boxBool(local)), hostValue(boxBool(host.paragraph !== null))]);
 		const t1 = performance.now();
 		mountCalls = calls;
 		calls = 0;
@@ -196,7 +197,7 @@ function interpreter(sandboxed: boolean): Interpreter {
 		? createInterpreter(`${homeDir()}/.metascript`, [], machineSystem())
 		: createInterpreter(`${homeDir()}/.metascript`, []);
 	if (!made.ok) { throw new Error(made.error); }
-	const configured = applyProjectConfig(made.value.opts, ".");
+	const configured = applyProjectConfig(made.value.opts, realpath("."));
 	if (!configured.ok) { throw new Error(configured.error); }
 	const t0 = performance.now();
 	const ran = evalModule(made.value, "bench/raiserBridge/guest.ms");
