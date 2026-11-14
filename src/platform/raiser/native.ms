@@ -37,9 +37,12 @@ export class GuestProgram {
 	dispatch: Routine | null = null;
 	dispose: Routine | null = null;
 	slots: SlotHandle[] = [];
+	places: Place[] = [];
 	wake: number = -1;
 	running: boolean = false;
 	onError: (message: string) => void = (message: string): void => { throw new Error(message); };
+	onPlace: (name: string, host: Host, node: HostNode) => void = (name: string, host: Host, node: HostNode): void => {};
+	onPlaceGone: (name: string) => void = (name: string): void => {};
 
 	constructor(interp: Interpreter) {
 		this.interp = interp;
@@ -115,6 +118,19 @@ class SpanFeed {
 	}
 }
 
+class Place {
+	name: string;
+	root: BridgeRoot;
+	node: HostNode;
+	announced: boolean = false;
+
+	constructor(name: string, root: BridgeRoot, node: HostNode) {
+		this.name = name;
+		this.root = root;
+		this.node = node;
+	}
+}
+
 class BridgeRoot {
 	key: int32;
 	program: GuestProgram;
@@ -126,6 +142,7 @@ class BridgeRoot {
 	idle: int32[] = [];
 	handles: Map<HostNode, int32> = new Map<HostNode, int32>();
 	feeds: Map<int32, SpanFeed> = new Map<int32, SpanFeed>();
+	places: Map<int32, Place> = new Map<int32, Place>();
 	live: boolean = true;
 
 	constructor(key: int32, slot: SlotHandle) {
@@ -143,6 +160,7 @@ class BridgeRoot {
 }
 
 const bridgeRoots = new Map<int32, BridgeRoot>();
+const openSlots: SlotHandle[] = [];
 let nextKey: int32 = 1;
 let calling: GuestProgram | null = null;
 let registered = false;
@@ -187,6 +205,7 @@ function pump(p: GuestProgram): void {
 		return 0;
 	});
 	arm(p);
+	announce(p);
 	for (const failure of failures) { p.onError(failure); }
 }
 
@@ -199,7 +218,49 @@ function invoke(p: GuestProgram, routine: Routine, args: RaiserHostValue[]): Res
 export function callGuest(p: GuestProgram, name: string, args: RaiserHostValue[]): Result<RaiserHostValue, string> {
 	const selected = selectRoutine(p.interp, name);
 	if (!selected.ok) { return Result.err(selected.error); }
-	return invoke(p, selected.value, args);
+	const got = invoke(p, selected.value, args);
+	announce(p);
+	return got;
+}
+
+function declarePlace(r: BridgeRoot, handle: int32, name: string): void {
+	const p = r.program;
+	for (const other of p.places) {
+		if (other.name === name && other.root.live && other.root.generation === r.generation) {
+			throw new Error(`the place ${name} was declared twice in one guest program`);
+		}
+	}
+	const place = new Place(name, r, nodeAt(r, handle));
+	r.places.set(handle, place);
+	p.places.push(place);
+}
+
+function announce(p: GuestProgram): void {
+	for (const place of p.places.slice(0)) {
+		if (place.announced || !place.root.live) { continue; }
+		for (const other of p.places) {
+			if (other.announced && other.name === place.name) {
+				throw new Error(`the place ${place.name} is announced while an older root of this program still holds it`);
+			}
+		}
+		place.announced = true;
+		p.onPlace(place.name, place.root.host, place.node);
+	}
+}
+
+function placeGone(r: BridgeRoot, handle: int32): void {
+	const place = r.places.get(handle);
+	if (place === undefined) { return; }
+	r.places.delete(handle);
+	const p = r.program;
+	p.places.splice(p.places.indexOf(place), 1);
+	if (!place.announced) { return; }
+	p.onPlaceGone(place.name);
+	for (const slot of openSlots) {
+		if (slot.host.parentOf(slot.end) === place.node) {
+			throw new Error(`the place ${place.name} still holds the slot for view ${slot.view} after onPlaceGone`);
+		}
+	}
 }
 
 function rootOf(args: RaiserValue[]): BridgeRoot {
@@ -263,6 +324,10 @@ function collect(r: BridgeRoot, node: HostNode, freed: int32[]): void {
 }
 
 function forget(r: BridgeRoot, handle: int32): void {
+	const place = r.places.get(handle);
+	if (place !== undefined) {
+		throw new Error(`the place ${place.name} was freed without its onPlaceGone notice`);
+	}
 	const at = handleIndex(handle);
 	const node = r.nodes[at];
 	if (node !== null) { r.handles.delete(node as HostNode); }
@@ -285,6 +350,7 @@ function freedList(freed: int32[]): RaiserValue {
 function removeFrom(r: BridgeRoot, parent: HostNode, node: HostNode): int32[] {
 	const freed: int32[] = [];
 	collect(r, node, freed);
+	for (const handle of freed) { placeGone(r, handle); }
 	r.host.removeChild(parent, node);
 	for (const handle of freed) { forget(r, handle); }
 	return freed;
@@ -344,6 +410,7 @@ function deliverEvent(r: BridgeRoot, handler: int32, name: string, e: NeonEvent)
 		return;
 	}
 	const got = invoke(p, dispatch, [hostValue(boxInt(r.key)), hostValue(boxInt(handler)), hostString(name), eventValue(e)]);
+	announce(p);
 	if (!got.ok) {
 		p.onError(got.error);
 		return;
@@ -514,6 +581,7 @@ function implementUi(): void {
 		const node = nodeArg(r, a, 1);
 		const freed: int32[] = [];
 		collect(r, node, freed);
+		for (const handle of freed) { placeGone(r, handle); }
 		r.host.release(node);
 		for (const handle of freed) { forget(r, handle); }
 		return freedList(freed);
@@ -550,6 +618,10 @@ function implementUi(): void {
 	});
 	implementRoutine("ui.measureText", (a: RaiserValue[]): RaiserValue => measureTextOf(rootOf(a), a));
 	implementRoutine("ui.measure", (a: RaiserValue[]): RaiserValue => measureOf(rootOf(a), a));
+	implementRoutine("ui.place", (a: RaiserValue[]): RaiserValue => {
+		declarePlace(rootOf(a), unboxInt(a[1]) as int32, unboxString(a[2]));
+		return done();
+	});
 }
 
 function select(p: GuestProgram, name: string): Routine | null {
@@ -604,6 +676,7 @@ export function loadGuest(p: GuestProgram, path: string): Result<int32, Diagnost
 		const failed = mountSlot(slot);
 		if (failed !== null) { failures.push(failed); }
 	}
+	announce(p);
 	for (const failure of failures) { p.onError(failure); }
 	return Result.ok(p.generation);
 }
@@ -632,6 +705,11 @@ function retire(r: BridgeRoot, inGuest: boolean): void {
 	if (parent !== null) {
 		for (const node of regionNodes(r)) { removeFrom(r, parent as HostNode, node); }
 	}
+	for (const place of r.places.values()) {
+		if (place.announced && failure === null) { failure = `the place ${place.name} left the tree with its slot before its onPlaceGone notice`; }
+		p.places.splice(p.places.indexOf(place), 1);
+	}
+	r.places.clear();
 	for (const feed of r.feeds.values()) { feed.dispose(); }
 	r.feeds.clear();
 	bridgeRoots.delete(r.key);
@@ -732,11 +810,13 @@ function startSlot(
 	place(host, parent, end, before);
 	const slot = new SlotHandle(program, view, args, host, start, end, fallback);
 	program.slots.push(slot);
+	openSlots.push(slot);
 	return slot;
 }
 
 function mountReported(slot: SlotHandle): void {
 	const failed = mountSlot(slot);
+	announce(slot.program);
 	if (failed !== null) { slot.program.onError(failed as string); }
 }
 
@@ -746,6 +826,7 @@ function release(slot: SlotHandle): void {
 	const p = slot.program;
 	const at = p.slots.indexOf(slot);
 	if (at >= 0) { p.slots.splice(at, 1); }
+	openSlots.splice(openSlots.indexOf(slot), 1);
 	const r = slot.root;
 	slot.root = null;
 	if (r !== null) { retire(r as BridgeRoot, true); }

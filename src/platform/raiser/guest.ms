@@ -2,6 +2,7 @@ import {
 	Host, HostNode, NeonNode, TextSpan, TextMeasure, MeasureRect, MeasureError,
 } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
+import { hostElement } from "../../render/node";
 import { Style } from "../../render/style";
 import { NeonEvent } from "../../render/event";
 import { Accessor } from "../../core/signal";
@@ -36,13 +37,16 @@ extern function uiFocus(root: int32, node: int32, focused: boolean): void from "
 extern function uiScrollTo(root: int32, node: int32, x: number, y: number, animated: boolean): void from "ui.scrollTo";
 extern function uiMeasureText(root: int32, text: string, style: Style): number[] from "ui.measureText";
 extern function uiMeasure(root: int32, node: int32, ancestor: int32): number[] from "ui.measure";
+extern function uiPlace(root: int32, node: int32, name: string): void from "ui.place";
 
 type Handler = (name: string, e: NeonEvent) => void;
 
 class Remote {
+	key: int32;
 	handle: int32;
 
-	constructor(handle: int32) {
+	constructor(key: int32, handle: int32) {
+		this.key = key;
 		this.handle = handle;
 	}
 }
@@ -75,7 +79,7 @@ function remote(r: GuestRoot, handle: int32): HostNode | null {
 	while (r.remotes.length <= at) { r.remotes.push(null); }
 	const known = r.remotes[at];
 	if (known !== null && known.handle === handle) { return known as unknown as HostNode; }
-	const made = new Remote(handle);
+	const made = new Remote(r.key, handle);
 	r.remotes[at] = made;
 	return made as unknown as HostNode;
 }
@@ -239,4 +243,17 @@ export function raiserDispose(key: int32): void {
 	const dispose = r.dispose;
 	r.dispose = null;
 	if (dispose !== null) { dispose(); }
+}
+
+export interface HostPlaceProps {
+	name: string;
+	style?: Accessor<Style> | null;
+}
+
+export function HostPlace(props: HostPlaceProps): NeonNode {
+	const style = props.style;
+	return hostElement("view", [], [], null, style === null ? null : style as () => Style, (node: HostNode): void => {
+		const at = node as unknown as Remote;
+		uiPlace(at.key, at.handle, props.name);
+	});
 }

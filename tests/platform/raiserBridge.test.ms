@@ -7,11 +7,13 @@ import { Show } from "../../src/macros/ui/flow";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { neonEvent, eventType, NeonEvent } from "../../src/render/event";
+import { Host } from "../../src/render/hostTypes";
 import { sleepAsync } from "std/core/promise";
 import { homeDir } from "std/os";
 import {
 	GuestProgram, GuestSlot, SlotHandle, SlotOutcome, SlotShown, SlotRoot,
-	openGuest, loadGuest, callGuest, openSlot, closeSlot, slotStatus, hostString, unboxInt,
+	openGuest, loadGuest, callGuest, openSlot, closeSlot, slotStatus,
+	hostString, hostValue, boxBool, boxInt, unboxInt, RaiserHostValue,
 } from "../../src/platform/raiser/native";
 import { Card } from "./raiser/views";
 
@@ -85,6 +87,61 @@ function cleanups(p: GuestProgram): int32 {
 	const got = callGuest(p, "cleanups", []);
 	if (!got.ok) { throw new Error(got.error); }
 	return unboxInt(got.value.root) as int32;
+}
+
+function opened(): GuestProgram {
+	const made = openGuest({ projectRoot: "." });
+	if (!made.ok) { throw new Error(made.error); }
+	const p = made.value;
+	p.onError = (message: string): void => { errors.push(message); };
+	return p;
+}
+
+function loaded(p: GuestProgram, path: string): GuestProgram {
+	const got = loadGuest(p, `tests/platform/raiser/${path}`);
+	if (!got.ok) { throw new Error(got.error.map((d) => `${d.file}:${d.line}: ${d.message}`).join("\n")); }
+	return p;
+}
+
+let editorShared: GuestProgram | null = null;
+
+function editorProgram(): GuestProgram {
+	if (editorShared === null) { editorShared = loaded(opened(), "editor.ms"); }
+	return editorShared as GuestProgram;
+}
+
+class Embedder {
+	log: string[] = [];
+	slot: SlotHandle | null = null;
+	place: MockNode | null = null;
+}
+
+function embed(editor: GuestProgram, app: GuestProgram): Embedder {
+	const seen = new Embedder();
+	editor.onPlace = (name: string, host: Host, node: HostNode): void => {
+		seen.log.push(`place ${name}`);
+		seen.place = node as unknown as MockNode;
+		seen.slot = openSlot(app, "card", [hostString("app")], host, node, null);
+	};
+	editor.onPlaceGone = (name: string): void => {
+		const place = seen.place as MockNode;
+		const held = mockToString(place).includes("<text>app</text>") ? "holding the app" : "empty";
+		const where = place.parent !== null && !place.freed ? "attached" : "detached";
+		closeSlot(seen.slot as SlotHandle);
+		seen.log.push(`gone ${name} ${where} ${held}, then ${place.children.length} children`);
+	};
+	return seen;
+}
+
+const GONE = "gone preview attached holding the app, then 0 children";
+
+function inside(n: MockNode, root: MockNode): boolean {
+	let at = n.parent;
+	while (at !== null) {
+		if (at === root) { return true; }
+		at = (at as MockNode).parent;
+	}
+	return false;
 }
 
 test "a guest mounted through the bridge draws the tree a compiled mount draws" {
@@ -291,4 +348,85 @@ test "a view that throws on reload shows the compiled fallback, which stays inte
 	assert errors.length === 0, errors.join("\n");
 	closeSlot(slot);
 	assert parent.children.length === 0, mockToString(parent);
+}
+
+test "an editor guest's HostPlace is announced, and an app slot opened there mounts inside the editor's tree" {
+	const app = program();
+	const editor = editorProgram();
+	const seen = embed(editor, app);
+	const root = mockNode("root");
+	const slot = openSlot(editor, "editor", [], mockHost(), root as unknown as HostNode, null);
+	assert seen.log.join("; ") === "place preview", seen.log.join("; ");
+	const place = seen.place as MockNode;
+	assert inside(place, root) && mockToString(root).includes("<text>editor</text>"), mockToString(root);
+	assert mockToString(place).includes("<text>app</text>"), mockToString(root);
+	tap(find(place, "pressable", 0));
+	assert mockToString(place).includes("<text>pressed 1</text>"), mockToString(place);
+	closeSlot(slot);
+	assert seen.log.join("; ") === `place preview; ${GONE}`, seen.log.join("; ");
+	assert root.children.length === 0, mockToString(root);
+	assert errors.length === 0, errors.join("\n");
+}
+
+test "an editor that drops its place notifies onPlaceGone before the node is released, and closeSlot there succeeds" {
+	const app = program();
+	const editor = loaded(opened(), "editor.ms");
+	const seen = embed(editor, app);
+	const root = mockNode("root");
+	const slot = openSlot(editor, "listed", [], mockHost(), root as unknown as HostNode, null);
+	assert seen.log.join("; ") === "place preview", seen.log.join("; ");
+	const place = seen.place as MockNode;
+	const dropped = callGuest(editor, "dropPlaces", []);
+	assert dropped.ok, dropped.ok ? "" : dropped.error;
+	assert seen.log.join("; ") === `place preview; ${GONE}`, seen.log.join("; ");
+	assert (seen.slot as SlotHandle).closed && !inside(place, root), mockToString(root);
+	assert mockToString(root).includes("<text>editor</text>") && !mockToString(root).includes("app"), mockToString(root);
+	closeSlot(slot);
+	assert errors.length === 0, errors.join("\n");
+}
+
+test "a place name declared twice in one program is refused by name" {
+	const app = program();
+	const editor = editorProgram();
+	const seen = embed(editor, app);
+	errors.length = 0;
+	const slot = openSlot(editor, "twoPlaces", [], mockHost(), mockNode("root") as unknown as HostNode, null);
+	assert errors.length === 1 && errors[0].includes("preview") && errors[0].includes("twice"), errors.join("\n");
+	assert slotStatus(slot).outcome === SlotOutcome.ViewThrew && seen.log.length === 0, `${shown(slot)} ${seen.log.join("; ")}`;
+	closeSlot(slot);
+	errors.length = 0;
+}
+
+test "disposing the editor's root notifies onPlaceGone while the place is still in the tree" {
+	const app = program();
+	const editor = editorProgram();
+	const seen = embed(editor, app);
+	const [editing, setEditing] = createSignal(true);
+	const root = mockNode("root");
+	const unmount = render(element(<View>
+		<Show when={editing}><GuestSlot program={editor} view="editor" /></Show>
+	</View>), mockHost(), root as unknown as HostNode);
+	assert seen.log.join("; ") === "place preview", seen.log.join("; ");
+	setEditing(false);
+	flush();
+	assert seen.log.join("; ") === `place preview; ${GONE}`, seen.log.join("; ");
+	assert mockToString(root) === "<root><view></view></root>", mockToString(root);
+	assert errors.length === 0, errors.join("\n");
+	unmount();
+}
+
+test "an editor reload notifies onPlaceGone for the old place before announcing the new one" {
+	const app = program();
+	const editor = editorProgram();
+	const seen = embed(editor, app);
+	const root = mockNode("root");
+	const slot = openSlot(editor, "editor", [], mockHost(), root as unknown as HostNode, null);
+	const old = seen.place as MockNode;
+	assert loadGuest(editor, "tests/platform/raiser/editor.ms").ok, "the editor reloads";
+	assert seen.log.join("; ") === `place preview; ${GONE}; place preview`, seen.log.join("; ");
+	const place = seen.place as MockNode;
+	assert place !== old && !inside(old, root) && inside(place, root), mockToString(root);
+	assert mockToString(place).includes("<text>app</text>"), mockToString(root);
+	closeSlot(slot);
+	assert errors.length === 0, errors.join("\n");
 }
