@@ -1,6 +1,6 @@
 import {
 	createInterpreter, evalModule, selectRoutine, callRoutine, implementRoutine,
-	runDueTimers, nextTimerDelayMs, unboxValue, boxValue,
+	runDueTimers, nextTimerDelayMs, dropPendingWork, unboxValue, boxValue,
 	Interpreter, Routine, Diagnostic, System, RaiserValue, RaiserValueKind, RaiserHostValue,
 	boxInt, boxFloat, boxBool, boxVoid, unboxInt, unboxFloat, unboxString, unboxBool,
 	hostValue, hostString, hostObject, hostArray,
@@ -40,6 +40,7 @@ export class GuestProgram {
 	places: Place[] = [];
 	wake: number = -1;
 	running: boolean = false;
+	closed: boolean = false;
 	onError: (message: string) => void = (message: string): void => { throw new Error(message); };
 	onPlace: (name: string, host: Host, node: HostNode) => void = (name: string, host: Host, node: HostNode): void => {};
 	onPlaceGone: (name: string) => void = (name: string): void => {};
@@ -88,6 +89,7 @@ export class SlotHandle {
 	disposeFallback: Dispose | null = null;
 	outcome: SlotOutcome = SlotOutcome.Mounted;
 	closed: boolean = false;
+	owned: boolean = false;
 
 	constructor(
 		program: GuestProgram,
@@ -186,6 +188,7 @@ function disarm(p: GuestProgram): void {
 
 function arm(p: GuestProgram): void {
 	disarm(p);
+	if (p.closed) { return; }
 	const delay = nextTimerDelayMs(p.interp);
 	if (delay < 0) { return; }
 	p.wake = setTimeout((): void => {
@@ -215,7 +218,12 @@ function invoke(p: GuestProgram, routine: Routine, args: RaiserHostValue[]): Res
 	return got;
 }
 
+function refuseClosed(p: GuestProgram, call: string): void {
+	if (p.closed) { throw new Error(`${call} refused: its guest program was closed by closeGuest`); }
+}
+
 export function callGuest(p: GuestProgram, name: string, args: RaiserHostValue[]): Result<RaiserHostValue, string> {
+	refuseClosed(p, "callGuest");
 	const selected = selectRoutine(p.interp, name);
 	if (!selected.ok) { return Result.err(selected.error); }
 	const got = invoke(p, selected.value, args);
@@ -655,6 +663,7 @@ export function openGuest(options: GuestOptions): Result<GuestProgram, string> {
 }
 
 export function loadGuest(p: GuestProgram, path: string): Result<int32, Diagnostic[]> {
+	refuseClosed(p, "loadGuest");
 	const ran = guestCall(p, (): Result<int32, Diagnostic[]> => {
 		const evaluated = evalModule(p.interp, path);
 		return evaluated.ok ? Result.ok(0) : Result.err(evaluated.error);
@@ -804,6 +813,7 @@ function startSlot(
 	before: HostNode | null,
 	fallback: NeonNode | null,
 ): SlotHandle {
+	refuseClosed(program, "openSlot");
 	const start = host.createText("");
 	place(host, parent, start, before);
 	const end = host.createText("");
@@ -843,6 +853,7 @@ export function openSlot(
 	fallback: NeonNode | null = null,
 ): SlotHandle {
 	const slot = startSlot(program, view, args, host, parent, before, fallback);
+	slot.owned = true;
 	try {
 		mountReported(slot);
 	} catch (error) {
@@ -870,7 +881,17 @@ export interface GuestSlotProps {
 export function GuestSlot(props: GuestSlotProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const slot = startSlot(props.program, props.view, props.args ?? [], host, parent, before, props.fallback ?? null);
-		onCleanup((): void => { release(slot); });
+		onCleanup((): void => { if (!slot.closed) { release(slot); } });
 		mountReported(slot);
 	};
+}
+
+export function closeGuest(p: GuestProgram): void {
+	refuseClosed(p, "closeGuest");
+	for (const slot of p.slots.slice(0)) {
+		if (slot.owned) { closeSlot(slot); } else { release(slot); }
+	}
+	p.closed = true;
+	dropPendingWork(p.interp);
+	disarm(p);
 }

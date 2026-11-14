@@ -1,5 +1,5 @@
 import { mountGuest } from "../../../src/platform/raiser/guest";
-import { Card, Ticker, cleanupCount } from "./views";
+import { Card, Ticker, Lingering, cleanupCount } from "./views";
 import { NeonNode } from "../../../src/render/hostTypes";
 
 export { raiserDispatch, raiserDispose } from "../../../src/platform/raiser/guest";
@@ -10,6 +10,10 @@ export function card(root: int32, title: string): void {
 
 export function ticker(root: int32): void {
 	mountGuest(root, Ticker);
+}
+
+export function lingering(root: int32): void {
+	mountGuest(root, Lingering);
 }
 
 export function cleanups(): int32 {

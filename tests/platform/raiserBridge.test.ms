@@ -12,7 +12,7 @@ import { sleepAsync } from "std/core/promise";
 import { homeDir } from "std/os";
 import {
 	GuestProgram, GuestSlot, SlotHandle, SlotOutcome, SlotShown, SlotRoot,
-	openGuest, loadGuest, callGuest, openSlot, closeSlot, slotStatus,
+	openGuest, loadGuest, callGuest, openSlot, closeSlot, closeGuest, slotStatus,
 	hostString, hostValue, boxBool, boxInt, unboxInt, RaiserHostValue,
 } from "../../src/platform/raiser/native";
 import { Card } from "./raiser/views";
@@ -142,6 +142,11 @@ function inside(n: MockNode, root: MockNode): boolean {
 		at = (at as MockNode).parent;
 	}
 	return false;
+}
+
+function refusal(run: () => void): string {
+	try { run(); } catch (e) { return (e as Error).message; }
+	return "none";
 }
 
 test "a guest mounted through the bridge draws the tree a compiled mount draws" {
@@ -429,4 +434,39 @@ test "an editor reload notifies onPlaceGone for the old place before announcing 
 	assert mockToString(place).includes("<text>app</text>"), mockToString(root);
 	closeSlot(slot);
 	assert errors.length === 0, errors.join("\n");
+}
+
+test "a timer a guest disposer arms during closeSlot still fires: one slot keeps its program's pending work" {
+	const app = program();
+	errors.length = 0;
+	const slot = openSlot(app, "lingering", [], mockHost(), mockNode("root") as unknown as HostNode, null);
+	closeSlot(slot);
+	await sleepAsync(150);
+	assert errors.length === 1 && errors[0].includes("a lingering timer fired"), errors.join("\n");
+	errors.length = 0;
+}
+
+test "closeGuest disposes every root and place, fires no timer afterwards and refuses later calls by name" {
+	const app = loaded(opened(), "app.ms");
+	const editor = loaded(opened(), "editor.ms");
+	const seen = embed(editor, app);
+	const host = mockHost();
+	const root = mockNode("root");
+	const edited = openSlot(editor, "editor", [], host, root as unknown as HostNode, null);
+	const lingering = openSlot(app, "lingering", [], host, root as unknown as HostNode, null);
+	const before = cleanups(app);
+	errors.length = 0;
+	closeGuest(editor);
+	assert seen.log.join("; ") === `place preview; ${GONE}`, seen.log.join("; ");
+	assert edited.closed && cleanups(app) === before + 1, `editor closed ${edited.closed}, app cleanups ${cleanups(app)} after ${before}`;
+	closeGuest(app);
+	assert lingering.closed && root.children.length === 0, mockToString(root);
+	await sleepAsync(150);
+	assert errors.length === 0, errors.join("\n");
+	const load = refusal((): void => { loadGuest(app, "tests/platform/raiser/app.ms"); });
+	assert load.includes("loadGuest") && load.includes("closed"), load;
+	const call = refusal((): void => { callGuest(app, "cleanups", []); });
+	assert call.includes("callGuest") && call.includes("closed"), call;
+	const open = refusal((): void => { openSlot(app, "card", [hostString("late")], host, root as unknown as HostNode, null); });
+	assert open.includes("openSlot") && open.includes("closed"), open;
 }

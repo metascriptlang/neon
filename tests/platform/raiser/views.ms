@@ -32,3 +32,10 @@ export function Ticker(): NeonNode {
 	setTimeout((): void => { setLabel("fired"); }, 20);
 	return element(<Text>{label()}</Text>);
 }
+
+export function Lingering(): NeonNode {
+	onCleanup((): void => {
+		setTimeout((): void => { throw new Error("a lingering timer fired"); }, 20);
+	});
+	return element(<Text>lingering</Text>);
+}
