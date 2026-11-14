@@ -11,10 +11,11 @@ import { Host, HostNode, NeonNode, TextSpan, MeasureRect, MeasureError } from ".
 import { Style, emptyStyle, setStyleField } from "../../render/style";
 import { styleTable } from "../../macros/style/fields";
 import { NeonEvent } from "../../render/event";
-import { place } from "../../render/reconcile";
+import { Row, place, makeRow, mountApart, removeRow } from "../../render/reconcile";
 import { createSignal, Setter } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
+import { flush } from "../../core/runtime";
 import { Dispose } from "../../core/types";
 import {
 	NO_NODE, NO_HANDLER, REGION, REGION_END, GENERATIONS, MEASURE_ERRORS,
@@ -35,10 +36,9 @@ export class GuestProgram {
 	generation: int32 = 0;
 	dispatch: Routine | null = null;
 	dispose: Routine | null = null;
-	slots: GuestSlotState[] = [];
+	slots: SlotHandle[] = [];
 	wake: number = -1;
 	running: boolean = false;
-	staleEvents: int32 = 0;
 	onError: (message: string) => void = (message: string): void => { throw new Error(message); };
 
 	constructor(interp: Interpreter) {
@@ -46,22 +46,62 @@ export class GuestProgram {
 	}
 }
 
-class GuestSlotState {
+export enum SlotOutcome {
+	Mounted,
+	EvalFailed,
+	MissingExports,
+	MissingView,
+	ViewThrew,
+}
+
+export enum SlotShown {
+	Nothing,
+	Guest,
+	InertGuest,
+	Fallback,
+}
+
+export interface SlotRoot {
+	key: int32;
+	generation: int32;
+}
+
+export interface SlotStatus {
+	outcome: SlotOutcome;
+	shown: SlotShown;
+	root: SlotRoot | null;
+}
+
+export class SlotHandle {
 	program: GuestProgram;
 	view: string;
 	args: RaiserHostValue[];
 	host: Host;
 	start: HostNode;
 	end: HostNode;
+	fallback: NeonNode | null;
 	root: BridgeRoot | null = null;
+	fallbackRow: Row | null = null;
+	disposeFallback: Dispose | null = null;
+	outcome: SlotOutcome = SlotOutcome.Mounted;
+	closed: boolean = false;
 
-	constructor(program: GuestProgram, view: string, args: RaiserHostValue[], host: Host, start: HostNode, end: HostNode) {
+	constructor(
+		program: GuestProgram,
+		view: string,
+		args: RaiserHostValue[],
+		host: Host,
+		start: HostNode,
+		end: HostNode,
+		fallback: NeonNode | null,
+	) {
 		this.program = program;
 		this.view = view;
 		this.args = args;
 		this.host = host;
 		this.start = start;
 		this.end = end;
+		this.fallback = fallback;
 	}
 }
 
@@ -79,7 +119,7 @@ class BridgeRoot {
 	key: int32;
 	program: GuestProgram;
 	generation: int32;
-	slot: GuestSlotState;
+	slot: SlotHandle;
 	host: Host;
 	nodes: (HostNode | null)[] = [];
 	generations: int32[] = [];
@@ -88,7 +128,7 @@ class BridgeRoot {
 	feeds: Map<int32, SpanFeed> = new Map<int32, SpanFeed>();
 	live: boolean = true;
 
-	constructor(key: int32, slot: GuestSlotState) {
+	constructor(key: int32, slot: SlotHandle) {
 		this.key = key;
 		this.program = slot.program;
 		this.generation = slot.program.generation;
@@ -288,11 +328,19 @@ function eventValue(e: NeonEvent): RaiserHostValue {
 	);
 }
 
+function inert(r: BridgeRoot): boolean {
+	return r.generation !== r.program.generation || r.program.dispatch === null;
+}
+
 function deliverEvent(r: BridgeRoot, handler: int32, name: string, e: NeonEvent): void {
 	const p = r.program;
 	const dispatch = p.dispatch;
-	if (!r.live || r.generation !== p.generation || dispatch === null) {
-		p.staleEvents += 1;
+	if (!r.live) {
+		p.onError(`guest root ${r.key} refused ${name}: the root was retired`);
+		return;
+	}
+	if (inert(r) || dispatch === null) {
+		p.onError(`guest root ${r.key} refused ${name}: it is inert, mounted by program generation ${r.generation} and replaced by generation ${p.generation}`);
 		return;
 	}
 	const got = invoke(p, dispatch, [hostValue(boxInt(r.key)), hostValue(boxInt(handler)), hostString(name), eventValue(e)]);
@@ -509,6 +557,8 @@ function select(p: GuestProgram, name: string): Routine | null {
 	return selected.ok ? selected.value : null;
 }
 
+const MISSING_EXPORTS = "a guest program re-exports raiserDispatch and raiserDispose from neon's src/platform/raiser/guest";
+
 function guestError(path: string, message: string): Diagnostic {
 	return { file: path, line: 0, column: 0, message, severity: ErrorSeverity.Error };
 }
@@ -538,12 +588,16 @@ export function loadGuest(p: GuestProgram, path: string): Result<int32, Diagnost
 		return evaluated.ok ? Result.ok(0) : Result.err(evaluated.error);
 	});
 	arm(p);
-	if (!ran.ok) { return Result.err(ran.error); }
+	if (!ran.ok) {
+		for (const slot of p.slots) { slot.outcome = SlotOutcome.EvalFailed; }
+		return Result.err(ran.error);
+	}
 	p.generation += 1;
 	p.dispatch = select(p, "raiserDispatch");
 	p.dispose = select(p, "raiserDispose");
 	if (p.dispatch === null || p.dispose === null) {
-		return Result.err([guestError(path, "a guest program re-exports raiserDispatch and raiserDispose from neon's src/platform/raiser/guest")]);
+		for (const slot of p.slots.slice(0)) { failSlot(slot, SlotOutcome.MissingExports); }
+		return Result.err([guestError(path, MISSING_EXPORTS)]);
 	}
 	const failures: string[] = [];
 	for (const slot of p.slots.slice(0)) {
@@ -584,54 +638,158 @@ function retire(r: BridgeRoot, inGuest: boolean): void {
 	if (failure !== null) { p.onError(failure as string); }
 }
 
-function mountSlot(slot: GuestSlotState): string | null {
+function showFallback(slot: SlotHandle, fallback: NeonNode): void {
+	const parent = slot.host.parentOf(slot.end);
+	if (parent === null) { throw new Error(`the guest slot for view ${slot.view} is no longer in the tree`); }
+	slot.disposeFallback = createRoot((dispose: Dispose): Dispose => {
+		const shown = makeRow(fallback);
+		try {
+			mountApart(slot.host, parent as HostNode, slot.end, shown);
+			slot.fallbackRow = shown;
+			return dispose;
+		} catch (error) {
+			dispose();
+			throw error;
+		}
+	});
+	flush();
+}
+
+function hideFallback(slot: SlotHandle): void {
+	const row = slot.fallbackRow;
+	const dispose = slot.disposeFallback;
+	slot.fallbackRow = null;
+	slot.disposeFallback = null;
+	const parent = slot.host.parentOf(slot.end);
+	if (row !== null && parent !== null) { removeRow(slot.host, parent as HostNode, row as Row); }
+	if (dispose !== null) { dispose(); }
+}
+
+function failSlot(slot: SlotHandle, outcome: SlotOutcome): void {
+	slot.outcome = outcome;
+	const fallback = slot.fallback;
+	if (fallback === null || slot.fallbackRow !== null) { return; }
+	const old = slot.root;
+	slot.root = null;
+	if (old !== null) { retire(old as BridgeRoot, true); }
+	showFallback(slot, fallback as NeonNode);
+}
+
+function mountSlot(slot: SlotHandle): string | null {
 	const p = slot.program;
+	if (p.dispatch === null || p.dispose === null) {
+		failSlot(slot, SlotOutcome.MissingExports);
+		return `${slot.view}: ${MISSING_EXPORTS}`;
+	}
+	const selected = selectRoutine(p.interp, slot.view);
+	if (!selected.ok) {
+		failSlot(slot, SlotOutcome.MissingView);
+		return selected.error;
+	}
 	const r = new BridgeRoot(nextKey, slot);
 	nextKey += 1;
 	bridgeRoots.set(r.key, r);
-	const selected = selectRoutine(p.interp, slot.view);
-	if (!selected.ok) {
-		retire(r, false);
-		return selected.error;
-	}
 	const args: RaiserHostValue[] = [hostValue(boxInt(r.key))];
 	for (const arg of slot.args) { args.push(arg); }
 	const got = invoke(p, selected.value, args);
 	if (!got.ok) {
 		retire(r, false);
+		failSlot(slot, SlotOutcome.ViewThrew);
 		return `${slot.view}: ${got.error}`;
 	}
 	const old = slot.root;
 	slot.root = r;
+	slot.outcome = SlotOutcome.Mounted;
 	if (old !== null) { retire(old as BridgeRoot, true); }
+	hideFallback(slot);
 	return null;
 }
 
-function closeSlot(slot: GuestSlotState): void {
+export function slotStatus(slot: SlotHandle): SlotStatus {
+	const r = slot.root;
+	if (slot.fallbackRow !== null) { return { outcome: slot.outcome, shown: SlotShown.Fallback, root: null }; }
+	if (r === null) { return { outcome: slot.outcome, shown: SlotShown.Nothing, root: null }; }
+	const root = r as BridgeRoot;
+	return {
+		outcome: slot.outcome,
+		shown: inert(root) ? SlotShown.InertGuest : SlotShown.Guest,
+		root: { key: root.key, generation: root.generation },
+	};
+}
+
+function startSlot(
+	program: GuestProgram,
+	view: string,
+	args: RaiserHostValue[],
+	host: Host,
+	parent: HostNode,
+	before: HostNode | null,
+	fallback: NeonNode | null,
+): SlotHandle {
+	const start = host.createText("");
+	place(host, parent, start, before);
+	const end = host.createText("");
+	place(host, parent, end, before);
+	const slot = new SlotHandle(program, view, args, host, start, end, fallback);
+	program.slots.push(slot);
+	return slot;
+}
+
+function mountReported(slot: SlotHandle): void {
+	const failed = mountSlot(slot);
+	if (failed !== null) { slot.program.onError(failed as string); }
+}
+
+function release(slot: SlotHandle): void {
+	if (slot.closed) { throw new Error(`the guest slot for view ${slot.view} is already closed`); }
+	slot.closed = true;
 	const p = slot.program;
 	const at = p.slots.indexOf(slot);
 	if (at >= 0) { p.slots.splice(at, 1); }
 	const r = slot.root;
 	slot.root = null;
 	if (r !== null) { retire(r as BridgeRoot, true); }
+	hideFallback(slot);
+}
+
+export function openSlot(
+	program: GuestProgram,
+	view: string,
+	args: RaiserHostValue[],
+	host: Host,
+	parent: HostNode,
+	before: HostNode | null,
+	fallback: NeonNode | null = null,
+): SlotHandle {
+	const slot = startSlot(program, view, args, host, parent, before, fallback);
+	try {
+		mountReported(slot);
+	} catch (error) {
+		closeSlot(slot);
+		throw error;
+	}
+	return slot;
+}
+
+export function closeSlot(slot: SlotHandle): void {
+	release(slot);
+	for (const marker of [slot.start, slot.end]) {
+		const parent = slot.host.parentOf(marker);
+		if (parent !== null) { slot.host.removeChild(parent as HostNode, marker); }
+	}
 }
 
 export interface GuestSlotProps {
 	program: GuestProgram;
 	view: string;
 	args?: RaiserHostValue[] | null;
+	fallback?: NeonNode | null;
 }
 
 export function GuestSlot(props: GuestSlotProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const start = host.createText("");
-		place(host, parent, start, before);
-		const end = host.createText("");
-		place(host, parent, end, before);
-		const slot = new GuestSlotState(props.program, props.view, props.args ?? [], host, start, end);
-		props.program.slots.push(slot);
-		onCleanup((): void => { closeSlot(slot); });
-		const failed = mountSlot(slot);
-		if (failed !== null) { props.program.onError(failed as string); }
+		const slot = startSlot(props.program, props.view, props.args ?? [], host, parent, before, props.fallback ?? null);
+		onCleanup((): void => { release(slot); });
+		mountReported(slot);
 	};
 }
