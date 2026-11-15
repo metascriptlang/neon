@@ -13,7 +13,7 @@ import {
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
-import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign, layoutRuns } from "../../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, UnderlineStyle, Align as TextAlign, Truncate, layoutRuns } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, CornerRadii, BorderWidths } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
@@ -70,6 +70,8 @@ export class VoidNode {
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	cellWidths: uint8[] = [];
+	singleLine: boolean = false;
+	ellipsize: Truncate = Truncate.End;
 	boxed: boolean = false;
 
 	constructor(ref: NodeRef, raw: boolean = false) {
@@ -217,15 +219,27 @@ function fitTo(laid: float32, given: float32, mode: MeasureMode): float32 {
 	return mode === "at-most" && whole > given ? given : whole;
 }
 
+function truncateMode(mode: string): Truncate {
+	if (mode === "tail") { return Truncate.End; }
+	if (mode === "head") { return Truncate.Start; }
+	if (mode === "middle") { return Truncate.Middle; }
+	throw new Error(`void host: ellipsizeMode ${mode} has no Void truncation; head, middle and tail are supported`);
+}
+
+function truncateOf(n: VoidNode): Truncate {
+	return n.singleLine ? n.ellipsize : Truncate.None;
+}
+
 function measureParagraph(n: VoidNode, width: float32, widthMode: MeasureMode, height: float32, heightMode: MeasureMode): MeasureSize {
 	if (n.para === null || n.cell > 0.0 || n.cellWidths.length > 0) {
 		return { width: widthMode === "exactly" ? width : 0.0, height: heightMode === "exactly" ? height : 0.0 };
 	}
 	const label = n.para as NodeRef;
-	const wrap: float32 = widthMode === "undefined" ? 0.0 : width;
+	const wrap: float32 = widthMode === "undefined" || n.singleLine ? 0.0 : width;
 	const laid = layoutRuns(label.text(), { ...label.textStyle(), maxWidth: wrap }, n.runs);
 	if (!laid.ok) { throw new Error(`void host: a Text could not lay out "${label.text()}": ${laid.error.toString()}`); }
-	return { width: fitTo(laid.value.width, width, widthMode), height: fitTo(laid.value.height, height, heightMode) };
+	const laidHeight: float32 = n.singleLine && laid.value.lines.length > 0 ? laid.value.lines[0].height : laid.value.height;
+	return { width: fitTo(laid.value.width, width, widthMode), height: fitTo(laidHeight, height, heightMode) };
 }
 
 export function layoutGetMeasure(this l: VoidLayout): LayoutMeasure | null {
@@ -1000,6 +1014,10 @@ export function createVoidHostWith(
 	const remeasure = (n: VoidNode): void => {
 		if (n.yg !== null) { markLayoutDirty(layoutOf(tree, n)); }
 	};
+	const applyTruncate = (n: VoidNode): void => {
+		if (n.para !== null) { (n.para as NodeRef).setTruncate(truncateOf(n)); }
+		remeasure(n);
+	};
 
 	// One label per Text: its spans in order, and a run per span once a span is styled or the Text is decorated.
 	const refreshParagraph = (root: VoidNode): void => {
@@ -1025,6 +1043,7 @@ export function createVoidHostWith(
 			const made = textLabel("");
 			if (root.cell > 0.0) { made.setForceWidth(root.cell); }
 			if (root.cellWidths.length > 0) { made.setCellWidths(root.cellWidths); }
+			made.setTruncate(truncateOf(root));
 			root.ref.addChild(made);
 			root.para = made;
 		}
@@ -1226,6 +1245,16 @@ export function createVoidHostWith(
 				n.cellWidths = widths;
 				if (n.para !== null) { (n.para as NodeRef).setCellWidths(widths); }
 				remeasure(n);
+			} else if (name === "numberOfLines") {
+				if (!n.isText) { throw new Error("void host: numberOfLines belongs on a Text"); }
+				const lines = parseInt(value);
+				if (lines > 1) { throw new Error(`void host: numberOfLines ${lines} needs a line clamp Void does not have; 0 and 1 are supported`); }
+				n.singleLine = lines === 1;
+				applyTruncate(n);
+			} else if (name === "ellipsizeMode") {
+				if (!n.isText) { throw new Error("void host: ellipsizeMode belongs on a Text"); }
+				n.ellipsize = truncateMode(value);
+				applyTruncate(n);
 			} else if (name === "imeRect") {
 				n.imeBox = parseCaretRect(value);
 				if (focusedNode === n && dirtyListener !== null) { (dirtyListener as () => void)(); }
@@ -1244,6 +1273,14 @@ export function createVoidHostWith(
 			if (name === "style") { n.flex = parseFlexStyle(""); }
 			else if (name === "focusable") { n.focusAttr = false; }
 			else if (name === "imeRect") { n.imeBox = null; }
+			else if (name === "numberOfLines") {
+				n.singleLine = false;
+				applyTruncate(n);
+			}
+			else if (name === "ellipsizeMode") {
+				n.ellipsize = Truncate.End;
+				applyTruncate(n);
+			}
 			else if (name === "cellWidth") {
 				n.cell = 0.0;
 				if (n.para !== null) { (n.para as NodeRef).setForceWidth(0.0); }

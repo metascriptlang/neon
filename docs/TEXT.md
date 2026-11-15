@@ -97,6 +97,11 @@ React Native `18f5ddb`, react-native-windows `1f59db1`, Flutter `6f0e0db`, Skia 
 and `append` into one is refused. The label wraps at the Text's laid width. It gets runs once a span is styled or the
 Text itself carries a decoration line.
 
+`numberOfLines={1}` keeps the label on one line: it measures unwrapped, at most the available width and one line high, and
+void2d's `setTruncate` puts the ellipsis where `ellipsizeMode` says (`tail`, `head`, `middle`). `0` wraps again. Above
+one and `clip` are refused by name, because void2d has no line clamp and no clip-without-ellipsis
+(`tests/platform/voidTextSize.test.ms`).
+
 A Text's or span's `fontFamily`, `fontWeight` and `fontStyle` pick its face through void2d's `registerFace` and
 `resolveFont`, a span's own over its Text's. A Text with no `fontFamily` takes the host's default family; an Ion window
 registers its `font` file as that family, or takes the window option `fontFamily` when it is set. `fontFamily` is a
