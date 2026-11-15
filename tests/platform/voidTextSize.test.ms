@@ -70,3 +70,44 @@ test "a Text whose content changes is measured again" {
 	vh.layout(480.0, 400.0);
 	assert t.ref.content().h > before, `the longer text grows the Text, ${before} then ${t.ref.content().h}`;
 }
+
+test "numberOfLines one keeps a long Text on one line in a narrow column" {
+	const vh = mounted(element(<View style={{ width: 80 }}><Text numberOfLines={1} style={{ fontSize: 14 }}>{LONG}</Text></View>), 480.0);
+	const t = child(vh, child(vh, vh.root as VoidNode, 0), 0);
+	assert t.ref.content().h === oneLine(LONG), `one line high, got ${t.ref.content().h}`;
+	assert t.ref.content().w <= 80.0, `no wider than its column, got ${t.ref.content().w}`;
+}
+
+test "a numberOfLines that drops back to zero lets the Text wrap again" {
+	const [lines, setLines] = createSignal<number>(1);
+	const vh = mounted(element(<View style={{ width: 80 }}><Text numberOfLines={lines()} style={{ fontSize: 14 }}>{LONG}</Text></View>), 480.0);
+	const t = child(vh, child(vh, vh.root as VoidNode, 0), 0);
+	assert t.ref.content().h === oneLine(LONG), `one line high while clamped, got ${t.ref.content().h}`;
+	setLines(0);
+	flush();
+	vh.layout(480.0, 400.0);
+	assert t.ref.content().h >= 2.0 * oneLine(LONG), `wrapped again once unclamped, got ${t.ref.content().h}`;
+}
+
+test "numberOfLines above one is refused by name on the void host" {
+	let message = "";
+	try {
+		mounted(element(<View style={{ width: 80 }}><Text numberOfLines={2} style={{ fontSize: 14 }}>{LONG}</Text></View>), 480.0);
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message.includes("numberOfLines 2"), `refused naming the value, got "${message}"`;
+}
+
+test "ellipsizeMode head keeps the one line and clip is refused by name" {
+	const vh = mounted(element(<View style={{ width: 80 }}><Text numberOfLines={1} ellipsizeMode="head" style={{ fontSize: 14 }}>{LONG}</Text></View>), 480.0);
+	const t = child(vh, child(vh, vh.root as VoidNode, 0), 0);
+	assert t.ref.content().h === oneLine(LONG), `one line high, got ${t.ref.content().h}`;
+	let message = "";
+	try {
+		mounted(element(<View style={{ width: 80 }}><Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 14 }}>{LONG}</Text></View>), 480.0);
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message.includes("ellipsizeMode clip"), `refused naming the mode, got "${message}"`;
+}
