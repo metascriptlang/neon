@@ -3,12 +3,12 @@ import {
 } from "../../src/platform/void/host";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
-import { View, Text, ScrollView } from "../../src/components/primitives";
+import { View, Text } from "../../src/components/primitives";
 import { TouchableWithoutFeedback } from "../../src/components/touchable";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import {
-	Scene2D, group, label, local, content, setPosition, setSize,
+	Scene2D, NodeRef, group, label, local, content, setPosition, setSize,
 } from "../../../void/src/void2d/node";
 import { create, close } from "../../../void/src/void2d/scene";
 import { addFont } from "../../../void/src/void2d/font";
@@ -51,14 +51,12 @@ test "unstyled View and WithoutFeedback lay out and deliver enabled presses" {
 		assert inner.ref.content().h === 40.0;
 		assert child(vh, inner).ref.content().h > 0.0;
 		assert vh.pointerDown(10.0, 10.0, 1);
-		vh.clickAt(10.0, 10.0);
 		assert vh.pointerUp(10.0, 10.0, 1);
 		flush();
 		assert presses === 0;
 		setDisabled(false);
 		flush();
 		assert vh.pointerDown(10.0, 10.0, 1);
-		vh.clickAt(10.0, 10.0);
 		assert vh.pointerUp(10.0, 10.0, 1);
 		flush();
 		assert presses === 1;
@@ -67,18 +65,21 @@ test "unstyled View and WithoutFeedback lay out and deliver enabled presses" {
 
 test "unstyled ScrollView lays out its viewport mask and descendants" {
 	const vh = host();
-	const dispose = render(element(
-		<ScrollView><View style={{ width: 90, height: 60 }} /></ScrollView>
-	), vh.host, vh.root);
 	try {
+		const scroll = vh.host.createElement("scrollview") as VoidNode;
+		const inner = vh.host.createElement("view") as VoidNode;
+		vh.host.setStyle(inner, { width: 90, height: 60 });
+		vh.host.append(vh.root, scroll);
+		vh.host.append(scroll, inner);
 		vh.layout(320.0, 200.0);
-		const scroll = child(vh, vh.root as VoidNode);
 		assert scroll.ref.content().w === 320.0;
 		assert scroll.ref.content().h === 60.0;
 		assert scroll.scroller !== null;
-		assert child(vh, scroll).ref.content().w === 90.0;
-		assert child(vh, scroll).ref.content().h === 60.0;
-	} finally { dispose(); vh.scene.close(); }
+		const mask = scroll.scroller as NodeRef;
+		assert mask.content().w === 320.0 && mask.content().h === 60.0;
+		assert inner.ref.content().w === 90.0;
+		assert inner.ref.content().h === 60.0;
+	} finally { vh.scene.close(); }
 }
 
 test "createElement defaults leave manual nodes and inline text outside Yoga" {

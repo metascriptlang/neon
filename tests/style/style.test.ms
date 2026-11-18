@@ -67,5 +67,7 @@ test "a style prop attaches a Style to the node" {
 	assert styled.tree.childrenOf(styled.root as VoidNode)[0].flex !== null, "the host received the style";
 	const plain = createVoidHost();
 	render(<div></div>, plain.host, plain.root);
-	assert plain.tree.childrenOf(plain.root as VoidNode)[0].flex === null, "an element with no style prop carries none";
+	const unstyled = plain.tree.childrenOf(plain.root as VoidNode)[0];
+	assert unstyled.style === null, "no authored style was attached";
+	assert unstyled.flex !== null, "an unstyled element still has default layout";
 }

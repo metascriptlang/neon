@@ -1186,7 +1186,6 @@ export function createVoidHostWith(
 				n = new VoidNode(scene.group());
 				if (tag === "text") {
 					n.isText = true;
-					n.flex = {};
 					if (getOwner() !== null) {
 						const text = n;
 						onCleanup((): void => {
@@ -1199,6 +1198,7 @@ export function createVoidHostWith(
 					}
 				}
 			}
+			n.flex = {};
 			n.tag = tag;
 			woke(was);
 			return n;
