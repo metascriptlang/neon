@@ -87,6 +87,8 @@ function directCompositionTranslateX(node: HostNode, time: float64): float64 {
 class Stage {
 	time: float64 = 0;
 	fire: ((target: number) => void) | null = null;
+	wake: (() => void) | null = null;
+	wakeTime: float64 = Infinity;
 	policy: MotionPolicy;
 	signals: MotionSignals = new MotionSignals();
 	names: string[] = [];
@@ -102,6 +104,11 @@ class Stage {
 		setFrameDriver({
 			now: (): number => this.time,
 			schedule: (fire: (target: number) => void): void => { this.fire = fire; },
+			wakeAt: (time: number, wake: () => void): (() => void) => {
+				this.wakeTime = time;
+				this.wake = wake;
+				return (): void => { this.wake = null; this.wakeTime = Infinity; };
+			},
 		});
 		installLayerEngine(nativeLayerEngine());
 		for (const property of properties) {
@@ -184,6 +191,12 @@ class Stage {
 		while (this.time < time) {
 			this.time += Math.min(CONFORMANCE_FRAME_MS, time - this.time);
 			nmLayerSetNow(this.time);
+			const wake = this.wake;
+			if (wake !== null && this.time >= this.wakeTime) {
+				this.wake = null;
+				this.wakeTime = Infinity;
+				wake();
+			}
 			const fire = this.fire;
 			this.fire = null;
 			if (fire !== null) { fire(this.time); }

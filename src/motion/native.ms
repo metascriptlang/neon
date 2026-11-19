@@ -8,6 +8,7 @@ import {
 	layerEngine,
 } from "../platform/native/layerEngine";
 import { MotionElements, frameClock } from "./waapi";
+import { WakeClock, deadlineSleep, untilMark } from "./wake";
 import { Clock } from "pulse/src/clock";
 import { ComposedTrack, flatten, localTime } from "pulse/src/compose";
 import {
@@ -41,17 +42,21 @@ class FrameStamp {
 
 	constructor(source: Clock) {
 		this.source = source;
+		const stamped = (callback: (time: float64) => void): ((time: float64) => void) =>
+			(time: float64): void => {
+				this.at = time;
+				callback(time);
+			};
+		const requestAt = source.requestAt;
 		this.clock = {
 			now: (): float64 => {
 				this.at = source.now();
 				return this.at;
 			},
-			request: (callback: (time: float64) => void): int32 =>
-				source.request((time: float64): void => {
-					this.at = time;
-					callback(time);
-				}),
+			request: (callback: (time: float64) => void): int32 => source.request(stamped(callback)),
 			cancel: (id: int32): void => source.cancel(id),
+			requestAt: requestAt === null ? null : (time: float64, callback: (time: float64) => void): int32 =>
+				(requestAt as (time: float64, callback: (time: float64) => void) => int32)(time, stamped(callback)),
 		};
 	}
 }
@@ -541,6 +546,10 @@ class NativeRun {
 		return node !== null;
 	}
 
+	moved(): boolean {
+		return !sameNode(resolvedNode(this.elements, this.plan.slot, this.plan.property), this.node);
+	}
+
 	unmounted(): boolean {
 		return this.elements.declared.includes(this.plan.slot) &&
 			this.elements.nodeFor(this.plan.slot, layerField(this.plan.property)) === null;
@@ -725,7 +734,10 @@ class NativeRuns {
 	bindings: MotionBinding[] = [];
 	runs: NativeRun[] = [];
 	player: NativeMotionPlayer | null = null;
+	wake: WakeClock;
+	private evaluated: boolean;
 	private frames: FrameStamp;
+	private unwatch: () => void;
 	private iterations: float64;
 	private yoyo: boolean;
 
@@ -737,7 +749,10 @@ class NativeRuns {
 	) {
 		this.doc = doc;
 		this.frames = new FrameStamp(options.clock);
-		this.options = { ...options, clock: this.frames.clock };
+		this.wake = new WakeClock(this.frames.clock, deadlineSleep(this.frames.clock));
+		this.wake.wake = (): float64 | null => this.nextWake();
+		this.unwatch = elements.watch((): void => { this.wake.reschedule(); });
+		this.options = { ...options, clock: this.wake.clock };
 		const owned: MotionBinding[] = [];
 		for (const binding of bindings) {
 			if (
@@ -749,6 +764,7 @@ class NativeRuns {
 				this.bindings.push(binding);
 			}
 		}
+		this.evaluated = this.bindings.length > 0;
 		const plan = planLayers(
 			doc,
 			options,
@@ -819,6 +835,34 @@ class NativeRuns {
 		}
 	}
 
+	control(): void {
+		this.wake.flush();
+	}
+
+	dispose(): void {
+		this.unwatch();
+	}
+
+	private nextWake(): float64 | null {
+		const player = this.player;
+		if (player === null || player.onUpdate !== null || layerEngine() === null ||
+			this.evaluated) {
+			return null;
+		}
+		const at = player.rawTime;
+		for (const run of this.runs) {
+			if (run.plan.route !== LayerRoute.Compositor) { return null; }
+			if (run.evicted) { continue; }
+			if (run.moved()) { return 1; }
+			if (run.node === null) {
+				if (run.unmounted()) { continue; }
+				return null;
+			}
+			if (!run.live && at >= 0) { return 1; }
+		}
+		return untilMark(player, []);
+	}
+
 	holdPresented(): void {
 		for (const run of this.runs) {
 			if (run.resolve() && run.live) {
@@ -881,61 +925,73 @@ export class NativeMotionPlayer extends MotionPlayer {
 	}
 
 	play(from: float64 | null = null, suppressEvents: boolean = true): void {
+		this.setup.control();
 		super.play(from, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	reverse(from: float64 | null = null, suppressEvents: boolean = true): void {
+		this.setup.control();
 		super.reverse(from, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	pause(atTime: float64 | null = null, suppressEvents: boolean = true): void {
+		this.setup.control();
 		super.pause(atTime, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	resume(): void {
+		this.setup.control();
 		super.resume();
 		this.setup.alignAll();
 	}
 
 	restart(includeDelay: boolean = false, suppressEvents: boolean = true): void {
+		this.setup.control();
 		super.restart(includeDelay, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	seek(position: float64, suppressEvents: boolean = true): void {
+		this.setup.control();
 		super.seek(position, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	setTotalTime(value: float64, suppressEvents: boolean = false): void {
+		this.setup.control();
 		super.setTotalTime(value, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	setTime(value: float64, suppressEvents: boolean = false): void {
+		this.setup.control();
 		super.setTime(value, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	setTotalProgress(value: float64, suppressEvents: boolean = false): void {
+		this.setup.control();
 		super.setTotalProgress(value, suppressEvents);
 		this.setup.alignAll();
 	}
 
 	setTimeScale(value: float64): void {
+		this.setup.control();
 		super.setTimeScale(value);
 		this.setup.alignAll();
 	}
 
 	finish(): void {
+		this.setup.control();
 		super.finish();
 		this.setup.alignAll();
 	}
 
 	cancel(): void {
+		this.setup.control();
 		super.cancel();
 		this.setup.holdPresented();
 	}
@@ -946,6 +1002,8 @@ export class NativeMotionPlayer extends MotionPlayer {
 	}
 
 	dispose(): void {
+		this.setup.control();
+		this.setup.dispose();
 		this.setup.holdPresented();
 		super.dispose();
 	}

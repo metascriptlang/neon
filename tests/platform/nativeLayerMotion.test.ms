@@ -305,3 +305,59 @@ test "a handover whose begin lands on layer time zero keeps that begin" {
 	assert near(stage.shownOpacity(516), 0.516), "shown " + stage.shownOpacity(516).toString();
 	stage.close();
 }
+
+class CountingClock {
+	manual: ManualClock = new ManualClock();
+	frames: int32 = 0;
+	deadlines: int32 = 0;
+	clock: Clock;
+
+	constructor() {
+		this.clock = {
+			now: (): float64 => this.manual.time,
+			request: (callback: (time: float64) => void): int32 => {
+				this.frames += 1;
+				return this.manual.request(callback);
+			},
+			cancel: (id: int32): void => this.manual.cancel(id),
+			requestAt: (time: float64, callback: (time: float64) => void): int32 => {
+				this.deadlines += 1;
+				return this.manual.requestAt(time, callback);
+			},
+		};
+	}
+}
+
+test "a fully handed-over player asks for no frame while it plays, and still reports its repeat and its end" {
+	const stage = new Stage();
+	const counting = new CountingClock();
+	const player = stage.play([ramp("opacity", 0, 1)], { ...motionOptions(counting.clock), repeat: 1 });
+	let repeated: int32 = 0;
+	let completed: int32 = 0;
+	player.onRepeat = (): void => { repeated += 1; };
+	player.onComplete = (): void => { completed += 1; };
+	counting.manual.advance(16);
+	assert nmLayerLive(stage.tag, OPACITY) === 1, "handed to the layer";
+	const started = counting.frames;
+	for (let i: int32 = 0; i < 70; i += 1) { counting.manual.advance(16); }
+	assert counting.frames === started, "frames while playing: " + (counting.frames - started).toString();
+	assert counting.deadlines > 0, "it sleeps to a mark";
+	assert repeated === 1, "repeat " + repeated.toString();
+	assert completed === 0;
+	for (let i: int32 = 0; i < 80; i += 1) { counting.manual.advance(16); }
+	assert completed === 1 && player.time === 1000, "completed " + completed.toString() + " at " + player.time.toString();
+	stage.close();
+}
+
+test "a player wakes to its controls: a pause between marks holds the time it was paused at" {
+	const stage = new Stage();
+	const counting = new CountingClock();
+	const player = stage.play([ramp("opacity", 0, 1)], motionOptions(counting.clock));
+	counting.manual.advance(16);
+	counting.manual.advance(384);
+	player.pause();
+	assert near(player.time, 400), "paused at " + player.time.toString();
+	assert nmLayerLive(stage.tag, OPACITY) === 0 && near(nmOpacity(stage.tag), 0.4),
+		"the layer holds the paused value: " + nmOpacity(stage.tag).toString();
+	stage.close();
+}
