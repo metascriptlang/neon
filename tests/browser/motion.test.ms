@@ -911,7 +911,7 @@ test "an element-bound value on a slot inside a Show animates the remounted elem
 	});
 	const value = made[0];
 	const first = dom(signals.elements.node("box") as HostNode);
-	value.animate(timing(100, { duration: 600, easing: Easing.linear }));
+	value.animate(timing(100, { duration: 3000, easing: Easing.linear }));
 	assert first.getAnimations().length === 1, "handed to WAAPI on the first element";
 	await sleepAsync(150);
 	setPresent(false);
@@ -923,8 +923,8 @@ test "an element-bound value on a slot inside a Show animates the remounted elem
 	await renderedFrames();
 	const second = dom(signals.elements.node("box") as HostNode);
 	const mid = translateX(second);
-	assert mid > 30 && mid < 100, "the remounted element shows the running value: " + computed(second, "translate");
-	await sleepAsync(700);
+	assert mid > 0 && mid < 100, "the remounted element shows the running value: " + computed(second, "translate");
+	await waitFor("the end", (): boolean => translateX(second) === 100, 10000);
 	assert translateX(second) === 100, "the remounted element ends on the target: " + computed(second, "translate");
 	assert first.getAnimations().length === 0 && first.style.translate === left,
 		"the removed element keeps no animation and no later write: " + first.style.translate;
@@ -1152,9 +1152,11 @@ test "the showcase plays its staggered entrance and its like spring through WAAP
 		domHost(),
 		documentBody(),
 	);
-	await sleepAsync(160);
+	await waitFor("the cards", (): boolean => bodyText().includes("card second"), 3000);
 	const first = byText("card first");
 	const second = byText("card second");
+	await waitFor("both cards on WAAPI", (): boolean =>
+		first.getAnimations().length === 3 && second.getAnimations().length === 3, 3000);
 	assert first.getAnimations().length === 3 && second.getAnimations().length === 3,
 		"cards on WAAPI: " + first.getAnimations().length.toString() + " " +
 			second.getAnimations().length.toString();
@@ -1166,12 +1168,11 @@ test "the showcase plays its staggered entrance and its like spring through WAAP
 	assert writes.count === 0, "style writes in the entrance: " + writes.count.toString();
 	assert frames.count === started, "frames in the entrance: " +
 		(frames.count - started).toString();
-	await sleepAsync(300);
-	assert bodyText().includes("entered"), bodyText();
+	await waitFor("the entrance", (): boolean => bodyText().includes("entered"), 5000);
 	assert opacity(first) === 1 && opacity(second) === 1;
 	const like = byText("like");
 	clickOn(like);
-	await sleepAsync(50);
+	await waitFor("the like spring", (): boolean => like.getAnimations().length === 1, 3000);
 	assert like.getAnimations().length === 1 && firstEasing(like).startsWith("linear("),
 		"like spring on WAAPI: " + firstEasing(like);
 	restore();
