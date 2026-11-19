@@ -1,5 +1,5 @@
 import { nativeLayerEngine, runApp } from "../../src/platform/native/host";
-import { Pressable, View } from "../../src/components/primitives";
+import { Pressable, View, ViewHandle } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { HostNode } from "../../src/render/hostTypes";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
@@ -24,7 +24,7 @@ import {
 import { MotionPlayer, motionOptions } from "pulse/src/player";
 import { ManualClock } from "pulse/src/clock";
 import { motionElements } from "../../src/motion/waapi";
-import { nativeMotionPlayer, nativeOwns } from "../../src/motion/native";
+import { nativeElementValue, nativeMotionPlayer, nativeOwns } from "../../src/motion/native";
 import { MotionPolicy } from "pulse/src/policy";
 import { decayConfig } from "pulse/src/decay";
 import { AnimatedValue, decay, spring, timing } from "pulse/src/value";
@@ -446,5 +446,65 @@ test "a create tween leaves a property the layer animates alone" {
 	assert Math.abs(nmOpacity(tag) - 0.4) < 1e-6, "the view model holds the animation's end: " + nmOpacity(tag).toString();
 	frames.runAll();
 	assert Math.abs(nmOpacity(tag) - 0.4) < 1e-6, "ends on the animation: " + nmOpacity(tag).toString();
+	close();
+}
+
+class Box {
+	node: HostNode | null = null;
+	tag: int32 = 0;
+
+	constructor() {
+		runApp((): NeonNode => <Pressable onPress={() => {}}
+			ref={(h: ViewHandle): void => { this.node = h.node; }}
+			style={{ width: 40, height: 40 }} />);
+		this.tag = nmLastPressableTag();
+	}
+
+	value(property: string, initial: float64): AnimatedValue {
+		const elements = motionElements([{ slot: "box", node: this.node as HostNode }]);
+		return nativeElementValue(initial, new MotionPolicy(), elements, "box", property);
+	}
+}
+
+test "a handed value nobody subscribes to sleeps through its flight, reads its exact value and still ends" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const box = new Box();
+	const value = box.value("opacity", 0);
+	let ended = "";
+	value.animate(timing(1, { duration: 200, easing: Easing.linear }), (finished: boolean): void => {
+		ended = finished ? "finished" : "interrupted";
+	});
+	assert nmLayerLive(box.tag, OPACITY) === 1, "handed to the layer";
+	frames.step(1);
+	const fired = frames.frames;
+	frames.step(5);
+	assert frames.frames === fired, "frames in flight: " + (frames.frames - fired).toString();
+	assert Math.abs(value.get() - 0.48) < 1e-9, "the exact value at 96 ms: " + value.get().toString();
+	assert value.isAnimating() && ended === "";
+	frames.runAll();
+	assert ended === "finished" && value.get() === 1 && !value.isAnimating(), ended;
+	assert nmLayerLive(box.tag, OPACITY) === 0 && nmOpacity(box.tag) === 1;
+	close();
+}
+
+test "a handed value with a subscriber keeps a frame per tick, and sleeps again once it leaves" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const box = new Box();
+	const value = box.value("opacity", 0);
+	const seen: float64[] = [];
+	const leave = value.subscribe((next: float64): void => { seen.push(next); });
+	value.animate(timing(1, { duration: 400, easing: Easing.linear }));
+	const fired = frames.frames;
+	frames.step(4);
+	assert frames.frames === fired + 4 && seen.length >= 4, "a subscriber hears each frame: " + seen.length.toString();
+	leave();
+	frames.step(1);
+	const after = frames.frames;
+	frames.step(6);
+	assert frames.frames === after, "frames after the last subscriber left: " + (frames.frames - after).toString();
+	frames.runAll();
+	assert value.get() === 1;
 	close();
 }

@@ -1051,7 +1051,7 @@ class ValueParts {
 	slot: string;
 	channel: LayerChannel;
 	target: MotionTarget | null;
-	clock: Clock = frameClock();
+	wake: WakeClock;
 	node: HostNode | null = null;
 
 	constructor(
@@ -1067,6 +1067,8 @@ class ValueParts {
 		this.elements = elements;
 		this.slot = slot;
 		this.channel = channel;
+		const source = frameClock();
+		this.wake = new WakeClock(source, deadlineSleep(source));
 		const eager = resolvedNode(elements, slot, channel.property);
 		this.target =
 			target ??
@@ -1083,14 +1085,15 @@ export class NativeElementValue extends AnimatedValue {
 	private to: float64 = 0;
 	private begin: float64 = 0;
 	private curve: ProgressCurve = { durationMs: 0, progress: [] };
+	private observers: int32 = 0;
 
 	constructor(parts: ValueParts) {
-		super(parts.initial, parts.clock, parts.policy, parts.target);
+		super(parts.initial, parts.wake.clock, parts.policy, parts.target);
 		this.parts = parts;
 		this.hold = new LayerHold((): void => this.yieldLayer());
 		const target = parts.target;
 		this.entry = target === null ? null : entryOf(target as MotionTarget);
-		this.subscribe((next: float64): void => {
+		super.subscribe((next: float64): void => {
 			if (this.element() !== null && !this.handed) {
 				this.paint(next);
 			}
@@ -1101,10 +1104,41 @@ export class NativeElementValue extends AnimatedValue {
 		return this.handed;
 	}
 
+	subscribe(callback: (value: float64) => void): () => void {
+		const unsubscribe = super.subscribe(callback);
+		this.observers += 1;
+		this.parts.wake.undefer();
+		this.parts.wake.reschedule();
+		let subscribed = true;
+		return (): void => {
+			if (!subscribed) { return; }
+			subscribed = false;
+			this.observers -= 1;
+			unsubscribe();
+			this.sleepToEnd();
+		};
+	}
+
+	get(): float64 {
+		this.parts.wake.flush();
+		return super.get();
+	}
+
+	velocity(): float64 {
+		this.parts.wake.flush();
+		return super.velocity();
+	}
+
+	isAnimating(): boolean {
+		this.parts.wake.flush();
+		return super.isAnimating();
+	}
+
 	animate(
 		spec: AnimationSpec,
 		onEnd: ((finished: boolean) => void) | null = null,
 	): void {
+		this.parts.wake.flush();
 		const from = super.get();
 		const carried = super.velocity();
 		this.settle(false);
@@ -1136,12 +1170,14 @@ export class NativeElementValue extends AnimatedValue {
 	}
 
 	cancel(): void {
+		this.parts.wake.flush();
 		this.settle(false);
 		super.cancel();
 	}
 
 	dispose(): void {
 		if (!this.disposed) {
+			this.parts.wake.flush();
 			this.settle(false);
 		}
 		super.dispose();
@@ -1157,7 +1193,7 @@ export class NativeElementValue extends AnimatedValue {
 			duration > 0
 				? Math.min(
 						1,
-						Math.max(0, (this.parts.clock.now() - this.begin) / duration),
+						Math.max(0, (this.parts.wake.now() - this.begin) / duration),
 					)
 				: 1;
 		const points = this.curve.progress;
@@ -1181,8 +1217,15 @@ export class NativeElementValue extends AnimatedValue {
 		this.paint(commit ? shown : super.get());
 	}
 
+	private sleepToEnd(): void {
+		if (this.handed && this.observers === 0) {
+			this.parts.wake.defer(this.begin + this.curve.durationMs - this.parts.wake.now());
+		}
+	}
+
 	private dropHandover(): void {
 		this.handed = false;
+		this.parts.wake.undefer();
 		vacate(this.hold);
 		const entry = this.entry;
 		if (entry !== null && entry.holder === this.hold) {
@@ -1241,7 +1284,7 @@ export class NativeElementValue extends AnimatedValue {
 		}
 		occupy(node, property, this.hold);
 		const engine = layerEngine() as LayerEngine;
-		const begin = this.parts.clock.now();
+		const begin = this.parts.wake.now();
 		engine.write(node, property, this.tuple(to));
 		engine.animate(node, property, keyTimes, values, {
 			durationMs: curve.durationMs,
@@ -1250,7 +1293,7 @@ export class NativeElementValue extends AnimatedValue {
 			startMs: 0,
 			offsetMs: 0,
 			speed: 1,
-			lagMs: this.parts.clock.now() - begin,
+			lagMs: this.parts.wake.now() - begin,
 		});
 		this.handed = true;
 		this.from = from;
@@ -1261,6 +1304,7 @@ export class NativeElementValue extends AnimatedValue {
 		if (entry !== null) {
 			entry.holder = this.hold;
 		}
+		this.sleepToEnd();
 	}
 }
 
