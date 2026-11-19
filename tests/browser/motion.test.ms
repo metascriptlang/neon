@@ -1101,6 +1101,8 @@ test "a fully handed-over player asks for no animation frame while it plays, and
 	assert framesAtRepeat === started, "frames while playing: " +
 		(framesAtRepeat - started).toString();
 	assert writesAtRepeat === 0, "style writes: " + writesAtRepeat.toString();
+	const total = player.totalTime;
+	assert completed === 1 || (total >= 1000 && total < 2000), "a read catches up: " + total.toString();
 	await waitFor("the end", (): boolean => completed === 1, 3000);
 	assert opacity(el) === 1, "the end value";
 	assert near(player.time, 1000, 1e-9), "the playhead reached the end";

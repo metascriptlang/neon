@@ -1443,6 +1443,10 @@ when (js) {
 			setup.player = this;
 		}
 
+		protected catchUp(): void {
+			this.setup.wake.flush();
+		}
+
 		play(from: float64 | null = null, suppressEvents: boolean = true): void {
 			this.setup.control();
 			super.play(from, suppressEvents);

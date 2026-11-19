@@ -344,6 +344,9 @@ test "a fully handed-over player asks for no frame while it plays, and still rep
 	assert counting.deadlines > 0, "it sleeps to a mark";
 	assert repeated === 1, "repeat " + repeated.toString();
 	assert completed === 0;
+	assert near(player.totalTime, 1136) && near(player.time, 136) && player.iteration === 2,
+		"a read catches up: " + player.totalTime.toString();
+	assert counting.frames === started, "a read asks for no frame";
 	for (let i: int32 = 0; i < 80; i += 1) { counting.manual.advance(16); }
 	assert completed === 1 && player.time === 1000, "completed " + completed.toString() + " at " + player.time.toString();
 	stage.close();
