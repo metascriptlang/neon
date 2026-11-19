@@ -791,6 +791,30 @@ test "an element-bound spring runs as one WAAPI linear() animation with no style
 	el.remove();
 }
 
+test "an element-bound value asks for frames only while it has a subscriber" {
+	const node = mount();
+	const el = dom(node);
+	const value = boxValue(0, new MotionPolicy(), node, "translateX");
+	const frames = new FrameCount();
+	const restore = countFrames(frames);
+	const heard: float64[] = [];
+	const leave = value.subscribe((next: float64): void => { heard.push(next); });
+	value.animate(timing(100, { duration: 1000, easing: Easing.linear }));
+	assert value.handedOver, "handed to WAAPI";
+	await sleepAsync(150);
+	assert frames.count > 3 && heard.length > 3, "a subscriber hears frames: " + frames.count.toString();
+	leave();
+	await sleepAsync(40);
+	const after = frames.count;
+	await sleepAsync(300);
+	assert frames.count === after, "frames after the last subscriber left: " +
+		(frames.count - after).toString();
+	assert value.get() > 40 && value.get() < 70, "the exact value: " + value.get().toString();
+	restore();
+	value.dispose();
+	el.remove();
+}
+
 test "a retarget samples position and velocity, cancels and starts a new sampled spring" {
 	const node = mount();
 	const el = dom(node);

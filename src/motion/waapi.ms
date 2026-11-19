@@ -1597,6 +1597,7 @@ when (js) {
 		private parts: ValueParts;
 		private animation: Animation | null = null;
 		private handedTiming: HandedTiming | null = null;
+		private handedEnd: float64 = 0;
 		private lastSpec: AnimationSpec | null = null;
 		private observers: int32 = 0;
 		private entry: TargetEntry | null;
@@ -1627,6 +1628,7 @@ when (js) {
 				subscribed = false;
 				this.observers -= 1;
 				unsubscribe();
+				this.sleepToEnd();
 			};
 		}
 
@@ -1787,10 +1789,15 @@ when (js) {
 			);
 			animation.startTime = origin.startTime;
 			this.animation = animation;
+			this.handedEnd = origin.startTime + durationMs;
 			const entry = this.entry;
 			if (entry !== null) { entry.holder = this; }
-			if (this.observers === 0) {
-				this.parts.wake.defer(origin.startTime + durationMs - this.parts.wake.now());
+			this.sleepToEnd();
+		}
+
+		private sleepToEnd(): void {
+			if (this.animation !== null && this.observers === 0) {
+				this.parts.wake.defer(this.handedEnd - this.parts.wake.now());
 			}
 		}
 	}
