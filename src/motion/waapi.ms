@@ -1197,6 +1197,7 @@ when (js) {
 					if (commit && this.timeline !== null) {
 						writeStyle(run.dom, run.plan.css, run.cssText());
 					} else if (commit) {
+						animation.currentTime = this.localTime();
 						commitStyles(animation, run.dom, run.plan.css);
 					}
 				} catch (e) {
@@ -1525,6 +1526,7 @@ when (js) {
 		}
 
 		dispose(): void {
+			this.setup.control();
 			this.setup.dispose();
 			this.setup.halt(true);
 			super.dispose();

@@ -1012,6 +1012,36 @@ test "a cancel mid-clip leaves a document player's signal at the value the eleme
 	dom(outer[0]).remove();
 }
 
+extern function startLater(el: HTMLElement, ms: float64): void from
+	"((el, ms) => { for (const a of el.getAnimations()) { a.startTime = a.startTime + ms; } })(#, #)";
+
+test "a cancel holds the player's time on the element even when the browser started its animation late" {
+	const signals = new MotionSignals();
+	const shownX = signals.number("box", "translateX", 0);
+	const outer: HostNode[] = [];
+	const players: MotionPlayer[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		players.push(useMotion(documentOf([ramp("box", "translateX", 100)]), signals.bindings));
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	const el = dom(signals.elements.node("box") as HostNode);
+	await sleepAsync(200);
+	startLater(el, 100);
+	await sleepAsync(100);
+	players[0].cancel();
+	const held = translateX(el);
+	flush();
+	assert near(players[0].time / 10, held, 0.5), "the element holds the player's time: " + held.toString() +
+		" at " + players[0].time.toString() + " ms";
+	assert near(shownX(), held, 0.5), "the signal reads the held value: " + shownX().toString();
+	dispose();
+	dom(outer[0]).remove();
+}
+
 test "a player claiming an element-bound spring's property replaces its browser animation" {
 	const node = mount();
 	const el = dom(node);
