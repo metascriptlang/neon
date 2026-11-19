@@ -1,4 +1,4 @@
-import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
+import { cancelFrame, frameNow, requestFrame, requestFrameAt } from "../animation/frame";
 import { HostNode } from "../render/hostTypes";
 import { Clock } from "pulse/src/clock";
 import { ComposedTrack, flatten } from "pulse/src/compose";
@@ -575,6 +575,8 @@ export function frameClock(): Clock {
 			callback,
 		),
 		cancel: (id: int32): void => cancelFrame(id),
+		requestAt: (time: float64, callback: (time: float64) => void): int32 =>
+			requestFrameAt(time, callback),
 	};
 }
 

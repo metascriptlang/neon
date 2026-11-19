@@ -1,4 +1,4 @@
-import { cancelFrame, frameNow, requestFrame } from "../animation/frame";
+import { cancelFrame, frameNow, requestFrame, requestFrameAt } from "../animation/frame";
 import { onCleanup } from "../core/cleanup";
 import { getOwner } from "../core/runtime";
 import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
@@ -87,19 +87,26 @@ class FrameTicket {
 
 export function neonClock(): Clock {
 	const live: FrameTicket[] = [];
+	const ticketed = (
+		issue: (fire: (time: float64) => void) => int32,
+		callback: (time: float64) => void,
+	): int32 => {
+		const ticket = new FrameTicket();
+		ticket.id = issue((time: float64): void => {
+			const index = live.indexOf(ticket);
+			if (index < 0) { return; }
+			live.splice(index, 1);
+			callback(time);
+		});
+		live.push(ticket);
+		return ticket.id;
+	};
 	return {
 		now: (): float64 => frameNow(),
-		request: (callback: (time: float64) => void): int32 => {
-			const ticket = new FrameTicket();
-			ticket.id = requestFrame((time: float64): void => {
-				const index = live.indexOf(ticket);
-				if (index < 0) { return; }
-				live.splice(index, 1);
-				callback(time);
-			});
-			live.push(ticket);
-			return ticket.id;
-		},
+		request: (callback: (time: float64) => void): int32 =>
+			ticketed((fire: (time: float64) => void): int32 => requestFrame(fire), callback),
+		requestAt: (time: float64, callback: (time: float64) => void): int32 =>
+			ticketed((fire: (time: float64) => void): int32 => requestFrameAt(time, fire), callback),
 		cancel: (id: int32): void => {
 			for (let i: int32 = 0; i < live.length; i += 1) {
 				if (live[i].id === id) {
