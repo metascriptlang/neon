@@ -1326,7 +1326,10 @@ when (js) {
 				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
 			}
-			if (run.animation !== null) { return; }
+			if (run.animation !== null) {
+				if (this.atEnd()) { this.finished(run, run.animation as Animation); }
+				return;
+			}
 			if (run.ended) {
 				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
@@ -1363,6 +1366,12 @@ when (js) {
 				onFinish(animation, (): void => this.finished(run, animation));
 			}
 			return animation;
+		}
+
+		private atEnd(): boolean {
+			const player = this.player;
+			if (player === null || this.timeline !== null) { return false; }
+			return player.timeScale > 0 ? player.rawTime >= player.totalDuration : player.rawTime <= 0;
 		}
 
 		private finished(run: StyleRun, animation: Animation): void {

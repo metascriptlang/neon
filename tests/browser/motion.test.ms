@@ -1052,6 +1052,20 @@ test "a cancel holds the player's time on the element even when the browser star
 	dom(outer[0]).remove();
 }
 
+test "the element shows the end the moment the player completes, even when the browser started its animation late" {
+	const node = mount();
+	const el = dom(node);
+	const player = fadeAndSlide(node, motionOptions(frameClock()));
+	let atComplete: float64 = -1;
+	player.onComplete = (): void => { atComplete = translated(el); };
+	await sleepAsync(100);
+	startLater(el, 100);
+	await waitFor("the end", (): boolean => atComplete >= 0, 10000);
+	assert atComplete === 100 && opacity(el) === 1, "at completion: " + atComplete.toString();
+	player.dispose();
+	el.remove();
+}
+
 test "a player claiming an element-bound spring's property replaces its browser animation" {
 	const node = mount();
 	const el = dom(node);
