@@ -53,6 +53,7 @@ export class VoidNode {
 	tag: string = "";
 	row: int32 = -1;
 	scroller: NodeRef | null = null;
+	clip: NodeRef | null = null;
 	disposed: boolean = false;
 	laid: Frame | null = null;
 	style: Style | null = null;
@@ -188,7 +189,9 @@ export function layoutOf(tree: VoidTree, node: VoidNode): VoidLayout {
 
 function childHolder(n: VoidNode): NodeRef {
 	const s = n.scroller;
-	return s !== null ? s as NodeRef : n.ref;
+	if (s !== null) { return s as NodeRef; }
+	const c = n.clip;
+	return c !== null ? c as NodeRef : n.ref;
 }
 
 export function layoutChildCount(this l: VoidLayout): int32 { return l.tree.childrenOf(l.node).length as int32; }
@@ -253,6 +256,8 @@ export function layoutSetFrame(this l: VoidLayout, x: float32, y: float32, w: fl
 	n.ref.setPosition(x, y).setSize(w, h);
 	const s = n.scroller;
 	if (s !== null) { (s as NodeRef).setSize(w, h); }
+	const c = n.clip;
+	if (c !== null) { (c as NodeRef).setSize(w, h); }
 }
 
 export interface VoidHost {
@@ -1014,6 +1019,23 @@ export function createVoidHostWith(
 	const remeasure = (n: VoidNode): void => {
 		if (n.yg !== null) { markLayoutDirty(layoutOf(tree, n)); }
 	};
+	const applyClip = (n: VoidNode, s: Style): void => {
+		const wanted = (s.overflow === "hidden" || s.overflow === "clip") && n.scroller === null && !n.isText && fieldOf(n) === null;
+		if (wanted && n.clip === null) {
+			const m = scene.mask(n.ref.content().w, n.ref.content().h);
+			n.ref.addChild(m);
+			for (const c of tree.childrenOf(n)) { m.addChild(c.ref); }
+			n.clip = m;
+		} else if (!wanted && n.clip !== null) {
+			for (const c of tree.childrenOf(n)) { n.ref.addChild(c.ref); }
+			(n.clip as NodeRef).dispose();
+			n.clip = null;
+		}
+		if (n.clip !== null) {
+			const r: float32 = s.borderRadius !== null ? s.borderRadius as float32 : 0.0;
+			(n.clip as NodeRef).setMaskRadii(CornerRadii.uniform(r));
+		}
+	};
 	const applyTruncate = (n: VoidNode): void => {
 		if (n.para !== null) { (n.para as NodeRef).setTruncate(truncateOf(n)); }
 		remeasure(n);
@@ -1303,6 +1325,7 @@ export function createVoidHostWith(
 			if (!paintOnly) { n.flex = asFlexStyle(style); }
 			n.style = style;
 			applyPaint(n, style);
+			applyClip(n, style);
 			if (n.isText) { refreshParagraph(n); }
 			else { for (const c of tree.childrenOf(n)) { inheritTextPaint(c, n); } }
 			const f = fieldOf(n);
