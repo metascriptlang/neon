@@ -69,7 +69,6 @@ export struct WaapiPlan {
 }
 
 const NO_AXIS: int32 = -1;
-const MARK_EPSILON_MS: float64 = 1e-8;
 
 function numeric(
 	name: string,
@@ -682,6 +681,7 @@ export function motionElements(entries: MotionElement[]): MotionElements {
 when (js) {
 	import { numberValue } from "pulse/src/document";
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
+	import { WakeClock, untilMark } from "./wake";
 	import { MotionPolicy } from "pulse/src/policy";
 	import { Easing, EasingFunction } from "pulse/src/easing";
 	import { cssLinear, sampleEasing, sampleSpring } from "pulse/src/progress";
@@ -1053,105 +1053,19 @@ when (js) {
 		);
 	}
 
-	class WakeClock {
-		clock: Clock;
-		wake: (() => float64 | null) | null = null;
-		private callback: ((time: float64) => void) | null = null;
-		private ticket: int32 = 0;
-		private frame: int32 = 0;
-		private timer: float64 = -1;
-		private deferredUntil: float64 = -1;
-		private latest: float64 = 0;
-
-		constructor() {
-			this.clock = {
-				now: (): float64 => this.now(),
-				request: (callback: (time: float64) => void): int32 => this.request(callback),
-				cancel: (id: int32): void => { if (id === this.ticket) { this.drop(); } },
-			};
-		}
-
-		now(): float64 {
-			this.latest = Math.max(this.latest, timelineNow());
-			return this.latest;
-		}
-
-		flush(): void {
-			if (this.callback !== null) { this.fire(); }
-		}
-
-		defer(ms: float64): void {
-			this.deferredUntil = this.now() + ms;
-			this.reschedule();
-		}
-
-		undefer(): void {
-			this.deferredUntil = -1;
-		}
-
-		reschedule(): void {
-			if (this.callback === null) { return; }
-			this.unschedule();
-			this.schedule();
-		}
-
-		private request(callback: (time: float64) => void): int32 {
-			this.drop();
-			this.callback = callback;
-			this.ticket += 1;
-			this.schedule();
-			return this.ticket;
-		}
-
-		private waitMs(): float64 | null {
-			const wake = this.wake;
-			if (wake !== null) { return wake(); }
-			if (this.deferredUntil < 0) { return null; }
-			const left = this.deferredUntil - this.now();
-			if (left <= 0) {
-				this.deferredUntil = -1;
-				return null;
-			}
-			return left;
-		}
-
-		private schedule(): void {
-			const wait = this.waitMs();
-			if (wait === null) {
-				this.frame = requestFrame((time: float64): void => {
-					this.frame = 0;
-					this.fire();
-				});
-				return;
-			}
-			this.timer = startTimer((): void => {
-				this.timer = -1;
-				this.latest = Math.max(this.latest, liveNow());
-				this.fire();
-			}, wait);
-		}
-
-		private unschedule(): void {
-			if (this.frame !== 0) {
-				cancelFrame(this.frame);
-				this.frame = 0;
-			}
-			if (this.timer >= 0) {
-				stopTimer(this.timer);
-				this.timer = -1;
-			}
-		}
-
-		private drop(): void {
-			this.unschedule();
-			this.callback = null;
-		}
-
-		private fire(): void {
-			const callback = this.callback;
-			this.drop();
-			if (callback !== null) { callback(this.now()); }
-		}
+	function browserWake(): WakeClock {
+		return new WakeClock(
+			{
+				now: (): float64 => timelineNow(),
+				request: (callback: (time: float64) => void): int32 =>
+					requestFrame((_: float64): void => { callback(timelineNow()); }),
+				cancel: (id: int32): void => { cancelFrame(id); },
+			},
+			(ms: float64, fire: (time: float64) => void): (() => void) => {
+				const timer = startTimer((): void => { fire(liveNow()); }, ms);
+				return (): void => { stopTimer(timer); };
+			},
+		);
 	}
 
 	class BrowserRuns {
@@ -1159,7 +1073,7 @@ when (js) {
 		options: MotionOptions;
 		bindings: MotionBinding[] = [];
 		runs: StyleRun[] = [];
-		wake: WakeClock = new WakeClock();
+		wake: WakeClock = browserWake();
 		player: BrowserMotionPlayer | null = null;
 		reverting: boolean = false;
 		private elements: MotionElements;
@@ -1479,8 +1393,7 @@ when (js) {
 				if (this.moved(run)) { return 1; }
 			}
 			const at = player.rawTime;
-			const forward = player.timeScale > 0;
-			const marks: float64[] = [0, player.totalDuration];
+			const marks: float64[] = [];
 			for (const run of this.runs) {
 				if (run.mode === RunMode.Unmounted) { continue; }
 				if (run.mode !== RunMode.Dom || run.plan.route !== TrackRoute.Waapi) {
@@ -1490,23 +1403,7 @@ when (js) {
 				if (run.plan.delay <= at) { return 1; }
 				marks.push(run.plan.delay);
 			}
-			const cycle = player.duration;
-			const index = Math.floor(at / cycle);
-			marks.push(index * cycle);
-			marks.push((index + 1) * cycle);
-			let next = forward ? Infinity : -Infinity;
-			for (const mark of marks) {
-				if (Math.abs(mark - at) < MARK_EPSILON_MS) {
-					const interior = forward ? mark < player.totalDuration : mark > 0;
-					if (interior) { return 1; }
-					continue;
-				}
-				if (forward ? mark > at && mark < next : mark < at && mark > next) {
-					next = mark;
-				}
-			}
-			if (!Number.isFinite(next)) { return null; }
-			return Math.abs(next - at) / Math.abs(player.timeScale);
+			return untilMark(player, marks);
 		}
 
 		private running(): boolean {
@@ -1650,7 +1547,7 @@ when (js) {
 		slot: string;
 		style: StyleProperty;
 		target: MotionTarget | null;
-		wake: WakeClock = new WakeClock();
+		wake: WakeClock = browserWake();
 		element: HTMLElement | null = null;
 
 		constructor(
