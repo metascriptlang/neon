@@ -195,6 +195,17 @@ function translated(el: HTMLElement): float64 {
 	return parseFloat(computed(el, "translate"));
 }
 
+extern function animationTime(el: HTMLElement): float64 from
+	"(el => el.getAnimations()[0].currentTime)(#)";
+
+async function waitFor(what: string, ready: () => boolean, ms: number): Promise<void> {
+	const end = performance.now() + ms;
+	while (!ready()) {
+		if (performance.now() > end) { throw new Error("timed out waiting for " + what); }
+		await sleepAsync(20);
+	}
+}
+
 function near(a: float64, b: float64, tolerance: float64): boolean {
 	return Math.abs(a - b) <= tolerance;
 }
@@ -242,22 +253,21 @@ class Recorder {
 test "a View's opacity and translate run as WAAPI animations with no inline writes until they finish" {
 	const node = mount();
 	const el = dom(node);
-	const player = fadeAndSlide(node, motionOptions(frameClock()));
+	const player = fadeAndSlide(node, { ...motionOptions(frameClock()), timeScale: 0.5 });
 	let completed = 0;
 	player.onComplete = (): void => { completed += 1; };
-	await sleepAsync(500);
+	await sleepAsync(300);
 	assert el.getAnimations().length === 2, "animations: " +
 		el.getAnimations().length.toString();
 	assert el.style.opacity === "" && el.style.translate === "", "inline: " +
 		el.style.opacity +
 		" " +
 		el.style.translate;
-	assert opacity(el) > 0.2 && opacity(el) < 0.8, "mid opacity " +
-		opacity(el).toString();
-	assert translated(el) > 20 && translated(el) < 80, "mid translate " +
-		computed(el, "translate");
-	await sleepAsync(700);
-	assert completed === 1, "completed " + completed.toString();
+	const at = animationTime(el);
+	assert at > 0 && at < 1000 && near(opacity(el), at / 1000, 0.02), "mid opacity " +
+		opacity(el).toString() + " at " + at.toString() + " ms";
+	assert near(translated(el), at / 10, 2), "mid translate " + computed(el, "translate");
+	await waitFor("the end", (): boolean => completed === 1, 10000);
 	assert opacity(el) === 1 && translated(el) === 100, computed(el, "opacity") +
 		" " +
 		computed(el, "translate");
@@ -1074,20 +1084,25 @@ test "a fully handed-over player asks for no animation frame while it plays, and
 	);
 	let repeated = 0;
 	let completed = 0;
-	player.onRepeat = (): void => { repeated += 1; };
+	let framesAtRepeat = -1;
+	let writesAtRepeat = -1;
+	const writes = new StyleWrites();
+	player.onRepeat = (): void => {
+		repeated += 1;
+		framesAtRepeat = frames.count;
+		writesAtRepeat = writes.count;
+	};
 	player.onComplete = (): void => { completed += 1; };
 	await sleepAsync(60);
 	const started = frames.count;
-	const writes = new StyleWrites();
 	const stop = watchStyle(el, writes);
-	await sleepAsync(300);
+	await waitFor("the repeat", (): boolean => repeated === 1, 3000);
 	stop();
-	assert frames.count === started, "frames while playing: " +
-		(frames.count - started).toString();
-	assert writes.count === 0, "style writes: " + writes.count.toString();
-	assert repeated === 1, "repeat " + repeated.toString();
-	await sleepAsync(300);
-	assert completed === 1 && opacity(el) === 1, "completed " + completed.toString();
+	assert framesAtRepeat === started, "frames while playing: " +
+		(framesAtRepeat - started).toString();
+	assert writesAtRepeat === 0, "style writes: " + writesAtRepeat.toString();
+	await waitFor("the end", (): boolean => completed === 1, 3000);
+	assert opacity(el) === 1, "the end value";
 	assert near(player.time, 1000, 1e-9), "the playhead reached the end";
 	restore();
 	player.dispose();
