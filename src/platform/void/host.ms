@@ -20,7 +20,7 @@ import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scen
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, LayoutMeasure, MeasureMode, MeasureSize, YGNode, PositionType, Display, Overflow, Direction, layoutPassAt, freeLayoutTreeAt, markLayoutDirty } from "../../../../yoga/src/index";
-import { Style, sameLayout, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
+import { Style, Cursor, sameLayout, FontWeight, FontSizeAdjust, TextDecorationStyle, PositionType as StylePositionType, Display as StyleDisplay, Overflow as StyleOverflow } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { parseColor as parseCssColor } from "../../components/svg/color";
 import { I18nManager } from "../../api/i18nManager";
@@ -285,6 +285,7 @@ export interface VoidHost {
 	attachTextInput: (node: VoidNode, client: TextInputClient, value: TextEditingValue) => void;
 	setEditingState: (node: VoidNode, value: TextEditingValue) => void;
 	onDirty: (fn: () => void) => void;
+	onCursor: (fn: (cursor: Cursor) => void) => void;
 	mutate: (body: () => void) => void;
 	snapshot: () => DevNode;
 	describe: (n: VoidNode) => DevNode;
@@ -771,6 +772,7 @@ export function createVoidHostWith(
 	let focusedNode: VoidNode | null = null;
 	let windowFocused = true;
 	let dirtyListener: (() => void) | null = null;
+	let cursorListener: ((cursor: Cursor) => void) | null = null;
 
 	let signaled = false;
 	let sceneChangePending = false;
@@ -1505,6 +1507,7 @@ export function createVoidHostWith(
 	let hoverLayer: AreaLayer | null = null;
 	let layerOrder: (() => AreaLayer[]) | null = null;
 	let hovered: VoidNode[] = [];
+	let shownCursor: Cursor = "default";
 	let touching = false;
 	let pressNode: VoidNode | null = null;
 	let pressSpan: TextSpan | null = null;
@@ -1622,6 +1625,22 @@ export function createVoidHostWith(
 		fire(n, name, ev);
 	};
 
+	const cursorAlong = (path: VoidNode[]): Cursor => {
+		for (const n of path) {
+			const c = n.style === null ? null : (n.style as Style).cursor;
+			if (c !== null) { return c === "auto" ? "default" : c as Cursor; }
+		}
+		return "default";
+	};
+
+	const showCursor = (): void => {
+		const held = captured !== null && !(captured as VoidNode).disposed && attached(captured as VoidNode);
+		const next = cursorAlong(held ? pathFrom(captured) : hovered);
+		if (next === shownCursor) { return; }
+		shownCursor = next;
+		if (cursorListener !== null) { (cursorListener as (cursor: Cursor) => void)(next); }
+	};
+
 	// W3C pointerleave/pointerenter do not bubble: left nodes hear it deepest first, then entered nodes outermost first.
 	const hoverTo = (under: VoidNode | null, x: float32, y: float32): void => {
 		const next = pathFrom(under);
@@ -1635,6 +1654,7 @@ export function createVoidHostWith(
 		for (let i = next.length - 1; i >= 0; i -= 1) {
 			if (was.indexOf(next[i]) < 0) { fireAt(next[i], "onPointerEnter", x, y); }
 		}
+		showCursor();
 	};
 
 	// RN Pressable and R3F initialHits: a press fires when the release lands on the node it began on, or inside it.
@@ -1741,7 +1761,10 @@ export function createVoidHostWith(
 		const target = pointerTarget(x, y);
 		const holder = captured;
 		const ends = holder !== null && button === capturedButton;
-		if (ends) { captured = null; }
+		if (ends) {
+			captured = null;
+			showCursor();
+		}
 		pointerAt("onPointerUp", target, x, y, ev);
 		if (ends && touching) {
 			touching = false;
@@ -2116,6 +2139,7 @@ export function createVoidHostWith(
 		focused: (): VoidNode | null => focusedNode,
 		imeRect, attachTextInput, setEditingState, layerSlot,
 		onDirty: (fn: () => void): void => { dirtyListener = fn; },
+		onCursor: (fn: (cursor: Cursor) => void): void => { cursorListener = fn; },
 		mutate: (body: () => void): void => {
 			const was = wasDirty();
 			const clear = scene.clear;

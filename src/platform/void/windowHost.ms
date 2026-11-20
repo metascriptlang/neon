@@ -11,7 +11,7 @@ import {
 	createAreaHub,
 	setEventMods,
 } from "../../render/voidAreaHandle";
-import { Style } from "../../render/style";
+import { Style, Cursor } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
 import { DESKTOP_BACK_BUTTON, dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishWindow } from "../../render/environment";
@@ -55,6 +55,7 @@ export interface AreaWindow {
 	requestFrame: () => void;
 	dirty: () => void;
 	setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32) => void;
+	setCursor: ((cursor: Cursor) => void) | null;
 	opened: (area: WindowArea) => void;
 	released: (area: WindowArea) => void;
 }
@@ -163,6 +164,7 @@ export function openWindowArea(w: AreaWindow): VoidArea {
 		},
 	});
 	vh.onDirty(w.dirty);
+	if (w.setCursor !== null) { vh.onCursor(w.setCursor as (cursor: Cursor) => void); }
 	vh.setLayers((): AreaLayer[] => {
 		const order: AreaLayer[] = [];
 		for (const d of layersInPaintOrder(vh, hub.layers(), area.painted)) { order.push(d.layer); }
@@ -206,6 +208,7 @@ export function windowHost(w: AreaWindow): Host {
 			requestFrame: w.requestFrame,
 			dirty: w.dirty,
 			setImeRect: w.setImeRect,
+			setCursor: w.setCursor,
 			opened: (area: WindowArea): void => {
 				current = area;
 				w.opened(area);

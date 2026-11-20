@@ -4,6 +4,7 @@ import {
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, Window, WindowOptions, keyName, setTitle,
 	setOptionAsAlt as ionSetOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
+	setCursor, CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/host/gpu";
 import { setup2d, preparePipelines } from "../../../../void/src/void2d/draw";
@@ -15,6 +16,7 @@ import { Scene2D } from "../../../../void/src/void2d/node";
 import { isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { Cursor } from "../../render/style";
 import { flush } from "../../core/runtime";
 import {
 	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
@@ -118,6 +120,17 @@ function applyOptionAsAlt(win: Window): void {
 		"right" => OptionAsAltRight,
 		"both" => OptionAsAltBoth,
 	});
+}
+
+export function ionCursor(cursor: Cursor): int32 {
+	return match (cursor) {
+		"auto" | "default" => CursorArrow,
+		"pointer" => CursorHand,
+		"text" => CursorIbeam,
+		"crosshair" => CursorCross,
+		"col-resize" => CursorResizeH,
+		"row-resize" => CursorResizeV,
+	};
 }
 
 const areas: Area[] = [];
@@ -348,6 +361,7 @@ function ionWindowHost(win: Window): Host {
 		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
 			setImeRect(win, pixelX, pixelY, pixelW, pixelH);
 		},
+		setCursor: (cursor: Cursor): void => { setCursor(win, ionCursor(cursor)); },
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
 			const owner: Area = { win, view: ViewInvalid, visual: null, area, owed: true, shown: false };
