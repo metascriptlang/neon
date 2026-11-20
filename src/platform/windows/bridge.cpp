@@ -455,8 +455,7 @@ View *topModal() {
 	return nullptr;
 }
 
-void stepModals() {
-	double now = nowMs();
+void stepModals(double now) {
 	for (View *child : g_container->children) {
 		if (child->modal && child->modal->Step(now, child->visual)) applyGeometry(child);
 	}
@@ -938,7 +937,7 @@ void niwFrame(double timeMs) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
 	}
-	stepModals();
+	stepModals(timeMs);
 	drawInputs();
 	drawPictures();
 	drawLabels();
@@ -1051,7 +1050,7 @@ int niwPump(void) {
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	stepIndicators();
-	stepModals();
+	stepModals(nowMs());
 	drawInputs();
 	drawPictures();
 	drawLabels();
