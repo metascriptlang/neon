@@ -118,8 +118,10 @@ label was too strong, just as "predicted presentation target" would be.
   the batched writer below is intended, not shipped by this arc.
 - Windows `bridge.cpp` `niwFrame` / `reportScrolls` and `windows/ion.ms`
   `runNativeWindow` have sampler and controlled-clock queue pins in §Measured,
-  not physical first-wheel latency proof. Indicator/modal Step timestamps still
-  use callback-time `nowMs()` rather than the frame target.
+  not physical first-wheel latency proof. Indicator Step timestamps still use
+  callback-time `nowMs()` rather than the frame target. Modal sampling receives the
+  frame target; its console pixel pin passed 551 cases after one unattributed overrun of
+  its own 200-ms guard; see the modal entry in §Measured.
 - `requestFrameAt` has timer/cancellation/held-driver tests; those do not certify a real
   hidden window's wake behavior. No whole-host idle, late-frame, or nested-loop verdict
   follows from the driver unit tests.
@@ -968,6 +970,206 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   This is a console-scoped pin, not a certified ordinary SSH gate test.
   It proves bridge ordering and rearming, not the compiler CLI path, physical input
   latency, target-time lead, nested OS-loop progress, or a performance improvement.
+- **Windows modal clock and capture qualification, one overrun unattributed** (2026-11-14–21, d87 console).
+  The preserved baseline executable `61c844287b2841f76301ea16dd34cf00de5eaba481fbe6207057da435b435dcb`
+  passes the harness's own-window check after console unlock, then reports
+  **508 passed / 1 failed**, exit **1**: expected green `(0,255,0)`, actual `(144,58,0)`.
+  The prior own-window refusal was a setup failure, not a clock measurement.
+  `tests/platform/windowsModalFrame.ms` pins a synthetic target ten seconds ahead,
+  with a sample before 200 ms of the 300-ms transition; ownership and deadline guards
+  remain mandatory. The ordinary build entry permits separate build/console execution,
+  like `windowsImageLoop.ms`; the test entry remains. Neither entry fixes the compiler's
+  previously recorded plain-file test-launch failure.
+
+  Candidate code tree `4bdb7fa3b1e37cda51c81275d5c46c86279851db`, msc/support
+  `bac1b95e1948`: fade executable
+  `af2216609b4c05374dd55f2850b6a687cafc8b6ebde544a84d671d8aa917ff4a`
+  still fails, actual `(1,14,23)`, exit **1**. The four-core remote stage/build of fade,
+  slide and the image-loop app took **186 s**; do not repeat that unchanged build as
+  an edit-loop check. This is not a controlled red/green comparison: compiler, fixture
+  entry and bridge code differ from the preserved baseline.
+
+  A diagnostic build on that candidate logs `Modal::Step` receiving a sample
+  **10006.856 ms** after `Present`, with a 220×220 modal and 180×180 child, while
+  the screen sample remains `(9,157,7)`. Diagnostic executable:
+  `03efc0faa807fb2c884c788d11dadac0ddb4c8d8a9321a7ca05bf402eb08471b`;
+  bridge source `87562c2b458f66f48148834af75f7a00d2f2e1c3895819635a821681c6c55be8`,
+  modal source `c000933f193b7c14e6bea35817245f023f0ff029080305ab28db2be437736d4a`.
+  The temporary print-only instrumentation was restored after building. CPU clock/layout
+  evidence does not certify presented pixels. No wait or ownership-check weakening
+  may turn this result green.
+
+  Follow-up controls used `bac1b95e1948`, code tree
+  `4a25e2875aca1de62d59b2aa65f3a4ae2a89d434` (before this documentation update),
+  `tests/platform/windowsModalFrame.c` `nmfPrepareWindow`, and the console runner
+  with input desktop `Default`, at least 60 s since input, own-window capture,
+  the unchanged <200-ms sample bound and 20-s executable guards. Disabling this
+  HWND's transitions after show did not help: executable `e5fb843f…` still sampled
+  `(1,13,9)`. A no-animation control `83839385…` also failed. Ordered diagnostic
+  builds `888f3ed3…` / `84ad6ca8…` confirmed green RGBA, opacity 1, submission and
+  even `WaitForCommitCompletion` returning `S_OK` before capture, yet sampled
+  `(6,107,17)` / `(4,155,11)`. Those temporary changes were restored; production
+  has no added compositor wait. Acknowledged composition is not a display receipt.
+
+  A pre-show, thread-local hook produced `S_OK` while the HWND was still invisible:
+  fade **28.29 ms**, slide **31.78 ms**, both RGB `(0,255,0)`, exit **0**.
+  Fade executable `acb900c668b1213c7b4131cfe6d1c2b39cf993dc84a1950074dd53598598a5fd`
+  was reused byte-for-byte from code tree `b9b2bd389798ab330dc8006d9f2d1e03937095b3`;
+  slide: `e8d1acdeb5f9bbf0eb754546f6e30b766577fdb4e42f3ce14b08ede3185471fc`.
+  Wrapper-only changes between those trees added input-desktop/receipt validation.
+  Two one-change controls then produced native exit **1** specifically at the pixel
+  assertion, not setup, ownership, timeout or compiler failure:
+  - Callback-time sampling: `stepModals(nowMs())` in `niwFrame`, otherwise unchanged,
+    executable `25e05c458a8c5c9361288fc3209049b07213f4c98577d399bdfd80025c02d727`;
+    expected green, actual **(0,1,0)**.
+  - Window transitions enabled: only `BOOL disable = FALSE` in the pre-show hook,
+    executable `fc4b8526bb2a3e87f7e6d09a433323d307bca6a596969b5aa745a1dcdbadc1f5`;
+    expected green, actual **(0,13,22)**.
+
+  **The following restored fade nevertheless failed**, actual **(1,14,23)**, exit **1**.
+  This was not a stable GREEN→RED→GREEN proof. Interference from an unmanaged closing
+  window remained a hypothesis, not a finding; the later clock-only sequence below
+  tested whether that control was necessary to trigger the failure. The first temporary control runner failed C# compilation before either
+  control launched and is excluded; its corrected generator asserts unique body-only
+  replacements and preserves the C# heredoc. Evidence:
+  `/tmp/native-threads-modal-{preshow,controls}-build.log`,
+  `/tmp/native-threads-modal-controls{,-v2}-run.log`.
+  The 4-core stage/build of slide and two controls took **118 s**; reuse these
+  unchanged artifacts rather than rebuilding. No full gate, first-mount latency,
+  physical performance or TIME-MACHINE isolation verdict follows.
+
+  A subsequent clock-only sequence reused those artifacts: both initial cases and
+  restored fade passed, but restored slide failed `(12,1,41)`. Thus the deliberately
+  enabled window-transition control is not the sole trigger. In a later diagnostic
+  variant, compiler `74ae464d8f4`, eight cases passed; an interleaved sixteen-case
+  run had fifteen passes and one failed slide. Its first `GetPixel` returned white
+  `(255,255,255)`, while immediate follow-up `GetPixel` and both `BitBlt` modes
+  returned green. That HWND was visible, not iconic/cloaked, DPI 96; both `DwmFlush`
+  calls returned `S_OK`. This pins one stale capture observation, not a common root
+  for every earlier failure or a compiler A/B. Logs:
+  `/tmp/native-threads-modal-clock-only-resume.log`,
+  `/tmp/native-threads-modal-capture-{trace,mixed}-run.log`.
+
+  Two candidate alternatives were rejected: both original and diagnostic binaries
+  have PE subsystem **2** (GUI), so a newly created console was not established as
+  the cause; native DWM timing probe `bc04fe25…` returned `S_OK` but
+  `qpcFrameDisplayed`, `cFrameDisplayed` and `qpcFrameComplete` were **zero**,
+  while `qpcCompose` could be in the future. These are not usable display receipts
+  on this host. Microsoft documents [DwmFlush](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmflush)
+  in terms of the caller's outstanding DirectX work, and
+  [Commit](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-commit)
+  as an atomic transaction per device; neither cited page establishes a
+  particular commit's physical visibility at callback return.
+
+  **Tagged desktop snapshot candidate**, code tree
+  `28c6c52d7c6eb7fa91c5370362fe28f0557bfedc` (private code-only index, docs excluded),
+  compiler/support `74ab138f79f`: see `checkModalTarget` in
+  `tests/platform/windowsModalFrame.ms` and `nmfSampleFrame` in its C companion.
+  The receipt is independent of the modal's expected green, on the ordinary render
+  path; the capture retains ownership checks, Default desktop, idle ≥60 s, the
+  unchanged <200-ms bound, 2-s guest watchdog and 20-s process guards. It is not
+  a second renderer or a production wait. The four-core stage/four-build job took
+  **252 s**; reuse these artifacts:
+  - Fade `466459f40738767b53f1959071ff4058ee108561e03f256dce51b91ca8625bc9`.
+  - Slide `2b47f48435d444d52a38454b2651173b0106adec16c25c18b0d89cf467cac2ab`.
+  - Clock control `9a8aebd16b47f647a3b93923d106387ac03fc9506b546775b4ee53f421e19d84`:
+    only `niwFrame`'s `stepModals(timeMs)` changed to callback time.
+  - Missing-receipt control `cf13202b88ecbd09deeb3d41c1f6b69c7199d9ee5359b913dcc3caafda1ac23b`:
+    only the target callback's receipt assignment changed to black.
+
+  Sequence **GREEN → clock RED → GREEN → missing-receipt RED → GREEN** passed:
+  six positive cases **28.15–47.31 ms**, exact green and native exit **0**;
+  clock control observed its receipt but modal RGB **(0,1,0)**, native exit **1**
+  at the named transition assertion; missing-receipt control exited **1** at the
+  named 200-ms receipt timeout, with no receipt observed. Restored pairs both passed.
+  Source/artifact fingerprints were checked before launch, and the specific native
+  errors excluded setup, ownership, timeout-guard and compiler failures.
+  `/tmp/native-threads-modal-receipt-{build,sequence}.log` owns raw evidence.
+
+  **The first stability-repeat case nevertheless failed:** receipt and green were
+  observed, but elapsed **257.3349 ms**, native exit **1**. Pair one stopped before
+  slide; this was one attempted case, not sixteen executed cases. The 200-ms
+  assertion was not relaxed. `/tmp/native-threads-modal-receipt-repeat.log`.
+
+  A phase-only diagnostic of the same code tree retained its operations and
+  deadlines, adding QPC milestones and reporting after elapsed was recorded.
+  Compiler `74ab138f79f`, executable
+  `175734687ffb8f28df36e0a664c28cd7442e983b10d5254b3e4d59b687897a11`;
+  stage/build **167 s / four cores**. Eight then thirty-two **fade** cases passed,
+  maximum elapsed **52.429 ms**. Across the thirty-two runs' slowest capture calls:
+  setup **0.105–0.761 ms**, copy/flush **3.753–20.395 ms**, log I/O
+  **3.355–27.168 ms**, cleanup **0.044–0.089 ms**. This did **not** reproduce or
+  attribute the 257-ms overrun. Instrumentation and a different executable are not
+  proof that the uninstrumented candidate is stable; normal logging cost does not
+  establish that logging caused that outlier. Logs:
+  `/tmp/native-threads-modal-receipt-timing-{build,run}.log`,
+  `/tmp/native-threads-modal-receipt-timing32-run.log`.
+  On 2026-11-19, the same pinned fade/slide binaries ran with one authorized
+  d87 WPR CPU + DesktopComposition capture (`desk.sh run --quiet 2`, same console
+  guards). Stop was requested **18.572 s** after starting the wrapper's recording
+  stopwatch; WPR confirmed it had stopped. **95/95** passed, **24.75–80.65 ms**.
+  The ETL remained on d87; it contains no reproduced overrun. A separate run with
+  WPR off and the same executables passed **16/16** (eight fade, eight slide),
+  **18.41–39.76 ms**. Logs: `/tmp/native-threads-modal-{wpr-run,unprofiled16}.log`.
+  Neither passing sample explains the earlier 257-ms failure.
+
+  On 2026-11-20 a phase diagnostic of the same code tree (QPC marks kept in memory
+  and printed after `elapsed` was recorded; operations, deadlines and log calls in
+  place; compiler `042e4d5e23e`, fade `25b79d2f…`, slide `70333fa9…`, patch
+  `out/evidence/modal-phase-v2.patch` `4132c918…`) ran interleaved with the pinned
+  candidate binaries, on d87 through `desk.sh run --quiet`:
+  - 24 fresh PowerShell rounds of eight cases, gaps 0–30 s between rounds:
+    **192/192** passed, **15.1–48.3 ms**.
+  - 0/12/24/48 CPU-spinning threads at normal priority beside the cases:
+    **96/96**, maximum **52.7 ms**.
+  - 0/4/12 threads writing, reading and deleting 2-MB files: **96/96**, maximum
+    **57.3 ms**.
+
+  A passing case spends **1.7–4.0 ms** from mount to the target frame entering
+  `niwFrame`, **4.6–10.4 ms** more to `Commit` returning, then one or two desktop
+  compositions before `BitBlt` returns the marker (the capture call that sees it
+  blocks **5.8–26.8 ms**; a slow case is one missed capture plus the next). Logging
+  inside the bound cost **1.2–18.8 ms**. Neither CPU saturation, file churn nor idle gaps
+  moved any phase.
+
+  The ledger shows what the earlier windows shared: `desk.sh run --quiet` does not
+  ask for the whole host, so the failing window (2026-11-14 21:00:34Z) opened
+  beside `gpu-ms: build UM scenes`, a 12-core build in its last two minutes, and the
+  WPR, unprofiled and thirty-two-case windows also opened beside other sessions'
+  8- or 12-core jobs and passed. Overlap is therefore a difference between that
+  window and a quiet host, not a demonstrated cause. After the one overrun,
+  **551** cases passed and none failed; the overrun stays unattributed. Logs:
+  `out/evidence/modal-hunt-{1,load,disk}.log` in the worktree (ignored files).
+
+  The person accepted on 2026-11-21 that the clock fix and this pin are committed with
+  the 200-ms guard unchanged and the overrun recorded as unattributed: the guard only
+  qualifies a sample (past it, wall time alone could have finished the transition), so a
+  trip names an unusable sample, not a wrong clock, and the pin stays a hand-run console
+  check outside `tests/run.sh`, which only builds it. Not tried: memory pressure from a
+  concurrent link on d87. The `/tmp` logs named in this entry up to 2026-11-15 were
+  reaped by macOS; the 2026-11-19 pair survives beside the hunt logs in `out/evidence/`.
+  No physical Flutter comparison or TIME-MACHINE certificate follows. Keep the hard
+  bound; do not retry the expected green until it passes.
+
+  Independently, the normal image-loop executable on the candidate,
+  `f39d21cb18967ae3967bf6f0e059c745d28f18766d2844536b21d7a017f1be0e`,
+  passes again on `bac1b95e1948`: metadata **4×2**, picture **4×4**, **3 wakes,
+  2 main reports, 1 MTA decode, 0 host decodes, exit 0**. It does not close the
+  modal failure, a full gate, or physical performance. Build the fixtures through
+  `run-remote.sh --windows`; run `windowsModalFrame.ps1` and `windowsImageLoop.ps1`
+  separately through `desk.sh run --quiet 2`, each executable guarded at 20 seconds.
+- **Frame-driver cross-backend check** (2026-11-14, rtx, requested compiler pin
+  `bac1b95e1948`, host-reported prefix `bac1b95e194`). Code tree
+  `62e92efe9c7837b490817677ee9e190569e8741d`, frame source SHA-256
+  `909c2386bdc2801f7e4f4f471fb32f7d8acc3256fc9f29ab570346d240eef73f`,
+  test SHA-256 `c4b01ff45d4157aa2bfe53897dd39d1ffc9be075dc37e496af373612ac5c7918`.
+  `msc test tests/animation/frame.test.ms`: **40 files / 515 tests passed**;
+  the same command with `--target=js`: **9 files / 128 tests passed**, exit **0**.
+  Counts include imported test modules, not 515 frame-specific cases. The 2-core
+  stage/bootstrap/two-check job took **221 s**, including the first host compiler
+  build; it is not a per-file timing. This checks the frame driver's C/JS contract,
+  not a full suite, native presentation, physical performance, VM due-work admission
+  or session isolation. Log: `/tmp/native-threads-frame-bac1.log`.
 - **Field trace** (lightcube-core, iPad Pro 12.9, Release, Time Profiler 25 s). 99% of samples
   on main; 77% under the timer-driven `loopPump` → `msRunOnce` → socket pump → app; recompute
   11%, relayout 12%. About 62% of the busy time was Lightcube's own re-reads.
