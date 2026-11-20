@@ -32,6 +32,7 @@ export type BoxSizing = "border-box" | "content-box";
 export type Isolation = "auto" | "isolate";
 export type BackfaceVisibility = "visible" | "hidden";
 export type UserSelect = "auto" | "none" | "text" | "contain" | "all";
+export type Cursor = "auto" | "default" | "pointer" | "text" | "crosshair" | "col-resize" | "row-resize";
 export type TextTransform = "none" | "capitalize" | "uppercase" | "lowercase";
 export type WhiteSpace = "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line" | "break-spaces";
 export type ObjectFit = "cover" | "contain" | "fill" | "scale-down" | "none";

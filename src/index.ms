@@ -28,7 +28,7 @@ export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArray
 
 export {
 	Style, StyleValue, FlexDirection, Justify, Align, PositionType, Wrap, Display,
-	TextAlign, FontWeight, BorderStyle, BoxSizing, Isolation, BackfaceVisibility, UserSelect, TextTransform,
+	TextAlign, FontWeight, BorderStyle, BoxSizing, Isolation, BackfaceVisibility, UserSelect, Cursor, TextTransform,
 	WhiteSpace, ObjectFit, BorderCollapse, emptyStyle, mergeStyle, layerStyles,
 } from "./render/style";
 export { styleToCss } from "./render/css";

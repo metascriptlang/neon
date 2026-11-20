@@ -102,7 +102,7 @@ import { Node, NodeKind, DeclKind, NodeFlag, stringValue } from "std/meta";
 		["fontSizeAdjust",      "FontSizeAdjust",    "word", "paint",  "ignore"],
 		["transform",           "string",            "word", "ignore", "ignore"],
 		["transformOrigin",     "string",            "word", "ignore", "ignore"],
-		["cursor",              "string",            "word", "ignore", "ignore"],
+		["cursor",              "Cursor",            "word", "ignore", "ignore"],
 		["boxShadow",           "string",            "word", "paint",  "ignore"],
 		["clipPath",            "string",            "word", "ignore", "ignore"],
 		["transition",          "string",            "word", "ignore", "ignore"],

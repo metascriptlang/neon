@@ -11,6 +11,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { resetCss, cssRuleCount, mountSheet } from "../../src/render/sheet";
 import { createSignal } from "../../src/core/signal";
 import { View, Text } from "../../src/components/primitives";
+import { Cursor } from "../../src/render/style";
 
 const sheet = createStyles({
 	btn: { padding: 8, backgroundColor: "#334" },
@@ -21,6 +22,7 @@ const MONO = "monospace";
 const geass = createStyles({
 	layered: { zIndex: 2, opacity: 0.5, width: 10 },
 	computed: { width: wide, top: -8, zIndex: 2, fontFamily: "x, " + MONO },
+	edge: { width: 4, cursor: "row-resize" },
 });
 
 test "a static sheet entry serializes as a class and registers its rule" {
@@ -92,4 +94,13 @@ test "a sheet entry on a View serializes as a class, as it does on a tag" {
 	const html = renderToString(<View style={sheet.btn}><Text style={sheet.btn}>hi</Text></View>);
 	const id = sheet.btn.cssId as string;
 	assert html === "<div class=\"neon-view " + id + "\"><span class=\"neon-text " + id + "\">hi</span></div>", html;
+}
+
+test "cursor reaches CSS as the cursor property, inline and in a sheet rule" {
+	resetCss();
+	const [edge] = createSignal<Cursor>("col-resize");
+	const inline = renderToString(<View style={{ cursor: edge() }}></View>);
+	assert inline.indexOf("cursor:col-resize;") >= 0, inline;
+	const ruled = renderToString(<View style={geass.edge}></View>) + mountSheet();
+	assert ruled.indexOf("cursor:row-resize;") >= 0, ruled;
 }

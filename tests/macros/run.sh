@@ -30,6 +30,7 @@ expect_reject tests/macros/mapNamedRowRejected.ms "Argument type mismatch in 'ma
 expect_reject_both tests/macros/lazyNoImportRejected.ms "lazy reads its module from a thunk or a function that holds a literal import"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
+expect_reject tests/macros/cursorUnknownRejected.ms "Type '\"grab\"' is not assignable"
 expect_reject tests/macros/refLiteralRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refLiteralRootRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refEmptyArrayRejected.ms "a ref array needs at least one ref"
