@@ -1188,6 +1188,7 @@ export class NativeElementValue extends AnimatedValue {
 	}
 
 	yieldLayer(): void {
+		this.parts.wake.flush();
 		this.settle(true);
 	}
 

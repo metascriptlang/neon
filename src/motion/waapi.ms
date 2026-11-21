@@ -894,7 +894,7 @@ when (js) {
 				const run = this.run;
 				if (run !== null) { run.evict(); }
 				const holder = this.holder;
-				if (holder !== null) { holder.settle(true); }
+				if (holder !== null) { holder.yieldTarget(); }
 			};
 		}
 	}
@@ -1727,6 +1727,11 @@ when (js) {
 				this.settle(false);
 			}
 			super.dispose();
+		}
+
+		yieldTarget(): void {
+			this.parts.wake.flush();
+			this.settle(true);
 		}
 
 		settle(commit: boolean): void {
