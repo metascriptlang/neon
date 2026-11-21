@@ -838,6 +838,7 @@ export class Router {
 	match: Accessor<RouteMatch>;
 	location: Accessor<RouterLocation>;
 	submissions: Signal<SubmissionBase[]> = new Signal<SubmissionBase[]>([]);
+	updated: Signal<boolean> = new Signal<boolean>(false);
 	intent: PreloadIntent | null = null;
 	inPreload: boolean = false;
 	private owner: Computation | null = null;
@@ -852,7 +853,7 @@ export class Router {
 	private session: RoutingSession | null = null;
 	private stop: Dispose | null = null;
 	private scroller: Scroller | null = null;
-	private leaver: ((url: string) => void) | null = null;
+	private leaver: ((url: string, replace: boolean) => void) | null = null;
 	private scrolling: boolean = true;
 	private leavers: LeaveListener[] = [];
 	private nextLeaver: int32 = 0;
@@ -995,16 +996,16 @@ export class Router {
 		this.scroller = scroller;
 	}
 
-	leaveWith(leaver: ((url: string) => void) | null): void {
+	leaveWith(leaver: ((url: string, replace: boolean) => void) | null): void {
 		this.leaver = leaver;
 		const resolved = untrack((): Resolved => this.current.get());
-		if (leaver !== null && resolved.redirect !== 0 && hasScheme(resolved.address)) { this.leave(resolved.address); }
+		if (leaver !== null && resolved.redirect !== 0 && hasScheme(resolved.address)) { this.leave(resolved.address, false); }
 	}
 
-	private leave(url: string): boolean {
+	private leave(url: string, replace: boolean): boolean {
 		const leaver = this.leaver;
-		if (leaver === null) { throw new Error("routing: a redirect leaves the app for " + url + ", and no host handles it (leaveWith)"); }
-		(leaver as (url: string) => void)(url);
+		if (leaver === null) { throw new Error("routing: " + url + " loads as a new document, and no host loads documents (leaveWith)"); }
+		(leaver as (url: string, replace: boolean) => void)(url, replace);
 		return true;
 	}
 
@@ -1023,9 +1024,13 @@ export class Router {
 	private land(href: string, options: NavigateOptions | null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
+		if (this.updated.peek()) {
+			if (this.confirmLeave(href, options)) { this.leave(href, replace); }
+			return true;
+		}
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
-		if (hasScheme(resolved.value.address)) { return this.leave(resolved.value.address); }
+		if (hasScheme(resolved.value.address)) { return this.leave(resolved.value.address, replace); }
 		const here = untrack((): string => addressOf(leafStop(this.root)));
 		if (resolved.value.address !== here && !this.confirmLeave(href, options)) { return true; }
 		this.scrolling = options === null ? true : (options as NavigateOptions).scroll ?? true;
@@ -1064,7 +1069,7 @@ export class Router {
 			this.redirected = reply;
 			return false;
 		}
-		if (hasScheme(reply.address)) { return this.leave(reply.address); }
+		if (hasScheme(reply.address)) { return this.leave(reply.address, replace); }
 		if (!this.navigate(reply.address, { replace })) {
 			throw new Error("routing: a response redirects to " + reply.address + ", which no route matches");
 		}

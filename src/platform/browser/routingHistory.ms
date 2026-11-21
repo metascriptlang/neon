@@ -14,6 +14,7 @@ when (js) {
 		pathname: string;
 		search: string;
 		hash: string;
+		extern replace(url: string): void;
 	}
 
 	extern class BrowserHistory {
@@ -118,7 +119,9 @@ export function createBrowserRoutingHistory(): RoutingHistory {
 
 export function followExternalRedirects(router: Router): Dispose {
 	when (js) {
-		router.leaveWith((url: string): void => { window.location.href = url; });
+		router.leaveWith((url: string, replace: boolean): void => {
+			if (replace) { window.location.replace(url); } else { window.location.href = url; }
+		});
 		return (): void => router.leaveWith(null);
 	} else {
 		throw new Error("routing: leaving the app requires the JavaScript browser host");

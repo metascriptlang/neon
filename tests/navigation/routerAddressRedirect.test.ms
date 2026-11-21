@@ -51,7 +51,7 @@ test "a navigation that redirects outside the app is handed to the host" {
 	const history = createMemoryRoutingHistory({ url: "/", state: "" });
 	const router = opened(history);
 	let left = "";
-	router.leaveWith((url: string): void => { left = url; });
+	router.leaveWith((url: string, replace: boolean): void => { left = url; });
 	assert router.navigate("/out");
 	flush();
 	assert left === "https://example.com/x", left;
@@ -71,7 +71,7 @@ test "a router opened on a route that redirects outside the app hands it to the 
 	const history = createMemoryRoutingHistory({ url: "/out", state: "" });
 	const router = opened(history);
 	let left = "";
-	router.leaveWith((url: string): void => { left = url; });
+	router.leaveWith((url: string, replace: boolean): void => { left = url; });
 	assert left === "https://example.com/x", left;
 	router.dispose();
 }
