@@ -75,6 +75,12 @@ let userQueue: Computation[] = [];
 export function getOwner(): Computation | null { return currentOwner; }
 export function setOwner(o: Computation | null): void { currentOwner = o; }
 export function isTracking(): boolean { return tracking; }
+
+export function getObserver(): Computation | null {
+	if (!tracking) { return null; }
+	const c = currentOwner;
+	return c !== null && (c.config & CONFIG_ROOT) !== 0 ? c.parentComputed : c;
+}
 export function setTracking(t: boolean): void { tracking = t; }
 export function onServer(): boolean { return serverDepth > 0; }
 export function getServerDepth(): number { return serverDepth; }
