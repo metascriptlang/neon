@@ -81,14 +81,15 @@ function App(): NeonNode {
 
 function block(): void {
 	const motion = player as MotionPlayer;
-	const timeBefore = motion.time;
+	const stepBefore = motion.rawTime;
 	motionSampleScreenLater(TITLE, 90, 100, 50, 250);
 	const from = performance.now();
 	while (performance.now() - from < BLOCK_MS) {}
 	const blocked = performance.now() - from;
-	console.log(`blocked ${blocked.toFixed(1)} ms; player.time ${timeBefore.toFixed(1)} -> ${motion.time.toFixed(1)} ms`);
+	const stepAfter = motion.rawTime;
+	console.log(`blocked ${blocked.toFixed(1)} ms; player step ${stepBefore.toFixed(1)} -> ${stepAfter.toFixed(1)} ms`);
 	expect("the handed track leaves its signal alone", opacitySignal() === 0, `${opacitySignal()}`);
-	expect("the app-thread player did not tick during the block", motion.time === timeBefore, `${motion.time}`);
+	expect("the app-thread player did not tick during the block", stepAfter === stepBefore, `${stepAfter}`);
 	expect("the background samples finished inside the block", motionSamplesReady() === 1, `${motionSamplesReady()}`);
 	const first = motionSampledBlue(0);
 	const second = motionSampledBlue(1);
