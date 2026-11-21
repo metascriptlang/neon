@@ -9,6 +9,7 @@ import {
 } from "../platform/native/layerEngine";
 import { MotionElements, frameClock } from "./waapi";
 import { WakeClock, deadlineSleep, untilMark } from "./wake";
+import { MirrorDemand, watchOf } from "./demand";
 import { Clock } from "pulse/src/clock";
 import { ComposedTrack, flatten, localTime } from "pulse/src/compose";
 import {
@@ -738,6 +739,7 @@ class NativeRuns {
 	private evaluated: boolean;
 	private frames: FrameStamp;
 	private unwatch: () => void;
+	private mirrors: MirrorDemand;
 	private iterations: float64;
 	private yoyo: boolean;
 
@@ -752,6 +754,7 @@ class NativeRuns {
 		this.wake = new WakeClock(this.frames.clock, deadlineSleep(this.frames.clock));
 		this.wake.wake = (): float64 | null => this.nextWake();
 		this.unwatch = elements.watch((): void => { this.wake.reschedule(); });
+		this.mirrors = new MirrorDemand((): void => { this.wake.reschedule(); }, (): void => { this.wake.flush(); });
 		this.options = { ...options, clock: this.wake.clock };
 		const owned: MotionBinding[] = [];
 		for (const binding of bindings) {
@@ -781,6 +784,7 @@ class NativeRuns {
 				(track: LayerTrack): MotionBinding | null =>
 					fallbackOf(owned, planned.slot, track.channel.name),
 			);
+			this.mirrors.follow(fallbacks);
 			if (layerEngine() === null && fallbacks.includes(null)) {
 				fail(
 					"this host has no layer engine for element tracks; " +
@@ -841,12 +845,13 @@ class NativeRuns {
 
 	dispose(): void {
 		this.unwatch();
+		this.mirrors.release();
 	}
 
 	private nextWake(): float64 | null {
 		const player = this.player;
 		if (player === null || player.onUpdate !== null || layerEngine() === null ||
-			this.evaluated) {
+			this.evaluated || this.mirrors.watched) {
 			return null;
 		}
 		const at = player.rawTime;
@@ -898,7 +903,12 @@ class NativeRuns {
 			return;
 		}
 		run.record(index, value.number);
-		if (run.plan.route === LayerRoute.Compositor && this.running()) {
+		const running = this.running();
+		const fallback = run.fallbacks[index];
+		if (fallback !== null && (!running || watchOf(fallback)?.watched === true)) {
+			fallback.write(value);
+		}
+		if (run.plan.route === LayerRoute.Compositor && running) {
 			if (!run.live) {
 				this.handOver(run);
 			}

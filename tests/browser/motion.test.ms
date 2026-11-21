@@ -10,6 +10,8 @@ import { createRoot } from "../../src/core/owner";
 import { MotionSignals, useAnimatedValue, useMotion } from "../../src/motion/neon";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
+import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { Show } from "../../src/macros/ui/flow";
 import { AnimatedValue } from "pulse/src/value";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
@@ -1235,4 +1237,47 @@ test "a style entry after an animated opacity wins over the animation in the bro
 	assert near(opacity(el), 0.4, 1e-6), "ends on the later entry: " + computed(el, "opacity");
 	assert translateX(el) === 100, "the unshadowed translate still plays: " + computed(el, "translate");
 	el.remove();
+}
+
+test "a document player's signal read in an effect hears each frame, and the player sleeps again once the reader leaves" {
+	const signals = new MotionSignals();
+	const shownX = signals.number("box", "translateX", 0);
+	const outer: HostNode[] = [];
+	const dispose = createRoot((dispose: () => void): () => void => {
+		const ref = signals.ref("box");
+		useMotion(documentOf([ramp("box", "translateX", 100)]), signals.bindings);
+		element(<View ref={(h: ViewHandle): void => { outer.push(h.node); }} style={{ width: 100 }}>
+			<View ref={ref} style={[{ width: 40, height: 40, backgroundColor: "#333" }, signals.style("box")]} />
+		</View>)(domHost(), documentBody(), null);
+		return dispose;
+	});
+	await renderedFrames();
+	assert dom(signals.elements.node("box") as HostNode).getAnimations().length === 1, "handed to WAAPI";
+	const frames = new FrameCount();
+	const restore = countFrames(frames);
+	await sleepAsync(100);
+	assert frames.count === 0, "frames while nobody reads: " + frames.count.toString();
+	const heard: float64[] = [];
+	let stop: (() => void) | null = null;
+	createRoot((d: () => void): void => {
+		stop = d;
+		createEffect<float64>(
+			(p: float64 | null): float64 => shownX(),
+			(v: float64, p: float64 | null): Cleanup | null => { heard.push(v); return null; },
+		);
+	});
+	flush();
+	await sleepAsync(200);
+	const last = heard[heard.length - 1];
+	assert frames.count > 3 && heard.length > 3, "a reader hears frames: " + heard.length.toString();
+	assert heard[0] > 0 && last > heard[0] && last < 100, "mid-flight values: " + heard[0].toString() + " to " + last.toString();
+	(stop as () => void)();
+	flush();
+	await sleepAsync(40);
+	const after = frames.count;
+	await sleepAsync(250);
+	assert frames.count === after, "frames after the reader left: " + (frames.count - after).toString();
+	restore();
+	dispose();
+	dom(outer[0]).remove();
 }

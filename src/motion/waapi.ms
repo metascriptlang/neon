@@ -684,6 +684,7 @@ when (js) {
 	import { numberValue } from "pulse/src/document";
 	import { MotionBinding, MotionPlayer } from "pulse/src/player";
 	import { WakeClock, untilMark } from "./wake";
+	import { MirrorDemand, watchOf } from "./demand";
 	import { MotionPolicy } from "pulse/src/policy";
 	import { Easing, EasingFunction } from "pulse/src/easing";
 	import { cssLinear, sampleEasing, sampleSpring } from "pulse/src/progress";
@@ -1080,6 +1081,7 @@ when (js) {
 		reverting: boolean = false;
 		private elements: MotionElements;
 		private unwatch: () => void = (): void => {};
+		private mirrors: MirrorDemand;
 		private timing: WaapiTiming | null;
 		private evaluated: boolean;
 		private source: TimeSource;
@@ -1092,6 +1094,7 @@ when (js) {
 			bindings: MotionBinding[],
 			options: MotionOptions,
 		) {
+			this.mirrors = new MirrorDemand((): void => { this.wake.reschedule(); }, (): void => { this.wake.flush(); });
 			this.source = options.source;
 			this.timeline = browserTimeline(options.source);
 			this.range = timelineRange(options.source);
@@ -1132,6 +1135,7 @@ when (js) {
 					},
 				);
 				const run = new StyleRun(css, fallbacks, this.eager(css, fallbacks));
+				this.mirrors.follow(fallbacks);
 				this.runs.push(run);
 				for (let i: int32 = 0; i < run.styles.length; i += 1) {
 					this.bindings.push(this.bind(run, i));
@@ -1176,6 +1180,7 @@ when (js) {
 
 		dispose(): void {
 			this.unwatch();
+			this.mirrors.release();
 		}
 
 		halt(commit: boolean): void {
@@ -1321,7 +1326,9 @@ when (js) {
 			}
 			run.values[index] = value;
 			run.entries[index].run = run;
-			if (this.player === null || !this.running()) { this.mirror(run, index, value); }
+			if (this.player === null || !this.running() || watchOf(run.fallbacks[index])?.watched === true) {
+				this.mirror(run, index, value);
+			}
 			if (run.plan.route === TrackRoute.Style) {
 				writeStyle(run.dom, run.plan.css, run.cssText());
 				return;
@@ -1398,7 +1405,8 @@ when (js) {
 
 		private nextWake(): float64 | null {
 			const player = this.player;
-			if (player === null || this.evaluated || this.scrolled() || player.onUpdate !== null) {
+			if (player === null || this.evaluated || this.scrolled() || player.onUpdate !== null ||
+				this.mirrors.watched) {
 				return null;
 			}
 			for (const run of this.runs) {

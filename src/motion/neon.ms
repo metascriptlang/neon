@@ -12,6 +12,7 @@ import { ViewHandle } from "../components/primitives";
 import { HostNode } from "../render/hostTypes";
 import { ClaimMark, Style, StyleClaim, StyleValue } from "../render/style";
 import { MotionElements } from "./waapi";
+import { Demand, Watch, WatchedTarget } from "./demand";
 
 export interface ElementMotion {
 	owns: (node: HostNode) => boolean;
@@ -182,62 +183,21 @@ export function useAnimatedValue(
 	return [read, value];
 }
 
-let quietReads: int32 = 0;
-
-function quietly<T>(read: () => T): T {
-	quietReads += 1;
-	try {
-		return read();
-	} finally {
-		quietReads -= 1;
-	}
-}
-
-class Watch {
-	private watched: boolean = false;
-	private demands: ValueDemand[] = [];
-
-	attach(demand: ValueDemand): void {
-		this.demands.push(demand);
-		if (this.watched) { demand.enter(); }
-	}
-
-	detach(demand: ValueDemand): void {
-		const before = this.demands.length;
-		this.demands = this.demands.filter((other: ValueDemand): boolean => other !== demand);
-		if (this.watched && this.demands.length < before) { demand.leave(); }
-	}
-
-	watch(): void {
-		if (this.watched) { return; }
-		this.watched = true;
-		for (const demand of this.demands) { demand.enter(); }
-	}
-
-	unwatch(): void {
-		if (!this.watched) { return; }
-		this.watched = false;
-		for (const demand of this.demands) { demand.leave(); }
-	}
-
-	flush(): void {
-		for (const demand of this.demands) { demand.exact(); }
-	}
-}
-
-class ValueDemand {
+class ValueDemand extends Demand {
 	private value: AnimatedValue;
 	private readers: int32 = 0;
 	private frames: (() => void) | null = null;
 	private hearing: (() => void) | null = null;
 
 	constructor(value: AnimatedValue) {
+		super();
 		this.value = value;
 	}
 
 	reader(initial: float64, reach: ((value: MotionValue) => void) | null): Accessor<float64> {
 		let watched = false;
 		const [tick, set] = createSignal<float64>(initial, {
+			ownedWrite: true,
 			unobserved: (): void => {
 				if (watched) {
 					watched = false;
@@ -246,13 +206,13 @@ class ValueDemand {
 			},
 		});
 		this.hearing = this.value.follow((next: float64): void => {
-			if (quietReads === 0) { set(next); }
+			set(next);
 			if (reach !== null) { reach(numberValue(next)); }
 		});
 		return accessor((): float64 => {
 			if (!watched && getObserver() !== null) {
 				watched = true;
-				quietly((): void => { this.enter(); });
+				this.enter();
 			}
 			tick();
 			return this.exact();
@@ -276,7 +236,11 @@ class ValueDemand {
 	}
 
 	exact(): float64 {
-		return quietly((): float64 => this.value.get());
+		return this.value.get();
+	}
+
+	flush(): void {
+		this.exact();
 	}
 
 	release(): void {
@@ -338,11 +302,10 @@ function elementsOf(bindings: MotionBinding[]): MotionElements | null {
 	return found;
 }
 
-class SignalTarget extends MotionTarget {
+class SignalTarget extends WatchedTarget {
 	signals: MotionSignals;
 	slot: string;
 	property: string;
-	watch: Watch = new Watch();
 
 	constructor(
 		signals: MotionSignals,
@@ -486,35 +449,36 @@ export class MotionSignals {
 		let current = initial;
 		const watch = new Watch();
 		const [tick, write] = createSignal<float64>(initial, {
+			ownedWrite: true,
 			unobserved: (): void => { watch.unwatch(); },
 		});
-		const shown = (): float64 => quietly((): float64 => {
+		const shown = (): float64 => {
 			watch.flush();
 			return current;
-		});
+		};
 		const target = this.bind(
 			slot,
 			property,
 			(value: MotionValue): void => {
 				requireKind(value, ValueKind.Number, slot, property);
 				current = value.number;
-				if (quietReads === 0) { write(value.number); }
+				write(value.number);
 			},
 			(): MotionValue => numberValue(shown()),
 		);
 		target.watch = watch;
 		const read = accessor((): float64 => {
-			if (getObserver() !== null) { quietly((): void => { watch.watch(); }); }
+			if (getObserver() !== null) { watch.watch(); }
 			tick();
 			return shown();
 		});
-		this.styles.push(new SlotStyle(slot, property, (): string => "", read));
+		this.styles.push(new SlotStyle(slot, property, (): string => "", (): float64 => tick()));
 		return read;
 	}
 
 	color(slot: string, property: string, initial: MotionValue): Accessor<string> {
 		requireKind(initial, ValueKind.Color, slot, property);
-		const [read, write] = createSignal<string>(cssColor(initial.color));
+		const [read, write] = createSignal<string>(cssColor(initial.color), { ownedWrite: true });
 		let current = initial;
 		this.styles.push(
 			new SlotStyle(slot, property, (): string => read(), (): float64 => 0),

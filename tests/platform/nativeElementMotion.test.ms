@@ -553,3 +553,62 @@ test "an element-bound useAnimatedValue sleeps while nobody reads it, and a trac
 	assert like.mirror() === 2 && (like.read as Accessor<float64>)() === 2, "both end on the target";
 	close();
 }
+
+class Fade {
+	signals: MotionSignals = new MotionSignals();
+	opacity: Accessor<float64>;
+	player: MotionPlayer | null = null;
+	tag: int32 = 0;
+
+	constructor() {
+		this.opacity = this.signals.number("box", "opacity", 0);
+		runApp((): NeonNode => {
+			const ref = this.signals.ref("box");
+			this.player = useMotion({
+				version: 1,
+				root: "main",
+				clips: [{ id: "main", duration: 1000, tracks: [ramp("opacity", 1)], placements: [], labels: [] }],
+			}, this.signals.bindings);
+			return <Pressable onPress={() => {}} ref={ref}
+				style={[{ width: 100, height: 40 }, this.signals.style("box")]} />;
+		});
+		this.tag = nmLastPressableTag();
+	}
+}
+
+test "a handed player's signals mirror read in an effect hears each frame, and the player sleeps again once the reader leaves" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const fade = new Fade();
+	const player = fade.player as MotionPlayer;
+	frames.step(1);
+	assert nmLayerLive(fade.tag, OPACITY) === 1, "handed to the layer";
+	const asleep = frames.frames;
+	frames.step(5);
+	assert frames.frames === asleep, "frames while nobody reads: " + (frames.frames - asleep).toString();
+	const seen: float64[] = [];
+	let stop: (() => void) | null = null;
+	createRoot((dispose: () => void): void => {
+		stop = dispose;
+		createEffect<float64>(
+			(p: float64 | null): float64 => fade.opacity(),
+			(v: float64, p: float64 | null): Cleanup | null => { seen.push(v); return null; },
+		);
+	});
+	flush();
+	assert seen.length === 1 && Math.abs(seen[0] - player.time / 1000) < 1e-9,
+		"the first tracked read is the player's value now: " + seen[0].toString() + " at " + player.time.toString();
+	const awake = frames.frames;
+	frames.step(3);
+	assert frames.frames === awake + 3, "frames while read: " + (frames.frames - awake).toString();
+	assert seen.length === 4 && seen[3] > seen[0], "the reader heard " + seen.length.toString() + " values";
+	(stop as () => void)();
+	flush();
+	frames.step(1);
+	const after = frames.frames;
+	frames.step(4);
+	assert frames.frames === after, "frames after the reader left: " + (frames.frames - after).toString();
+	frames.runAll();
+	assert fade.opacity() === 1, "the signal ends on the end: " + fade.opacity().toString();
+	close();
+}
