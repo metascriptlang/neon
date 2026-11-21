@@ -1,5 +1,5 @@
 import {
-	createInterpreter, evalModule, selectRoutine, callRoutine, implementRoutine,
+	createInterpreter, evalModule, selectRoutine, callRoutine, implementRoutine, saveProgram, loadProgram,
 	runDueTimers, nextTimerDelayMs, dropPendingWork, unboxValue, boxValue,
 	Interpreter, Routine, Diagnostic, System, RaiserValue, RaiserValueKind, RaiserHostValue,
 	boxInt, boxFloat, boxBool, boxVoid, unboxInt, unboxFloat, unboxString, unboxBool,
@@ -33,6 +33,7 @@ const STYLE_TABLE: string[][] = styleTable();
 
 export class GuestProgram {
 	interp: Interpreter;
+	system: System | null;
 	generation: int32 = 0;
 	dispatch: Routine | null = null;
 	dispose: Routine | null = null;
@@ -45,8 +46,9 @@ export class GuestProgram {
 	onPlace: (name: string, host: Host, node: HostNode) => void = (name: string, host: Host, node: HostNode): void => {};
 	onPlaceGone: (name: string) => void = (name: string): void => {};
 
-	constructor(interp: Interpreter) {
+	constructor(interp: Interpreter, system: System | null) {
 		this.interp = interp;
+		this.system = system;
 	}
 }
 
@@ -526,43 +528,74 @@ function done(): RaiserValue {
 	return boxVoid();
 }
 
+// The type each ui.* extern in guest.ms declares, as a saved program records it; a saved guest loads only when they match.
+const UI_SIGNATURES: Map<string, string> = new Map<string, string>([
+	["ui.capabilities", "(int32) => int32"],
+	["ui.createElement", "(int32, string) => int32"],
+	["ui.createText", "(int32, string) => int32"],
+	["ui.setText", "(int32, int32, string) => void"],
+	["ui.setAttr", "(int32, int32, string, string) => void"],
+	["ui.removeAttr", "(int32, int32, string) => void"],
+	["ui.setStyle", "(int32, int32, Style) => void"],
+	["ui.addEvent", "(int32, int32, string, int32) => void"],
+	["ui.append", "(int32, int32, int32) => void"],
+	["ui.insertBefore", "(int32, int32, int32, int32) => void"],
+	["ui.removeChild", "(int32, int32, int32) => int32[]"],
+	["ui.release", "(int32, int32) => int32[]"],
+	["ui.parentOf", "(int32, int32) => int32"],
+	["ui.nextSibling", "(int32, int32) => int32"],
+	["ui.firstChild", "(int32, int32) => int32"],
+	["ui.setSpans", "(int32, int32, string[], (Style | null)[], int32[], int32[]) => void"],
+	["ui.focus", "(int32, int32, boolean) => void"],
+	["ui.scrollTo", "(int32, int32, number, number, boolean) => void"],
+	["ui.measureText", "(int32, string, Style) => number[]"],
+	["ui.measure", "(int32, int32, int32) => number[]"],
+	["ui.place", "(int32, int32, string) => void"],
+]);
+
+function implementUiRoutine(name: string, impl: (a: RaiserValue[]) => RaiserValue): void {
+	const signature = UI_SIGNATURES.get(name);
+	if (signature === undefined) { throw new Error(`raiser bridge: ${name} has no signature in UI_SIGNATURES`); }
+	implementRoutine(name, impl, signature as string);
+}
+
 function implementUi(): void {
-	implementRoutine("ui.capabilities", (a: RaiserValue[]): RaiserValue => boxInt(capabilitiesOf(rootOf(a).host)));
-	implementRoutine("ui.createElement", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.capabilities", (a: RaiserValue[]): RaiserValue => boxInt(capabilitiesOf(rootOf(a).host)));
+	implementUiRoutine("ui.createElement", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return add(r, r.host.createElement(unboxString(a[1])));
 	});
-	implementRoutine("ui.createText", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.createText", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return add(r, r.host.createText(unboxString(a[1])));
 	});
-	implementRoutine("ui.setText", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.setText", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		r.host.setText(nodeArg(r, a, 1), unboxString(a[2]));
 		return done();
 	});
-	implementRoutine("ui.setAttr", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.setAttr", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		r.host.setAttr(nodeArg(r, a, 1), unboxString(a[2]), unboxString(a[3]));
 		return done();
 	});
-	implementRoutine("ui.removeAttr", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.removeAttr", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		r.host.removeAttr(nodeArg(r, a, 1), unboxString(a[2]));
 		return done();
 	});
-	implementRoutine("ui.setStyle", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.setStyle", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		r.host.setStyle(nodeArg(r, a, 1), styleOf(unboxValue(a[2])));
 		return done();
 	});
-	implementRoutine("ui.addEvent", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.addEvent", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const name = unboxString(a[2]);
 		r.host.addEvent(nodeArg(r, a, 1), name, eventTo(r, unboxInt(a[3]) as int32, name));
 		return done();
 	});
-	implementRoutine("ui.append", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.append", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const parent = unboxInt(a[1]) as int32;
 		if (parent === REGION) {
@@ -572,7 +605,7 @@ function implementUi(): void {
 		}
 		return done();
 	});
-	implementRoutine("ui.insertBefore", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.insertBefore", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const parent = unboxInt(a[1]) as int32;
 		const before = unboxInt(a[3]) as int32;
@@ -580,11 +613,11 @@ function implementUi(): void {
 		r.host.insertBefore(nodeAt(r, parent), nodeArg(r, a, 2), at);
 		return done();
 	});
-	implementRoutine("ui.removeChild", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.removeChild", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return freedList(removeFrom(r, nodeArg(r, a, 1), nodeArg(r, a, 2)));
 	});
-	implementRoutine("ui.release", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.release", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const node = nodeArg(r, a, 1);
 		const freed: int32[] = [];
@@ -594,39 +627,39 @@ function implementUi(): void {
 		for (const handle of freed) { forget(r, handle); }
 		return freedList(freed);
 	});
-	implementRoutine("ui.parentOf", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.parentOf", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return boxInt(handleOf(r, r.host.parentOf(nodeArg(r, a, 1))));
 	});
-	implementRoutine("ui.nextSibling", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.nextSibling", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return boxInt(handleOf(r, r.host.nextSibling(nodeArg(r, a, 1))));
 	});
-	implementRoutine("ui.firstChild", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.firstChild", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		return boxInt(handleOf(r, firstChildOf(r, unboxInt(a[1]) as int32)));
 	});
-	implementRoutine("ui.setSpans", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.setSpans", (a: RaiserValue[]): RaiserValue => {
 		setSpans(rootOf(a), a);
 		return done();
 	});
-	implementRoutine("ui.focus", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.focus", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const focus = r.host.focus;
 		if (focus === null) { throw new Error("the guest focused a node on a host that focuses none"); }
 		focus(nodeArg(r, a, 1), unboxBool(a[2]));
 		return done();
 	});
-	implementRoutine("ui.scrollTo", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.scrollTo", (a: RaiserValue[]): RaiserValue => {
 		const r = rootOf(a);
 		const scroll = r.host.scrollTo;
 		if (scroll === null) { throw new Error("the guest scrolled a node on a host that scrolls none"); }
 		scroll(nodeArg(r, a, 1), unboxFloat(a[2]), unboxFloat(a[3]), unboxBool(a[4]));
 		return done();
 	});
-	implementRoutine("ui.measureText", (a: RaiserValue[]): RaiserValue => measureTextOf(rootOf(a), a));
-	implementRoutine("ui.measure", (a: RaiserValue[]): RaiserValue => measureOf(rootOf(a), a));
-	implementRoutine("ui.place", (a: RaiserValue[]): RaiserValue => {
+	implementUiRoutine("ui.measureText", (a: RaiserValue[]): RaiserValue => measureTextOf(rootOf(a), a));
+	implementUiRoutine("ui.measure", (a: RaiserValue[]): RaiserValue => measureOf(rootOf(a), a));
+	implementUiRoutine("ui.place", (a: RaiserValue[]): RaiserValue => {
 		declarePlace(rootOf(a), unboxInt(a[1]) as int32, unboxString(a[2]));
 		return done();
 	});
@@ -659,7 +692,7 @@ export function openGuest(options: GuestOptions): Result<GuestProgram, string> {
 	if (!made.ok) { return Result.err(made.error); }
 	const configured = applyProjectConfig(made.value.opts, realpath(options.projectRoot));
 	if (!configured.ok) { return Result.err(configured.error); }
-	return Result.ok(new GuestProgram(made.value));
+	return Result.ok(new GuestProgram(made.value, options.system ?? null));
 }
 
 export function loadGuest(p: GuestProgram, path: string): Result<int32, Diagnostic[]> {
@@ -668,6 +701,32 @@ export function loadGuest(p: GuestProgram, path: string): Result<int32, Diagnost
 		const evaluated = evalModule(p.interp, path);
 		return evaluated.ok ? Result.ok(0) : Result.err(evaluated.error);
 	});
+	return adopt(p, path, ran);
+}
+
+// The program loadGuest would run from `path`, compiled and saved as bytes loadSavedGuest takes.
+export function saveGuest(p: GuestProgram, path: string): Result<Uint8Array, Diagnostic[]> {
+	refuseClosed(p, "saveGuest");
+	return saveProgram(p.interp, path);
+}
+
+const SAVED_PROGRAM = "saved program";
+
+// Runs the bytes saveGuest wrote in a new interpreter that replaces the guest's, so its state goes as a reload's does,
+// then mounts every slot as loadGuest does. A program the runtime refuses (format, fingerprint, a host routine
+// missing or declared differently) fails with the runtime's message.
+export function loadSavedGuest(p: GuestProgram, bytes: Uint8Array): Result<int32, Diagnostic[]> {
+	refuseClosed(p, "loadSavedGuest");
+	const ran = guestCall(p, (): Result<int32, Diagnostic[]> => {
+		const loaded = loadProgram(bytes, p.system);
+		if (!loaded.ok) { return Result.err([guestError(SAVED_PROGRAM, loaded.error.message)]); }
+		p.interp = loaded.value;
+		return Result.ok(0);
+	});
+	return adopt(p, SAVED_PROGRAM, ran);
+}
+
+function adopt(p: GuestProgram, path: string, ran: Result<int32, Diagnostic[]>): Result<int32, Diagnostic[]> {
 	arm(p);
 	if (!ran.ok) {
 		for (const slot of p.slots) { slot.outcome = SlotOutcome.EvalFailed; }
