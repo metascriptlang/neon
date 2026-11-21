@@ -18,6 +18,7 @@ export class Cell<T> {
 export interface SignalOptions<T> {
 	equals?: ((a: T, b: T) => boolean) | false;
 	ownedWrite?: boolean;
+	unobserved?: () => void;
 }
 
 export function isEqual<T>(equals: ((a: T, b: T) => boolean) | null, a: T, b: T): boolean {
@@ -34,9 +35,11 @@ export class Signal<T> {
 		equals: ((a: T, b: T) => boolean) | null = null,
 		ownedWrite: boolean = false,
 		noSnapshot: boolean = false,
+		unobserved: (() => void) | null = null,
 	) {
 		this.cell = new Cell<T>(initialValue);
 		this.node = newSource((ownedWrite ? CONFIG_OWNED_WRITE : 0) | (noSnapshot ? CONFIG_NO_SNAPSHOT : 0));
+		this.node.unobserved = unobserved;
 		this.equals = equals;
 	}
 
@@ -89,6 +92,7 @@ export function valueOf<T>(this a: Accessor<T>): T {
 export function createSignal<T>(initialValue: T, options?: SignalOptions<T>): [Accessor<T>, Setter<T>] {
 	let equals: ((a: T, b: T) => boolean) | null = null;
 	let ownedWrite = false;
+	let unobserved: (() => void) | null = null;
 	if (options !== undefined) {
 		const given = options.equals;
 		if (typeof given === "function") {
@@ -97,8 +101,9 @@ export function createSignal<T>(initialValue: T, options?: SignalOptions<T>): [A
 			equals = (a: T, b: T): boolean => false;
 		}
 		ownedWrite = options.ownedWrite === true;
+		unobserved = options.unobserved ?? null;
 	}
-	const signal = new Signal<T>(initialValue, equals, ownedWrite);
+	const signal = new Signal<T>(initialValue, equals, ownedWrite, false, unobserved);
 	return [
 		accessor(() => signal.get()),
 		(v: T | ((prev: T) => T)) => {

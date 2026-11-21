@@ -67,6 +67,7 @@ export class Source {
 	config: int32;
 	computed: boolean;
 	commit: (() => void) | null = null;
+	unobserved: (() => void) | null = null;
 
 	constructor(config: int32, computed: boolean) {
 		this.config = config;
@@ -86,7 +87,6 @@ export class Computation extends Source {
 	apply: ((self: Computation) => void) | null = null;
 	cleanup: Cleanup | null = null;
 	type: int32;
-	unobserved: (() => void) | null = null;
 
 	parent: Computation | null;
 	parentComputed: Computation | null = null;

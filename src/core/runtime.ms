@@ -232,11 +232,10 @@ function unlinkSubs(l: Link): Link | null {
 		prevSub.nextSub = nextSub;
 	} else {
 		dep.subs = nextSub;
-		if (nextSub === null && dep.computed) {
-			const c = dep as Computation;
-			const hook = c.unobserved;
+		if (nextSub === null) {
+			const hook = dep.unobserved;
 			if (hook !== null) { hook(); }
-			if ((c.config & CONFIG_AUTO_DISPOSE) !== 0) { unobserved(c); }
+			if (dep.computed && (dep.config & CONFIG_AUTO_DISPOSE) !== 0) { unobserved(dep as Computation); }
 		}
 	}
 	return nextDep;

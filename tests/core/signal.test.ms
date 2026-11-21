@@ -185,3 +185,45 @@ test "an effect may write a plain signal" {
 	});
 	assert x() === 7;
 }
+
+test "unobserved fires when the last subscriber of a signal goes away, and only then" {
+	let fired = 0;
+	const [x] = createSignal<int32>(1, { unobserved: (): void => { fired += 1; } });
+	let first: (() => void) | null = null;
+	let second: (() => void) | null = null;
+	createRoot((d) => {
+		first = d;
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => null);
+	});
+	createRoot((d) => {
+		second = d;
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => null);
+	});
+	flush();
+	assert fired === 0, "an observed signal stays";
+	(first as () => void)();
+	flush();
+	assert fired === 0, "one subscriber is left: " + fired.toString();
+	(second as () => void)();
+	flush();
+	assert fired === 1, "fired " + fired.toString();
+}
+
+test "unobserved fires when the last subscriber stops reading the signal" {
+	let fired = 0;
+	const [x] = createSignal<int32>(1, { unobserved: (): void => { fired += 1; } });
+	const [reading, setReading] = createSignal(true);
+	createRoot((d) => {
+		createEffect<int32>(
+			(p: int32 | null): int32 => reading() ? x() : 0,
+			(v: int32, p: int32 | null): Cleanup | null => null,
+		);
+	});
+	flush();
+	assert fired === 0;
+	setReading(false);
+	flush();
+	assert fired === 1, "fired " + fired.toString();
+	assert untrack((): int32 => x()) === 1, "an untracked read does not observe";
+	assert fired === 1;
+}
