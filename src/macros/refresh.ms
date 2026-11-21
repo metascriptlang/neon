@@ -93,6 +93,12 @@ export macro refreshTypeKey(value: Node): Node {
 	return { kind: NodeKind.StringLiteral, line: value.line, column: value.column, value: key };
 }
 
+// A build whose modules can be swapped while they run: a native HCR image, or any Raiser program, which
+// reloadProgramInPlace swaps and whose @afterReload handlers it runs. Both take the same after-reload adapter.
+function reloadsInPlace(): boolean {
+	return define("hcr") != "" || define("raiser") != "";
+}
+
 export macro refreshPass(mod: Node): Node {
 	if (define("refresh") == "" && define("hcr") == "") return mod;
 	const file = expansionFile();
@@ -219,7 +225,7 @@ export macro refreshPass(mod: Node): Node {
 		declared.push(names);
 		mutable.push(lets);
 	}
-	if (compAt.length == 0 && define("hcr") == "") return mod;
+	if (compAt.length == 0 && !reloadsInPlace()) return mod;
 
 	let jobSig: string[] = [];
 	let jobNames: string[][] = [];
@@ -670,7 +676,7 @@ export macro refreshPass(mod: Node): Node {
 			],
 		} });
 	}
-	if (define("hcr") != "") {
+	if (reloadsInPlace()) {
 		for (let k = 0; k < importSources.length; k += 1) {
 			if (sourceIds[k].length == 0) continue;
 			out.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
