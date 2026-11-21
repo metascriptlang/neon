@@ -64,5 +64,7 @@ done
 if [ $all = 1 ]; then
 	echo "== browser tests/browser/streamed.mjs"
 	node tests/browser/streamed.mjs "$PW" || fail=1
+	echo "== browser tests/browser/documentLoad.mjs"
+	node tests/browser/documentLoad.mjs "$PW" || fail=1
 fi
 exit $fail
