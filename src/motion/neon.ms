@@ -1,6 +1,6 @@
 import { cancelFrame, frameNow, requestFrame, requestFrameAt } from "../animation/frame";
 import { onCleanup } from "../core/cleanup";
-import { getOwner } from "../core/runtime";
+import { getObserver, getOwner } from "../core/runtime";
 import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
 import { Clock } from "pulse/src/clock";
 import { MotionColor, MotionDocument, MotionValue, ValueKind, numberValue } from "pulse/src/document";
@@ -159,17 +159,134 @@ export function useAnimatedValue(
 	const value = driven
 		? motion.value(initial, policy, own.signals.elements, own.slot, own.property, own)
 		: new AnimatedValue(initial, neonClock(), policy, target, composition);
+	const reach = target?.write ?? null;
+	if (driven) {
+		const demand = new ValueDemand(value);
+		const read = demand.reader(initial, reach);
+		own.watch.attach(demand);
+		onCleanup((): void => {
+			own.watch.detach(demand);
+			demand.release();
+			if (!value.disposed) { value.dispose(); }
+		});
+		return [read, value];
+	}
 	const reading = new LazySignal(initial);
 	const read = accessor((): float64 => reading.read());
-	const reach = target?.write ?? null;
-	const shown = driven ? null : own;
 	value.subscribe((next: float64): void => {
 		reading.write(next);
 		if (reach !== null) { reach(numberValue(next)); }
-		if (shown !== null) { shown.signals.show(shown.slot, shown.property, numberValue(next)); }
+		if (own !== null) { own.signals.show(own.slot, own.property, numberValue(next)); }
 	});
 	onCleanup((): void => { if (!value.disposed) { value.dispose(); } });
 	return [read, value];
+}
+
+let quietReads: int32 = 0;
+
+function quietly<T>(read: () => T): T {
+	quietReads += 1;
+	try {
+		return read();
+	} finally {
+		quietReads -= 1;
+	}
+}
+
+class Watch {
+	private watched: boolean = false;
+	private demands: ValueDemand[] = [];
+
+	attach(demand: ValueDemand): void {
+		this.demands.push(demand);
+		if (this.watched) { demand.enter(); }
+	}
+
+	detach(demand: ValueDemand): void {
+		const before = this.demands.length;
+		this.demands = this.demands.filter((other: ValueDemand): boolean => other !== demand);
+		if (this.watched && this.demands.length < before) { demand.leave(); }
+	}
+
+	watch(): void {
+		if (this.watched) { return; }
+		this.watched = true;
+		for (const demand of this.demands) { demand.enter(); }
+	}
+
+	unwatch(): void {
+		if (!this.watched) { return; }
+		this.watched = false;
+		for (const demand of this.demands) { demand.leave(); }
+	}
+
+	flush(): void {
+		for (const demand of this.demands) { demand.exact(); }
+	}
+}
+
+class ValueDemand {
+	private value: AnimatedValue;
+	private readers: int32 = 0;
+	private frames: (() => void) | null = null;
+	private hearing: (() => void) | null = null;
+
+	constructor(value: AnimatedValue) {
+		this.value = value;
+	}
+
+	reader(initial: float64, reach: ((value: MotionValue) => void) | null): Accessor<float64> {
+		let watched = false;
+		const [tick, set] = createSignal<float64>(initial, {
+			unobserved: (): void => {
+				if (watched) {
+					watched = false;
+					this.leave();
+				}
+			},
+		});
+		this.hearing = this.value.follow((next: float64): void => {
+			if (quietReads === 0) { set(next); }
+			if (reach !== null) { reach(numberValue(next)); }
+		});
+		return accessor((): float64 => {
+			if (!watched && getObserver() !== null) {
+				watched = true;
+				quietly((): void => { this.enter(); });
+			}
+			tick();
+			return this.exact();
+		});
+	}
+
+	enter(): void {
+		this.readers += 1;
+		if (this.readers === 1 && this.hearing !== null && !this.value.disposed) {
+			this.frames = this.value.subscribe((next: float64): void => {});
+		}
+	}
+
+	leave(): void {
+		if (this.readers === 0) { throw new Error("motion: a value demand left more often than it entered"); }
+		this.readers -= 1;
+		if (this.readers > 0) { return; }
+		const frames = this.frames;
+		this.frames = null;
+		if (frames !== null) { frames(); }
+	}
+
+	exact(): float64 {
+		return quietly((): float64 => this.value.get());
+	}
+
+	release(): void {
+		const frames = this.frames;
+		const hearing = this.hearing;
+		this.frames = null;
+		this.hearing = null;
+		if (frames !== null) { frames(); }
+		if (hearing !== null) { hearing(); }
+	}
 }
 
 class LazySignal {
@@ -225,6 +342,7 @@ class SignalTarget extends MotionTarget {
 	signals: MotionSignals;
 	slot: string;
 	property: string;
+	watch: Watch = new Watch();
 
 	constructor(
 		signals: MotionSignals,
@@ -238,6 +356,7 @@ class SignalTarget extends MotionTarget {
 		this.slot = slot;
 		this.property = property;
 	}
+
 }
 
 let nextClaim: int32 = 1;
@@ -364,21 +483,32 @@ export class MotionSignals {
 	private styles: SlotStyle[] = [];
 
 	number(slot: string, property: string, initial: float64): Accessor<float64> {
-		const [read, write] = createSignal<float64>(initial);
 		let current = initial;
-		this.styles.push(
-			new SlotStyle(slot, property, (): string => "", (): float64 => read()),
-		);
-		this.bind(
+		const watch = new Watch();
+		const [tick, write] = createSignal<float64>(initial, {
+			unobserved: (): void => { watch.unwatch(); },
+		});
+		const shown = (): float64 => quietly((): float64 => {
+			watch.flush();
+			return current;
+		});
+		const target = this.bind(
 			slot,
 			property,
 			(value: MotionValue): void => {
 				requireKind(value, ValueKind.Number, slot, property);
 				current = value.number;
-				write(value.number);
+				if (quietReads === 0) { write(value.number); }
 			},
-			(): MotionValue => numberValue(current),
+			(): MotionValue => numberValue(shown()),
 		);
+		target.watch = watch;
+		const read = accessor((): float64 => {
+			if (getObserver() !== null) { quietly((): void => { watch.watch(); }); }
+			tick();
+			return shown();
+		});
+		this.styles.push(new SlotStyle(slot, property, (): string => "", read));
 		return read;
 	}
 
@@ -519,8 +649,9 @@ export class MotionSignals {
 		property: string,
 		write: (value: MotionValue) => void,
 		read: () => MotionValue,
-	): void {
+	): SignalTarget {
 		const target = new SignalTarget(this, slot, property, read, write);
 		this.bindings.push({ slot, property, write, read, target });
+		return target;
 	}
 }

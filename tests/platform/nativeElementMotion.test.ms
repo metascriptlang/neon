@@ -11,6 +11,10 @@ import {
 } from "../../src/platform/native/layerEngine";
 import { setFrameDriver, useManualFrames } from "../../src/animation/frame";
 import { Accessor, createSignal } from "../../src/core/signal";
+import { createEffect } from "../../src/core/effect";
+import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
+import { Cleanup } from "../../src/core/types";
 import { Show } from "../../src/macros/ui/flow";
 import { LayoutAnimation } from "../../src/motion/layoutAnimation";
 import { Easing } from "pulse/src/easing";
@@ -142,10 +146,11 @@ class Like {
 	signals: MotionSignals = new MotionSignals();
 	value: AnimatedValue | null = null;
 	read: Accessor<float64> | null = null;
+	mirror: Accessor<float64>;
 	tag: int32 = 0;
 
 	constructor() {
-		this.signals.number("like", "scale", 1);
+		this.mirror = this.signals.number("like", "scale", 1);
 		runApp((): NeonNode => {
 			const ref = this.signals.ref("like");
 			const [read, value] = useAnimatedValue(
@@ -506,5 +511,45 @@ test "a handed value with a subscriber keeps a frame per tick, and sleeps again 
 	assert frames.frames === after, "frames after the last subscriber left: " + (frames.frames - after).toString();
 	frames.runAll();
 	assert value.get() === 1;
+	close();
+}
+
+test "an element-bound useAnimatedValue sleeps while nobody reads it, and a tracked read of its accessor or its signals mirror keeps a frame per tick" {
+	const frames = useManualFrames();
+	installLayerEngine(nativeLayerEngine());
+	const like = new Like();
+	like.animated.animate(timing(2, { duration: 600, easing: Easing.linear }));
+	assert nmLayerLive(like.tag, TRANSFORM) === 1, "handed to the layer";
+	frames.step(1);
+	const asleep = frames.frames;
+	frames.step(5);
+	assert frames.frames === asleep, "frames while nobody reads: " + (frames.frames - asleep).toString();
+	for (const name of ["mirror", "accessor"]) {
+		const source = name === "mirror" ? like.mirror : like.read as Accessor<float64>;
+		const seen: float64[] = [];
+		let stop: (() => void) | null = null;
+		createRoot((dispose: () => void): void => {
+			stop = dispose;
+			createEffect<float64>(
+				(p: float64 | null): float64 => source(),
+				(v: float64, p: float64 | null): Cleanup | null => { seen.push(v); return null; },
+			);
+		});
+		flush();
+		assert seen.length === 1 && seen[0] === like.animated.get(),
+			name + ": the first tracked read is exact, not the last mark";
+		const awake = frames.frames;
+		frames.step(3);
+		assert frames.frames === awake + 3, name + ": frames while read: " + (frames.frames - awake).toString();
+		assert seen.length === 4, name + ": the reader heard " + seen.length.toString() + " values";
+		(stop as () => void)();
+		flush();
+		frames.step(1);
+		const after = frames.frames;
+		frames.step(4);
+		assert frames.frames === after, name + ": frames after the reader left: " + (frames.frames - after).toString();
+	}
+	frames.runAll();
+	assert like.mirror() === 2 && (like.read as Accessor<float64>)() === 2, "both end on the target";
 	close();
 }
