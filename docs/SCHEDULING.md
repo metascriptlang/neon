@@ -859,6 +859,28 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
   Both sides deliver every frame; what differs is the time the animation samples at. Stamped at
   the callback, a step strays by up to half a period whenever the timer held main at vsync, so
   the box moves in uneven steps; stamped with the display's timestamp, every step is one period.
+- **Landed-tree device recheck** (2026-11-22, Release, msc/support `45ec4b08095`, Ion
+  `1f7dc8e76bde`). Candidate: Neon `f3f19186`, tree `4b1d92c94246`, everything this arc
+  landed after the frame-clock step (input phase, onLayout in the frame, `requestFrameAt`,
+  dirty-root drain). Control: the tree the 2026-11-08 tables were taken on, `1ecc51511773`
+  (`1772fe73`). Each app was built once per side and reinstalled for every run, five rounds,
+  side order swapped every round; the tracked `run.sh` files rebuild per run instead.
+
+  iPad Pro 12.9, five runs per cell (S1: n=25 flings per side):
+
+  | | control | candidate |
+  |---|---|---|
+  | frame delivery: fps / missed / jitter max | 119.93 / 0 / 0.02-0.05 ms | 119.93 / 0 / 0-0.04 ms |
+  | loaded main: fps / missed / jitter max | 119.93 / 0 / 0-0.01 ms | 119.93 / 0 / 0-0.03 ms |
+  | result latency p50 / p90 / max | 0 / 0 / 0-6 ms | 0 / 0 / 0 ms |
+  | S1 hitch ratio, deceleration, median / mean | 3.5 / 7.4 ms/s | 0 / 4.9 ms/s |
+  | S1 hitch ratio, dragging, median / mean | 0 / 0 ms/s | 0 / 2.5 ms/s |
+  | S1 frame rate, deceleration / dragging | 104.8 / 112.1 fps | 105.5 / 111.3 fps |
+
+  No cell is worse outside its run-to-run spread. The candidate's dragging mean is one fling
+  of 25 with a single 8.3-ms hitch (62.7 ms/s over a 0.13-s drag); the 2026-11-07 runs showed
+  such single flings on both sides. iPhone 13 Pro and Seeker: not measured, both dropped off
+  USB before their rounds. Logs: `out/evidence/deviceab-ipad.log` in the worktree (ignored).
 - **Pointer input per frame** (`bench/input.ms`, window host, no GPU: k moves between two
   frames, a move handler writes a signal 200 texts read, then layout). m1m, 3 interleaved
   rounds, control = the branch before step 2 (2026-11-08):
