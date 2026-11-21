@@ -4,8 +4,6 @@ import { Cursor } from "../../src/render/style";
 import { AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { AreaWindow, WindowArea, windowHost, windowNode, deliverFramePointer, deliverResize } from "../../src/platform/void/windowHost";
-import { ionCursor } from "../../src/platform/ion/window";
-import { CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV } from "../../../ion/src/index";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 
 const FONT_PATH = "../void/assets/font.ttf";
@@ -16,7 +14,7 @@ function loadedFont(): FontId {
 	return r.value;
 }
 
-function cursorWindow(set: int32[], areas: WindowArea[]): AreaWindow {
+function cursorWindow(set: Cursor[], areas: WindowArea[]): AreaWindow {
 	return {
 		name: "cursor window",
 		font: loadedFont(),
@@ -25,13 +23,13 @@ function cursorWindow(set: int32[], areas: WindowArea[]): AreaWindow {
 		requestFrame: (): void => {},
 		dirty: (): void => {},
 		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {},
-		setCursor: (cursor: Cursor): void => { set.push(ionCursor(cursor)); },
+		setCursor: (cursor: Cursor): void => { set.push(cursor); },
 		opened: (area: WindowArea): void => { areas.push(area); },
 		released: (area: WindowArea): void => {},
 	};
 }
 
-function splitPanes(set: int32[]): WindowArea {
+function splitPanes(set: Cursor[]): WindowArea {
 	const areas: WindowArea[] = [];
 	render(element(
 		<Void>
@@ -58,46 +56,40 @@ function button(area: WindowArea, x: float64, y: float64, pressed: boolean): voi
 	deliverFramePointer(area, { kind: AreaPointerKind.Button, pixelX: x, pixelY: y, button: 1 as int32, pressed, dx: 0.0, dy: 0.0 });
 }
 
-function shown(set: int32[]): string {
-	return set.map((c: int32): string => c.toString()).join(",");
+function shown(set: Cursor[]): string {
+	return set.join(",");
 }
 
 test "hovering a col-resize View sets the resize cursor once, moving within it sets nothing, leaving it sets the arrow" {
-	const set: int32[] = [];
+	const set: Cursor[] = [];
 	const area = splitPanes(set);
 	moveTo(area, 50.0, 50.0);
 	assert set.length === 0, "a View without cursor over the default sets nothing: " + shown(set);
 	moveTo(area, 105.0, 50.0);
-	assert shown(set) === `${CursorResizeH}`, shown(set);
+	assert shown(set) === "col-resize", shown(set);
 	moveTo(area, 107.0, 60.0);
-	assert shown(set) === `${CursorResizeH}`, "a move within the View sets nothing: " + shown(set);
+	assert shown(set) === "col-resize", "a move within the View sets nothing: " + shown(set);
 	moveTo(area, 50.0, 50.0);
-	assert shown(set) === `${CursorResizeH},${CursorArrow}`, shown(set);
+	assert shown(set) === "col-resize,default", shown(set);
 }
 
 test "a press keeps the cursor it started on while dragged over other Views, until release" {
-	const set: int32[] = [];
+	const set: Cursor[] = [];
 	const area = splitPanes(set);
 	moveTo(area, 105.0, 50.0);
 	button(area, 105.0, 50.0, true);
 	moveTo(area, 50.0, 50.0);
 	moveTo(area, 180.0, 80.0);
-	assert shown(set) === `${CursorResizeH}`, "a held press keeps the resize cursor: " + shown(set);
+	assert shown(set) === "col-resize", "a held press keeps the resize cursor: " + shown(set);
 	button(area, 50.0, 50.0, false);
-	assert shown(set) === `${CursorResizeH},${CursorArrow}`, "the release shows the cursor under the pointer: " + shown(set);
+	assert shown(set) === "col-resize,default", "the release shows the cursor under the pointer: " + shown(set);
 }
 
 test "a child without cursor shows its nearest ancestor's" {
-	const set: int32[] = [];
+	const set: Cursor[] = [];
 	const area = splitPanes(set);
 	moveTo(area, 120.0, 20.0);
-	assert shown(set) === `${CursorResizeV}`, shown(set);
+	assert shown(set) === "row-resize", shown(set);
 	moveTo(area, 190.0, 80.0);
-	assert shown(set) === `${CursorResizeV}`, "from the child to its parent the cursor stays: " + shown(set);
-}
-
-test "every cursor name maps to an Ion cursor" {
-	const names: Cursor[] = ["auto", "default", "pointer", "text", "crosshair", "col-resize", "row-resize"];
-	const ion = names.map((c: Cursor): string => ionCursor(c).toString()).join(",");
-	assert ion === [CursorArrow, CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV].join(","), ion;
+	assert shown(set) === "row-resize", "from the child to its parent the cursor stays: " + shown(set);
 }
