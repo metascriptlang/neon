@@ -12,10 +12,11 @@ import { sleepAsync } from "std/core/promise";
 import { homeDir } from "std/os";
 import {
 	GuestProgram, GuestSlot, SlotHandle, SlotOutcome, SlotShown, SlotRoot,
-	openGuest, loadGuest, callGuest, openSlot, closeSlot, closeGuest, slotStatus,
+	openGuest, loadGuest, callGuest, openSlot, closeSlot, closeGuest, slotStatus, saveGuest, loadSavedGuest,
 	hostString, hostValue, boxBool, boxInt, unboxInt, RaiserHostValue,
 } from "../../src/platform/raiser/native";
 import { Card } from "./raiser/views";
+import { implementRoutine } from "../../../recompiler/src/embed/index";
 
 const errors: string[] = [];
 let shared: GuestProgram | null = null;
@@ -469,4 +470,35 @@ test "closeGuest disposes every root and place, fires no timer afterwards and re
 	assert call.includes("callGuest") && call.includes("closed"), call;
 	const open = refusal((): void => { openSlot(app, "card", [hostString("late")], host, root as unknown as HostNode, null); });
 	assert open.includes("openSlot") && open.includes("closed"), open;
+}
+
+function shown(p: GuestProgram): string {
+	const root = mockNode("root");
+	const unmount = render(element(<View><GuestSlot program={p} view="card" args={[hostString("saved")]} /></View>), mockHost(), root as unknown as HostNode);
+	const tree = mockToString(root);
+	unmount();
+	return tree;
+}
+
+test "a saved guest loads from its bytes into a new guest and mounts the tree its source mounts" {
+	const source = loaded(opened(), "app.ms");
+	const saved = saveGuest(source, "tests/platform/raiser/app.ms");
+	assert saved.ok, saved.ok ? "" : saved.error.map((d) => `${d.file}:${d.line}: ${d.message}`).join("\n");
+	const copy = opened();
+	const got = loadSavedGuest(copy, saved.value);
+	assert got.ok, got.ok ? "" : got.error.map((d) => d.message).join("\n");
+	assert errors.length === 0, errors.join("\n");
+	assert shown(copy) === shown(source), `loaded ${shown(copy)} source ${shown(source)}`;
+	assert shown(copy).includes("saved"), shown(copy);
+	closeGuest(source);
+	closeGuest(copy);
+}
+
+test "a saved guest calling a host routine registered without a signature does not load, and names the routine" {
+	implementRoutine("test.unsigned", (a) => boxInt(1));
+	const saved = saveGuest(opened(), "tests/platform/raiser/unsigned.ms");
+	assert saved.ok, saved.ok ? "" : saved.error.map((d) => `${d.file}:${d.line}: ${d.message}`).join("\n");
+	const got = loadSavedGuest(opened(), saved.value);
+	assert !got.ok, "an unsigned host routine loads";
+	assert !got.ok && got.error[0].message.includes("test.unsigned"), got.ok ? "" : got.error[0].message;
 }
