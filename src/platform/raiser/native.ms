@@ -1,5 +1,6 @@
 import {
 	createInterpreter, evalModule, selectRoutine, callRoutine, implementRoutine, saveProgram, loadProgram,
+	reloadProgram, reloadProgramInPlace,
 	runDueTimers, nextTimerDelayMs, dropPendingWork, unboxValue, boxValue,
 	Interpreter, Routine, Diagnostic, System, RaiserValue, RaiserValueKind, RaiserHostValue,
 	boxInt, boxFloat, boxBool, boxVoid, unboxInt, unboxFloat, unboxString, unboxBool,
@@ -724,6 +725,28 @@ export function loadSavedGuest(p: GuestProgram, bytes: Uint8Array): Result<int32
 		return Result.ok(0);
 	});
 	return adopt(p, SAVED_PROGRAM, ran);
+}
+
+// A changed saved program in a fresh VM: state starts over and every slot mounts again, as loadSavedGuest mounts them.
+// A refusal (a changed library chunk needs a restart) leaves the running guest and its tree as they were.
+export function reloadSavedGuest(p: GuestProgram, bytes: Uint8Array): Result<int32, Diagnostic[]> {
+	refuseClosed(p, "reloadSavedGuest");
+	const ran = guestCall(p, () => reloadProgram(p.interp, bytes));
+	if (!ran.ok) { return Result.err([guestError(SAVED_PROGRAM, ran.error.message)]); }
+	return adopt(p, SAVED_PROGRAM, Result.ok(0));
+}
+
+// A changed saved program swapped in place: module state and mounted components stay, and the guest's own Neon
+// Refresh patches what changed from the @afterReload handlers its modules carry when built with the refreshPass module
+// pass under -d:refresh. A refusal (a changed class or struct layout, a changed library chunk, a handler that throws)
+// leaves the running guest and its tree as they were.
+export function refreshSavedGuest(p: GuestProgram, bytes: Uint8Array): Result<int32, Diagnostic[]> {
+	refuseClosed(p, "refreshSavedGuest");
+	const ran = guestCall(p, () => reloadProgramInPlace(p.interp, bytes));
+	arm(p);
+	if (!ran.ok) { return Result.err([guestError(SAVED_PROGRAM, ran.error.message)]); }
+	announce(p);
+	return Result.ok(p.generation);
 }
 
 function adopt(p: GuestProgram, path: string, ran: Result<int32, Diagnostic[]>): Result<int32, Diagnostic[]> {
