@@ -238,6 +238,39 @@ On JS, WASM and workerd, `spawn` only schedules: Worker is same-thread until Web
 it. On Android a worker must never call `ni*` (JNI binding), and one long flush on main is a
 5 s ANR.
 
+## Parity with Flutter and React Native
+
+The arc's goal, in the person's words (2026-11-22): "on par về rendering flow/mechanic so với
+các mô hình hiệu quả như Flutter, React Native". One row per mechanism the two references use to
+get a frame on screen on time. Status is per Neon host and is a claim only where §Measured holds
+the run; anything else says "rule only" or "not measured".
+
+References read: Flutter `f101991` (engine paths under `engine/src/flutter/`, framework under
+`packages/flutter/lib/src/`), React Native `693e9628e8c` (under `packages/react-native/`),
+read for this table on 2026-11-22; each anchor was opened at that commit.
+
+| mechanism | Flutter | React Native (Fabric) | Neon |
+|---|---|---|---|
+| Which thread runs app logic, layout and commit | UI merged into the platform thread by default (`common/settings.h:381` `kEnabled`); raster and IO threads separate | JS thread renders, commits and runs Yoga (`ShadowTree.cpp:333`); main thread mounts | Main thread runs the reactive graph, layout and sink; native hosts leave raster to the OS compositor. Matches Flutter's merged thread. Void hosts (Ion + Void, sokol) present from main (`windowHost.ms` `scene.present`): Flutter rasterizes on its own thread; cost not measured |
+| Frame order | `BeginFrame` → transient callbacks → microtasks → build → layout → paint → composite → post-frame (`platform_configuration.cc:483-491`, `scheduler/binding.dart:1259-1368`, `rendering/binding.dart:691-700`) | No frame phase: commit runs after each JS task (`RuntimeScheduler_Modern.cpp:352`) | §The frame, same order. Microtasks between phases: **gap**, `queueMicrotask` undefined on C (compiler card `2026-10-20-queuemicrotask-undeclared.md`) |
+| Animation clock | Target presentation time (`animator.cc:114-118`; iOS `targetTimestamp`, Android frame time + period) | Native driver: `displaylink.timestamp` on iOS (`RCTNativeAnimatedNodesManager.mm:465`), `frameTimeNanos` on Android; C++ driver uses `steady_clock::now()` | Target time on iOS, Android, macOS, Windows: jitter 0-0.04 ms on a busy main (§Measured, frame delivery). Linux lead unverified (Ion); sokol canvas, terminal and Windows indicators use callback time: **gap** |
+| Late frame | Pipeline depth 1-2; when full, the frame is skipped and re-requested, never queued (`animator.cc:99-107`) | iOS mounts as soon as main picks the transaction up (`RCTMountingManager.mm:197`); Android drains on Choreographer `DISPATCH_UI` | Rule only (§The frame). Native hosts have no pipeline of their own; Void hosts not checked |
+| Input | Delivered when it arrives; iOS holds extra packets of one vsync until the next (`pointer_data_dispatcher.h:103-115`); a packet requests no frame (`engine.cc:587`) | Continuous events replace the queued one of the same target and type (`EventQueue.cpp:29-50`); beat before the run loop waits (iOS) or on Choreographer (Android) | Continuous input coalesced into the next frame, discrete flushed at once (§The frame step 0); pinned on macOS and Windows. Physical input-to-paint latency: **not measured** on any host |
+| Mount / commit | Layer tree handed to raster through the pipeline (`animator.cc:142-154`) | One transaction applied in one main-thread call (iOS `RCTMountingManager.mm:243-265`); Android merges transactions into one `IntBufferBatchMountItem` per JNI call (`FabricMountingManager.cpp:884-900`) | Direct sink, in order, inside the frame. iOS: one Core Animation commit per run-loop turn. Android: one JNI call per property write (`bridge.c` `niSetTransform`, `niSetOpacity`), not batched like Fabric: **gap**, cost not profiled |
+| onLayout | Post-frame | Asynchronous event after commit, before mount, latest only (`ShadowTree.cpp:370-373`, `BaseViewEventEmitter.cpp:37-82`) | Inside the frame, before paint, re-laid out up to 8 passes: a recorded departure ahead of both (`docs/REFERENCE.md` SF-8). Browser host lacks the 8-pass bound: **gap** |
+| Image decode | Worker pool, texture upload on IO, result on UI (`image_decoder_impeller.cc:698-743`) | iOS background queues (`RCTImageLoader.mm:1003`); Android Fresco | Windows: MTA worker (§Measured). Android: background executor then `post` (`Picture.java` `fetch`). iOS: `UIImage imageWithData` off main, but UIKit decodes such an image lazily at first draw unless forced; RN forces it: **likely gap, not measured** |
+| Text layout | UI thread, synchronous FFI (`text.dart:3236`) | Inside Yoga measure on the layout thread (`ParagraphShadowNode.cpp:222`) | Main thread, synchronous inside yoga measure. Matches Flutter; kept on purpose (synchronous platform answers, §Three contracts) |
+| Idle | `scheduleFrame` only on request; iOS link re-paused every callback (`VSyncClient.swift:198`) | iOS fully idle; Android reposts `DispatchUIFrameCallback` every frame while resumed (`FabricUIManager.java:1505`) | One-shot requests, `requestFrameAt` sleeps to a deadline, iOS link paused after 4 idle ticks. Whole-host idle and hidden-window cost: **not measured** |
+| Hidden app | Frames disabled while hidden, request dropped, one scheduled on return (`scheduler/binding.dart:425`, `:878-885`) | — | Rule only: held, not dropped (§The frame). Not measured |
+| Nested OS loops | iOS display link and timers in common modes (`VSyncClient.swift:74`, `message_loop_darwin.mm:33`); macOS live resize pumps until the new size commits (`ResizeSynchronizer.swift:96-115`) | Run-loop observers and display links in common modes (`PlatformRunLoopObserver.mm:79`) | iOS wake source in common modes; Ion macOS menus and modal panels run frames (Ion `f3ed8ec`); Windows menu and size/move loops pumped. Ion `messageBox`/open-file from MS still block (Ion inbox note 2026-11-13): **gap, Ion owns** |
+| Worker result | Platform task runners | — | Wakes the loop at once: 690 → 0 ms on iPhone, iPad, Seeker (§Measured). `await spawn(...)` at top level holds the loop: **gap**, compiler card `2026-11-05-await-of-a-spawn-handle-blocks-the-event-loop.md` |
+
+"—" means the reference has no counterpart worth a row. Gaps Neon can close alone: mid-frame
+microtasks once the compiler delivers `queueMicrotask`; sokol, terminal and Windows indicator
+clocks; the browser layout bound; Android write batching, if a profile shows the per-call
+JNI cost; iOS forced decode, if a profile shows main-thread decode; Void present placement,
+if a profile shows it costs frames; and the unmeasured rows (input latency, idle, hidden).
+
 ## Measured
 
 ### Integrated Windows image decode, 2026-11-13
