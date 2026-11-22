@@ -879,8 +879,40 @@ Interleaved A/B; the control is the branch with that platform's wake commit reve
 
   No cell is worse outside its run-to-run spread. The candidate's dragging mean is one fling
   of 25 with a single 8.3-ms hitch (62.7 ms/s over a 0.13-s drag); the 2026-11-07 runs showed
-  such single flings on both sides. iPhone 13 Pro and Seeker: not measured, both dropped off
-  USB before their rounds. Logs: `out/evidence/deviceab-ipad.log` in the worktree (ignored).
+  such single flings on both sides.
+
+  iPhone 13 Pro, same five-round design; S1 then ran a second set of six rounds with the side
+  order reversed, because the first set's hitch durations differed (n=55 flings per side):
+
+  | | control | candidate |
+  |---|---|---|
+  | frame delivery: fps / missed / jitter max | 120.0 / 0 / 0.03-0.04 ms | 120.0 / 0 / 0.03-0.04 ms |
+  | loaded main: fps / missed / jitter max | 120.0 / 0 / 0.03 ms | 120.0 / 0 / 0.03-0.04 ms |
+  | result latency p50 / p90 / max | 0 / 0 / 0-11 ms | 0 / 0 / 0-6 ms |
+  | S1 deceleration, flings with a hitch / total hitch time, set 1 | 10 / 233 ms | 10 / 367 ms |
+  | S1 deceleration, same, set 2 | 12 / 317 ms | 9 / 267 ms |
+  | S1 dragging, flings with a hitch / total hitch time, both sets | 4 / 42 ms | 5 / 75 ms |
+  | S1 frame rate, deceleration / dragging, both sets | 81.5 / 85.6 fps | 81.3 / 85.0 fps |
+
+  The first set's gap reversed in the second, so it is spread, not a regression. Hitches come
+  in whole frames (8.3 or 16.7 ms); one 16.7-ms hitch in a 0.12-s drag reads 143 ms/s, which is
+  why dragging ratio means swing between sets on both sides.
+
+  Seeker, five rounds (S1: 25 iterations of three swipes per side, `dumpsys gfxinfo`):
+
+  | | control | candidate |
+  |---|---|---|
+  | frame delivery: fps / missed / jitter max | 120.4 / 0 / 0.01-0.04 ms | 120.2-120.4 / 0-1 / 0.02-0.24 ms |
+  | loaded main: fps / missed / jitter max | 119.0-120.4 / 0-8 / 0.03-6.01 ms | 120.4 / 0 / 0.04-0.13 ms |
+  | result latency p50 / p90 / max | 0 / 0 / 0 ms | 0 / 0 / 0-1 ms |
+  | S1 janky frames, sum / frames rendered | 16 / 4240 | 17 / 4234 |
+  | S1 p50 / p90 / p99, median | 8 / 9 / 12 ms | 8 / 9 / 12 ms |
+  | S1 missed vsync / slow UI thread, sum | 0 / 5 | 0 / 6 |
+
+  No regression on any of the three devices. The single worst run was the control's (loaded
+  main, round 2: 8 missed vsyncs, 6-ms jitter). Logs in the worktree (ignored):
+  `out/evidence/deviceab-{ipad,iphone,iphone-stream2,seeker}.log`; harness
+  `out/evidence/deviceAb.sh` and `deviceCampaign.sh`.
 - **Pointer input per frame** (`bench/input.ms`, window host, no GPU: k moves between two
   frames, a move handler writes a signal 200 texts read, then layout). m1m, 3 interleaved
   rounds, control = the branch before step 2 (2026-11-08):
