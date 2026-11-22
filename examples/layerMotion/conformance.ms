@@ -67,6 +67,8 @@ const views = new Views();
 // Animation evaluates each presentation layer at the conformance time.
 class Stage {
 	fire: ((target: number) => void) | null = null;
+	wake: (() => void) | null = null;
+	wakeTime: float64 = Infinity;
 	origin: float64;
 	at: float64 = 0;
 	policy: MotionPolicy;
@@ -82,6 +84,11 @@ class Stage {
 		setFrameDriver({
 			now: (): number => views.time,
 			schedule: (fire: (target: number) => void): void => { this.fire = fire; },
+			wakeAt: (time: number, wake: () => void): (() => void) => {
+				this.wakeTime = time;
+				this.wake = wake;
+				return (): void => { this.wake = null; this.wakeTime = Infinity; };
+			},
 		});
 		this.owner = createRoot((dispose: () => void): Computation | null => {
 			this.disposeOwner = dispose;
@@ -155,6 +162,12 @@ class Stage {
 			const ms = Math.min(CONFORMANCE_FRAME_MS, time - this.at);
 			this.at += ms;
 			views.step(ms);
+			const wake = this.wake;
+			if (wake !== null && views.time >= this.wakeTime) {
+				this.wake = null;
+				this.wakeTime = Infinity;
+				wake();
+			}
 			const fire = this.fire;
 			this.fire = null;
 			if (fire !== null) { fire(views.time); }
